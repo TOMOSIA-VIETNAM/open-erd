@@ -118,27 +118,27 @@ Identifier segments never contain `.`; keep names exactly as in the database
 ## Special patterns
 
 ```yaml
-  - id: shop.public.accounts                 # STI: one table, subclasses listed
-    sti: { column: type, subclasses: [Customer, Vendor] }   # keep the enum on `type` for meanings
+  - id: billing.public.parties              # STI: one table, subclasses listed
+    sti: { column: type, subclasses: [Person, Company] }    # keep the enum on `type` for meanings
   - id: billing.public.monthly_revenue       # view / materialized view
     kind: materialized_view                  # table (default) | view | materialized_view
     sources: [billing.public.invoices]       # tables it reads; drawn as muted dashed lines
   - id: billing.tenant.usage_events          # partitions merged into one table
     partition: { method: range, columns: [occurred_at], interval: month }   # range | list | hash
-  - id: learn.public.lesson_progress         # unique key over several columns
-    unique: [[user_id, lesson_id]]
-  - id: learn.public._CourseToTag            # created by a framework, declared in no file
+  - id: billing.public.price_rules          # unique key over several columns
+    unique: [[plan_id, region_code]]
+  - id: billing.public._InvoiceToLabel       # created by a framework, declared in no file
     generated_by: Prisma implicit many-to-many
-  - id: ticketing._.orders                   # NoSQL embedded documents
+  - id: media._.playlists                    # NoSQL embedded documents
     embedded:
-      - name: items                          # no dots; must not equal a column name
+      - name: tracks                         # no dots; must not equal a column name
         array: true                          # list of subdocuments
-        columns: [{ name: event, type: ObjectId }]
+        columns: [{ name: song, type: ObjectId }]
 ```
 
 - A ref inside an embedded document is a relation from the embedded path:
-  `from: { table: ticketing._.orders, columns: [items.event] }`. Do not keep a
-  parent column (`items: array<object>`) next to the entity.
+  `from: { table: media._.playlists, columns: [tracks.song] }`. Do not keep a
+  parent column (`tracks: array<object>`) next to the entity.
 - Schema-per-tenant: put tenant tables under one schema (`tenant`) and declare
   it in `tenant_schemas`; each of its tables shows "× N tenants" (or "one
   copy per tenant" without `count`).
@@ -165,12 +165,19 @@ Identifier segments never contain `.`; keep names exactly as in the database
     note what the code does with it.
   - `cross_db`: ends in different databases. Goes in `model/cross-db.yaml`.
 - **evidence**: `<source name>:<path relative to that source>#<symbol>`, where
-  the symbol (class, method, function, table name) appears in that file. A
+  the symbol is one identifier (class, method, function, field or table
+  name) found verbatim in that file: `#Invoice` or `#payer`, never a
+  qualified `#Invoice.payer` / `#Invoice::payer`. A
   line number may follow the path (`path:42`), but is ignored when comparing.
   `db` when the fact came from database metadata. Every relation and
   polymorphic entry has at least one.
 - **review**: every fact you add is `pending`. Only the user makes a fact
   `reviewed`. `stale` marks a reviewed fact the code no longer supports.
+- **polymorphic type column**: give it an `enum` only when code declares
+  its value set (a morph map, an `enum` on the path); keys are the stored
+  values (often aliases) of this entry's targets only, meanings name the
+  target. Values that only follow
+  from the targets (plain class names) get no `enum`.
 - **enum**: keys are the stored values (`"0"`, `"1"` for integer-backed
   enums, the mapped value when an ORM maps names). The meaning is a short
   English phrase plus the code symbol it came from.
@@ -186,7 +193,7 @@ Identifier segments never contain `.`; keep names exactly as in the database
   anything only the team should see (code pointers, doubts) goes in
   `internal_note`.
 - **Precision**: a column ending in `_id` that holds an external provider id
-  (`stripe_customer_id`, `gateway_customer_id`) is not a relation. Framework
+  (`stripe_customer_id`, `paypal_payer_id`) is not a relation. Framework
   tables (`schema_migrations`, `django_content_type`, `ar_internal_metadata`,
   `_prisma_migrations`) are left out unless the user wants them.
 
@@ -197,25 +204,25 @@ timestamps, no absolute paths. Shape:
 
 ```json
 {
-  "source": "shop-api",
+  "source": "billing-api",
   "stack": ["rails"],
   "tables": [
-    { "name": "orders", "schema": null, "database": "shop", "evidence": "db/schema.rb#orders",
+    { "name": "invoices", "schema": null, "database": "billing", "evidence": "db/schema.rb#invoices",
       "columns": [ { "name": "id", "type": "bigint", "pk": true, "nullable": false, "unique": false } ] }
   ],
   "associations": [
-    { "from": { "table": "orders", "columns": ["customer_id"] }, "to": { "table": "accounts", "columns": ["id"] },
-      "macro": "belongs_to", "constraint": false, "evidence": "app/models/order.rb#Order" }
+    { "from": { "table": "invoices", "columns": ["payer_id"] }, "to": { "table": "parties", "columns": ["id"] },
+      "macro": "belongs_to", "constraint": false, "evidence": "app/models/invoice.rb#Invoice" }
   ],
   "polymorphic": [
-    { "table": "comments", "name": "commentable", "type_column": "commentable_type", "id_column": "commentable_id",
-      "targets": ["products", "orders"], "evidence": ["app/models/comment.rb#Comment"] }
+    { "table": "attachments", "name": "attachable", "type_column": "attachable_type", "id_column": "attachable_id",
+      "targets": ["invoices", "payments"], "evidence": ["app/models/attachment.rb#Attachment"] }
   ],
   "enums": [
-    { "table": "orders", "column": "status", "values": { "0": "pending" }, "evidence": "app/models/order.rb#Order" }
+    { "table": "invoices", "column": "status", "values": { "0": "draft" }, "evidence": "app/models/invoice.rb#Invoice" }
   ],
   "hints": [
-    { "table": "shipments", "column": "warehouse_id", "text": "assigned in FulfillmentService#pick_warehouse", "evidence": "app/services/fulfillment_service.rb#pick_warehouse" }
+    { "table": "payments", "column": "batch_id", "text": "set in SettlementJob#perform", "evidence": "app/jobs/settlement_job.rb#perform" }
   ]
 }
 ```

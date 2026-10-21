@@ -48,7 +48,7 @@ classes inheriting another model, not `ApplicationRecord`; a subclass's
 associations land on the base table. `polymorphic: true` + `as: :name` give
 polymorphic targets. `enum status: { a: 0 }` / `enum :status, {...}` are
 integer- or string-backed: keys are the stored values. HABTM join table
-(`products_tags`) has no model and often no `id`.
+(`posts_tags`) has no model and often no `id`.
 
 **Laravel** — tables from `database/migrations/*.php` in filename order,
 applying `Schema::table` alterations and drops. `foreignId('x')->constrained()`
@@ -99,11 +99,12 @@ look for code setting it.
 **Mongoose** — `new Schema({...})` / `mongoose.Schema`, `mongoose.model
 ('Name', schema, 'collection')`. Collection = third argument, else
 `{ collection: }` option, else the model name lowercased and pluralised by
-Mongoose's rules (`Person` → `people`, `CheckIn` → `checkins`). Every `ref:` is
+Mongoose's rules (`Child` → `children`, `LogEntry` → `logentries`). Every `ref:` is
 `declared`. `[{ type: ObjectId, ref }]` is one `n-n` on the holding side.
 `refPath` is polymorphic (targets from the enum of the path it names).
-Embedded subschemas are columns of type `object`/`array` with a note; refs
-inside them have no place in the model. `enum: [...]` on paths. Schema is `_`.
+Nested objects and subschemas (single or in arrays) are `embedded` entities,
+not columns; a `ref` inside one is a relation from the embedded path
+(`../_shared/model.md`, "Special patterns"). `enum: [...]` on paths. Schema is `_`.
 `unique: true` on a ref makes it `1-1`.
 
 **Raw SQL** — `CREATE TABLE`, `ALTER TABLE ... ADD CONSTRAINT ... FOREIGN KEY`,
@@ -119,8 +120,9 @@ in version order; later `DROP`/`RENAME` win.
   `gateway_*_id`, `external_id`) are not relations.
 - Ids passed to another service through an HTTP client or queue: `cross_db`,
   evidence = the client function.
-- Schema per tenant, partitions, views: one table each, with a note.
+- Schema per tenant, partitions, views: one table each, with the special-pattern
+  fields of `../_shared/model.md`.
 - Join tables that exist in no file (Rails HABTM, Django M2M, Prisma implicit).
-- Foreign keys that point to a unique non-PK column (`coupons.code`).
+- Foreign keys that point to a unique non-PK column (`currencies.iso_code`).
 - Self-references and two relations between the same pair of tables.
 - Integer enums: keep the stored number as the key.
