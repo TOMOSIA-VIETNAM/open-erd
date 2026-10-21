@@ -1,0 +1,33 @@
+schema_version: 1
+database: activity
+engine: mongodb
+tables:
+  - id: activity._.events
+    domain: Events
+    columns:
+      - { name: _id, type: ObjectId, pk: true }
+      - { name: actor_id, type: long }
+      - { name: name, type: string }
+      - { name: payload, type: object }
+  - id: activity._.page_views
+    domain: Events
+    columns:
+      - { name: _id, type: ObjectId, pk: true }
+      - { name: event_id, type: ObjectId }
+      - { name: product_id, type: long }
+      - { name: path, type: string }
+  - id: activity._.notifications
+    domain: Events
+    columns:
+      - { name: _id, type: ObjectId, pk: true }
+      - { name: order_id, type: long }
+      - { name: channel, type: string }
+  - id: activity._.audit_logs
+    domain: Audit
+    columns:
+      - { name: _id, type: ObjectId, pk: true }
+      - { name: organization_id, type: long }
+      - { name: action, type: string }
+      - { name: created_by, type: long }
+relations:
+  - { from: { table: activity._.page_views, columns: [event_id] }, to: { table: activity._.events, columns: [_id] }, cardinality: 1-1, optional: false, kind: declared, evidence: ["activity-worker:src/models/page-view.ts#PageView"], review: reviewed }

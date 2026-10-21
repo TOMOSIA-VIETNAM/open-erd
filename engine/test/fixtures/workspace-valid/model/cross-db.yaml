@@ -1,0 +1,9 @@
+schema_version: 1
+relations:
+  - from: { table: billing.public.invoices, columns: [user_id] }
+    to: { table: auth._.users, columns: [id] }
+    cardinality: n-1
+    optional: false
+    kind: cross_db
+    evidence: [ "billing-api:src/services/user-client.ts#fetchUser", "billing-api:src/models/invoice.ts#Invoice" ]
+    review: pending

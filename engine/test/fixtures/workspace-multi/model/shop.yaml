@@ -1,0 +1,109 @@
+schema_version: 1
+database: shop
+engine: mysql
+tables:
+  - id: shop._.categories
+    domain: Catalog
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: parent_id, type: bigint, nullable: true }
+      - { name: name, type: varchar(120) }
+  - id: shop._.brands
+    domain: Catalog
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: name, type: varchar(120) }
+  - id: shop._.products
+    domain: Catalog
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: category_id, type: bigint, nullable: false }
+      - { name: brand_id, type: bigint, nullable: true }
+      - { name: title, type: varchar(255) }
+      - { name: created_by, type: bigint }
+      - { name: updated_by, type: bigint }
+  - id: shop._.tags
+    domain: Catalog
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: label, type: varchar(40) }
+  - id: shop._.product_tags
+    domain: Catalog
+    columns:
+      - { name: product_id, type: bigint, nullable: false }
+      - { name: tag_id, type: bigint, nullable: false }
+  - id: shop._.orders
+    domain: Orders
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: user_id, type: bigint, nullable: false }
+      - { name: organization_id, type: bigint, nullable: true }
+      - { name: status, type: varchar(16) }
+      - { name: placed_at, type: datetime }
+  - id: shop._.order_items
+    domain: Orders
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: order_id, type: bigint, nullable: false }
+      - { name: product_id, type: bigint, nullable: false }
+      - { name: quantity, type: int }
+  - id: shop._.payments
+    domain: Orders
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: order_id, type: bigint, nullable: false }
+      - { name: amount_cents, type: int }
+  - id: shop._.refunds
+    domain: Orders
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: payment_id, type: bigint, nullable: false }
+      - { name: reason, type: text }
+  - id: shop._.posts
+    domain: Content
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: title, type: varchar(255) }
+      - { name: created_by, type: bigint }
+  - id: shop._.comments
+    domain: Content
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: commentable_type, type: varchar(40) }
+      - { name: commentable_id, type: bigint, nullable: false }
+      - { name: body, type: text }
+      - { name: created_by, type: bigint }
+  - id: shop._.attachments
+    domain: Content
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: attachable_type, type: varchar(40) }
+      - { name: attachable_id, type: bigint, nullable: true }
+      - { name: url, type: text }
+relations:
+  - { from: { table: shop._.categories, columns: [parent_id] }, to: { table: shop._.categories, columns: [id] }, cardinality: n-1, optional: true, kind: db_fk, evidence: [db], review: reviewed }
+  - { from: { table: shop._.products, columns: [category_id] }, to: { table: shop._.categories, columns: [id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: [db], review: reviewed }
+  - { from: { table: shop._.products, columns: [brand_id] }, to: { table: shop._.brands, columns: [id] }, cardinality: n-1, optional: true, kind: declared, evidence: ["shop-api:app/models/product.rb#Product"], review: stale }
+  - { from: { table: shop._.product_tags, columns: [product_id] }, to: { table: shop._.products, columns: [id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: [db], review: reviewed }
+  - { from: { table: shop._.product_tags, columns: [tag_id] }, to: { table: shop._.tags, columns: [id] }, cardinality: n-1, optional: false, kind: inferred, evidence: ["shop-api:app/models/tag.rb#Tag"], review: pending }
+  - { from: { table: shop._.order_items, columns: [order_id] }, to: { table: shop._.orders, columns: [id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: [db], review: reviewed }
+  - { from: { table: shop._.order_items, columns: [product_id] }, to: { table: shop._.products, columns: [id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: [db], review: reviewed }
+  - { from: { table: shop._.payments, columns: [order_id] }, to: { table: shop._.orders, columns: [id] }, cardinality: n-1, optional: false, kind: inferred, evidence: ["shop-api:app/models/payment.rb#Payment"], review: pending }
+  - { from: { table: shop._.refunds, columns: [payment_id] }, to: { table: shop._.payments, columns: [id] }, cardinality: n-1, optional: false, kind: inferred, evidence: ["shop-api:app/models/refund.rb#Refund"], review: reviewed }
+polymorphic:
+  - name: commentable
+    table: shop._.comments
+    type_column: commentable_type
+    id_column: commentable_id
+    optional: false
+    targets: [shop._.posts, shop._.products, shop._.orders]
+    evidence: ["shop-api:app/models/comment.rb#Comment"]
+    review: reviewed
+  - name: attachable
+    table: shop._.attachments
+    type_column: attachable_type
+    id_column: attachable_id
+    optional: true
+    targets: [shop._.posts, shop._.comments, shop._.products, shop._.orders, shop._.refunds]
+    evidence: ["shop-api:app/models/attachment.rb#Attachment"]
+    review: pending

@@ -1,0 +1,13 @@
+schema_version: 1
+relations:
+  - { from: { table: shop._.orders, columns: [user_id] }, to: { table: auth.public.users, columns: [id] }, cardinality: n-1, optional: false, kind: cross_db, evidence: ["shop-api:app/services/user_client.rb#fetch_user"], review: reviewed }
+  - { from: { table: shop._.orders, columns: [organization_id] }, to: { table: auth.public.organizations, columns: [id] }, cardinality: n-1, optional: true, kind: cross_db, evidence: ["shop-api:app/services/org_client.rb#fetch_org"], review: reviewed }
+  - { from: { table: activity._.events, columns: [actor_id] }, to: { table: auth.public.users, columns: [id] }, cardinality: n-1, optional: true, kind: cross_db, evidence: ["activity-worker:src/models/event.ts#Event"], review: reviewed }
+  - { from: { table: activity._.page_views, columns: [product_id] }, to: { table: shop._.products, columns: [id] }, cardinality: n-1, optional: true, kind: cross_db, evidence: ["activity-worker:src/models/page-view.ts#PageView"], review: pending }
+  - { from: { table: activity._.notifications, columns: [order_id] }, to: { table: shop._.orders, columns: [id] }, cardinality: n-1, optional: true, kind: cross_db, evidence: ["activity-worker:src/jobs/notify.ts#notifyOrder"], review: reviewed }
+  - { from: { table: activity._.audit_logs, columns: [organization_id] }, to: { table: auth.public.organizations, columns: [id] }, cardinality: n-1, optional: true, kind: cross_db, evidence: ["activity-worker:src/models/audit-log.ts#AuditLog"], review: pending }
+  - { from: { table: shop._.products, columns: [created_by] }, to: { table: auth.public.users, columns: [id] }, cardinality: n-1, optional: true, kind: cross_db, evidence: ["shop-api:app/models/concerns/authored.rb#Authored"], review: reviewed }
+  - { from: { table: shop._.products, columns: [updated_by] }, to: { table: auth.public.users, columns: [id] }, cardinality: n-1, optional: true, kind: cross_db, evidence: ["shop-api:app/models/concerns/authored.rb#Authored"], review: reviewed }
+  - { from: { table: shop._.posts, columns: [created_by] }, to: { table: auth.public.users, columns: [id] }, cardinality: n-1, optional: true, kind: cross_db, evidence: ["shop-api:app/models/concerns/authored.rb#Authored"], review: reviewed }
+  - { from: { table: shop._.comments, columns: [created_by] }, to: { table: auth.public.users, columns: [id] }, cardinality: n-1, optional: true, kind: cross_db, evidence: ["shop-api:app/models/concerns/authored.rb#Authored"], review: reviewed }
+  - { from: { table: activity._.audit_logs, columns: [created_by] }, to: { table: auth.public.users, columns: [id] }, cardinality: n-1, optional: true, kind: cross_db, evidence: ["activity-worker:src/models/audit-log.ts#AuditLog"], review: reviewed }

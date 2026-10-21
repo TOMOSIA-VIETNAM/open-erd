@@ -1,0 +1,12 @@
+schema_version: 1
+database: auth
+engine: mysql
+tables:
+  - id: auth._.users
+    domain: Identity
+    note: Login account.
+    note_source: ログインアカウント
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: email, type: varchar, unique: true, pii: true }
+      - { name: password_digest, type: varchar, pii: true }

@@ -1,0 +1,9 @@
+schema_version: 1
+sources:
+  - name: auth-service
+  - name: shop-api
+  - name: activity-worker
+hub:
+  tables: [auth.public.users]
+  columns: [created_by, updated_by]
+collapse_join_tables: true

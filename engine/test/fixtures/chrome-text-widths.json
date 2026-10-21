@@ -1,0 +1,485 @@
+{
+ "chrome": "HeadlessChrome/155.0.0.0",
+ "samples": [
+  {
+   "text": "users",
+   "size": 12,
+   "weight": 400,
+   "width": 31.28125
+  },
+  {
+   "text": "created_by",
+   "size": 12,
+   "weight": 400,
+   "width": 62.953125
+  },
+  {
+   "text": "billing.public.invoices",
+   "size": 12,
+   "weight": 400,
+   "width": 121.828125
+  },
+  {
+   "text": "AVATAR",
+   "size": 12,
+   "weight": 400,
+   "width": 48.59375
+  },
+  {
+   "text": "Today You Wait",
+   "size": 12,
+   "weight": 400,
+   "width": 90.359375
+  },
+  {
+   "text": "WAVY Typography",
+   "size": 12,
+   "weight": 400,
+   "width": 108.75
+  },
+  {
+   "text": "id",
+   "size": 12,
+   "weight": 400,
+   "width": 10.265625
+  },
+  {
+   "text": "bigint",
+   "size": 12,
+   "weight": 400,
+   "width": 31.546875
+  },
+  {
+   "text": "varchar(255)",
+   "size": 12,
+   "weight": 400,
+   "width": 73.53125
+  },
+  {
+   "text": "timestamp with time zone",
+   "size": 12,
+   "weight": 400,
+   "width": 145.328125
+  },
+  {
+   "text": "Payment confirmed by gateway",
+   "size": 12,
+   "weight": 400,
+   "width": 180.078125
+  },
+  {
+   "text": "One invoice per customer per billing cycle.",
+   "size": 12,
+   "weight": 400,
+   "width": 242.609375
+  },
+  {
+   "text": "tenant_id → users ×3",
+   "size": 12,
+   "weight": 400,
+   "width": 120.25
+  },
+  {
+   "text": "ORDER_LINE_ITEMS",
+   "size": 12,
+   "weight": 400,
+   "width": 114.421875
+  },
+  {
+   "text": "snake_case_identifier_with_numbers_0123456789",
+   "size": 12,
+   "weight": 400,
+   "width": 282.859375
+  },
+  {
+   "text": "camelCaseIdentifier",
+   "size": 12,
+   "weight": 400,
+   "width": 113.203125
+  },
+  {
+   "text": "Mixed: (a, b) [c] {d} <e> \"f\" 'g'",
+   "size": 12,
+   "weight": 400,
+   "width": 174.265625
+  },
+  {
+   "text": "«commentable»",
+   "size": 12,
+   "weight": 400,
+   "width": 91.0625
+  },
+  {
+   "text": "n-1 · optional",
+   "size": 12,
+   "weight": 400,
+   "width": 73.015625
+  },
+  {
+   "text": "Possibly renamed",
+   "size": 12,
+   "weight": 400,
+   "width": 101.015625
+  },
+  {
+   "text": "users",
+   "size": 12,
+   "weight": 700,
+   "width": 32.953125
+  },
+  {
+   "text": "created_by",
+   "size": 12,
+   "weight": 700,
+   "width": 65.671875
+  },
+  {
+   "text": "billing.public.invoices",
+   "size": 12,
+   "weight": 700,
+   "width": 129.265625
+  },
+  {
+   "text": "AVATAR",
+   "size": 12,
+   "weight": 700,
+   "width": 51.734375
+  },
+  {
+   "text": "Today You Wait",
+   "size": 12,
+   "weight": 700,
+   "width": 93.484375
+  },
+  {
+   "text": "WAVY Typography",
+   "size": 12,
+   "weight": 700,
+   "width": 113.84375
+  },
+  {
+   "text": "id",
+   "size": 12,
+   "weight": 700,
+   "width": 10.828125
+  },
+  {
+   "text": "bigint",
+   "size": 12,
+   "weight": 700,
+   "width": 33.515625
+  },
+  {
+   "text": "varchar(255)",
+   "size": 12,
+   "weight": 700,
+   "width": 76.96875
+  },
+  {
+   "text": "timestamp with time zone",
+   "size": 12,
+   "weight": 700,
+   "width": 150.796875
+  },
+  {
+   "text": "Payment confirmed by gateway",
+   "size": 12,
+   "weight": 700,
+   "width": 186.203125
+  },
+  {
+   "text": "One invoice per customer per billing cycle.",
+   "size": 12,
+   "weight": 700,
+   "width": 250.234375
+  },
+  {
+   "text": "tenant_id → users ×3",
+   "size": 12,
+   "weight": 700,
+   "width": 123.75
+  },
+  {
+   "text": "ORDER_LINE_ITEMS",
+   "size": 12,
+   "weight": 700,
+   "width": 116.6875
+  },
+  {
+   "text": "snake_case_identifier_with_numbers_0123456789",
+   "size": 12,
+   "weight": 700,
+   "width": 296.9375
+  },
+  {
+   "text": "camelCaseIdentifier",
+   "size": 12,
+   "weight": 700,
+   "width": 118.359375
+  },
+  {
+   "text": "Mixed: (a, b) [c] {d} <e> \"f\" 'g'",
+   "size": 12,
+   "weight": 700,
+   "width": 179.6875
+  },
+  {
+   "text": "«commentable»",
+   "size": 12,
+   "weight": 700,
+   "width": 96.125
+  },
+  {
+   "text": "n-1 · optional",
+   "size": 12,
+   "weight": 700,
+   "width": 75.578125
+  },
+  {
+   "text": "Possibly renamed",
+   "size": 12,
+   "weight": 700,
+   "width": 104.859375
+  },
+  {
+   "text": "users",
+   "size": 16,
+   "weight": 400,
+   "width": 41.703125
+  },
+  {
+   "text": "created_by",
+   "size": 16,
+   "weight": 400,
+   "width": 83.921875
+  },
+  {
+   "text": "billing.public.invoices",
+   "size": 16,
+   "weight": 400,
+   "width": 162.4375
+  },
+  {
+   "text": "AVATAR",
+   "size": 16,
+   "weight": 400,
+   "width": 64.78125
+  },
+  {
+   "text": "Today You Wait",
+   "size": 16,
+   "weight": 400,
+   "width": 120.46875
+  },
+  {
+   "text": "WAVY Typography",
+   "size": 16,
+   "weight": 400,
+   "width": 144.984375
+  },
+  {
+   "text": "id",
+   "size": 16,
+   "weight": 400,
+   "width": 13.671875
+  },
+  {
+   "text": "bigint",
+   "size": 16,
+   "weight": 400,
+   "width": 42.046875
+  },
+  {
+   "text": "varchar(255)",
+   "size": 16,
+   "weight": 400,
+   "width": 98.03125
+  },
+  {
+   "text": "timestamp with time zone",
+   "size": 16,
+   "weight": 400,
+   "width": 193.765625
+  },
+  {
+   "text": "Payment confirmed by gateway",
+   "size": 16,
+   "weight": 400,
+   "width": 240.09375
+  },
+  {
+   "text": "One invoice per customer per billing cycle.",
+   "size": 16,
+   "weight": 400,
+   "width": 323.46875
+  },
+  {
+   "text": "tenant_id → users ×3",
+   "size": 16,
+   "weight": 400,
+   "width": 160.328125
+  },
+  {
+   "text": "ORDER_LINE_ITEMS",
+   "size": 16,
+   "weight": 400,
+   "width": 152.5625
+  },
+  {
+   "text": "snake_case_identifier_with_numbers_0123456789",
+   "size": 16,
+   "weight": 400,
+   "width": 377.140625
+  },
+  {
+   "text": "camelCaseIdentifier",
+   "size": 16,
+   "weight": 400,
+   "width": 150.921875
+  },
+  {
+   "text": "Mixed: (a, b) [c] {d} <e> \"f\" 'g'",
+   "size": 16,
+   "weight": 400,
+   "width": 232.34375
+  },
+  {
+   "text": "«commentable»",
+   "size": 16,
+   "weight": 400,
+   "width": 121.40625
+  },
+  {
+   "text": "n-1 · optional",
+   "size": 16,
+   "weight": 400,
+   "width": 97.34375
+  },
+  {
+   "text": "Possibly renamed",
+   "size": 16,
+   "weight": 400,
+   "width": 134.671875
+  },
+  {
+   "text": "users",
+   "size": 16,
+   "weight": 700,
+   "width": 43.9375
+  },
+  {
+   "text": "created_by",
+   "size": 16,
+   "weight": 700,
+   "width": 87.5625
+  },
+  {
+   "text": "billing.public.invoices",
+   "size": 16,
+   "weight": 700,
+   "width": 172.359375
+  },
+  {
+   "text": "AVATAR",
+   "size": 16,
+   "weight": 700,
+   "width": 68.96875
+  },
+  {
+   "text": "Today You Wait",
+   "size": 16,
+   "weight": 700,
+   "width": 124.640625
+  },
+  {
+   "text": "WAVY Typography",
+   "size": 16,
+   "weight": 700,
+   "width": 151.78125
+  },
+  {
+   "text": "id",
+   "size": 16,
+   "weight": 700,
+   "width": 14.421875
+  },
+  {
+   "text": "bigint",
+   "size": 16,
+   "weight": 700,
+   "width": 44.6875
+  },
+  {
+   "text": "varchar(255)",
+   "size": 16,
+   "weight": 700,
+   "width": 102.625
+  },
+  {
+   "text": "timestamp with time zone",
+   "size": 16,
+   "weight": 700,
+   "width": 201.046875
+  },
+  {
+   "text": "Payment confirmed by gateway",
+   "size": 16,
+   "weight": 700,
+   "width": 248.265625
+  },
+  {
+   "text": "One invoice per customer per billing cycle.",
+   "size": 16,
+   "weight": 700,
+   "width": 333.640625
+  },
+  {
+   "text": "tenant_id → users ×3",
+   "size": 16,
+   "weight": 700,
+   "width": 164.984375
+  },
+  {
+   "text": "ORDER_LINE_ITEMS",
+   "size": 16,
+   "weight": 700,
+   "width": 155.578125
+  },
+  {
+   "text": "snake_case_identifier_with_numbers_0123456789",
+   "size": 16,
+   "weight": 700,
+   "width": 395.90625
+  },
+  {
+   "text": "camelCaseIdentifier",
+   "size": 16,
+   "weight": 700,
+   "width": 157.8125
+  },
+  {
+   "text": "Mixed: (a, b) [c] {d} <e> \"f\" 'g'",
+   "size": 16,
+   "weight": 700,
+   "width": 239.578125
+  },
+  {
+   "text": "«commentable»",
+   "size": 16,
+   "weight": 700,
+   "width": 128.15625
+  },
+  {
+   "text": "n-1 · optional",
+   "size": 16,
+   "weight": 700,
+   "width": 100.765625
+  },
+  {
+   "text": "Possibly renamed",
+   "size": 16,
+   "weight": 700,
+   "width": 139.796875
+  }
+ ]
+}

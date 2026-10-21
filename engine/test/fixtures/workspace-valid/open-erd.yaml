@@ -1,0 +1,9 @@
+schema_version: 1
+sources:
+  - name: billing-api
+  - name: auth-service
+hub:
+  tables: [auth._.users]
+  columns: [tenant_id, created_by]
+hidden:
+  columns: [auth._.users.password_digest]

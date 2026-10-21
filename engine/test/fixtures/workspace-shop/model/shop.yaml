@@ -1,0 +1,327 @@
+schema_version: 1
+database: shop
+engine: postgresql
+tables:
+  # Identity
+  - id: shop.public.users
+    domain: Identity
+    note: Customer login account.
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: email, type: varchar(255), unique: true, pii: true }
+      - { name: password_digest, type: varchar(255), pii: true }
+      - { name: status, type: varchar(16), enum: { active: Can log in, locked: Too many failed logins } }
+      - { name: created_at, type: timestamp with time zone }
+  - id: shop.public.user_profiles
+    domain: Identity
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: user_id, type: bigint, unique: true, nullable: false }
+      - { name: display_name, type: varchar(80) }
+      - { name: birthday, type: date, pii: true }
+  - id: shop.public.addresses
+    domain: Identity
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: user_id, type: bigint, nullable: false }
+      - { name: line1, type: varchar(255), pii: true }
+      - { name: city, type: varchar(80) }
+      - { name: postal_code, type: varchar(16) }
+      - { name: country_code, type: char(2) }
+  - id: shop.public.sessions
+    domain: Identity
+    columns:
+      - { name: id, type: uuid, pk: true }
+      - { name: user_id, type: bigint, nullable: true }
+      - { name: expires_at, type: timestamp with time zone }
+  - id: shop.public.password_resets
+    domain: Identity
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: user_id, type: bigint, nullable: false }
+      - { name: token_digest, type: varchar(64), unique: true }
+      - { name: expires_at, type: timestamp with time zone }
+
+  # Catalog
+  - id: shop.public.categories
+    domain: Catalog
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: parent_id, type: bigint, nullable: true }
+      - { name: name, type: varchar(120) }
+      - { name: slug, type: varchar(120), unique: true }
+  - id: shop.public.brands
+    domain: Catalog
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: name, type: varchar(120) }
+  - id: shop.public.tags
+    domain: Catalog
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: label, type: varchar(40) }
+  - id: shop.public.products
+    domain: Catalog
+    note: Sellable item shown on the storefront.
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: category_id, type: bigint, nullable: false }
+      - { name: brand_id, type: bigint, nullable: true }
+      - { name: tag_ids, type: "bigint[]" }
+      - { name: title, type: varchar(255) }
+      - { name: published_at, type: timestamp with time zone }
+  - id: shop.public.product_variants
+    domain: Catalog
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: product_id, type: bigint, nullable: false }
+      - { name: sku, type: varchar(64), unique: true }
+      - { name: price_cents, type: integer }
+      - { name: stock, type: integer }
+  - id: shop.public.product_images
+    domain: Catalog
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: product_id, type: bigint, nullable: false }
+      - { name: url, type: text }
+      - { name: position, type: smallint }
+  - id: shop.public.reviews
+    domain: Catalog
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: product_id, type: bigint, nullable: false }
+      - { name: user_id, type: bigint, nullable: false }
+      - { name: rating, type: smallint }
+      - { name: body, type: text }
+
+  # Sales
+  - id: shop.public.carts
+    domain: Sales
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: user_id, type: bigint, nullable: true }
+      - { name: updated_at, type: timestamp with time zone }
+  - id: shop.public.cart_items
+    domain: Sales
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: cart_id, type: bigint, nullable: false }
+      - { name: variant_id, type: bigint, nullable: false }
+      - { name: quantity, type: integer }
+  - id: shop.public.coupons
+    domain: Sales
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: code, type: varchar(32), unique: true }
+      - { name: percent_off, type: smallint }
+  - id: shop.public.orders
+    domain: Sales
+    note: Checked-out cart awaiting payment and fulfilment.
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: user_id, type: bigint, nullable: false }
+      - { name: shipping_address_id, type: bigint, nullable: true }
+      - { name: coupon_id, type: bigint, nullable: true }
+      - name: status
+        type: varchar(16)
+        enum:
+          pending: Waiting for payment
+          paid: Payment captured
+          shipped: Handed to carrier
+          cancelled: Cancelled before shipping
+      - { name: total_cents, type: integer }
+      - { name: placed_at, type: timestamp with time zone }
+  - id: shop.public.order_items
+    domain: Sales
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: order_id, type: bigint, nullable: false }
+      - { name: variant_id, type: bigint, nullable: false }
+      - { name: quantity, type: integer }
+      - { name: unit_price_cents, type: integer }
+  - id: shop.public.payments
+    domain: Sales
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: order_id, type: bigint, nullable: false }
+      - { name: provider, type: varchar(32) }
+      - { name: amount_cents, type: integer }
+      - { name: captured_at, type: timestamp with time zone }
+  - id: shop.public.refunds
+    domain: Sales
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: payment_id, type: bigint, nullable: false }
+      - { name: amount_cents, type: integer }
+      - { name: reason, type: text }
+  - id: shop.public.shipments
+    domain: Sales
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: order_id, type: bigint, unique: true, nullable: false }
+      - { name: carrier, type: varchar(32) }
+      - { name: tracking_no, type: varchar(64) }
+      - { name: shipped_at, type: timestamp with time zone }
+
+relations:
+  - from: { table: shop.public.user_profiles, columns: [user_id] }
+    to: { table: shop.public.users, columns: [id] }
+    cardinality: 1-1
+    optional: false
+    kind: db_fk
+    evidence: [db]
+    review: reviewed
+  - from: { table: shop.public.addresses, columns: [user_id] }
+    to: { table: shop.public.users, columns: [id] }
+    cardinality: n-1
+    optional: false
+    kind: db_fk
+    evidence: [db]
+    review: reviewed
+  - from: { table: shop.public.sessions, columns: [user_id] }
+    to: { table: shop.public.users, columns: [id] }
+    cardinality: n-1
+    optional: true
+    kind: inferred
+    evidence: ["shop-api:app/models/session.rb#Session"]
+    review: pending
+  - from: { table: shop.public.password_resets, columns: [user_id] }
+    to: { table: shop.public.users, columns: [id] }
+    cardinality: n-1
+    optional: false
+    kind: db_fk
+    evidence: [db]
+    review: reviewed
+  - from: { table: shop.public.categories, columns: [parent_id] }
+    to: { table: shop.public.categories, columns: [id] }
+    cardinality: n-1
+    optional: true
+    kind: db_fk
+    evidence: [db]
+    review: reviewed
+  - from: { table: shop.public.products, columns: [category_id] }
+    to: { table: shop.public.categories, columns: [id] }
+    cardinality: n-1
+    optional: false
+    kind: db_fk
+    evidence: [db]
+    review: reviewed
+  - from: { table: shop.public.products, columns: [brand_id] }
+    to: { table: shop.public.brands, columns: [id] }
+    cardinality: n-1
+    optional: true
+    kind: db_fk
+    evidence: [db]
+    review: reviewed
+  - from: { table: shop.public.products, columns: [tag_ids] }
+    to: { table: shop.public.tags, columns: [id] }
+    cardinality: n-n
+    optional: true
+    kind: declared
+    evidence: ["shop-api:app/models/product.rb#Product"]
+    review: pending
+  - from: { table: shop.public.product_variants, columns: [product_id] }
+    to: { table: shop.public.products, columns: [id] }
+    cardinality: n-1
+    optional: false
+    kind: db_fk
+    evidence: [db]
+    review: reviewed
+  - from: { table: shop.public.product_images, columns: [product_id] }
+    to: { table: shop.public.products, columns: [id] }
+    cardinality: n-1
+    optional: false
+    kind: db_fk
+    evidence: [db]
+    review: reviewed
+  - from: { table: shop.public.reviews, columns: [product_id] }
+    to: { table: shop.public.products, columns: [id] }
+    cardinality: n-1
+    optional: false
+    kind: db_fk
+    evidence: [db]
+    review: reviewed
+  - from: { table: shop.public.reviews, columns: [user_id] }
+    to: { table: shop.public.users, columns: [id] }
+    cardinality: n-1
+    optional: false
+    kind: db_fk
+    evidence: [db]
+    review: reviewed
+  - from: { table: shop.public.carts, columns: [user_id] }
+    to: { table: shop.public.users, columns: [id] }
+    cardinality: n-1
+    optional: true
+    kind: db_fk
+    evidence: [db]
+    review: reviewed
+  - from: { table: shop.public.cart_items, columns: [cart_id] }
+    to: { table: shop.public.carts, columns: [id] }
+    cardinality: n-1
+    optional: false
+    kind: db_fk
+    evidence: [db]
+    review: reviewed
+  - from: { table: shop.public.cart_items, columns: [variant_id] }
+    to: { table: shop.public.product_variants, columns: [id] }
+    cardinality: n-1
+    optional: false
+    kind: db_fk
+    evidence: [db]
+    review: reviewed
+  - from: { table: shop.public.orders, columns: [user_id] }
+    to: { table: shop.public.users, columns: [id] }
+    cardinality: n-1
+    optional: false
+    kind: db_fk
+    evidence: [db]
+    review: reviewed
+  - from: { table: shop.public.orders, columns: [shipping_address_id] }
+    to: { table: shop.public.addresses, columns: [id] }
+    cardinality: n-1
+    optional: true
+    kind: db_fk
+    evidence: [db]
+    review: reviewed
+  - from: { table: shop.public.orders, columns: [coupon_id] }
+    to: { table: shop.public.coupons, columns: [id] }
+    cardinality: n-1
+    optional: true
+    kind: db_fk
+    evidence: [db]
+    review: reviewed
+  - from: { table: shop.public.order_items, columns: [order_id] }
+    to: { table: shop.public.orders, columns: [id] }
+    cardinality: n-1
+    optional: false
+    kind: db_fk
+    evidence: [db]
+    review: reviewed
+  - from: { table: shop.public.order_items, columns: [variant_id] }
+    to: { table: shop.public.product_variants, columns: [id] }
+    cardinality: n-1
+    optional: false
+    kind: db_fk
+    evidence: [db]
+    review: reviewed
+  - from: { table: shop.public.payments, columns: [order_id] }
+    to: { table: shop.public.orders, columns: [id] }
+    cardinality: n-1
+    optional: false
+    kind: db_fk
+    evidence: [db]
+    review: reviewed
+  - from: { table: shop.public.refunds, columns: [payment_id] }
+    to: { table: shop.public.payments, columns: [id] }
+    cardinality: n-1
+    optional: false
+    kind: db_fk
+    evidence: [db]
+    review: reviewed
+  - from: { table: shop.public.shipments, columns: [order_id] }
+    to: { table: shop.public.orders, columns: [id] }
+    cardinality: 1-1
+    optional: false
+    kind: db_fk
+    evidence: [db]
+    review: reviewed
