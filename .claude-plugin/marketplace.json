@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "open-erd",
+  "description": "Interactive ERDs generated from any project's source code.",
+  "owner": {
+    "name": "TOMOSIA VIETNAM",
+    "url": "https://github.com/TOMOSIA-VIETNAM"
+  },
+  "plugins": [
+    {
+      "name": "open-erd",
+      "source": "./",
+      "description": "Generate interactive single-file SVG ERDs, Excel sheets and readable diffs from any project's source code.",
+      "homepage": "https://github.com/TOMOSIA-VIETNAM/open-erd",
+      "license": "MIT"
+    }
+  ]
+}
