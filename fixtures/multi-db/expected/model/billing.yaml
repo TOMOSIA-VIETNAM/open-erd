@@ -1,0 +1,117 @@
+schema_version: 1
+database: billing
+engine: postgresql
+tables:
+  - id: billing.public.plans
+    domain: Plans
+    note: Shared price plans offered to every tenant.
+    columns:
+      - { name: id, type: serial, pk: true }
+      - { name: code, type: varchar(40), nullable: false, unique: true }
+      - { name: name, type: varchar(120), nullable: false }
+      - { name: price_cents, type: integer, nullable: false }
+      - name: interval
+        type: billing_interval
+        nullable: false
+        enum:
+          monthly: Billed every month (BillingInterval.Monthly)
+          yearly: Billed every year (BillingInterval.Yearly)
+  - id: billing.public.tenants
+    domain: Tenancy
+    note: One row per tenant; slug names the tenant's own schema tenant_<slug>.
+    columns:
+      - { name: id, type: uuid, pk: true }
+      - { name: slug, type: varchar(63), nullable: false, unique: true }
+      - { name: name, type: varchar(200), nullable: false }
+      - name: status
+        type: tenants_status_enum
+        nullable: false
+        enum:
+          trial: Tenant is evaluating the product (TenantStatus.Trial)
+          active: Paying tenant (TenantStatus.Active)
+          suspended: Access blocked (TenantStatus.Suspended)
+      - { name: created_at, type: timestamptz, nullable: false }
+  - id: billing.tenant.customers
+    domain: Billing
+    note: Schema-per-tenant, × N tenants (one schema tenant_<slug> per tenants row); modelled once under schema "tenant".
+    columns:
+      - { name: id, type: uuid, pk: true }
+      - { name: email, type: varchar(255), nullable: false, pii: true }
+      - { name: company_name, type: varchar(200), nullable: true }
+      - { name: tax_id, type: varchar(40), nullable: true, pii: true }
+  - id: billing.tenant.subscriptions
+    domain: Billing
+    note: Schema-per-tenant, × N tenants (schema tenant_<slug>). A customer's subscription to a shared plan.
+    columns:
+      - { name: id, type: uuid, pk: true }
+      - { name: customer_id, type: uuid, nullable: false }
+      - { name: plan_id, type: integer, nullable: false }
+      - name: state
+        type: subscriptions_state_enum
+        nullable: false
+        enum:
+          trialing: In free trial (SubscriptionState.Trialing)
+          active: Paid and current (SubscriptionState.Active)
+          past_due: Latest invoice unpaid (SubscriptionState.PastDue)
+          canceled: Ended (SubscriptionState.Canceled)
+      - { name: current_period_end, type: timestamptz, nullable: false }
+  - id: billing.tenant.invoices
+    domain: Billing
+    note: Schema-per-tenant, × N tenants (schema tenant_<slug>). One-off invoices have no subscription.
+    columns:
+      - { name: id, type: uuid, pk: true }
+      - { name: customer_id, type: uuid, nullable: false }
+      - { name: subscription_id, type: uuid, nullable: true }
+      - name: status
+        type: invoices_status_enum
+        nullable: false
+        enum:
+          draft: Being prepared, not sent (InvoiceStatus.Draft)
+          open: Sent, awaiting payment (InvoiceStatus.Open)
+          paid: Fully paid (InvoiceStatus.Paid)
+          void: Cancelled (InvoiceStatus.Void)
+      - { name: total_cents, type: bigint, nullable: false }
+      - { name: issued_at, type: timestamptz, nullable: true }
+  - id: billing.tenant.invoice_lines
+    domain: Billing
+    note: Schema-per-tenant, × N tenants (schema tenant_<slug>). product_id is a catalog-service product id.
+    columns:
+      - { name: id, type: uuid, pk: true }
+      - { name: invoice_id, type: uuid, nullable: false }
+      - { name: product_id, type: bigint, nullable: true }
+      - { name: description, type: varchar(255), nullable: false }
+      - { name: quantity, type: integer, nullable: false }
+      - { name: unit_price_cents, type: integer, nullable: false }
+  - id: billing.tenant.payments
+    domain: Billing
+    note: Schema-per-tenant, × N tenants (schema tenant_<slug>).
+    columns:
+      - { name: id, type: uuid, pk: true }
+      - { name: invoice_id, type: uuid, nullable: false }
+      - name: method
+        type: payments_method_enum
+        nullable: false
+        enum:
+          card: Card charge (PaymentMethod.Card)
+          bank_transfer: Bank transfer (PaymentMethod.BankTransfer)
+          credit: Account credit applied (PaymentMethod.Credit)
+      - { name: amount_cents, type: bigint, nullable: false }
+      - { name: gateway_ref, type: varchar(80), nullable: true }
+      - { name: created_at, type: timestamptz, nullable: false }
+  - id: billing.tenant.usage_events
+    domain: Metering
+    note: Schema-per-tenant, × N tenants (schema tenant_<slug>). Partitioned by month on occurred_at; partitions usage_events_YYYY_MM are merged into this table.
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: occurred_at, type: timestamptz, pk: true }
+      - { name: subscription_id, type: uuid, nullable: false }
+      - { name: metric, type: varchar(60), nullable: false }
+      - { name: quantity, type: integer, nullable: false }
+relations:
+  - { from: { table: billing.tenant.subscriptions, columns: [customer_id] }, to: { table: billing.tenant.customers, columns: [id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: ["billing-service:src/entities/subscription.entity.ts#Subscription"], review: pending }
+  - { from: { table: billing.tenant.subscriptions, columns: [plan_id] }, to: { table: billing.public.plans, columns: [id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: ["billing-service:src/entities/subscription.entity.ts#Subscription"], review: pending }
+  - { from: { table: billing.tenant.invoices, columns: [customer_id] }, to: { table: billing.tenant.customers, columns: [id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: ["billing-service:src/entities/invoice.entity.ts#Invoice"], review: pending }
+  - { from: { table: billing.tenant.invoices, columns: [subscription_id] }, to: { table: billing.tenant.subscriptions, columns: [id] }, cardinality: n-1, optional: true, kind: db_fk, evidence: ["billing-service:src/entities/invoice.entity.ts#Invoice"], review: pending }
+  - { from: { table: billing.tenant.invoice_lines, columns: [invoice_id] }, to: { table: billing.tenant.invoices, columns: [id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: ["billing-service:src/entities/invoice-line.entity.ts#InvoiceLine"], review: pending }
+  - { from: { table: billing.tenant.payments, columns: [invoice_id] }, to: { table: billing.tenant.invoices, columns: [id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: ["billing-service:src/entities/payment.entity.ts#Payment"], review: pending }
+  - { from: { table: billing.tenant.usage_events, columns: [subscription_id] }, to: { table: billing.tenant.subscriptions, columns: [id] }, cardinality: n-1, optional: false, kind: inferred, evidence: ["billing-service:src/services/usage-service.ts#recordUsage"], review: pending }

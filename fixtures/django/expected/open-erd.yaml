@@ -1,0 +1,6 @@
+schema_version: 1
+sources:
+  - name: clinic-django
+hub:
+  tables: [clinic.public.accounts_user]
+collapse_join_tables: true

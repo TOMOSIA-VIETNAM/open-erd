@@ -1,0 +1,4 @@
+schema_version: 1
+relations:
+  - { from: { table: billing.tenant.invoice_lines, columns: [product_id] }, to: { table: catalog._.products, columns: [id] }, cardinality: n-1, optional: true, kind: cross_db, evidence: ["billing-service:src/clients/catalog-client.ts#getProduct"], review: pending }
+  - { from: { table: catalog._.stock_reservations, columns: [invoice_id] }, to: { table: billing.tenant.invoices, columns: [id] }, cardinality: n-1, optional: true, kind: cross_db, evidence: ["catalog-service:src/clients/billing-client.js#getInvoice"], review: pending }

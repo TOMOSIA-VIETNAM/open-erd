@@ -1,0 +1,5 @@
+schema_version: 1
+sources:
+  - name: events-mongoose
+hub:
+  tables: [ticketing._.users]

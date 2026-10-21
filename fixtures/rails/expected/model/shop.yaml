@@ -1,0 +1,199 @@
+schema_version: 1
+database: shop
+engine: postgresql
+tables:
+  - id: shop.public.accounts
+    domain: Accounts
+    note: >-
+      Single-table inheritance: every row is a Customer or a Vendor, chosen by
+      the type column (base class Account).
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - name: type
+        type: varchar
+        nullable: false
+        enum:
+          Customer: Buyer account (class Customer)
+          Vendor: Seller account that lists products (class Vendor)
+      - { name: name, type: varchar, nullable: false, pii: true }
+      - { name: email, type: varchar, nullable: false, unique: true, pii: true }
+      - { name: phone, type: varchar, nullable: true, pii: true }
+      - { name: referred_by_id, type: bigint, nullable: true, note: Customer who referred this customer }
+      - { name: tax_number, type: varchar, nullable: true, note: Required for vendors only }
+      - { name: created_at, type: datetime, nullable: false }
+      - { name: updated_at, type: datetime, nullable: false }
+  - id: shop.public.addresses
+    domain: Accounts
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: account_id, type: bigint, nullable: false }
+      - { name: line1, type: varchar, nullable: false, pii: true }
+      - { name: city, type: varchar, nullable: false }
+      - { name: postal_code, type: varchar, nullable: true, pii: true }
+      - { name: country_code, type: varchar(2), nullable: false }
+      - { name: created_at, type: datetime, nullable: false }
+      - { name: updated_at, type: datetime, nullable: false }
+  - id: shop.public.categories
+    domain: Catalog
+    note: Category tree; parent_id points to the parent category.
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: name, type: varchar, nullable: false }
+      - { name: parent_id, type: bigint, nullable: true }
+      - { name: position, type: integer, nullable: false }
+  - id: shop.public.products
+    domain: Catalog
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: vendor_id, type: bigint, nullable: false }
+      - { name: category_id, type: bigint, nullable: true }
+      - { name: name, type: varchar, nullable: false }
+      - { name: price_cents, type: integer, nullable: false }
+      - name: visibility
+        type: integer
+        nullable: false
+        enum:
+          "0": draft — not shown in the shop (Product.visibilities)
+          "1": listed — visible to customers (Product.visibilities)
+          "2": archived — hidden, kept for past orders (Product.visibilities)
+      - { name: created_at, type: datetime, nullable: false }
+      - { name: updated_at, type: datetime, nullable: false }
+  - id: shop.public.tags
+    domain: Catalog
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: label, type: varchar, nullable: false, unique: true }
+  - id: shop.public.products_tags
+    domain: Catalog
+    note: Join table of the has_and_belongs_to_many between products and tags; no model class.
+    columns:
+      - { name: product_id, type: bigint, nullable: false }
+      - { name: tag_id, type: bigint, nullable: false }
+  - id: shop.public.warehouses
+    domain: Inventory
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: code, type: varchar, nullable: false }
+      - { name: city, type: varchar, nullable: false }
+  - id: shop.public.stock_levels
+    domain: Inventory
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: product_id, type: bigint, nullable: false }
+      - { name: warehouse_id, type: bigint, nullable: false }
+      - { name: quantity, type: integer, nullable: false }
+  - id: shop.public.coupons
+    domain: Orders
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: code, type: varchar, nullable: false }
+      - { name: percent_off, type: integer, nullable: false }
+      - { name: expires_on, type: date, nullable: true }
+  - id: shop.public.orders
+    domain: Orders
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: customer_id, type: bigint, nullable: false }
+      - { name: shipping_address_id, type: bigint, nullable: true }
+      - { name: coupon_id, type: bigint, nullable: true }
+      - name: status
+        type: integer
+        nullable: false
+        enum:
+          "0": pending — created, not paid yet (Order.statuses)
+          "1": paid — payment captured (Order.statuses)
+          "2": shipped — handed to the carrier (Order.statuses)
+          "3": cancelled — will not be fulfilled (Order.statuses)
+      - { name: total_cents, type: integer, nullable: false }
+      - { name: placed_at, type: datetime, nullable: true }
+      - { name: created_at, type: datetime, nullable: false }
+      - { name: updated_at, type: datetime, nullable: false }
+  - id: shop.public.order_items
+    domain: Orders
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: order_id, type: bigint, nullable: false }
+      - { name: product_id, type: bigint, nullable: false }
+      - { name: quantity, type: integer, nullable: false }
+      - { name: unit_price_cents, type: integer, nullable: false }
+  - id: shop.public.payments
+    domain: Orders
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: order_id, type: bigint, nullable: false }
+      - name: state
+        type: integer
+        nullable: false
+        enum:
+          "0": authorized — amount reserved at the gateway (Payment.states)
+          "1": captured — money taken (Payment.states)
+          "2": refunded — money returned (Payment.states)
+          "3": failed — gateway rejected the charge (Payment.states)
+      - { name: amount_cents, type: integer, nullable: false }
+      - { name: gateway_customer_id, type: varchar, nullable: true, note: "Customer id at the payment provider, not a row in this database" }
+      - { name: gateway_charge_id, type: varchar, nullable: true, note: Charge id at the payment provider }
+      - { name: created_at, type: datetime, nullable: false }
+  - id: shop.public.shipments
+    domain: Orders
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: order_id, type: bigint, nullable: false, unique: true }
+      - { name: warehouse_id, type: bigint, nullable: true }
+      - { name: tracking_number, type: varchar, nullable: true }
+      - { name: shipped_at, type: datetime, nullable: true }
+  - id: shop.public.reviews
+    domain: Community
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: product_id, type: bigint, nullable: false }
+      - { name: account_id, type: bigint, nullable: false, note: "Author, always a Customer" }
+      - { name: rating, type: integer, nullable: false }
+      - { name: body, type: text, nullable: true }
+      - { name: created_at, type: datetime, nullable: false }
+  - id: shop.public.comments
+    domain: Community
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: commentable_type, type: varchar, nullable: false }
+      - { name: commentable_id, type: bigint, nullable: false }
+      - { name: account_id, type: bigint, nullable: false }
+      - { name: body, type: text, nullable: false }
+      - { name: created_at, type: datetime, nullable: false }
+relations:
+  # Self-reference on the STI base table, declared on the Customer subclass with class_name + foreign_key.
+  - { from: { table: shop.public.accounts, columns: [referred_by_id] }, to: { table: shop.public.accounts, columns: [id] }, cardinality: n-1, optional: true, kind: declared, evidence: ["shop-rails:app/models/customer.rb#Customer"], review: pending }
+  - { from: { table: shop.public.addresses, columns: [account_id] }, to: { table: shop.public.accounts, columns: [id] }, cardinality: n-1, optional: false, kind: declared, evidence: ["shop-rails:app/models/address.rb#Address"], review: pending }
+  - { from: { table: shop.public.categories, columns: [parent_id] }, to: { table: shop.public.categories, columns: [id] }, cardinality: n-1, optional: true, kind: declared, evidence: ["shop-rails:app/models/category.rb#Category"], review: pending }
+  # Declared only on the Vendor subclass (has_many); the target is the STI base table.
+  - { from: { table: shop.public.products, columns: [vendor_id] }, to: { table: shop.public.accounts, columns: [id] }, cardinality: n-1, optional: false, kind: declared, evidence: ["shop-rails:app/models/vendor.rb#Vendor"], review: pending }
+  - { from: { table: shop.public.products, columns: [category_id] }, to: { table: shop.public.categories, columns: [id] }, cardinality: n-1, optional: true, kind: declared, evidence: ["shop-rails:app/models/product.rb#Product"], review: pending }
+  - { from: { table: shop.public.products_tags, columns: [product_id] }, to: { table: shop.public.products, columns: [id] }, cardinality: n-1, optional: false, kind: declared, evidence: ["shop-rails:app/models/product.rb#Product", "shop-rails:app/models/tag.rb#Tag"], review: pending }
+  - { from: { table: shop.public.products_tags, columns: [tag_id] }, to: { table: shop.public.tags, columns: [id] }, cardinality: n-1, optional: false, kind: declared, evidence: ["shop-rails:app/models/product.rb#Product", "shop-rails:app/models/tag.rb#Tag"], review: pending }
+  - { from: { table: shop.public.stock_levels, columns: [product_id] }, to: { table: shop.public.products, columns: [id] }, cardinality: n-1, optional: false, kind: declared, evidence: ["shop-rails:app/models/stock_level.rb#StockLevel"], review: pending }
+  - { from: { table: shop.public.stock_levels, columns: [warehouse_id] }, to: { table: shop.public.warehouses, columns: [id] }, cardinality: n-1, optional: false, kind: declared, evidence: ["shop-rails:app/models/stock_level.rb#StockLevel"], review: pending }
+  # belongs_to :customer resolves to class Customer, stored in the accounts table.
+  - { from: { table: shop.public.orders, columns: [customer_id] }, to: { table: shop.public.accounts, columns: [id] }, cardinality: n-1, optional: false, kind: declared, evidence: ["shop-rails:app/models/order.rb#Order"], review: pending }
+  - { from: { table: shop.public.orders, columns: [shipping_address_id] }, to: { table: shop.public.addresses, columns: [id] }, cardinality: n-1, optional: true, kind: declared, evidence: ["shop-rails:app/models/order.rb#Order"], review: pending }
+  - { from: { table: shop.public.orders, columns: [coupon_id] }, to: { table: shop.public.coupons, columns: [id] }, cardinality: n-1, optional: true, kind: declared, evidence: ["shop-rails:app/models/order.rb#Order"], review: pending }
+  - { from: { table: shop.public.order_items, columns: [order_id] }, to: { table: shop.public.orders, columns: [id] }, cardinality: n-1, optional: false, kind: declared, evidence: ["shop-rails:app/models/order_item.rb#OrderItem"], review: pending }
+  - { from: { table: shop.public.order_items, columns: [product_id] }, to: { table: shop.public.products, columns: [id] }, cardinality: n-1, optional: false, kind: declared, evidence: ["shop-rails:app/models/order_item.rb#OrderItem"], review: pending }
+  - { from: { table: shop.public.payments, columns: [order_id] }, to: { table: shop.public.orders, columns: [id] }, cardinality: n-1, optional: false, kind: declared, evidence: ["shop-rails:app/models/payment.rb#Payment"], review: pending }
+  - { from: { table: shop.public.shipments, columns: [order_id] }, to: { table: shop.public.orders, columns: [id] }, cardinality: 1-1, optional: false, kind: declared, evidence: ["shop-rails:app/models/shipment.rb#Shipment"], review: pending }
+  # No association anywhere; only the service writes the id.
+  - { from: { table: shop.public.shipments, columns: [warehouse_id] }, to: { table: shop.public.warehouses, columns: [id] }, cardinality: n-1, optional: true, kind: inferred, evidence: ["shop-rails:app/services/fulfillment_service.rb#pick_warehouse"], review: pending }
+  - { from: { table: shop.public.reviews, columns: [product_id] }, to: { table: shop.public.products, columns: [id] }, cardinality: n-1, optional: false, kind: declared, evidence: ["shop-rails:app/models/review.rb#Review"], review: pending }
+  - { from: { table: shop.public.reviews, columns: [account_id] }, to: { table: shop.public.accounts, columns: [id] }, cardinality: n-1, optional: false, kind: declared, evidence: ["shop-rails:app/models/review.rb#Review"], review: pending }
+  - { from: { table: shop.public.comments, columns: [account_id] }, to: { table: shop.public.accounts, columns: [id] }, cardinality: n-1, optional: false, kind: declared, evidence: ["shop-rails:app/models/comment.rb#Comment"], review: pending }
+polymorphic:
+  - name: commentable
+    table: shop.public.comments
+    type_column: commentable_type
+    id_column: commentable_id
+    optional: false
+    targets: [shop.public.products, shop.public.orders, shop.public.reviews]
+    evidence:
+      - "shop-rails:app/models/comment.rb#Comment"
+      - "shop-rails:app/models/product.rb#Product"
+      - "shop-rails:app/models/order.rb#Order"
+      - "shop-rails:app/models/review.rb#Review"
+    review: pending

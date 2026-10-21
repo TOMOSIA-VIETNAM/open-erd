@@ -1,0 +1,184 @@
+schema_version: 1
+database: ticketing
+engine: mongodb
+tables:
+  - id: ticketing._.users
+    domain: Accounts
+    note: Every person with a login; attendees, organizer owners and admins.
+    columns:
+      - { name: _id, type: ObjectId, pk: true }
+      - { name: email, type: string, nullable: false, unique: true, pii: true }
+      - { name: displayName, type: string, nullable: false, pii: true }
+      - { name: phone, type: string, nullable: true, pii: true }
+      - name: role
+        type: string
+        nullable: true
+        enum:
+          attendee: Buys and holds tickets (default)
+          organizer: Owns at least one organizer account
+          admin: Platform staff
+      - { name: referredBy, type: ObjectId, nullable: true, note: User who invited this user; drives the referral bonus. }
+      - { name: createdAt, type: date }
+      - { name: updatedAt, type: date }
+  - id: ticketing._.organizers
+    domain: Organizers
+    note: Company or person that publishes events and receives payouts.
+    columns:
+      - { name: _id, type: ObjectId, pk: true }
+      - { name: name, type: string, nullable: false }
+      - { name: slug, type: string, nullable: false, unique: true }
+      - { name: owner, type: ObjectId, nullable: false }
+      - name: payoutStatus
+        type: string
+        nullable: true
+        enum:
+          unverified: Payout details not checked yet (default)
+          verified: Payouts allowed
+          suspended: Payouts blocked
+      - { name: createdAt, type: date }
+      - { name: updatedAt, type: date }
+  - id: ticketing._.people
+    domain: Organizers
+    note: Door staff of an organizer who scan tickets. Model Person; Mongoose pluralizes it to "people".
+    columns:
+      - { name: _id, type: ObjectId, pk: true }
+      - { name: fullName, type: string, nullable: false, pii: true }
+      - { name: organizer, type: ObjectId, nullable: false }
+      - { name: badgeCode, type: string, nullable: false, unique: true }
+  - id: ticketing._.venues
+    domain: Events
+    note: Place where events happen.
+    columns:
+      - { name: _id, type: ObjectId, pk: true }
+      - { name: name, type: string, nullable: false }
+      - { name: capacity, type: number, nullable: true }
+      - { name: address, type: object, nullable: true, note: "Embedded address subdocument (line1, city, country, postalCode)." }
+  - id: ticketing._.tags
+    domain: Events
+    note: Free-form label used to browse events.
+    columns:
+      - { name: _id, type: ObjectId, pk: true }
+      - { name: label, type: string, nullable: false, unique: true }
+  - id: ticketing._.events
+    domain: Events
+    note: One scheduled show that sells tickets.
+    columns:
+      - { name: _id, type: ObjectId, pk: true }
+      - { name: title, type: string, nullable: false }
+      - { name: organizer, type: ObjectId, nullable: false }
+      - { name: venue, type: ObjectId, nullable: true }
+      - { name: startsAt, type: date, nullable: false }
+      - name: status
+        type: string
+        nullable: true
+        enum:
+          draft: Not visible to buyers (default)
+          on_sale: Tickets can be bought
+          sold_out: No capacity left
+          cancelled: Event will not happen; orders get refunded
+      - { name: tags, type: "array<ObjectId>", nullable: true, note: Array of tag ids stored on the event. }
+      - { name: ticketTiers, type: "array<object>", nullable: true, note: "Embedded ticket tiers (name, priceCents, capacity, sponsor -> organizers)." }
+      - { name: createdAt, type: date }
+      - { name: updatedAt, type: date }
+  - id: ticketing._.orders
+    domain: Sales
+    note: One checkout by a user, possibly for several events.
+    columns:
+      - { name: _id, type: ObjectId, pk: true }
+      - { name: user, type: ObjectId, nullable: false }
+      - name: status
+        type: string
+        nullable: true
+        enum:
+          pending: Awaiting payment (default)
+          paid: Payment captured
+          refunded: Money returned
+          expired: Payment window closed
+      - { name: totalCents, type: number, nullable: false }
+      - { name: items, type: "array<object>", nullable: false, note: "Embedded order items (event -> events, tierName, quantity, unitPriceCents)." }
+      - { name: createdAt, type: date }
+      - { name: updatedAt, type: date }
+  - id: ticketing._.tickets
+    domain: Sales
+    note: One admission issued from an order.
+    columns:
+      - { name: _id, type: ObjectId, pk: true }
+      - { name: order, type: ObjectId, nullable: false }
+      - { name: event, type: ObjectId, nullable: false }
+      - { name: holder, type: ObjectId, nullable: true, note: Set when the buyer transfers the ticket. }
+      - { name: code, type: string, nullable: false, unique: true }
+      - name: status
+        type: string
+        nullable: true
+        enum:
+          valid: Can be scanned (default)
+          used: Already scanned at the door
+          void: Cancelled or refunded
+  - id: ticketing._.checkins
+    domain: Sales
+    note: Door scan of a ticket; at most one per ticket. Model CheckIn.
+    columns:
+      - { name: _id, type: ObjectId, pk: true }
+      - { name: ticket, type: ObjectId, nullable: false, unique: true }
+      - { name: scannedBy, type: ObjectId, nullable: false }
+      - { name: scannedAt, type: date, nullable: true }
+  - id: ticketing._.feedback_entries
+    domain: Feedback
+    note: Star rating on an event, venue or organizer. Model Review with explicit collection name.
+    columns:
+      - { name: _id, type: ObjectId, pk: true }
+      - { name: author, type: ObjectId, nullable: false }
+      - name: subjectModel
+        type: string
+        nullable: false
+        enum:
+          Event: Subject is an event
+          Venue: Subject is a venue
+          Organizer: Subject is an organizer
+      - { name: subject, type: ObjectId, nullable: false }
+      - { name: rating, type: number, nullable: false, note: 1 to 5 }
+      - { name: body, type: string, nullable: true }
+      - { name: createdAt, type: date }
+      - { name: updatedAt, type: date }
+  - id: ticketing._.refunds
+    domain: Sales
+    note: Money returned for a paid order.
+    columns:
+      - { name: _id, type: ObjectId, pk: true }
+      - { name: orderId, type: ObjectId, nullable: false }
+      - { name: amountCents, type: number, nullable: false }
+      - name: reason
+        type: string
+        nullable: true
+        enum:
+          event_cancelled: Organizer cancelled the event
+          customer_request: Buyer asked for a refund
+          duplicate_charge: Payment was taken twice
+      - { name: createdAt, type: date }
+      - { name: updatedAt, type: date }
+relations:
+  - { from: { table: ticketing._.users, columns: [referredBy] }, to: { table: ticketing._.users, columns: [_id] }, cardinality: n-1, optional: true, kind: declared, evidence: ["events-mongoose:src/models/user.js#userSchema"], review: pending }
+  - { from: { table: ticketing._.organizers, columns: [owner] }, to: { table: ticketing._.users, columns: [_id] }, cardinality: n-1, optional: false, kind: declared, evidence: ["events-mongoose:src/models/organizer.js#organizerSchema"], review: pending }
+  - { from: { table: ticketing._.people, columns: [organizer] }, to: { table: ticketing._.organizers, columns: [_id] }, cardinality: n-1, optional: false, kind: declared, evidence: ["events-mongoose:src/models/person.js#personSchema"], review: pending }
+  - { from: { table: ticketing._.events, columns: [organizer] }, to: { table: ticketing._.organizers, columns: [_id] }, cardinality: n-1, optional: false, kind: declared, evidence: ["events-mongoose:src/models/event.js#eventSchema"], review: pending }
+  - { from: { table: ticketing._.events, columns: [venue] }, to: { table: ticketing._.venues, columns: [_id] }, cardinality: n-1, optional: true, kind: declared, evidence: ["events-mongoose:src/models/event.js#eventSchema"], review: pending }
+  # Array of refs stored on one side: no join collection, so one n-n relation.
+  - { from: { table: ticketing._.events, columns: [tags] }, to: { table: ticketing._.tags, columns: [_id] }, cardinality: n-n, optional: true, kind: declared, evidence: ["events-mongoose:src/models/event.js#eventSchema"], review: pending }
+  - { from: { table: ticketing._.orders, columns: [user] }, to: { table: ticketing._.users, columns: [_id] }, cardinality: n-1, optional: false, kind: declared, evidence: ["events-mongoose:src/models/order.js#orderSchema"], review: pending }
+  - { from: { table: ticketing._.tickets, columns: [order] }, to: { table: ticketing._.orders, columns: [_id] }, cardinality: n-1, optional: false, kind: declared, evidence: ["events-mongoose:src/models/ticket.js#ticketSchema"], review: pending }
+  - { from: { table: ticketing._.tickets, columns: [event] }, to: { table: ticketing._.events, columns: [_id] }, cardinality: n-1, optional: false, kind: declared, evidence: ["events-mongoose:src/models/ticket.js#ticketSchema"], review: pending }
+  - { from: { table: ticketing._.tickets, columns: [holder] }, to: { table: ticketing._.users, columns: [_id] }, cardinality: n-1, optional: true, kind: declared, evidence: ["events-mongoose:src/models/ticket.js#ticketSchema"], review: pending }
+  - { from: { table: ticketing._.checkins, columns: [ticket] }, to: { table: ticketing._.tickets, columns: [_id] }, cardinality: 1-1, optional: false, kind: declared, evidence: ["events-mongoose:src/models/check-in.js#checkInSchema"], review: pending }
+  - { from: { table: ticketing._.checkins, columns: [scannedBy] }, to: { table: ticketing._.people, columns: [_id] }, cardinality: n-1, optional: false, kind: declared, evidence: ["events-mongoose:src/models/check-in.js#checkInSchema"], review: pending }
+  - { from: { table: ticketing._.feedback_entries, columns: [author] }, to: { table: ticketing._.users, columns: [_id] }, cardinality: n-1, optional: false, kind: declared, evidence: ["events-mongoose:src/models/review.js#reviewSchema"], review: pending }
+  # No `ref` on the schema path; only the service shows orderId is an order id.
+  - { from: { table: ticketing._.refunds, columns: [orderId] }, to: { table: ticketing._.orders, columns: [_id] }, cardinality: n-1, optional: false, kind: inferred, evidence: ["events-mongoose:src/services/refund-service.js#issueRefund"], review: pending }
+polymorphic:
+  - name: subject
+    table: ticketing._.feedback_entries
+    type_column: subjectModel
+    id_column: subject
+    optional: false
+    targets: [ticketing._.events, ticketing._.venues, ticketing._.organizers]
+    evidence: ["events-mongoose:src/models/review.js#reviewSchema"]
+    review: pending

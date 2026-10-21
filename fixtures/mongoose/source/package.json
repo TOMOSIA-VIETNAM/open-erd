@@ -1,0 +1,9 @@
+{
+  "name": "ticketing-api",
+  "private": true,
+  "type": "commonjs",
+  "dependencies": {
+    "express": "^4.19.2",
+    "mongoose": "^8.4.0"
+  }
+}

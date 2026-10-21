@@ -1,0 +1,6 @@
+schema_version: 1
+sources:
+  - name: learn-prisma
+hub:
+  tables: [learn.public.users]
+collapse_join_tables: true

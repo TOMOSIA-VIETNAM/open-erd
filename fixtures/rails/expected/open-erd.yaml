@@ -1,0 +1,6 @@
+schema_version: 1
+sources:
+  - name: shop-rails
+hub:
+  tables: [shop.public.accounts]
+collapse_join_tables: true

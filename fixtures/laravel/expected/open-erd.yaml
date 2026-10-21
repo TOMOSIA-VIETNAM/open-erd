@@ -1,0 +1,6 @@
+schema_version: 1
+sources:
+  - name: crm-laravel
+hub:
+  tables: [crm._.users]
+collapse_join_tables: true
