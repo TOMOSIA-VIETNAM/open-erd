@@ -1,0 +1,3 @@
+schema_version: 1
+relations:
+  - { from: { table: docs._.reviews, columns: [product_id] }, to: { table: store.public.products, columns: [id] }, cardinality: n-1, optional: false, kind: cross_db, evidence: ["docs-worker:src/clients/catalog.js#getProduct"], review: pending }

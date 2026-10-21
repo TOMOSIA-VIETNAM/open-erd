@@ -3,7 +3,8 @@ import { test } from 'node:test';
 import { CLUSTER_GAP, frameAround } from '../src/layout/clusters.js';
 import { GRID } from '../src/layout/table-box.js';
 import { PALETTE } from '../src/palette.js';
-import { computeLayout } from '../src/layout/index.js';
+import { computeLayout, formatReport } from '../src/layout/index.js';
+import { normalizeModel } from '../src/model/load.js';
 import { serializeLayout } from '../src/layout/layout-file.js';
 import { axisOrder } from '../src/layout/stability.js';
 import { buildDiagram } from '../src/layout/diagram.js';
@@ -285,4 +286,70 @@ test('multi: removing a domain drops its view from layout.json', async () => {
   assert.ok(before.views['domain:activity/Audit']);
   assert.equal(after.views['domain:activity/Audit'], undefined);
   await assertStableLayouts(before, after, next);
+});
+
+// Renames confirmed by the user (`renamed_from`): the new id takes over the
+// old one's place in every view instead of being removed and added.
+function renameTables(model, rename) {
+  const to = (id) => rename(id) ?? id;
+  const end = (e) => ({ ...e, table: to(e.table) });
+  return normalizeModel({
+    ...model,
+    tables: model.tables.map((t) => (rename(t.id) ? { ...t, id: rename(t.id), renamed_from: t.id } : t)),
+    relations: model.relations.map((r) => ({ ...r, from: end(r.from), to: end(r.to) })),
+    polymorphic: model.polymorphic.map((a) => ({ ...a, table: to(a.table), targets: a.targets.map(to) })),
+    config: { ...model.config, hub: model.config.hub && { ...model.config.hub, tables: (model.config.hub.tables ?? []).map(to) } },
+  });
+}
+
+function positions(layout, rename = (id) => id) {
+  const out = {};
+  for (const [view, body] of Object.entries(layout.views)) {
+    for (const [slot, nodes] of Object.entries(body.clusters)) {
+      for (const [id, n] of Object.entries(nodes)) out[`${view} ${slot} ${rename(id)}`] = `${n.x},${n.y},${n.w},${n.h}`;
+    }
+  }
+  return out;
+}
+
+test('a renamed table keeps its position in every view', async () => {
+  const model = await loadShop();
+  const { layout: before } = await computeLayout(model);
+  const renamed = renameTables(model, (id) => (id === 'shop.public.orders' ? 'shop.public.purchases' : null));
+  const { layout: after, report } = await computeLayout(renamed, before);
+  // Boxes are sized from their name, so only the renamed one may change size.
+  const strip = (p) => Object.fromEntries(Object.entries(p).filter(([k]) => !k.endsWith('purchases')));
+  assert.deepEqual(strip(positions(after)), strip(positions(before, (id) => (id === 'shop.public.orders' ? 'shop.public.purchases' : id))));
+  const [x, y] = positions(before)['all shop/Sales shop.public.orders'].split(',');
+  assert.match(positions(after)['all shop/Sales shop.public.purchases'], new RegExp(`^${x},${y},`));
+  for (const r of Object.values(report)) assert.deepEqual([r.added, r.removed], [[], []]);
+  assert.deepEqual(report.all.renamed, [['shop.public.orders', 'shop.public.purchases']]);
+  assert.match(formatReport(report), /^  renamed    shop\.public\.orders -> shop\.public\.purchases$/m);
+});
+
+test('renaming a database carries its clusters, domain views and colours', async () => {
+  const model = await loadMulti();
+  const { layout: before } = await computeLayout(model);
+  const move = (id) => (id.startsWith('activity.') ? `telemetry.${id.slice('activity.'.length)}` : null);
+  const renamed = renameTables(
+    { ...model, databases: model.databases.map((d) => (d.database === 'activity' ? { ...d, database: 'telemetry' } : d)) },
+    move,
+  );
+  const { layout: after, report } = await computeLayout(renamed, before);
+  const key = (k) => k.replace(/activity(?=[/.:])/g, 'telemetry').replace(/^overview activity /, 'overview telemetry ');
+  const expected = Object.fromEntries(Object.entries(positions(before)).map(([k, v]) => [key(k), v]));
+  assert.deepEqual(positions(after), expected);
+  for (const domain of ['Audit', 'Events']) assert.equal(after.colors[`telemetry/${domain}`], before.colors[`activity/${domain}`]);
+  for (const r of Object.values(report)) assert.deepEqual([r.added, r.removed], [[], []]);
+});
+
+test('a table renamed into another domain is placed there as new', async () => {
+  const model = await loadShop();
+  const { layout: before } = await computeLayout(model);
+  const renamed = renameTables(model, (id) => (id === 'shop.public.orders' ? 'shop.public.purchases' : null));
+  renamed.tables = renamed.tables.map((t) => (t.id === 'shop.public.purchases' ? { ...t, domain: 'Catalog' } : t));
+  const { report } = await computeLayout(renamed, before);
+  assert.deepEqual(report.all.added, ['shop.public.purchases']);
+  assert.deepEqual(report.all.removed, ['shop.public.orders']);
+  assert.deepEqual(report.all.renamed, []);
 });

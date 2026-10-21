@@ -137,6 +137,11 @@ const domain = await evaluate(`(() => {
 await click(`document.querySelector('.domain[data-domain=${JSON.stringify(domain)}]')`);
 await shot('domain-view', viewIs(`domain:${domain}`));
 
+// The database crumb shows that database's whole frame on the overview.
+await click(`document.querySelectorAll('.oe-crumbs .oe-link')[1]`);
+await shot('database-crumb', `${viewIs('overview')} && document.querySelector('.database[data-database=${JSON.stringify(domain.split('/')[0])}] .db-frame').getBoundingClientRect().width > innerWidth / 3`);
+await click(`document.querySelector('.domain[data-domain=${JSON.stringify(domain)}]')`);
+
 const table = await evaluate(`(() => { const g = ${visible}.querySelector('.relation-group'); return ${visible}.querySelector('.table[data-id="' + g.getAttribute('data-from') + '"]') ? g.getAttribute('data-from') : g.getAttribute('data-to'); })()`);
 await click(inView(`.table[data-id="${table}"]`), { where: 'top' });
 await shot('table-highlight', `${visible}.classList.contains('dimmed') && ${inView('.table.selected')} !== null && ${inView('.relation-group.hl')} !== null`);
@@ -193,6 +198,15 @@ await shot('neighborhood-1-hop', `${viewIs('neighborhood')} && ${visible}.queryS
 const oneHop = await evaluate(`${visible}.querySelectorAll('.table, .poly').length`);
 await click(`[...document.querySelectorAll('.oe-btn')].find((b) => b.textContent === '2 hops')`);
 await shot('neighborhood-2-hops', `${viewIs('neighborhood')} && ${visible}.querySelectorAll('.table, .poly').length >= ${oneHop}`);
+// The second ring stays fully readable while the centre is selected, and the
+// fitted drawing ends left of the open panel.
+await shot(
+  'neighborhood-2-hops-readable',
+  `(() => { const outer = [...${visible}.querySelectorAll('.table.hop-2, .poly.hop-2')];
+    const panel = [...document.querySelectorAll('foreignObject')].find((f) => f.querySelector('.oe-panel'));
+    const drawn = ${visible}.querySelector(':scope > rect').getBoundingClientRect();
+    return outer.length === 0 || (outer.every((g) => getComputedStyle(g).opacity === '1') && drawn.right <= panel.getBoundingClientRect().left + 1); })()`,
+);
 await click(`${visible}.querySelector('.relation-group path.relation-hit')`);
 await shot('neighborhood-line-flow', `${inView('.flow')} !== null`);
 await key('Escape');

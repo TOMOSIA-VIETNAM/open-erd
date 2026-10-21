@@ -170,6 +170,7 @@ tables:
   - id: crm._.taggables
     domain: Engagement
     note: Polymorphic many-to-many between tags and contacts or deals.
+    unique: [[tag_id, taggable_type, taggable_id]]
     columns:
       - { name: tag_id, type: bigint unsigned, nullable: false }
       - name: taggable_type

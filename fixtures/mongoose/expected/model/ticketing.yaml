@@ -52,7 +52,14 @@ tables:
       - { name: _id, type: ObjectId, pk: true }
       - { name: name, type: string, nullable: false }
       - { name: capacity, type: number, nullable: true }
-      - { name: address, type: object, nullable: true, note: "Embedded address subdocument (line1, city, country, postalCode)." }
+    embedded:
+      - name: address
+        note: Single nested subdocument without its own _id.
+        columns:
+          - { name: line1, type: string, nullable: true, pii: true }
+          - { name: city, type: string, nullable: true }
+          - { name: country, type: string, nullable: true }
+          - { name: postalCode, type: string, nullable: true }
   - id: ticketing._.tags
     domain: Events
     note: Free-form label used to browse events.
@@ -77,9 +84,18 @@ tables:
           sold_out: No capacity left
           cancelled: Event will not happen; orders get refunded
       - { name: tags, type: "array<ObjectId>", nullable: true, note: Array of tag ids stored on the event. }
-      - { name: ticketTiers, type: "array<object>", nullable: true, note: "Embedded ticket tiers (name, priceCents, capacity, sponsor -> organizers)." }
       - { name: createdAt, type: date }
       - { name: updatedAt, type: date }
+    embedded:
+      - name: ticketTiers
+        array: true
+        note: Price levels sold for this event.
+        columns:
+          - { name: _id, type: ObjectId }
+          - { name: name, type: string, nullable: false }
+          - { name: priceCents, type: number, nullable: false }
+          - { name: capacity, type: number, nullable: true }
+          - { name: sponsor, type: ObjectId, nullable: true, note: Co-sponsoring organizer that pays for this tier's perks. }
   - id: ticketing._.orders
     domain: Sales
     note: One checkout by a user, possibly for several events.
@@ -95,9 +111,17 @@ tables:
           refunded: Money returned
           expired: Payment window closed
       - { name: totalCents, type: number, nullable: false }
-      - { name: items, type: "array<object>", nullable: false, note: "Embedded order items (event -> events, tierName, quantity, unitPriceCents)." }
       - { name: createdAt, type: date }
       - { name: updatedAt, type: date }
+    embedded:
+      - name: items
+        array: true
+        columns:
+          - { name: _id, type: ObjectId }
+          - { name: event, type: ObjectId, nullable: false }
+          - { name: tierName, type: string, nullable: false }
+          - { name: quantity, type: number, nullable: false }
+          - { name: unitPriceCents, type: number, nullable: false }
   - id: ticketing._.tickets
     domain: Sales
     note: One admission issued from an order.
@@ -164,6 +188,9 @@ relations:
   - { from: { table: ticketing._.events, columns: [venue] }, to: { table: ticketing._.venues, columns: [_id] }, cardinality: n-1, optional: true, kind: declared, evidence: ["events-mongoose:src/models/event.js#eventSchema"], review: pending }
   # Array of refs stored on one side: no join collection, so one n-n relation.
   - { from: { table: ticketing._.events, columns: [tags] }, to: { table: ticketing._.tags, columns: [_id] }, cardinality: n-n, optional: true, kind: declared, evidence: ["events-mongoose:src/models/event.js#eventSchema"], review: pending }
+  # Refs inside embedded arrays start from the embedded path.
+  - { from: { table: ticketing._.events, columns: [ticketTiers.sponsor] }, to: { table: ticketing._.organizers, columns: [_id] }, cardinality: n-1, optional: true, kind: declared, evidence: ["events-mongoose:src/models/event.js#ticketTierSchema"], review: pending }
+  - { from: { table: ticketing._.orders, columns: [items.event] }, to: { table: ticketing._.events, columns: [_id] }, cardinality: n-1, optional: false, kind: declared, evidence: ["events-mongoose:src/models/order.js#orderItemSchema"], review: pending }
   - { from: { table: ticketing._.orders, columns: [user] }, to: { table: ticketing._.users, columns: [_id] }, cardinality: n-1, optional: false, kind: declared, evidence: ["events-mongoose:src/models/order.js#orderSchema"], review: pending }
   - { from: { table: ticketing._.tickets, columns: [order] }, to: { table: ticketing._.orders, columns: [_id] }, cardinality: n-1, optional: false, kind: declared, evidence: ["events-mongoose:src/models/ticket.js#ticketSchema"], review: pending }
   - { from: { table: ticketing._.tickets, columns: [event] }, to: { table: ticketing._.events, columns: [_id] }, cardinality: n-1, optional: false, kind: declared, evidence: ["events-mongoose:src/models/ticket.js#ticketSchema"], review: pending }

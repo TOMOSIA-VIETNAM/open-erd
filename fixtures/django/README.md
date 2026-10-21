@@ -3,7 +3,7 @@
 Clinic app: `accounts`, `clinic`, `billing` apps, one PostgreSQL database, 16 tables, 20 relations, 1 polymorphic association.
 
 - Table names come from Django: `<app>_<model lowercased>` (`accounts_staffprofile`), except `Patient` whose `Meta.db_table` is `patients`.
-- `StaffProfile.teams` is a plain `ManyToManyField`: its join table `accounts_staffprofile_teams` exists in no file. `Appointment.procedures` uses `through=` so the join table is the `AppointmentProcedure` model.
+- `StaffProfile.teams` is a plain `ManyToManyField`: its join table `accounts_staffprofile_teams` exists in no file (`generated_by: Django ManyToManyField`). `unique_together` on `AppointmentProcedure` is a table-level `unique`. `Appointment.procedures` uses `through=` so the join table is the `AppointmentProcedure` model.
 - `Patient.primary_doctor` uses `db_column="doctor_ref"`: the column is not `primary_doctor_id`. FKs to `settings.AUTH_USER_MODEL` resolve to `accounts.User` (config/settings.py).
 - `OneToOneField` (`StaffProfile.user`, `Invoice.appointment`) is `1-1`. `ForeignKey("self")` on `Team` is a self-reference.
 - `db_constraint=False` (`Prescription.medication`, `InvoiceLine.procedure`) is `declared`, not `db_fk`.

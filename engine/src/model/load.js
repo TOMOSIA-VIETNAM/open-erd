@@ -1,5 +1,6 @@
 import { parseDocument } from 'yaml';
 import { CONFIG_FILE, CROSS_DB_FILE, configSchema, crossDbFileSchema, modelFileSchema } from './schema.js';
+import { columnEntries } from './columns.js';
 import { joinPath, validateNode } from './validate.js';
 
 // Code-unit comparison: localeCompare depends on the machine's ICU locale,
@@ -60,7 +61,13 @@ export function parseWorkspace(files) {
     const isCrossDb = file === CROSS_DB_FILE;
     if (!validateFile(file, data, isCrossDb ? crossDbFileSchema : modelFileSchema, errors)) continue;
     if (!isCrossDb) {
-      databases.push({ database: data.database, engine: data.engine, file });
+      databases.push({
+        database: data.database,
+        engine: data.engine,
+        file,
+        ...(data.tenant_schemas ? { tenant_schemas: data.tenant_schemas } : {}),
+        ...(data.topology ? { topology: data.topology } : {}),
+      });
       data.tables.forEach((table, i) => tables.push({ table, file, path: joinPath('tables', i), database: data.database }));
     }
     (data.relations ?? []).forEach((relation, i) => relations.push({ relation, file, path: joinPath('relations', i) }));
@@ -87,6 +94,52 @@ export function parseWorkspace(files) {
       }
       seen.add(column.name);
     });
+    // An entity name shares the namespace of columns: `items.event` must
+    // resolve to exactly one thing.
+    (table.embedded ?? []).forEach((entity, i) => {
+      const at = `${path}.embedded[${i}]`;
+      if (seen.has(entity.name)) errors.push({ file, path: `${at}.name`, message: `${JSON.stringify(entity.name)} is already a column or embedded entity` });
+      seen.add(entity.name);
+      const inner = new Set();
+      entity.columns.forEach((column, k) => {
+        if (inner.has(column.name)) errors.push({ file, path: `${at}.columns[${k}].name`, message: `duplicate column ${JSON.stringify(column.name)}` });
+        inner.add(column.name);
+      });
+    });
+  }
+
+  const columnsOf = new Map([...tablesById].map(([id, t]) => [id, new Set(columnEntries(t).map((e) => e.path))]));
+  const checkColumns = (file, path, tableId, names) => {
+    names.forEach((name, i) => {
+      if (!columnsOf.get(tableId).has(name)) {
+        errors.push({ file, path: `${path}[${i}]`, message: `unknown column ${JSON.stringify(name)} in ${tableId}` });
+      }
+    });
+  };
+  for (const { table, file, path } of tables) {
+    if (tablesById.get(table.id) !== table) continue;
+    if (table.sources) {
+      if ((table.kind ?? 'table') === 'table') {
+        errors.push({ file, path: `${path}.sources`, message: 'only a view or materialized_view has sources' });
+      }
+      table.sources.forEach((id, i) => {
+        if (!tablesById.has(id)) errors.push({ file, path: `${path}.sources[${i}]`, message: `unknown table ${JSON.stringify(id)}` });
+        else if (id === table.id) errors.push({ file, path: `${path}.sources[${i}]`, message: 'a view cannot read from itself' });
+      });
+    }
+    if (table.sti && !columnsOf.get(table.id).has(table.sti.column)) {
+      errors.push({ file, path: `${path}.sti.column`, message: `unknown column ${JSON.stringify(table.sti.column)} in ${table.id}` });
+    }
+    if (table.partition) checkColumns(file, `${path}.partition.columns`, table.id, table.partition.columns);
+    (table.unique ?? []).forEach((key, i) => checkColumns(file, `${path}.unique[${i}]`, table.id, key));
+  }
+
+  for (const db of databases) {
+    (db.tenant_schemas ?? []).forEach((t, i) => {
+      if (!tables.some((x) => x.database === db.database && x.table.id.split('.')[1] === t.schema)) {
+        errors.push({ file: db.file, path: `tenant_schemas[${i}].schema`, message: `no table of ${db.database} is in schema ${JSON.stringify(t.schema)}` });
+      }
+    });
   }
 
   for (const { relation, file, path } of relations) {
@@ -96,12 +149,7 @@ export function parseWorkspace(files) {
         errors.push({ file, path: `${path}.${end}.table`, message: `unknown table ${JSON.stringify(relation[end].table)}` });
         continue;
       }
-      const names = new Set(target.columns.map((c) => c.name));
-      relation[end].columns.forEach((name, i) => {
-        if (!names.has(name)) {
-          errors.push({ file, path: `${path}.${end}.columns[${i}]`, message: `unknown column ${JSON.stringify(name)} in ${target.id}` });
-        }
-      });
+      checkColumns(file, `${path}.${end}.columns`, target.id, relation[end].columns);
     }
     if (relation.from.columns.length !== relation.to.columns.length) {
       errors.push({ file, path: `${path}.to.columns`, message: 'must have the same number of columns as from.columns' });
@@ -114,9 +162,8 @@ export function parseWorkspace(files) {
     if (!owner) {
       errors.push({ file, path: `${path}.table`, message: `unknown table ${JSON.stringify(a.table)}` });
     } else {
-      const columns = new Set(owner.columns.map((c) => c.name));
       for (const field of ['type_column', 'id_column']) {
-        if (!columns.has(a[field])) {
+        if (!columnsOf.get(owner.id).has(a[field])) {
           errors.push({ file, path: `${path}.${field}`, message: `unknown column ${JSON.stringify(a[field])} in ${a.table}` });
         }
       }
@@ -133,11 +180,27 @@ export function parseWorkspace(files) {
   }
 
   if (config) {
-    for (const section of ['hub', 'hidden']) {
-      (config[section]?.tables ?? []).forEach((id, i) => {
+    const lists = [
+      ['hub', config.hub],
+      ['hidden', config.hidden],
+      ...Object.keys(config.profiles ?? {})
+        .sort(compareStrings)
+        .map((name) => [joinPath(joinPath('profiles', name), 'hide'), config.profiles[name].hide]),
+    ];
+    for (const [section, list] of lists) {
+      (list?.tables ?? []).forEach((id, i) => {
         if (!tablesById.has(id)) {
           errors.push({ file: CONFIG_FILE, path: `${section}.tables[${i}]`, message: `unknown table ${JSON.stringify(id)}` });
         }
+      });
+    }
+    // A misspelt hidden column would silently stay in shared output.
+    for (const [section, hide] of lists.slice(1)) {
+      (hide?.columns ?? []).forEach((ref, i) => {
+        const [tableId, name] = splitColumnRef(ref);
+        const table = tablesById.get(tableId);
+        const known = table && (columnsOf.get(tableId).has(name) || (table.embedded ?? []).some((e) => e.name === name));
+        if (!known) errors.push({ file: CONFIG_FILE, path: `${section}.columns[${i}]`, message: `unknown column ${JSON.stringify(ref)}` });
       });
     }
   }
@@ -160,19 +223,38 @@ export function parseWorkspace(files) {
 // value lifecycles, which readers expect to see unchanged.
 export function normalizeModel(model) {
   const sortedList = (list) => [...(list ?? [])].sort(compareStrings);
+  const sortedLists = (section) =>
+    Object.fromEntries(Object.keys(section).sort(compareStrings).map((k) => [k, sortedList(section[k])]));
   const config = { ...model.config };
   for (const section of ['hub', 'hidden']) {
-    if (config[section]) {
-      config[section] = Object.fromEntries(
-        Object.keys(config[section]).sort(compareStrings).map((k) => [k, sortedList(config[section][k])]),
-      );
-    }
+    if (config[section]) config[section] = sortedLists(config[section]);
+  }
+  if (config.profiles) {
+    config.profiles = Object.fromEntries(
+      Object.keys(config.profiles)
+        .sort(compareStrings)
+        .map((name) => {
+          const p = config.profiles[name];
+          return [name, { ...p, ...(p.drop_notes ? { drop_notes: sortedList(p.drop_notes) } : {}), ...(p.hide ? { hide: sortedLists(p.hide) } : {}) }];
+        }),
+    );
   }
   if (config.sources) config.sources = [...config.sources].sort((a, b) => compareStrings(a.name, b.name));
+  const byKey = (list) => [...list].sort((a, b) => compareStrings(a.join('\u0000'), b.join('\u0000')));
   return {
     config,
-    databases: [...model.databases].sort((a, b) => compareStrings(a.database, b.database)),
-    tables: [...model.tables].sort((a, b) => compareStrings(a.id, b.id)),
+    databases: [...model.databases]
+      .map((db) => (db.tenant_schemas ? { ...db, tenant_schemas: [...db.tenant_schemas].sort((a, b) => compareStrings(a.schema, b.schema)) } : db))
+      .sort((a, b) => compareStrings(a.database, b.database)),
+    // STI subclasses, partition and unique key columns keep authored order:
+    // it is the class hierarchy and the index column order.
+    tables: [...model.tables]
+      .map((t) => ({
+        ...t,
+        ...(t.sources ? { sources: sortedList(t.sources) } : {}),
+        ...(t.unique ? { unique: byKey(t.unique) } : {}),
+      }))
+      .sort((a, b) => compareStrings(a.id, b.id)),
     relations: model.relations
       .map((r) => ({ ...r, evidence: sortedList(r.evidence) }))
       .sort((a, b) => compareStrings(relationKey(a), relationKey(b))),
@@ -180,6 +262,12 @@ export function normalizeModel(model) {
       .map((a) => ({ ...a, targets: sortedList(a.targets), evidence: sortedList(a.evidence) }))
       .sort((a, b) => compareStrings(a.table, b.table) || compareStrings(a.name, b.name)),
   };
+}
+
+/** `<table id>.<column path>` split into the table id and the path. */
+export function splitColumnRef(ref) {
+  const parts = ref.split('.');
+  return [parts.slice(0, 3).join('.'), parts.slice(3).join('.')];
 }
 
 export function formatError(e) {

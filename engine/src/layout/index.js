@@ -4,6 +4,7 @@ import { boundingBox, padFrame } from './clusters.js';
 import { buildDiagram } from './diagram.js';
 import { layoutGroups, layoutTables } from './elk-layout.js';
 import { LAYOUT_FILE, LAYOUT_SCHEMA_VERSION } from './layout-file.js';
+import { carryRenames } from './renames.js';
 import { insertNextTo, settle } from './stability.js';
 import { attachOffset, ceilToGrid } from './table-box.js';
 import { leavesOf, viewNames, viewTree } from './views.js';
@@ -54,11 +55,13 @@ function placeAround(children, links, group, boxes) {
     for (const l of links) {
       const [mine, other] = l.from.node === stub.id ? [l.from, l.to] : l.to.node === stub.id ? [l.to, l.from] : [];
       if (!mine || !core.leaves.has(other.node)) continue;
-      const key = `${other.node}\u0000${other.column}`;
+      // JSON keeps a null column (a view's line to its source) apart from a
+      // column named "null".
+      const key = JSON.stringify([other.node, other.column]);
       counts.set(key, (counts.get(key) ?? 0) + 1);
     }
     const [anchor] = [...counts].sort(([a, x], [b, y]) => y - x || compareStrings(a, b));
-    const [node, column] = anchor[0].split('\u0000');
+    const [node, column] = JSON.parse(anchor[0]);
     const leaf = core.leaves.get(node);
     const side = leaf.x + leaf.w / 2 < frame.x + frame.w / 2 ? -1 : 1;
     sides.get(side).push({ stub, want: leaf.y + attachOffset(boxes.get(node), column) - stub.h / 2 });
@@ -177,10 +180,12 @@ function assignColors(previous, keys) {
  * Computes layout.json for `model`: every view (overview, all, one per
  * domain) is placed by the same rules from its own previous positions, so
  * each view stays stable on its own. Views of domains that no longer exist
- * are dropped. Returns { layout, report } with one report per view.
+ * are dropped. Renamed tables keep their positions (see carryRenames).
+ * Returns { layout, report } with one report per view.
  */
-export async function computeLayout(model, previous) {
+export async function computeLayout(model, previousLayout) {
   const diagram = buildDiagram(model);
+  const { layout: previous, renamed } = carryRenames(model, diagram, previousLayout);
   const views = {};
   const report = {};
   for (const name of viewNames(diagram).sort(compareStrings)) {
@@ -194,7 +199,8 @@ export async function computeLayout(model, previous) {
       clusters[slot][id] = { x, y, w, h };
     }
     views[name] = { clusters };
-    report[name] = diffLayouts(old, clusters);
+    const placed = new Set(Object.values(clusters).flatMap((members) => Object.keys(members)));
+    report[name] = { ...diffLayouts(old, clusters), renamed: renamed.filter(([, now]) => placed.has(now)) };
   }
   const layout = {
     schema_version: LAYOUT_SCHEMA_VERSION,
@@ -256,10 +262,12 @@ export function formatReport(report) {
       `view ${view}`,
       ...r.added.map((id) => `  added      ${id}`),
       ...r.removed.map((id) => `  removed    ${id}`),
+      ...(r.renamed ?? []).map(([from, to]) => `  renamed    ${from} -> ${to}`),
       ...r.translated.map((t) => `  translated group ${t.cluster} by ${vec(t)}`),
       ...r.moved.map((m) => `  moved      ${m.id} by ${vec(m)}`),
       `${r.added.length} added, ${r.removed.length} removed, ` +
-        `${r.translated.length} group(s) translated, ${r.moved.length} node(s) moved inside their group`,
+        `${r.translated.length} group(s) translated, ${r.moved.length} node(s) moved inside their group` +
+        (r.renamed?.length > 0 ? `, ${r.renamed.length} renamed` : ''),
     );
   }
   return lines.join('\n');
@@ -274,11 +282,18 @@ function overlaps(a, b) {
  * a node, holds it in another group, or recorded a different box size (the
  * model changed after the last `layout` run).
  *
+ * `fitStored` is for a model filtered by a sharing profile: layout.json was
+ * computed (and checked, see checkLayout) for the full model, and filtering
+ * only removes content, so a box may be smaller than recorded. It is drawn
+ * at its stored corner with its own size, and nothing is re-laid out: the
+ * shared diagram keeps the positions readers know, with gaps where hidden
+ * tables were.
+ *
  * Returns { name, nodes: [{ id, kind, box, node?, x, y, w, h, slot }],
  *   groups: [{ kind: 'db'|'cluster', group, frame }] (outer before inner),
  *   links }.
  */
-export function resolveView(model, layout, name, diagram = buildDiagram(model)) {
+export function resolveView(model, layout, name, diagram = buildDiagram(model), { fitStored = false } = {}) {
   const { root, links } = viewTree(model, diagram, name);
   const stored = layout.views?.[name]?.clusters ?? {};
   const problems = [];
@@ -286,8 +301,9 @@ export function resolveView(model, layout, name, diagram = buildDiagram(model)) 
   for (const leaf of leavesOf(root)) {
     const pos = stored[leaf.slot]?.[leaf.id];
     if (!pos) problems.push(`no position for ${leaf.id} in group "${leaf.slot}"`);
-    else if (!sameSize(pos, leaf.box)) problems.push(`${leaf.id} is ${leaf.box.w}x${leaf.box.h} but was laid out as ${pos.w}x${pos.h}`);
-    else nodes.push({ ...leaf, x: pos.x, y: pos.y, w: pos.w, h: pos.h });
+    else if (fitStored ? leaf.box.w > pos.w || leaf.box.h > pos.h : !sameSize(pos, leaf.box)) {
+      problems.push(`${leaf.id} is ${leaf.box.w}x${leaf.box.h} but was laid out as ${pos.w}x${pos.h}`);
+    } else nodes.push({ ...leaf, x: pos.x, y: pos.y, w: leaf.box.w, h: leaf.box.h });
   }
   for (let i = 0; i < nodes.length; i++) {
     for (let j = i + 1; j < nodes.length; j++) {
@@ -313,4 +329,10 @@ export function resolveView(model, layout, name, diagram = buildDiagram(model)) 
   };
   frameOf(root);
   return { name, nodes, groups, links };
+}
+
+/** Throws unless layout.json holds every view of `model` exactly as `layout` last wrote it. */
+export function checkLayout(model, layout) {
+  const diagram = buildDiagram(model);
+  for (const name of viewNames(diagram)) resolveView(model, layout, name, diagram);
 }

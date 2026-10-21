@@ -1,0 +1,32 @@
+schema_version: 1
+database: docs
+engine: mongodb
+topology: { shards: 4 }
+tables:
+  - id: docs._.profiles
+    domain: Community
+    columns:
+      - { name: _id, type: ObjectId, pk: true }
+      - { name: handle, type: string, nullable: false, unique: true }
+  - id: docs._.reviews
+    domain: Community
+    note: A product review with its reply thread embedded.
+    columns:
+      - { name: _id, type: ObjectId, pk: true }
+      - { name: profile, type: ObjectId, nullable: false }
+      - { name: product_id, type: number, nullable: false }
+      - { name: rating, type: number, nullable: false }
+    embedded:
+      - name: replies
+        array: true
+        columns:
+          - { name: author, type: ObjectId, nullable: false }
+          - { name: body, type: string, nullable: false }
+      - name: shipping
+        note: Where the reviewed item was delivered.
+        columns:
+          - { name: ship_line1, type: string, nullable: true, pii: true }
+          - { name: city, type: string, nullable: true }
+relations:
+  - { from: { table: docs._.reviews, columns: [profile] }, to: { table: docs._.profiles, columns: [_id] }, cardinality: n-1, optional: false, kind: declared, evidence: ["docs-worker:src/models/review.js#reviewSchema"], review: pending }
+  - { from: { table: docs._.reviews, columns: [replies.author] }, to: { table: docs._.profiles, columns: [_id] }, cardinality: n-1, optional: false, kind: declared, evidence: ["docs-worker:src/models/review.js#replySchema"], review: pending }

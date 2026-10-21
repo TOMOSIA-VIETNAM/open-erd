@@ -73,24 +73,37 @@ function engineName(engine) {
   return ENGINE_NAMES[engine] ?? engine;
 }
 
+export const DB_FACT_FONT = { size: 11, weight: 400 };
+const PILL_GAP = 8;
+
 /**
- * Header of a database frame: a cylinder icon, the database name and an
- * engine pill. Returns positions for the renderer and the area the router
- * must avoid.
+ * Header of a database frame: a cylinder icon, the database name, an engine
+ * pill, then one light pill per database fact (replicas, tenant schemas)
+ * while they fit inside the frame; the frame's tooltip lists them all.
+ * Returns positions for the renderer and the area the router must avoid.
  */
-export function dbLabel(frame, database, engine) {
+export function dbLabel(frame, database, engine, facts = []) {
   const cy = frame.y + 32;
   const icon = { x: frame.x + 18, y: cy - DB_ICON.h / 2, ...DB_ICON };
   const nameX = icon.x + icon.w + 9;
   const nameW = Math.ceil(measureText(database, DB_LABEL_FONT));
   const engineText = engineName(engine);
   const pill = { x: nameX + nameW + 10, y: cy - 9, w: Math.ceil(measureText(engineText, ENGINE_FONT)) + 14, h: 18 };
+  const factPills = [];
+  let right = pill.x + pill.w;
+  for (const text of facts) {
+    const p = { x: right + PILL_GAP, y: cy - 9, w: Math.ceil(measureText(text, DB_FACT_FONT)) + 14, h: 18 };
+    if (p.x + p.w + 18 > frame.x + frame.w) break;
+    factPills.push({ text, x: p.x + p.w / 2, pill: p });
+    right = p.x + p.w;
+  }
   return {
     cy,
     icon,
     name: { x: nameX, text: database },
     engine: { text: engineText, x: pill.x + pill.w / 2 },
     pill,
-    box: { x: icon.x - 6, y: cy - 14, w: pill.x + pill.w + 6 - (icon.x - 6), h: 28 },
+    facts: factPills,
+    box: { x: icon.x - 6, y: cy - 14, w: right + 6 - (icon.x - 6), h: 28 },
   };
 }

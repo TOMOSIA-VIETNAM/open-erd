@@ -10,4 +10,4 @@ Rails 7 shop: `db/schema.rb`, `app/models/`, `app/services/`. 15 tables, 20 rela
 - `has_and_belongs_to_many` join table `products_tags` has no model file and no `id`.
 - Integer-backed `enum` exists only in models (`Order#status`, `Payment#state`, `Product#visibility`).
 - `shipments.warehouse_id` has no association; only `FulfillmentService#pick_warehouse` sets it (`inferred`). `payments.gateway_customer_id` looks like an FK but is a provider id: no relation (precision trap).
-- Schema gap: STI is expressed only as a table `note` plus `enum` on `type`; the model has no field for subclasses.
+- STI is `sti: { column: type, subclasses: [Customer, Vendor] }` plus the `enum` on `type`. The unique index on `products_tags (product_id, tag_id)` is a table-level `unique`.

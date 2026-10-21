@@ -3,6 +3,20 @@
 export const TIMESTAMP_TYPE = /^(timestamp|timestamptz|datetime|date|time)\b/i;
 
 /**
+ * Every column of a table with the path relations, `hidden` and the viewer
+ * address it by: its name, or `<entity>.<name>` inside an embedded entity.
+ * Top-level columns first, then each entity's, in authored order.
+ */
+export function columnEntries(table) {
+  return [
+    ...table.columns.map((column) => ({ path: column.name, column, entity: null })),
+    ...(table.embedded ?? []).flatMap((entity) =>
+      entity.columns.map((column) => ({ path: `${entity.name}.${column.name}`, column, entity })),
+    ),
+  ];
+}
+
+/**
  * Columns a business reader does not need, per table id: Business mode in the
  * viewer fades them out. A column is technical when it is
  *   - a primary key column,
@@ -28,9 +42,9 @@ export function technicalColumns(model) {
     model.tables.map((t) => [
       t.id,
       new Set(
-        t.columns
-          .filter((c) => !c.enum && !c.note && (c.pk || keys.get(t.id).has(c.name) || TIMESTAMP_TYPE.test(c.type)))
-          .map((c) => c.name),
+        columnEntries(t)
+          .filter(({ path, column: c }) => !c.enum && !c.note && (c.pk || keys.get(t.id).has(path) || TIMESTAMP_TYPE.test(c.type)))
+          .map(({ path }) => path),
       ),
     ]),
   );

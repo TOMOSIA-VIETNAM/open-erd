@@ -47,7 +47,10 @@ an open-erd model. Each case has:
 - `optional` mirrors the referencing column's `nullable`.
 - Enum keys are the values stored in the column (`0`, `1` for integer-backed
   enums), and the meaning names the code symbol.
-- Patterns the model schema has no field for (STI, partition,
-  schema-per-tenant, view, embedded document) are written as a table `note`
-  plus, for STI, an `enum` on the type column. No unknown keys: the validator
-  rejects them.
+- Special patterns use their model fields (`engine/src/model/schema.js`):
+  `sti` (plus an `enum` on the type column for the meaning of each value),
+  `partition`, `tenant_schemas` on the database file, `embedded` entities
+  whose refs start from the embedded path (`items.event`), table-level
+  `unique` for keys over several columns, `generated_by` for tables a
+  framework creates without any file declaring them. No unknown keys: the
+  validator rejects them.

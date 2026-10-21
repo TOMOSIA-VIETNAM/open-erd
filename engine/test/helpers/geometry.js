@@ -6,9 +6,12 @@ import {
   COLUMN_FONT,
   DOMAIN_COUNT_FONT,
   DOMAIN_TITLE_FONT,
+  EMBED_INSET,
+  FACT_FONT,
   MUTED_TITLE_FONT,
   PADDING_X,
   PK_FONT,
+  TAG_FONT,
   TITLE_FONT,
   TYPE_FONT,
 } from '../../src/layout/table-box.js';
@@ -78,13 +81,21 @@ export function assertTextFits(scene) {
   for (const { id, box } of scene.nodes) {
     const inner = box.w - 2 * PADDING_X;
     if (box.kind === 'table') {
-      fits(id, box.title.text, TITLE_FONT, inner);
+      const tag = box.tag ? measureText(box.tag.text, TAG_FONT) : 0;
+      assert.ok(measureText(box.title.text, TITLE_FONT) + tag < inner, `${scene.name}: ${id}: title and tag wider than ${inner}`);
       for (const r of box.rows) {
         const used = measureText(r.name.text, r.pk ? PK_FONT : COLUMN_FONT) + measureText(r.type.text, TYPE_FONT);
-        assert.ok(used < inner, `${scene.name}: ${id}.${r.column}: ${used} > ${inner}`);
+        const room = inner - 2 * EMBED_INSET * r.depth;
+        assert.ok(used < room, `${scene.name}: ${id}.${r.column}: ${used} > ${room}`);
       }
+      for (const e of box.insets) fits(id, e.title.text, COLUMN_FONT, inner - 2 * EMBED_INSET);
+      for (const f of box.facts) fits(id, f.text.text, FACT_FONT, inner);
       for (const b of box.badges) fits(id, b.label.text, BADGE_FONT, inner - BADGE_ARROW_WIDTH);
-      assert.ok(box.rows.length * 20 + box.badges.length * 20 + 30 < box.h, `${scene.name}: ${id} rows overflow its height`);
+      // Every line of the box is one 20 px row below the 30 px header.
+      const lines = box.rows.length + box.insets.length + box.facts.length + box.badges.length;
+      assert.ok(lines * 20 + 30 < box.h, `${scene.name}: ${id} rows overflow its height`);
+      const bottoms = [...box.rows, ...box.insets.map((e) => e.title), ...box.facts, ...box.badges].map((r) => r.centerY + 10);
+      assert.ok(bottoms.every((b) => b <= box.h), `${scene.name}: ${id} a row ends below the box`);
     } else if (box.kind === 'poly') {
       fits(id, box.title.text, TITLE_FONT, inner);
       for (const r of box.rows) fits(id, r.name.text, COLUMN_FONT, inner);

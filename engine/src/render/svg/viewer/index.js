@@ -49,8 +49,11 @@ const clusterOf = (id) => data.nodes[id]?.cluster;
 const domainView = (cluster) => DOMAIN_PREFIX + cluster;
 const nodeIdOf = (g) => g.getAttribute('data-id') ?? g.getAttribute('data-domain');
 
+// A table's box and a database's frame are named: tables draw tenant copies
+// before their box, databases draw pills after their frame. Other nodes have
+// one direct rect.
 function boxOf(g) {
-  const r = g.querySelector('rect');
+  const r = g.querySelector(':scope > .table-box, :scope > .db-frame') ?? g.querySelector(':scope > rect');
   return { x: +r.getAttribute('x'), y: +r.getAttribute('y'), w: +r.getAttribute('width'), h: +r.getAttribute('height') };
 }
 
@@ -113,9 +116,11 @@ function applyCamera() {
   camera.setAttribute('transform', `translate(${x} ${y}) scale(${s})`);
 }
 
+// The panel covers the right edge of the screen; fitting leaves that strip free.
 function zoomToRect(r, maxScale) {
   const { w, h } = viewport();
-  const area = { w, h: h - TOOLBAR_HEIGHT };
+  const panelOpen = panel.fo.style.display !== 'none';
+  const area = { w: panelOpen ? w - PANEL_WIDTH - 2 * PANEL_MARGIN : w, h: h - TOOLBAR_HEIGHT };
   const s = Math.min((area.w - 2 * FIT_PADDING) / r.w, (area.h - 2 * FIT_PADDING) / r.h, maxScale);
   state.cam = { s, x: (area.w - r.w * s) / 2 - r.x * s, y: TOOLBAR_HEIGHT + (area.h - r.h * s) / 2 - r.y * s };
   applyCamera();
@@ -176,11 +181,12 @@ function homeView(id) {
   return cluster ? domainView(cluster) : null;
 }
 
-/** Selects `id` in the current view if drawn there, else jumps to its domain view. */
+/** Selects `id` in the current view if drawn there as a full box, else jumps to its domain view. */
 function goToNode(id, column) {
   // Overview nodes are domains (cluster keys), not tables.
   if (!data.nodes[id] && indexes.get(OVERVIEW).has(id)) navigate(domainView(id));
-  else if (currentIndex().has(id) && state.view !== OVERVIEW) focusNode(id, column);
+  // A stub only names the table; its columns are in its own domain view.
+  else if (currentIndex().has(id) && state.view !== OVERVIEW && !currentIndex().get(id).el.classList.contains('stub')) focusNode(id, column);
   else if (homeView(id)) navigate(homeView(id), { focus: id, column });
 }
 
@@ -188,7 +194,7 @@ function goToNode(id, column) {
 
 function clearSelection() {
   for (const v of views.values()) {
-    v.classList.remove('dimmed');
+    v.classList.remove('dimmed', 'center-selected');
     for (const e of v.querySelectorAll('.hl, .selected, .flow-target, .flowing, .hl-column')) {
       e.classList.remove('hl', 'selected', 'flow-target', 'flowing', 'hl-column');
     }
@@ -226,6 +232,9 @@ function selectNode(id) {
   for (const n of lit) index.get(n)?.el.classList.add('hl');
   entry.el.classList.add('selected');
   currentView().classList.add('dimmed');
+  // In a neighborhood, selecting its centre keeps the second ring readable:
+  // it is what the reader asked to see.
+  currentView().classList.toggle('center-selected', state.view === NEIGHBORHOOD && id === state.center);
   showPanel(poly ? polyPanel(id, poly) : nodePanel(id));
 }
 
@@ -304,8 +313,9 @@ function rings(center, hops) {
 function buildNeighborhood(center, hops) {
   views.get(NEIGHBORHOOD)?.remove();
   const source = indexes.get(ALL_VIEW);
-  const ids = [center, ...rings(center, hops).flat()].filter((id) => source.has(id));
   const ringIds = rings(center, hops).map((r) => r.filter((id) => source.has(id)));
+  const ids = [center, ...ringIds.flat()];
+  const outer = new Set(ringIds[1] ?? []);
   const size = (id) => ({ id, w: source.get(id).box.w, h: source.get(id).box.h });
   const pos = radialLayout(size(center), ringIds.map((r) => r.map(size)), RING_GAP);
 
@@ -321,6 +331,7 @@ function buildNeighborhood(center, hops) {
     boxes.set(id, { x: pos[id].x, y: pos[id].y, w: box.w, h: box.h });
     const copy = g.cloneNode(true);
     copy.classList.remove('hl', 'selected', 'flow-target');
+    if (outer.has(id)) copy.classList.add('hop-2');
     nodes.append(svgEl('g', { transform: `translate(${dx} ${dy})` }, [copy]));
   }
   const relations = svgEl('g', { class: 'relations' });
@@ -332,7 +343,7 @@ function buildNeighborhood(center, hops) {
     if (l.from === l.to || !shown.has(l.from) || !shown.has(l.to)) continue;
     const d = line(l.from, l.to);
     relations.append(
-      svgEl('g', { class: `relation-group kind-${l.kind} review-${l.review}`, 'data-id': l.id, 'data-from': l.from, 'data-to': l.to }, [
+      svgEl('g', { class: `relation-group kind-${l.kind} review-${l.review}${outer.has(l.from) || outer.has(l.to) ? ' hop-2' : ''}`, 'data-id': l.id, 'data-from': l.from, 'data-to': l.to }, [
         svgEl('path', { class: 'relation-hit', d }),
         svgEl('path', { class: 'relation', d }),
       ]),
@@ -372,6 +383,8 @@ function openNeighborhood(id, hops = state.hops) {
   buildNeighborhood(id, hops);
   showView(NEIGHBORHOOD);
   selectNode(id);
+  // Fit again now that the panel is open.
+  zoomToRect(viewBounds(NEIGHBORHOOD), MAX_FIT_SCALE);
 }
 
 // ---------------------------------------------------------------- toolbar
@@ -520,6 +533,16 @@ function showPanel(children) {
 }
 
 const link = (text, onClick) => el('button', { class: 'oe-link', text, on: { click: onClick } });
+// A view's line to its source has no cardinality.
+const linkSummary = (l) => (l.kind === 'view_source' ? 'view reads this table' : `${l.cardinality} · ${l.kind}`);
+const evidenceList = (evidence) =>
+  evidence ? el('div', {}, [el('div', { class: 'sub', text: 'Evidence' }), el('ul', {}, evidence.map((e) => el('li', { text: e })))]) : null;
+// Business note, then the team-only note and the untranslated original.
+const noteLines = (n) => [
+  n.note ? el('p', { text: n.note }) : null,
+  n.internalNote ? el('p', { class: 'muted', text: `Internal: ${n.internalNote}` }) : null,
+  n.noteSource ? el('p', { class: 'muted', text: `Original: ${n.noteSource}` }) : null,
+];
 
 function nodePanel(id) {
   const n = data.nodes[id];
@@ -527,8 +550,10 @@ function nodePanel(id) {
   const lines = data.links.filter((l) => l.from === id || l.to === id);
   return [
     el('h3', { text: short(id) }),
-    el('div', { class: 'sub', text: `${id} · ${n.cluster.split('/').slice(1).join('/')}` }),
-    n.note ? el('p', { text: n.note }) : null,
+    el('div', { class: 'sub', text: `${id} · ${n.cluster.split('/').slice(1).join('/')}${n.tableKind ? ` · ${n.tableKind.replace('_', ' ')}` : ''}` }),
+    ...noteLines(n),
+    n.facts ? el('ul', {}, n.facts.map((f) => el('li', { text: f }))) : null,
+    n.sources ? el('p', {}, [el('span', { text: 'Reads from ' }), ...n.sources.flatMap((t, i) => [i > 0 ? el('span', { text: ', ' }) : null, link(short(t), () => goToNode(t))])]) : null,
     el('div', { class: 'row' }, [
       el('span', { text: 'Neighborhood' }),
       ...[1, 2].map((h) => el('button', { class: 'oe-btn', text: `${h} hop${h > 1 ? 's' : ''}`, on: { click: () => openNeighborhood(id, h) } })),
@@ -540,7 +565,7 @@ function nodePanel(id) {
       lines.map((l) => {
         const other = l.from === id ? l.to : l.from;
         const arrow = l.from === id ? '→' : '←';
-        return el('li', {}, [el('span', { text: `${arrow} ` }), link(short(other), () => goToNode(other)), el('span', { class: 'where', text: ` ${l.cardinality} · ${l.kind}` })]);
+        return el('li', {}, [el('span', { text: `${arrow} ` }), link(short(other), () => goToNode(other)), el('span', { class: 'where', text: ` ${linkSummary(l)}` })]);
       }),
     ),
   ];
@@ -551,6 +576,7 @@ function polyPanel(id, poly) {
     el('h3', { text: `«${poly.name}»` }),
     el('div', { class: 'sub', text: `${poly.table}.${poly.typeColumn} / ${poly.idColumn}` }),
     el('p', { text: `Polymorphic: each row points at one of ${poly.targets.length} tables. Lines show the targets in this view.` }),
+    evidenceList(poly.evidence),
     el(
       'ul',
       {},
@@ -566,7 +592,8 @@ function relationPanel(g) {
   return [
     el('h3', { text: `${short(from)} → ${short(to)}` }),
     el('div', { class: 'sub', text: id }),
-    l ? el('p', { text: `${l.cardinality} · ${l.kind} · ${l.review}${l.via ? ` · via ${l.via}` : ''}` }) : null,
+    l ? el('p', { text: `${linkSummary(l)} · ${l.review}${l.via ? ` · via ${l.via}` : ''}` }) : null,
+    evidenceList(l?.evidence),
     el('div', { class: 'row' }, [link(`Go to ${short(to)}`, () => goToNode(to))]),
   ];
 }
@@ -595,7 +622,7 @@ function tipLines(target) {
     return [
       el('div', {}, [el('b', { text: c.name }), c.pii ? el('span', { class: 'pii', text: '  PII' }) : null]),
       el('div', { class: 'muted', text: flags.join(' · ') }),
-      c.note ? el('div', { text: c.note }) : null,
+      ...noteLines(c).map((e) => e && el('div', { class: e.className, text: e.textContent })),
       ...(c.enum ? Object.entries(c.enum).map(([v, meaning]) => el('div', {}, [el('b', { text: v }), el('span', { text: `: ${meaning}` })])) : []),
     ];
   }
@@ -611,6 +638,7 @@ function tipLines(target) {
   return [
     el('b', { text: id }),
     n?.note ? el('div', { text: n.note }) : null,
+    ...(n?.facts ?? []).map((f) => el('div', { class: 'muted', text: f })),
     el('div', { class: 'muted', text: 'Click to highlight · double-click for its neighborhood' }),
   ];
 }

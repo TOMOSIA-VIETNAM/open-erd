@@ -52,6 +52,7 @@ tables:
   - id: learn.public.lessons
     domain: Catalog
     note: Ordered lesson inside a course.
+    unique: [[course_id, position]]
     columns:
       - { name: id, type: text, pk: true }
       - { name: course_id, type: text, nullable: false }
@@ -66,7 +67,8 @@ tables:
       - { name: label, type: text, unique: true }
   - id: learn.public._CourseToTag
     domain: Catalog
-    note: Join table Prisma generates for the implicit many-to-many Course.tags / Tag.courses; A is the Course side because model names sort alphabetically.
+    note: Join table for Course.tags / Tag.courses; A is the Course side because model names sort alphabetically.
+    generated_by: Prisma implicit many-to-many
     columns:
       - { name: A, type: text, pk: true, nullable: false, note: courses.id }
       - { name: B, type: text, pk: true, nullable: false, note: tags.id }
@@ -86,6 +88,7 @@ tables:
   - id: learn.public.lesson_progress
     domain: Learning
     note: Completion of one lesson by one enrolled student.
+    unique: [[user_id, lesson_id]]
     columns:
       - { name: id, type: text, pk: true }
       - { name: user_id, type: text, nullable: false }
@@ -95,6 +98,7 @@ tables:
   - id: learn.public.course_reviews
     domain: Learning
     note: Student rating of a course, one per student per course.
+    unique: [[course_id, author_id]]
     columns:
       - { name: id, type: text, pk: true }
       - { name: course_id, type: text, nullable: false }

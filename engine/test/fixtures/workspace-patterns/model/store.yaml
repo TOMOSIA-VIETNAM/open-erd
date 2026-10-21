@@ -1,0 +1,107 @@
+schema_version: 1
+database: store
+engine: postgresql
+topology: { replicas: 2, note: Read replicas serve the reporting views. }
+tenant_schemas:
+  - { schema: tenant, count: 120, note: One schema tenant_<slug> per customer company. }
+tables:
+  - id: store.public.plans
+    domain: Billing
+    note: Price plans shared by every tenant.
+    columns:
+      - { name: id, type: serial, pk: true }
+      - { name: code, type: varchar(40), nullable: false, unique: true }
+  - id: store.tenant.accounts
+    domain: Accounts
+    note: Customers and vendors of one tenant, in one table.
+    internal_note: Ask the billing team before changing this.
+    sti: { column: type, subclasses: [Customer, Vendor] }
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - name: type
+        type: varchar
+        nullable: false
+        enum:
+          Customer: Buys products (Customer)
+          Vendor: Sells products (Vendor)
+      - { name: email_address, type: varchar, nullable: false, unique: true, pii: true }
+      - { name: plan_id, type: integer, nullable: false }
+      - { name: tax_number, type: varchar, nullable: true, note_source: 納税者番号 }
+  - id: store.tenant.audit_secrets
+    domain: Accounts
+    note: Raw audit payloads; never shared.
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: account_id, type: bigint, nullable: false }
+      - { name: payload, type: jsonb, nullable: false }
+  - id: store.tenant.orders
+    domain: Sales
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: account_id, type: bigint, nullable: false }
+      - name: status
+        type: varchar
+        nullable: false
+        enum:
+          open: Being filled (Order::OPEN)
+          paid: Payment captured (Order::PAID)
+      - { name: placed_at, type: timestamptz, nullable: true }
+  - id: store.tenant.order_lines
+    domain: Sales
+    unique: [[order_id, position]]
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: order_id, type: bigint, nullable: false }
+      - { name: product_id, type: bigint, nullable: false }
+      - { name: position, type: integer, nullable: false }
+      - { name: quantity, type: integer, nullable: false }
+  - id: store.tenant.usage_events
+    domain: Sales
+    note: Metered usage per account.
+    partition: { method: range, columns: [occurred_at], interval: month }
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: occurred_at, type: timestamptz, pk: true }
+      - { name: account_id, type: bigint, nullable: false }
+      - { name: quantity, type: integer, nullable: false }
+  - id: store.public.products
+    domain: Catalog
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: name, type: varchar, nullable: false }
+  - id: store.public.tags
+    domain: Catalog
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: label, type: varchar, nullable: false, unique: true }
+  - id: store.public._ProductToTag
+    domain: Catalog
+    generated_by: Prisma implicit many-to-many
+    unique: [[A, B]]
+    columns:
+      - { name: A, type: bigint, nullable: false }
+      - { name: B, type: bigint, nullable: false }
+  - id: store.public.sales_by_month
+    domain: Reports
+    kind: materialized_view
+    note: Revenue per month, refreshed nightly.
+    sources: [store.tenant.orders, store.tenant.order_lines]
+    columns:
+      - { name: month, type: date, nullable: false }
+      - { name: revenue_cents, type: bigint, nullable: false }
+  - id: store.public.active_customers
+    domain: Reports
+    kind: view
+    sources: [store.tenant.accounts]
+    columns:
+      - { name: account_id, type: bigint, nullable: false }
+      - { name: last_order_at, type: timestamptz, nullable: true }
+relations:
+  - { from: { table: store.tenant.accounts, columns: [plan_id] }, to: { table: store.public.plans, columns: [id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: ["store-api:app/models/account.rb#Account"], review: reviewed }
+  - { from: { table: store.tenant.audit_secrets, columns: [account_id] }, to: { table: store.tenant.accounts, columns: [id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: ["store-api:app/models/audit_secret.rb#AuditSecret"], review: reviewed }
+  - { from: { table: store.tenant.orders, columns: [account_id] }, to: { table: store.tenant.accounts, columns: [id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: ["store-api:app/models/order.rb#Order"], review: reviewed }
+  - { from: { table: store.tenant.order_lines, columns: [order_id] }, to: { table: store.tenant.orders, columns: [id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: ["store-api:app/models/order_line.rb#OrderLine"], review: reviewed }
+  - { from: { table: store.tenant.order_lines, columns: [product_id] }, to: { table: store.public.products, columns: [id] }, cardinality: n-1, optional: false, kind: declared, evidence: ["store-api:app/models/order_line.rb#OrderLine"], review: pending }
+  - { from: { table: store.tenant.usage_events, columns: [account_id] }, to: { table: store.tenant.accounts, columns: [id] }, cardinality: n-1, optional: false, kind: inferred, evidence: ["store-api:app/services/metering.rb#record"], review: pending }
+  - { from: { table: store.public._ProductToTag, columns: [A] }, to: { table: store.public.products, columns: [id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: ["store-api:prisma/schema.prisma#Product"], review: reviewed }
+  - { from: { table: store.public._ProductToTag, columns: [B] }, to: { table: store.public.tags, columns: [id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: ["store-api:prisma/schema.prisma#Tag"], review: reviewed }

@@ -9,4 +9,5 @@ Small CRM (15 tables, MySQL) built with Laravel migrations and Eloquent.
 - `belongsToMany(..., 'team_members')`: pivot name differs from the default `team_user`; composite primary key.
 - `hasOne` profile with unique `user_id` (`1-1`); self-reference `users.manager_id`.
 - Inferred only: `campaign_recipients.contact_id` has no association; it is used only in `SendCampaignJob::handle`.
+- `$table->unique(['tag_id', 'taggable_type', 'taggable_id'])` is a table-level `unique` on `taggables`.
 - Schema gap: the model cannot mark a relation as a pivot of a named `belongsToMany`, nor `taggables` as a polymorphic join table; both are expressed as plain relations plus a `polymorphic` entry.

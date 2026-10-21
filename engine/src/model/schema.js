@@ -3,10 +3,10 @@
 //
 // Spec node shapes:
 //   { type: 'string', pattern?, oneOf?, hint? }
-//   { type: 'boolean' } | { type: 'integer', oneOf? }
+//   { type: 'boolean' } | { type: 'integer', oneOf?, min? }
 //   { type: 'array', items, minItems? }
 //   { type: 'object', fields: { key: spec } }   unknown keys are errors
-//   { type: 'map', values: spec }               free keys, typed values
+//   { type: 'map', values: spec, keys? }        free keys (matching keys.pattern), typed values
 // Any node may carry `required: true` (meaningful inside `fields`).
 
 export const SCHEMA_VERSION = 1;
@@ -26,11 +26,26 @@ export const CARDINALITIES = ['1-1', '1-n', 'n-1', 'n-n'];
 // declared in their own `polymorphic` list (see modelFileSchema).
 export const RELATION_KINDS = ['db_fk', 'declared', 'inferred', 'cross_db'];
 export const REVIEW_STATES = ['pending', 'reviewed', 'stale'];
+// A view or materialized view is drawn like a table, tagged with its kind and
+// linked by muted lines to the tables it reads (`sources`).
+export const TABLE_KINDS = ['table', 'view', 'materialized_view'];
+export const PARTITION_METHODS = ['range', 'list', 'hash'];
+// Free-text fields a sharing profile can drop. `note` is the business
+// meaning readers outside the team want; `internal_note` is for the team
+// only (code pointers, doubts, history); `note_source` is the original,
+// untranslated text (often an internal DB comment).
+export const NOTE_FIELDS = ['note', 'note_source', 'internal_note'];
+export const PROFILE_NAME = /^[A-Za-z0-9_-]+$/;
 
 // Older files must go through a migration before the engine reads them.
 const schemaVersion = { type: 'integer', oneOf: [SCHEMA_VERSION], required: true };
 const text = { type: 'string' };
 const identifier = { type: 'string', pattern: /^\S+$/, hint: 'non-empty, no whitespace' };
+// Names that become one segment of a dotted path (embedded entities and
+// their columns are addressed as `<entity>.<column>`).
+const segment = { type: 'string', pattern: /^[^.\s]+$/, hint: 'no dots or whitespace' };
+const count = { type: 'integer', min: 1 };
+const columnList = (minItems) => ({ type: 'array', items: identifier, minItems });
 const tableId = {
   type: 'string',
   pattern: TABLE_ID_PATTERN,
@@ -50,8 +65,29 @@ const column = {
     note: text,
     // Original-language note when `note` was translated to English.
     note_source: text,
+    internal_note: text,
     pii: { type: 'boolean' },
     renamed_from: identifier,
+  },
+};
+
+// A document nested inside its parent (MongoDB subdocument, JSON column with
+// a known shape). Drawn as an inset box inside the parent's box; relations
+// address its columns as `<name>.<column>`, e.g. orders.items.event.
+const embedded = {
+  type: 'object',
+  fields: {
+    name: { ...segment, required: true },
+    // true for a list of subdocuments (`items: [ItemSchema]`).
+    array: { type: 'boolean' },
+    note: text,
+    internal_note: text,
+    columns: {
+      type: 'array',
+      items: { ...column, fields: { ...column.fields, name: { ...segment, required: true } } },
+      minItems: 1,
+      required: true,
+    },
   },
 };
 
@@ -60,10 +96,41 @@ const table = {
   fields: {
     id: { ...tableId, required: true },
     domain: { ...text, required: true },
+    // `table` when omitted.
+    kind: { type: 'string', oneOf: TABLE_KINDS },
+    // Tables a view reads from; only for kind view / materialized_view.
+    sources: { type: 'array', items: tableId, minItems: 1 },
     note: text,
     note_source: text,
+    internal_note: text,
     renamed_from: tableId,
     columns: { type: 'array', items: column, minItems: 1, required: true },
+    embedded: { type: 'array', items: embedded, minItems: 1 },
+    // Single-table inheritance: one table, the class stored in `column`.
+    sti: {
+      type: 'object',
+      fields: {
+        column: { ...identifier, required: true },
+        subclasses: { type: 'array', items: identifier, minItems: 1, required: true },
+      },
+    },
+    // Partitions are merged into this one table; `interval` says how a range
+    // is cut (month, day, ...).
+    partition: {
+      type: 'object',
+      fields: {
+        method: { type: 'string', oneOf: PARTITION_METHODS, required: true },
+        columns: { ...columnList(1), required: true },
+        interval: text,
+      },
+    },
+    // Unique keys spanning several columns; a single unique column is
+    // `unique: true` on the column itself.
+    unique: { type: 'array', items: columnList(2), minItems: 1 },
+    // Set when a framework creates the table without any file declaring it
+    // (Django ManyToManyField, Prisma implicit many-to-many): names the
+    // mechanism, e.g. "Prisma implicit many-to-many".
+    generated_by: text,
   },
 };
 
@@ -127,6 +194,17 @@ export const modelFileSchema = {
     tables: { type: 'array', items: table, required: true },
     relations: { type: 'array', items: relation },
     polymorphic: { type: 'array', items: polymorphic },
+    // Schema-per-tenant: each tenant has its own copy of `schema`, modelled
+    // once. `count` is the number of tenants when known (it needs a database
+    // read; source code rarely tells).
+    tenant_schemas: {
+      type: 'array',
+      minItems: 1,
+      items: { type: 'object', fields: { schema: { ...segment, required: true }, count, note: text } },
+    },
+    // Replicas and shards of this one logical database; drawn as a note on
+    // its frame, never as separate databases.
+    topology: { type: 'object', fields: { replicas: count, shards: count, note: text } },
   },
 };
 
@@ -138,6 +216,29 @@ export const crossDbFileSchema = {
     schema_version: schemaVersion,
     relations: { type: 'array', items: relation, required: true },
   },
+};
+
+// Tables and columns to leave out. Columns are `<table id>.<column>`, or
+// `<table id>.<entity>.<column>` / `<table id>.<entity>` for embedded ones.
+const hideSpec = {
+  type: 'object',
+  fields: {
+    tables: { type: 'array', items: tableId },
+    columns: {
+      type: 'array',
+      items: { type: 'string', pattern: /^[^.\s]+\.[^.\s]+\.[^.\s]+\.\S+$/, hint: '<table id>.<column>' },
+    },
+  },
+};
+
+const profileFields = {
+  // Relation and polymorphic evidence (repo paths, symbols).
+  drop_evidence: { type: 'boolean' },
+  // Columns marked `pii`, and every relation that uses one.
+  drop_pii: { type: 'boolean' },
+  drop_notes: { type: 'array', items: { type: 'string', oneOf: NOTE_FIELDS } },
+  // Hidden in this profile in addition to the top-level `hidden`.
+  hide: hideSpec,
 };
 
 // open-erd.yaml
@@ -164,16 +265,29 @@ export const configSchema = {
     // timestamp columns) as one n-n line between the tables it joins.
     // Off by default: the join table often matters to readers.
     collapse_join_tables: { type: 'boolean' },
-    // Excluded from shared profiles. Columns are `<table id>.<column>`.
-    hidden: {
-      type: 'object',
-      fields: {
-        tables: { type: 'array', items: tableId },
-        columns: {
-          type: 'array',
-          items: { type: 'string', pattern: /^[^.\s]+\.[^.\s]+\.[^.\s]+\.\S+$/, hint: '<table id>.<column>' },
-        },
-      },
+    // Left out of every profile render.
+    hidden: hideSpec,
+    // Sharing profiles by name, used by `render --profile <name>`. Fields left
+    // out take their value from PROFILE_DEFAULTS; `public` exists even when
+    // not declared here.
+    // A profile name is part of its output file name (out/erd.<name>.svg).
+    profiles: {
+      type: 'map',
+      keys: { pattern: PROFILE_NAME, hint: 'letters, digits, - and _' },
+      values: { type: 'object', fields: profileFields },
     },
   },
 };
+
+/**
+ * What a profile drops when a field is not set. Every profile is for
+ * sharing outside the team, so the defaults are the safe ones; a profile
+ * that wants evidence or PII kept says so explicitly.
+ */
+export const PROFILE_DEFAULTS = {
+  drop_evidence: true,
+  drop_pii: true,
+  drop_notes: ['internal_note', 'note_source'],
+  hide: { tables: [], columns: [] },
+};
+export const BUILT_IN_PROFILES = { public: {} };
