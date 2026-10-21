@@ -100421,6 +100421,28 @@ function dbLabel(frame, database, engine) {
   };
 }
 
+// src/model/columns.js
+var TIMESTAMP_TYPE = /^(timestamp|timestamptz|datetime|date|time)\b/i;
+function technicalColumns(model) {
+  const keys = new Map(model.tables.map((t) => [t.id, /* @__PURE__ */ new Set()]));
+  const add = (table2, columns) => {
+    for (const c of columns) keys.get(table2)?.add(c);
+  };
+  for (const r of model.relations) {
+    add(r.from.table, r.from.columns);
+    add(r.to.table, r.to.columns);
+  }
+  for (const a of model.polymorphic) add(a.table, [a.type_column, a.id_column]);
+  return new Map(
+    model.tables.map((t) => [
+      t.id,
+      new Set(
+        t.columns.filter((c) => !c.enum && !c.note && (c.pk || keys.get(t.id).has(c.name) || TIMESTAMP_TYPE.test(c.type))).map((c) => c.name)
+      )
+    ])
+  );
+}
+
 // src/layout/table-box.js
 var GRID = 10;
 var TITLE_FONT = { size: 13, weight: 700 };
@@ -100536,7 +100558,6 @@ function attachOffset(box, column2) {
 }
 
 // src/layout/diagram.js
-var TIMESTAMP_TYPE = /^(timestamp|timestamptz|datetime|date|time)\b/i;
 var KIND_TRUST = ["db_fk", "declared", "cross_db", "inferred"];
 var REVIEW_TRUST = ["reviewed", "pending", "stale"];
 var leastTrusted = (values, order) => values.reduce((a, b) => order.indexOf(b) > order.indexOf(a) ? b : a);
@@ -101615,11 +101636,66 @@ function markerSvg(kind, x, y, side) {
   }
 }
 
+// src/render/svg/viewer-bundle.json
+var viewer_bundle_default = {
+  source: '(() => {\n  // src/render/svg/viewer/radial.js\n  function radialLayout(center, rings2, gap) {\n    const diagonal = (n) => Math.hypot(n.w, n.h);\n    const corner = (n, cx, cy) => ({ x: Math.round(cx - n.w / 2), y: Math.round(cy - n.h / 2) });\n    const positions = { [center.id]: corner(center, 0, 0) };\n    let radius = 0;\n    let previous = diagonal(center);\n    for (const ring of rings2) {\n      if (ring.length === 0) continue;\n      const foot = ring.map((n) => diagonal(n) + gap);\n      const total = foot.reduce((a, b) => a + b, 0);\n      const angles = [];\n      let run = -foot[0] / 2;\n      for (const f of foot) {\n        angles.push(-Math.PI / 2 + 2 * Math.PI * (run + f / 2) / total);\n        run += f;\n      }\n      const widest = Math.max(...ring.map(diagonal));\n      let r = radius + previous / 2 + widest / 2 + gap;\n      for (let i = 0; i < ring.length; i++) {\n        for (let k = i + 1; k < ring.length; k++) {\n          const apart = Math.abs(angles[k] - angles[i]);\n          const shorter = Math.min(apart, 2 * Math.PI - apart);\n          r = Math.max(r, (foot[i] + foot[k]) / 2 / (2 * Math.sin(shorter / 2)));\n        }\n      }\n      ring.forEach((n, i) => {\n        positions[n.id] = corner(n, r * Math.cos(angles[i]), r * Math.sin(angles[i]));\n      });\n      radius = r;\n      previous = widest;\n    }\n    return positions;\n  }\n  function straightLink(a, b) {\n    const ca = [a.x + a.w / 2, a.y + a.h / 2];\n    const cb = [b.x + b.w / 2, b.y + b.h / 2];\n    const dx = cb[0] - ca[0];\n    const dy = cb[1] - ca[1];\n    const exit = (box) => Math.min(dx === 0 ? Infinity : box.w / 2 / Math.abs(dx), dy === 0 ? Infinity : box.h / 2 / Math.abs(dy));\n    const ta = exit(a);\n    const tb = exit(b);\n    return [\n      [ca[0] + dx * ta, ca[1] + dy * ta],\n      [cb[0] - dx * tb, cb[1] - dy * tb]\n    ];\n  }\n\n  // src/render/svg/viewer/index.js\n  var SVG_NS = "http://www.w3.org/2000/svg";\n  var HTML_NS = "http://www.w3.org/1999/xhtml";\n  var OVERVIEW = "overview";\n  var ALL_VIEW = "all";\n  var DOMAIN_PREFIX = "domain:";\n  var NEIGHBORHOOD = "neighborhood";\n  var TOOLBAR_HEIGHT = 44;\n  var PANEL_WIDTH = 300;\n  var PANEL_MARGIN = 12;\n  var FIT_PADDING = 24;\n  var MAX_FIT_SCALE = 1.5;\n  var MIN_SCALE = 0.03;\n  var MAX_SCALE = 4;\n  var DRAG_THRESHOLD = 4;\n  var FOCUS_MARGIN = 160;\n  var FOCUS_MAX_SCALE = 1.2;\n  var RING_GAP = 40;\n  var NEIGHBORHOOD_MARGIN = 60;\n  var SEARCH_LIMIT = 40;\n  var TIP_OFFSET = 14;\n  var svg = document.documentElement;\n  var data = JSON.parse(document.getElementById("open-erd-data").textContent);\n  function el(tag, attrs = {}, children = [], ns = HTML_NS) {\n    const e = document.createElementNS(ns, tag);\n    for (const [k, v] of Object.entries(attrs)) {\n      if (k === "text") e.textContent = v;\n      else if (k === "on") for (const [type, fn] of Object.entries(v)) e.addEventListener(type, fn);\n      else e.setAttribute(k, v);\n    }\n    for (const c of children) if (c) e.append(c);\n    return e;\n  }\n  var svgEl = (tag, attrs = {}, children = []) => el(tag, attrs, children, SVG_NS);\n  var short = (id) => data.nodes[id]?.kind === "poly" ? `\xAB${data.nodes[id].name}\xBB` : id.split(".").length === 3 ? id.split(".")[2] : id;\n  var clusterOf = (id) => data.nodes[id]?.cluster;\n  var domainView = (cluster) => DOMAIN_PREFIX + cluster;\n  var nodeIdOf = (g) => g.getAttribute("data-id") ?? g.getAttribute("data-domain");\n  function boxOf(g) {\n    const r = g.querySelector("rect");\n    return { x: +r.getAttribute("x"), y: +r.getAttribute("y"), w: +r.getAttribute("width"), h: +r.getAttribute("height") };\n  }\n  var NODE_SELECTOR = ".table, .stub, .poly, .domain";\n  function indexView(view, offsets = /* @__PURE__ */ new Map()) {\n    const index = /* @__PURE__ */ new Map();\n    for (const g of view.querySelectorAll(NODE_SELECTOR)) {\n      const id = nodeIdOf(g);\n      const b = boxOf(g);\n      const o = offsets.get(id) ?? { dx: 0, dy: 0 };\n      index.set(id, { el: g, box: { x: b.x + o.dx, y: b.y + o.dy, w: b.w, h: b.h } });\n    }\n    return index;\n  }\n  var views = /* @__PURE__ */ new Map();\n  var indexes = /* @__PURE__ */ new Map();\n  for (const v of svg.querySelectorAll("g.view")) {\n    views.set(v.getAttribute("data-view"), v);\n    indexes.set(v.getAttribute("data-view"), indexView(v));\n  }\n  for (const t of svg.querySelectorAll(".nodes title")) t.remove();\n  function addHitPaths(root) {\n    for (const p of root.querySelectorAll(".relation-group > path.relation")) {\n      p.before(svgEl("path", { class: "relation-hit", d: p.getAttribute("d") }));\n    }\n  }\n  addHitPaths(svg);\n  var camera = svgEl("g", { class: "camera" });\n  views.values().next().value.before(camera);\n  for (const v of views.values()) camera.append(v);\n  svg.removeAttribute("viewBox");\n  svg.setAttribute("width", "100%");\n  svg.setAttribute("height", "100%");\n  svg.style.background = "#eef1f5";\n  function overlay(cls) {\n    const div = el("div", { class: `oe-ui ${cls}` });\n    const fo = svgEl("foreignObject", { x: 0, y: 0, width: 1, height: 1 }, [div]);\n    svg.append(fo);\n    return { fo, div };\n  }\n  var state = { view: OVERVIEW, hops: 1, center: null, history: [], cam: { x: 0, y: 0, s: 1 } };\n  var viewport = () => ({ w: window.innerWidth, h: window.innerHeight });\n  function applyCamera() {\n    const { x, y, s } = state.cam;\n    camera.setAttribute("transform", `translate(${x} ${y}) scale(${s})`);\n  }\n  function zoomToRect(r, maxScale) {\n    const { w, h } = viewport();\n    const area = { w, h: h - TOOLBAR_HEIGHT };\n    const s = Math.min((area.w - 2 * FIT_PADDING) / r.w, (area.h - 2 * FIT_PADDING) / r.h, maxScale);\n    state.cam = { s, x: (area.w - r.w * s) / 2 - r.x * s, y: TOOLBAR_HEIGHT + (area.h - r.h * s) / 2 - r.y * s };\n    applyCamera();\n  }\n  function viewBounds(name) {\n    const [x, y, w, h] = views.get(name).getAttribute("data-bounds").split(" ").map(Number);\n    return { x, y, w, h };\n  }\n  function zoomAt(clientX, clientY, factor) {\n    const { x, y, s } = state.cam;\n    const next = Math.min(MAX_SCALE, Math.max(MIN_SCALE, s * factor));\n    const wx = (clientX - x) / s;\n    const wy = (clientY - y) / s;\n    state.cam = { s: next, x: clientX - wx * next, y: clientY - wy * next };\n    applyCamera();\n  }\n  var currentView = () => views.get(state.view);\n  var currentIndex = () => indexes.get(state.view);\n  function showView(name) {\n    clearSelection();\n    hideTip();\n    for (const [n, v] of views) v.style.display = n === name ? "" : "none";\n    state.view = name;\n    zoomToRect(viewBounds(name), MAX_FIT_SCALE);\n    renderToolbar();\n  }\n  function snapshot() {\n    return { view: state.view, center: state.center, hops: state.hops };\n  }\n  function navigate(name, { focus, column } = {}) {\n    if (name !== state.view) {\n      state.history.push(snapshot());\n      showView(name);\n    }\n    if (focus) focusNode(focus, column);\n  }\n  function back() {\n    const prev = state.history.pop();\n    if (!prev) return;\n    if (prev.view === NEIGHBORHOOD) buildNeighborhood(prev.center, prev.hops);\n    showView(prev.view);\n  }\n  function homeView(id) {\n    const cluster = clusterOf(id);\n    return cluster ? domainView(cluster) : null;\n  }\n  function goToNode(id, column) {\n    if (!data.nodes[id] && indexes.get(OVERVIEW).has(id)) navigate(domainView(id));\n    else if (currentIndex().has(id) && state.view !== OVERVIEW) focusNode(id, column);\n    else if (homeView(id)) navigate(homeView(id), { focus: id, column });\n  }\n  function clearSelection() {\n    for (const v of views.values()) {\n      v.classList.remove("dimmed");\n      for (const e of v.querySelectorAll(".hl, .selected, .flow-target, .flowing, .hl-column")) {\n        e.classList.remove("hl", "selected", "flow-target", "flowing", "hl-column");\n      }\n      for (const e of v.querySelectorAll(".flow")) e.remove();\n      for (const e of v.querySelectorAll(".poly-routes")) e.style.display = "none";\n    }\n    hidePanel();\n  }\n  function relationGroups() {\n    return [...currentView().querySelectorAll(".relation-group")];\n  }\n  function selectNode(id) {\n    clearSelection();\n    const index = currentIndex();\n    const entry = index.get(id);\n    if (!entry) return;\n    const lit = /* @__PURE__ */ new Set([id]);\n    for (const g of relationGroups()) {\n      const [from, to] = [g.getAttribute("data-from"), g.getAttribute("data-to")];\n      if (from !== id && to !== id) continue;\n      g.classList.add("hl");\n      lit.add(from).add(to);\n    }\n    const poly = data.nodes[id]?.kind === "poly" ? data.nodes[id] : null;\n    if (poly) {\n      for (const routes of currentView().querySelectorAll(".poly-routes")) {\n        if (routes.getAttribute("data-poly") !== id) continue;\n        routes.style.display = "";\n        for (const p of routes.querySelectorAll(".poly-route")) lit.add(p.getAttribute("data-target"));\n      }\n    }\n    for (const n of lit) index.get(n)?.el.classList.add("hl");\n    entry.el.classList.add("selected");\n    currentView().classList.add("dimmed");\n    showPanel(poly ? polyPanel(id, poly) : nodePanel(id));\n  }\n  function focusNode(id, column) {\n    const entry = currentIndex().get(id);\n    if (!entry) return;\n    selectNode(id);\n    if (column) {\n      for (const c of entry.el.querySelectorAll(".column")) if (c.getAttribute("data-column") === column) c.classList.add("hl-column");\n    }\n    const b = entry.box;\n    zoomToRect({ x: b.x - FOCUS_MARGIN, y: b.y - FOCUS_MARGIN, w: b.w + 2 * FOCUS_MARGIN, h: b.h + 2 * FOCUS_MARGIN }, FOCUS_MAX_SCALE);\n  }\n  function flowRelation(g) {\n    clearSelection();\n    const index = currentIndex();\n    const [from, to] = [g.getAttribute("data-from"), g.getAttribute("data-to")];\n    g.classList.add("hl", "flowing");\n    index.get(from)?.el.classList.add("hl");\n    index.get(to)?.el.classList.add("hl", "flow-target");\n    g.append(svgEl("path", { class: "flow", d: g.querySelector("path.relation").getAttribute("d") }));\n    currentView().classList.add("dimmed");\n    showPanel(relationPanel(g));\n  }\n  function adjacency() {\n    const adj = /* @__PURE__ */ new Map();\n    const link2 = (a, b) => {\n      if (a === b) return;\n      if (!adj.has(a)) adj.set(a, /* @__PURE__ */ new Set());\n      adj.get(a).add(b);\n    };\n    for (const l of data.links) {\n      link2(l.from, l.to);\n      link2(l.to, l.from);\n    }\n    return adj;\n  }\n  var ADJACENCY = adjacency();\n  var byId = (a, b) => a < b ? -1 : a > b ? 1 : 0;\n  function rings(center, hops) {\n    const seen = /* @__PURE__ */ new Set([center]);\n    const result = [];\n    let previous = [center];\n    for (let hop = 1; hop <= hops; hop++) {\n      const parent = /* @__PURE__ */ new Map();\n      previous.forEach((p, i) => {\n        for (const n of [...ADJACENCY.get(p) ?? []].sort(byId)) {\n          if (!seen.has(n) && !parent.has(n)) parent.set(n, i);\n        }\n      });\n      const ring = [...parent.keys()].sort((a, b) => parent.get(a) - parent.get(b) || byId(a, b));\n      for (const n of ring) seen.add(n);\n      result.push(ring);\n      previous = ring;\n    }\n    return result;\n  }\n  function buildNeighborhood(center, hops) {\n    views.get(NEIGHBORHOOD)?.remove();\n    const source = indexes.get(ALL_VIEW);\n    const ids = [center, ...rings(center, hops).flat()].filter((id) => source.has(id));\n    const ringIds = rings(center, hops).map((r) => r.filter((id) => source.has(id)));\n    const size = (id) => ({ id, w: source.get(id).box.w, h: source.get(id).box.h });\n    const pos = radialLayout(size(center), ringIds.map((r) => r.map(size)), RING_GAP);\n    const shown = new Set(ids);\n    const offsets = /* @__PURE__ */ new Map();\n    const nodes = svgEl("g", { class: "nodes" });\n    const boxes = /* @__PURE__ */ new Map();\n    for (const id of ids) {\n      const { el: g, box } = source.get(id);\n      const dx = pos[id].x - box.x;\n      const dy = pos[id].y - box.y;\n      offsets.set(id, { dx, dy });\n      boxes.set(id, { x: pos[id].x, y: pos[id].y, w: box.w, h: box.h });\n      const copy = g.cloneNode(true);\n      copy.classList.remove("hl", "selected", "flow-target");\n      nodes.append(svgEl("g", { transform: `translate(${dx} ${dy})` }, [copy]));\n    }\n    const relations = svgEl("g", { class: "relations" });\n    const line = (a, b) => {\n      const [[x12, y12], [x2, y2]] = straightLink(boxes.get(a), boxes.get(b));\n      return `M${x12} ${y12}L${x2} ${y2}`;\n    };\n    for (const l of data.links) {\n      if (l.from === l.to || !shown.has(l.from) || !shown.has(l.to)) continue;\n      const d = line(l.from, l.to);\n      relations.append(\n        svgEl("g", { class: `relation-group kind-${l.kind} review-${l.review}`, "data-id": l.id, "data-from": l.from, "data-to": l.to }, [\n          svgEl("path", { class: "relation-hit", d }),\n          svgEl("path", { class: "relation", d })\n        ])\n      );\n    }\n    for (const id of ids.filter((n) => data.nodes[n]?.kind === "poly")) {\n      const targets = data.nodes[id].targets.filter((t) => shown.has(t));\n      if (targets.length === 0) continue;\n      relations.append(\n        svgEl(\n          "g",\n          { class: "poly-routes", "data-poly": id, style: "display:none" },\n          targets.map((t) => svgEl("path", { class: "poly-route", "data-target": t, d: line(id, t) }))\n        )\n      );\n    }\n    const all = [...boxes.values()];\n    const x0 = Math.min(...all.map((b) => b.x)) - NEIGHBORHOOD_MARGIN;\n    const y0 = Math.min(...all.map((b) => b.y)) - NEIGHBORHOOD_MARGIN;\n    const x1 = Math.max(...all.map((b) => b.x + b.w)) + NEIGHBORHOOD_MARGIN;\n    const y1 = Math.max(...all.map((b) => b.y + b.h)) + NEIGHBORHOOD_MARGIN;\n    const view = svgEl(\n      "g",\n      { class: "view", "data-view": NEIGHBORHOOD, "data-bounds": `${x0} ${y0} ${x1 - x0} ${y1 - y0}`, style: "display:none" },\n      [svgEl("rect", { x: x0, y: y0, width: x1 - x0, height: y1 - y0, fill: "#ffffff" }), relations, nodes]\n    );\n    camera.append(view);\n    views.set(NEIGHBORHOOD, view);\n    indexes.set(NEIGHBORHOOD, indexView(view, offsets));\n    state.center = center;\n    state.hops = hops;\n  }\n  function openNeighborhood(id, hops = state.hops) {\n    if (!indexes.get(ALL_VIEW).has(id)) return;\n    if (state.view !== NEIGHBORHOOD) state.history.push(snapshot());\n    buildNeighborhood(id, hops);\n    showView(NEIGHBORHOOD);\n    selectNode(id);\n  }\n  var toolbar = overlay("oe-toolbar");\n  var crumbs = el("div", { class: "oe-crumbs" });\n  var backButton = el("button", { class: "oe-btn", text: "\u2039 Back", title: "Previous view", on: { click: back } });\n  var hopButtons = [1, 2].map(\n    (n) => el("button", { class: "oe-btn", text: `${n} hop${n > 1 ? "s" : ""}`, on: { click: () => openNeighborhood(state.center, n) } })\n  );\n  var hopGroup = el("div", { class: "oe-seg" }, hopButtons);\n  var allButton = el("button", { class: "oe-btn", text: "All tables", on: { click: () => navigate(ALL_VIEW) } });\n  var searchInput = el("input", { type: "search", placeholder: "Search tables and columns", "aria-label": "Search tables and columns" });\n  var results = el("div", { class: "oe-results", style: "display:none" });\n  var modeButtons = ["Business", "Technical"].map(\n    (label) => el("button", { class: "oe-btn", text: label, on: { click: () => setBusiness(label === "Business") } })\n  );\n  toolbar.div.append(\n    backButton,\n    crumbs,\n    hopGroup,\n    allButton,\n    el("div", { class: "oe-search" }, [searchInput, results]),\n    el("div", { class: "oe-seg" }, modeButtons)\n  );\n  function setBusiness(on) {\n    svg.classList.toggle("business", on);\n    modeButtons[0].classList.toggle("on", on);\n    modeButtons[1].classList.toggle("on", !on);\n  }\n  function crumb(text, onClick) {\n    return onClick ? el("button", { class: "oe-link", text, on: { click: onClick } }) : el("span", { class: "here", text });\n  }\n  function renderToolbar() {\n    const parts = [crumb("Overview", state.view === OVERVIEW ? null : () => navigate(OVERVIEW))];\n    const cluster = state.view.startsWith(DOMAIN_PREFIX) ? state.view.slice(DOMAIN_PREFIX.length) : state.view === NEIGHBORHOOD ? clusterOf(state.center) : null;\n    if (state.view === ALL_VIEW) parts.push(crumb("All tables"));\n    if (cluster) {\n      const [db, ...domain] = cluster.split("/");\n      parts.push(crumb(db, () => showDatabase(db)));\n      parts.push(crumb(domain.join("/"), state.view === NEIGHBORHOOD ? () => navigate(domainView(cluster), { focus: state.center }) : null));\n    }\n    if (state.view === NEIGHBORHOOD) parts.push(crumb(`Neighborhood of ${short(state.center)}`));\n    crumbs.replaceChildren(...parts.flatMap((p, i) => i === 0 ? [p] : [el("span", { class: "sep", text: "\u203A" }), p]));\n    backButton.disabled = state.history.length === 0;\n    hopGroup.style.display = state.view === NEIGHBORHOOD ? "" : "none";\n    hopButtons.forEach((b, i) => b.classList.toggle("on", state.hops === i + 1));\n    allButton.classList.toggle("on", state.view === ALL_VIEW);\n    layoutOverlays();\n  }\n  function showDatabase(db) {\n    navigate(OVERVIEW);\n    for (const g of views.get(OVERVIEW).querySelectorAll(".database")) {\n      if (g.getAttribute("data-database") === db) zoomToRect(boxOf(g), MAX_FIT_SCALE);\n    }\n  }\n  function search(query) {\n    const q = query.trim().toLowerCase();\n    if (!q) return [];\n    const hits = [];\n    for (const [id, n] of Object.entries(data.nodes)) {\n      if (n.kind !== "table") continue;\n      const name = short(id).toLowerCase();\n      if (id.toLowerCase().includes(q)) hits.push({ id, rank: name.startsWith(q) ? 0 : 1 });\n      for (const c of n.columns) {\n        const cn = c.name.toLowerCase();\n        if (cn.includes(q)) hits.push({ id, column: c.name, rank: cn.startsWith(q) ? 2 : 3 });\n      }\n    }\n    return hits.sort((a, b) => a.rank - b.rank || byId(a.id, b.id) || byId(a.column ?? "", b.column ?? "")).slice(0, SEARCH_LIMIT);\n  }\n  var resultHits = [];\n  var resultItems = [];\n  var activeResult = 0;\n  function closeResults() {\n    results.style.display = "none";\n    resultHits = [];\n    resultItems = [];\n    layoutOverlays();\n  }\n  function pick(hit) {\n    closeResults();\n    searchInput.blur();\n    goToNode(hit.id, hit.column);\n  }\n  function renderResults() {\n    const hits = search(searchInput.value);\n    activeResult = 0;\n    if (!searchInput.value.trim()) return closeResults();\n    resultItems = hits.map(\n      (hit, i) => el("button", { class: `oe-result${i === 0 ? " active" : ""}`, on: { click: () => pick(hit) } }, [\n        el("div", { text: hit.column ? `${short(hit.id)}.${hit.column}` : short(hit.id) }),\n        el("div", { class: "where", text: `${hit.column ? "column" : "table"} \xB7 ${hit.id}` })\n      ])\n    );\n    results.replaceChildren(...resultItems.length > 0 ? resultItems : [el("div", { class: "oe-result", text: "No match" })]);\n    results.style.display = "";\n    resultHits = hits;\n    layoutOverlays();\n  }\n  searchInput.addEventListener("input", renderResults);\n  searchInput.addEventListener("keydown", (e) => {\n    if (e.key === "Enter" && resultHits[activeResult]) pick(resultHits[activeResult]);\n    else if ((e.key === "ArrowDown" || e.key === "ArrowUp") && resultItems.length > 0) {\n      e.preventDefault();\n      resultItems[activeResult].classList.remove("active");\n      activeResult = (activeResult + (e.key === "ArrowDown" ? 1 : resultItems.length - 1)) % resultItems.length;\n      resultItems[activeResult].classList.add("active");\n      resultItems[activeResult].scrollIntoView({ block: "nearest" });\n    } else return;\n    e.stopPropagation();\n  });\n  var panel = overlay("oe-panel");\n  panel.fo.style.display = "none";\n  function hidePanel() {\n    panel.fo.style.display = "none";\n  }\n  function showPanel(children) {\n    panel.div.replaceChildren(...children.filter(Boolean));\n    panel.fo.style.display = "";\n    layoutOverlays();\n  }\n  var link = (text, onClick) => el("button", { class: "oe-link", text, on: { click: onClick } });\n  function nodePanel(id) {\n    const n = data.nodes[id];\n    if (!n) return [el("h3", { text: id })];\n    const lines = data.links.filter((l) => l.from === id || l.to === id);\n    return [\n      el("h3", { text: short(id) }),\n      el("div", { class: "sub", text: `${id} \xB7 ${n.cluster.split("/").slice(1).join("/")}` }),\n      n.note ? el("p", { text: n.note }) : null,\n      el("div", { class: "row" }, [\n        el("span", { text: "Neighborhood" }),\n        ...[1, 2].map((h) => el("button", { class: "oe-btn", text: `${h} hop${h > 1 ? "s" : ""}`, on: { click: () => openNeighborhood(id, h) } }))\n      ]),\n      el("div", { class: "sub", text: `${lines.length} relation${lines.length === 1 ? "" : "s"}` }),\n      el(\n        "ul",\n        {},\n        lines.map((l) => {\n          const other = l.from === id ? l.to : l.from;\n          const arrow = l.from === id ? "\u2192" : "\u2190";\n          return el("li", {}, [el("span", { text: `${arrow} ` }), link(short(other), () => goToNode(other)), el("span", { class: "where", text: ` ${l.cardinality} \xB7 ${l.kind}` })]);\n        })\n      )\n    ];\n  }\n  function polyPanel(id, poly) {\n    return [\n      el("h3", { text: `\xAB${poly.name}\xBB` }),\n      el("div", { class: "sub", text: `${poly.table}.${poly.typeColumn} / ${poly.idColumn}` }),\n      el("p", { text: `Polymorphic: each row points at one of ${poly.targets.length} tables. Lines show the targets in this view.` }),\n      el(\n        "ul",\n        {},\n        poly.targets.map((t) => el("li", {}, [link(t, () => navigate(homeView(t), { focus: t }))]))\n      )\n    ];\n  }\n  function relationPanel(g) {\n    const id = g.getAttribute("data-id");\n    const l = data.links.find((x) => x.id === id);\n    const [from, to] = [g.getAttribute("data-from"), g.getAttribute("data-to")];\n    return [\n      el("h3", { text: `${short(from)} \u2192 ${short(to)}` }),\n      el("div", { class: "sub", text: id }),\n      l ? el("p", { text: `${l.cardinality} \xB7 ${l.kind} \xB7 ${l.review}${l.via ? ` \xB7 via ${l.via}` : ""}` }) : null,\n      el("div", { class: "row" }, [link(`Go to ${short(to)}`, () => goToNode(to))])\n    ];\n  }\n  var tip = overlay("oe-tip-host");\n  tip.fo.style.display = "none";\n  tip.fo.style.pointerEvents = "none";\n  function tipLines(target) {\n    const columnEl = target.closest(".column");\n    const nodeEl = target.closest(NODE_SELECTOR);\n    if (!nodeEl) return null;\n    const id = nodeIdOf(nodeEl);\n    const n = data.nodes[id];\n    const badge = target.closest(".hub-badge");\n    if (badge) {\n      const columns = JSON.parse(badge.getAttribute("data-columns"));\n      return [el("div", {}, [el("b", { text: columns.join(", ") }), el("span", { text: ` \u2192 ${badge.getAttribute("data-target")}` })]), el("div", { class: "muted", text: "Hub reference, drawn as a badge instead of lines" })];\n    }\n    if (columnEl && n?.kind === "table") {\n      const c = n.columns.find((x) => x.name === columnEl.getAttribute("data-column"));\n      if (!c) return null;\n      const flags = [c.type, c.nullable === true ? "nullable" : c.nullable === false ? "NOT NULL" : null, c.pk ? "primary key" : null, c.unique ? "unique" : null].filter(Boolean);\n      return [\n        el("div", {}, [el("b", { text: c.name }), c.pii ? el("span", { class: "pii", text: "  PII" }) : null]),\n        el("div", { class: "muted", text: flags.join(" \xB7 ") }),\n        c.note ? el("div", { text: c.note }) : null,\n        ...c.enum ? Object.entries(c.enum).map(([v, meaning]) => el("div", {}, [el("b", { text: v }), el("span", { text: `: ${meaning}` })])) : []\n      ];\n    }\n    if (nodeEl.classList.contains("domain")) {\n      return [el("b", { text: id.split("/").slice(1).join("/") }), el("div", { class: "muted", text: `${id.split("/")[0]} \xB7 click to open the domain` })];\n    }\n    if (nodeEl.classList.contains("stub")) {\n      return [el("b", { text: id }), el("div", { class: "muted", text: "Outside this domain \xB7 click to open its domain" })];\n    }\n    if (n?.kind === "poly") {\n      return [el("b", { text: `\xAB${n.name}\xBB` }), el("div", { text: n.targets.join(", ") }), el("div", { class: "muted", text: "Click to show its targets" })];\n    }\n    return [\n      el("b", { text: id }),\n      n?.note ? el("div", { text: n.note }) : null,\n      el("div", { class: "muted", text: "Click to highlight \xB7 double-click for its neighborhood" })\n    ];\n  }\n  function hideTip() {\n    tip.fo.style.display = "none";\n  }\n  function showTip(e) {\n    const lines = inUi(e) ? null : tipLines(e.target);\n    if (!lines) {\n      tip.fo.style.display = "none";\n      return;\n    }\n    tip.div.replaceChildren(el("div", { class: "oe-tip" }, lines.filter(Boolean)));\n    tip.fo.style.display = "";\n    const { w, h } = viewport();\n    tip.fo.setAttribute("width", 360);\n    tip.fo.setAttribute("height", h);\n    const r = tip.div.firstChild.getBoundingClientRect();\n    const x = e.clientX + TIP_OFFSET + r.width > w ? e.clientX - TIP_OFFSET - r.width : e.clientX + TIP_OFFSET;\n    const y = e.clientY + TIP_OFFSET + r.height > h ? e.clientY - TIP_OFFSET - r.height : e.clientY + TIP_OFFSET;\n    tip.fo.setAttribute("x", Math.max(0, x));\n    tip.fo.setAttribute("y", Math.max(TOOLBAR_HEIGHT, y));\n    tip.fo.setAttribute("width", Math.ceil(r.width) + 1);\n    tip.fo.setAttribute("height", Math.ceil(r.height) + 1);\n  }\n  function layoutOverlays() {\n    const { w, h } = viewport();\n    toolbar.fo.setAttribute("width", w);\n    toolbar.fo.setAttribute("height", h);\n    toolbar.fo.setAttribute("height", results.style.display === "none" ? TOOLBAR_HEIGHT : Math.ceil(TOOLBAR_HEIGHT + results.getBoundingClientRect().height + 8));\n    if (panel.fo.style.display !== "none") {\n      const room = h - TOOLBAR_HEIGHT - 2 * PANEL_MARGIN;\n      panel.fo.setAttribute("x", w - PANEL_WIDTH - PANEL_MARGIN);\n      panel.fo.setAttribute("y", TOOLBAR_HEIGHT + PANEL_MARGIN);\n      panel.fo.setAttribute("width", PANEL_WIDTH);\n      panel.div.style.maxHeight = `${room}px`;\n      panel.fo.setAttribute("height", room);\n      panel.fo.setAttribute("height", Math.ceil(panel.div.getBoundingClientRect().height) + 1);\n    }\n  }\n  var press = null;\n  var dragged = false;\n  var inUi = (e) => e.composedPath().some((n) => n.localName === "foreignObject");\n  svg.addEventListener("pointerdown", (e) => {\n    if (inUi(e) || e.button !== 0) return;\n    press = { x: e.clientX, y: e.clientY, cam: { ...state.cam }, id: e.pointerId };\n    dragged = false;\n  });\n  svg.addEventListener("pointermove", (e) => {\n    showTip(e);\n    if (!press) return;\n    const dx = e.clientX - press.x;\n    const dy = e.clientY - press.y;\n    if (!dragged && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;\n    if (!dragged) svg.setPointerCapture(press.id);\n    dragged = true;\n    state.cam = { ...press.cam, x: press.cam.x + dx, y: press.cam.y + dy };\n    applyCamera();\n  });\n  svg.addEventListener("pointerup", () => {\n    press = null;\n  });\n  svg.addEventListener("pointerleave", hideTip);\n  svg.addEventListener("click", (e) => {\n    if (inUi(e)) return;\n    if (dragged) {\n      dragged = false;\n      return;\n    }\n    closeResults();\n    const t = e.target;\n    const domain = t.closest(".domain");\n    if (domain) return navigate(domainView(domain.getAttribute("data-domain")));\n    const stub = t.closest(".stub");\n    if (stub) return navigate(homeView(stub.getAttribute("data-id")), { focus: stub.getAttribute("data-id") });\n    const node = t.closest(".table, .poly");\n    if (node) return selectNode(node.getAttribute("data-id"));\n    const relation = t.closest(".relation-group");\n    if (relation) return flowRelation(relation);\n    clearSelection();\n  });\n  svg.addEventListener("dblclick", (e) => {\n    if (inUi(e)) return;\n    const node = e.target.closest(".table, .poly");\n    if (node) openNeighborhood(node.getAttribute("data-id"));\n  });\n  svg.addEventListener(\n    "wheel",\n    (e) => {\n      if (inUi(e)) return;\n      e.preventDefault();\n      const delta = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;\n      zoomAt(e.clientX, e.clientY, Math.exp(-delta * 15e-4));\n    },\n    { passive: false }\n  );\n  document.addEventListener("keydown", (e) => {\n    if (e.key !== "Escape") return;\n    if (results.style.display !== "none") {\n      closeResults();\n      return;\n    }\n    clearSelection();\n  });\n  window.addEventListener("resize", () => {\n    layoutOverlays();\n    zoomToRect(viewBounds(state.view), MAX_FIT_SCALE);\n  });\n  svg.append(panel.fo, toolbar.fo, tip.fo);\n  setBusiness(false);\n  showView(OVERVIEW);\n})();\n'
+};
+
 // src/render/svg/render.js
 var CANVAS_MARGIN2 = 40;
 var CORNER = 6;
 var EDGE_LABEL_FONT = { size: 10, weight: 700 };
 var EDGE_LABEL_PAD = { x: 4, y: 3 };
+var VIEWER_STYLE = `.row-hit { fill: transparent; }
+.column:hover .row-hit { fill: #eef3fb; }
+.column.hl-column .row-hit { fill: #fff1b8; }
+.domain, .stub, .table, .poly, .relation-group, .hub-badge { cursor: pointer; }
+.relation-hit { fill: none; stroke: transparent; stroke-width: 12; }
+.view.dimmed :is(.table, .stub, .poly, .domain, .relation-group):not(.hl) { opacity: 0.16; }
+.hl > rect:last-of-type { stroke: #5b8def; stroke-width: 2; }
+.selected > rect:last-of-type { stroke: #1d4ed8; stroke-width: 3; }
+.flow-target > rect:last-of-type { stroke: #e8590c; stroke-width: 3; animation: oe-pulse 0.9s ease-in-out infinite alternate; }
+.relation-group.hl .relation, .relation-group.hl .marker { stroke: #2563eb; stroke-width: 2; }
+.relation-group.flowing .relation { stroke-opacity: 0.35; }
+.flow { fill: none; stroke: #2563eb; stroke-width: 3; stroke-dasharray: 6 10; pointer-events: none; animation: oe-flow 0.8s linear infinite; }
+.poly-route { fill: none; stroke: #a07a2c; stroke-width: 1.8; stroke-dasharray: 2 3; }
+@keyframes oe-flow { to { stroke-dashoffset: -16; } }
+@keyframes oe-pulse { to { stroke-width: 6; } }
+.business .column-type { display: none; }
+.business .column.technical { opacity: 0.18; }
+.oe-ui { font-family: '${FONT_FAMILY}', sans-serif; font-size: 13px; color: #1f2a3d; box-sizing: border-box; }
+.oe-ui * { box-sizing: border-box; }
+.oe-toolbar { display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 12px; background: #ffffff; border-bottom: 1px solid #d5dbe4; position: relative; }
+.oe-crumbs { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; }
+.oe-crumbs .sep { color: #9aa4b5; }
+.oe-crumbs .here { font-weight: 700; }
+.oe-link { color: #1d4ed8; cursor: pointer; background: none; border: 0; padding: 0; font: inherit; }
+.oe-link:hover { text-decoration: underline; }
+.oe-btn { font: inherit; padding: 4px 10px; border: 1px solid #c3cad5; border-radius: 6px; background: #ffffff; color: #1f2a3d; cursor: pointer; }
+.oe-btn:hover { background: #f1f4f8; }
+.oe-btn:disabled { color: #a7b0bf; cursor: default; background: #ffffff; }
+.oe-btn.on { background: #1f2a3d; border-color: #1f2a3d; color: #ffffff; }
+.oe-seg { display: flex; }
+.oe-seg .oe-btn { border-radius: 0; }
+.oe-seg .oe-btn:first-child { border-radius: 6px 0 0 6px; }
+.oe-seg .oe-btn:last-child { border-radius: 0 6px 6px 0; margin-left: -1px; }
+.oe-search { position: relative; }
+.oe-search input { font: inherit; width: 220px; padding: 5px 9px; border: 1px solid #c3cad5; border-radius: 6px; }
+.oe-results { position: absolute; top: 34px; right: 0; width: 360px; max-height: 360px; overflow: auto; background: #ffffff; border: 1px solid #c3cad5; border-radius: 6px; box-shadow: 0 6px 18px rgba(20, 30, 50, 0.15); }
+.oe-result { display: block; width: 100%; text-align: left; padding: 6px 10px; border: 0; background: none; font: inherit; cursor: pointer; }
+.oe-result:hover, .oe-result.active { background: #eef3fb; }
+.oe-result .where { color: #7a8597; font-size: 11px; }
+.oe-panel { background: #ffffff; border: 1px solid #c3cad5; border-radius: 8px; padding: 12px 14px; box-shadow: 0 6px 18px rgba(20, 30, 50, 0.12); overflow: auto; }
+.oe-panel h3 { margin: 0 0 4px; font-size: 14px; word-break: break-all; }
+.oe-panel .sub { color: #7a8597; font-size: 12px; margin-bottom: 8px; word-break: break-all; }
+.oe-panel .row { display: flex; gap: 6px; align-items: center; margin: 8px 0; }
+.oe-panel ul { margin: 4px 0 0; padding-left: 16px; }
+.oe-panel li { margin: 3px 0; word-break: break-all; }
+.oe-panel p { margin: 6px 0; }
+.oe-tip { background: #1f2a3d; color: #f4f6f9; border-radius: 6px; padding: 8px 10px; font-size: 12px; line-height: 1.45; max-width: 340px; display: inline-block; }
+.oe-tip b { color: #ffffff; }
+.oe-tip .muted { color: #aab4c4; }
+.oe-tip .pii { color: #ffb4a2; font-weight: 700; }`;
 var STYLE = `${fontFaceCss()}
 text { font-family: '${FONT_FAMILY}', sans-serif; ${TEXT_STYLE_CSS} }
 .cluster-label { font-size: ${LABEL_FONT.size}px; font-weight: ${LABEL_FONT.weight}; }
@@ -101653,7 +101729,8 @@ text { font-family: '${FONT_FAMILY}', sans-serif; ${TEXT_STYLE_CSS} }
 .review-stale .edge-label text { fill: #a61f1f; }
 .kind-inferred.review-pending .relation, .kind-inferred.review-stale .relation { stroke-dasharray: 6 4; }
 .kind-cross_db .relation { stroke-dasharray: 10 3 2 3 2 3; }
-.kind-polymorphic .relation { stroke-dasharray: 2 3; }`;
+.kind-polymorphic .relation { stroke-dasharray: 2 3; }
+${VIEWER_STYLE}`;
 function escapeXml(text2) {
   return text2.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 }
@@ -101742,6 +101819,24 @@ function spreadEnds(links, byId) {
   }
   return offsets;
 }
+function routePolyTargets(nodes, byId, obstacles, groups) {
+  const edges = [];
+  const ends = [];
+  for (const n of nodes.filter((x) => x.kind === "poly")) {
+    for (const target of n.node.association.targets) {
+      const t = byId.get(target);
+      if (!t) continue;
+      const column2 = t.kind === "table" ? (t.node.table.columns.find((c) => c.pk) ?? t.node.table.columns[0]).name : null;
+      edges.push({
+        id: `${n.id}->${target}`,
+        from: { box: nodeRect(n), y: n.y + attachOffset(n.box, null), marker: "none" },
+        to: { box: nodeRect(t), y: t.y + attachOffset(t.box, column2), marker: "none" }
+      });
+      ends.push({ poly: n.id, target });
+    }
+  }
+  return routeEdges(obstacles, groups.map((g) => g.frame), edges).map((r, i) => ({ ...ends[i], points: r.points }));
+}
 function buildScene(model, layout, name = ALL_VIEW, diagram = buildDiagram(model)) {
   const view = resolveView(model, layout, name, diagram);
   const byId = new Map(view.nodes.map((n) => [n.id, n]));
@@ -101761,13 +101856,14 @@ function buildScene(model, layout, name = ALL_VIEW, diagram = buildDiagram(model
   const routes = routeEdges(obstacles, view.groups.map((g) => g.frame), edges);
   const labelsOf = placeLabels(routes, view.links.map((link) => labelText(name, link)));
   const relations = view.links.map((link, i) => ({ link, ...routes[i], markers: markers[i], label: labelsOf[i] }));
+  const polyRoutes = routePolyTargets(view.nodes, byId, obstacles, view.groups);
   const xs = [];
   const ys = [];
   for (const b of [...view.groups.map((g) => g.frame), ...view.nodes]) {
     xs.push(b.x, b.x + b.w);
     ys.push(b.y, b.y + b.h);
   }
-  for (const [px, py] of relations.flatMap((r) => r.points)) {
+  for (const [px, py] of [...relations, ...polyRoutes].flatMap((r) => r.points)) {
     xs.push(px);
     ys.push(py);
   }
@@ -101775,7 +101871,7 @@ function buildScene(model, layout, name = ALL_VIEW, diagram = buildDiagram(model
   const y0 = Math.min(...ys) - CANVAS_MARGIN2;
   const x1 = Math.max(...xs) + CANVAS_MARGIN2;
   const y1 = Math.max(...ys) + CANVAS_MARGIN2;
-  return { name, nodes: view.nodes, groups: view.groups, labels, relations, bounds: { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } };
+  return { name, nodes: view.nodes, groups: view.groups, labels, relations, polyRoutes, bounds: { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } };
 }
 function textEl(cls, x, y, fitted, anchor) {
   const tip = fitted.truncated ? `<title>${escapeXml(fitted.full)}</title>` : "";
@@ -101786,12 +101882,15 @@ var json = (value) => escapeXml(JSON.stringify(value));
 function headerPath(x, y, w, fill) {
   return `<path d="M${x} ${y + HEADER_HEIGHT}V${y + CORNER}Q${x} ${y} ${x + CORNER} ${y}H${x + w - CORNER}Q${x + w} ${y} ${x + w} ${y + CORNER}V${y + HEADER_HEIGHT}Z" fill="${fill}"/>`;
 }
-function tableSvg(n, colors) {
+function tableSvg(n, colors, technical) {
   const { x, y, w, h, box } = n;
   const rows = box.rows.map(
     (r) => [
+      `<g class="${technical.has(r.column) ? "column technical" : "column"}" data-column="${escapeXml(r.column)}">`,
+      `<rect class="row-hit" x="${x}" y="${y + r.centerY - ROW_HEIGHT / 2}" width="${w}" height="${ROW_HEIGHT}"/>`,
       textEl(r.pk ? "column-name pk" : "column-name", x + PADDING_X, y + r.centerY, r.name),
-      textEl("column-type", x + w - PADDING_X, y + r.centerY, r.type, "end")
+      textEl("column-type", x + w - PADDING_X, y + r.centerY, r.type, "end"),
+      "</g>"
     ].join("")
   );
   const badges = box.badges.map((b) => {
@@ -101847,19 +101946,30 @@ function groupSvg(g, colorOf) {
   const icon = `<path class="db-icon" d="M${x} ${y + ry}V${y + h - ry}A${w / 2} ${ry} 0 0 0 ${x + w} ${y + h - ry}V${y + ry}A${w / 2} ${ry} 0 0 0 ${x} ${y + ry}Z"/><path class="db-icon" d="M${x} ${y + ry}A${w / 2} ${ry} 0 0 0 ${x + w} ${y + ry}" fill="none"/>`;
   return `<g class="database" data-database="${escapeXml(g.group.database)}" data-engine="${escapeXml(g.group.engine)}"><rect class="db-frame" x="${f.x}" y="${f.y}" width="${f.w}" height="${f.h}" rx="16"/>${icon}<text class="db-name" x="${l.name.x}" y="${l.cy}" dominant-baseline="central">${escapeXml(l.name.text)}</text><rect class="engine-pill" x="${l.pill.x}" y="${l.pill.y}" width="${l.pill.w}" height="${l.pill.h}" rx="9"/><text class="engine-name" x="${l.engine.x}" y="${l.cy}" dominant-baseline="central" text-anchor="middle">${escapeXml(l.engine.text)}</text></g>`;
 }
+var pathData = (points) => points.map(([px, py], i) => `${i === 0 ? "M" : "L"}${px} ${py}`).join("");
 function relationSvg(r) {
   const { link } = r;
-  const d = r.points.map(([px, py], i) => `${i === 0 ? "M" : "L"}${px} ${py}`).join("");
+  const d = pathData(r.points);
   const [first, last] = [r.points[0], r.points[r.points.length - 1]];
   const markers = r.markers.from === "none" ? "" : `<g class="marker">${markerSvg(r.markers.from, first[0], first[1], r.fromSide)}${markerSvg(r.markers.to, last[0], last[1], r.toSide)}</g>`;
   const label = r.label ? `<g class="edge-label"><rect x="${r.label.x}" y="${r.label.y}" width="${r.label.w}" height="${r.label.h}" rx="3"/><text x="${r.label.cx}" y="${r.label.cy}" dominant-baseline="central" text-anchor="middle">${escapeXml(r.label.text)}</text></g>` : "";
   const via = link.via ? ` data-via="${escapeXml(link.via)}"` : "";
   return `<g class="relation-group kind-${link.kind} review-${link.review}" data-id="${escapeXml(link.id)}" data-from="${escapeXml(link.from.node)}" data-to="${escapeXml(link.to.node)}" data-kind="${link.kind}" data-review="${link.review}"${via}><title>${escapeXml(link.via ? `${link.id} (n-n via ${link.via})` : link.id)}</title><path class="relation" d="${d}"/>${markers}${label}</g>`;
 }
-function viewSvg(scene, colorOf, visible) {
+function polyRoutesSvg(routes) {
+  const byPoly = /* @__PURE__ */ new Map();
+  for (const r of routes) {
+    if (!byPoly.has(r.poly)) byPoly.set(r.poly, []);
+    byPoly.get(r.poly).push(r);
+  }
+  return [...byPoly].map(
+    ([poly, list]) => `<g class="poly-routes" data-poly="${escapeXml(poly)}" style="display:none">` + list.map((r) => `<path class="poly-route" data-target="${escapeXml(r.target)}" d="${pathData(r.points)}"/>`).join("") + "</g>"
+  ).join("");
+}
+function viewSvg(scene, colorOf, visible, technical) {
   const { x, y, w, h } = scene.bounds;
   const nodes = scene.nodes.map((n) => {
-    if (n.kind === "table") return tableSvg(n, colorOf(n.node.cluster));
+    if (n.kind === "table") return tableSvg(n, colorOf(n.node.cluster), technical.get(n.id));
     if (n.kind === "poly") return polySvg(n);
     if (n.kind === "stub") return stubSvg(n);
     return domainSvg(n, colorOf(n.id));
@@ -101869,20 +101979,66 @@ function viewSvg(scene, colorOf, visible) {
     `<g class="view" data-view="${escapeXml(scene.name)}" data-bounds="${x} ${y} ${w} ${h}"${hidden}>`,
     `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="#ffffff"/>`,
     `<g class="groups">${scene.groups.map((g) => groupSvg(g, colorOf)).join("")}</g>`,
-    `<g class="relations">${scene.relations.map(relationSvg).join("")}</g>`,
+    `<g class="relations">${scene.relations.map(relationSvg).join("")}${polyRoutesSvg(scene.polyRoutes)}</g>`,
     `<g class="nodes">${nodes.join("")}</g>`,
     "</g>"
   ].join("\n");
+}
+var VIEWER_SCRIPT = viewer_bundle_default.source;
+if (VIEWER_SCRIPT.includes("]]>")) throw new Error('viewer bundle contains "]]>" and cannot sit in a CDATA section');
+var scriptJson = (value) => JSON.stringify(value).replace(/[<>&]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
+function viewerData(model, diagram, technical = technicalColumns(model)) {
+  const nodes = {};
+  for (const id of [...diagram.nodes.keys()].sort(compareStrings)) {
+    const n = diagram.nodes.get(id);
+    if (n.kind === "poly") {
+      const a = n.association;
+      nodes[id] = { kind: "poly", cluster: n.cluster, table: a.table, name: a.name, typeColumn: a.type_column, idColumn: a.id_column, targets: a.targets };
+      continue;
+    }
+    const t = n.table;
+    nodes[id] = {
+      kind: "table",
+      cluster: n.cluster,
+      ...t.note ? { note: t.note } : {},
+      columns: t.columns.map((c) => ({
+        name: c.name,
+        type: c.type,
+        ...c.nullable === void 0 ? {} : { nullable: c.nullable },
+        ...c.pk ? { pk: true } : {},
+        ...c.unique ? { unique: true } : {},
+        ...c.pii ? { pii: true } : {},
+        ...technical.get(id).has(c.name) ? { technical: true } : {},
+        ...c.enum ? { enum: c.enum } : {},
+        ...c.note ? { note: c.note } : {}
+      }))
+    };
+  }
+  const links = diagram.links.map((l) => ({
+    id: l.id,
+    from: l.from.node,
+    to: l.to.node,
+    cardinality: l.cardinality,
+    kind: l.kind,
+    review: l.review,
+    ...l.via ? { via: l.via } : {}
+  }));
+  return { nodes, links };
 }
 function renderSvg(model, layout) {
   const diagram = buildDiagram(model);
   const scenes = viewNames(diagram).map((name) => buildScene(model, layout, name, diagram));
   const colorOf = (key) => PALETTE[layout.colors[key] % PALETTE.length];
+  const technical = technicalColumns(model);
   const { x, y, w, h } = scenes.find((s) => s.name === OVERVIEW).bounds;
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="${x} ${y} ${w} ${h}">`,
     `<style>${STYLE}</style>`,
-    ...scenes.map((s) => viewSvg(s, colorOf, s.name === OVERVIEW)),
+    ...scenes.map((s) => viewSvg(s, colorOf, s.name === OVERVIEW, technical)),
+    `<script type="application/json" id="open-erd-data">${scriptJson(viewerData(model, diagram, technical))}</script>`,
+    `<script><![CDATA[
+${VIEWER_SCRIPT}
+]]></script>`,
     "</svg>",
     ""
   ].join("\n");
