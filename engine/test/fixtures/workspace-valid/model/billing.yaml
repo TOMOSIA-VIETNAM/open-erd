@@ -1,0 +1,28 @@
+schema_version: 1
+database: billing
+engine: postgresql
+tables:
+  - id: billing.public.payments
+    domain: Billing
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: invoice_id, type: bigint, nullable: false }
+  - id: billing.public.invoices
+    domain: Billing
+    note: One invoice per customer per billing cycle.
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: user_id, type: bigint, nullable: false }
+      - name: status
+        type: varchar
+        enum:
+          draft: Created, not yet sent to customer
+          paid: Payment confirmed by gateway
+relations:
+  - from: { table: billing.public.payments, columns: [invoice_id] }
+    to: { table: billing.public.invoices, columns: [id] }
+    cardinality: n-1
+    optional: false
+    kind: db_fk
+    evidence: [db]
+    review: reviewed

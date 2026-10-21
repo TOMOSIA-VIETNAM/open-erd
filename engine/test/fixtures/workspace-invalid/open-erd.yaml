@@ -1,0 +1,3 @@
+schema_version: 1
+hub:
+  tables: [auth._.ghosts]

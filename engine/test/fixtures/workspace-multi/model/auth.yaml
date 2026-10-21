@@ -1,0 +1,64 @@
+schema_version: 1
+database: auth
+engine: postgresql
+tables:
+  - id: auth.public.users
+    domain: Identity
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: email, type: varchar(255), unique: true, pii: true }
+      - { name: status, type: varchar(16) }
+      - { name: created_at, type: timestamp with time zone }
+  - id: auth.public.user_profiles
+    domain: Identity
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: user_id, type: bigint, nullable: false }
+      - { name: display_name, type: varchar(80) }
+  - id: auth.public.roles
+    domain: Identity
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: name, type: varchar(40) }
+  - id: auth.public.permissions
+    domain: Identity
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: code, type: varchar(80) }
+  # Pure join table: drawn as one n-n line when collapse_join_tables is on.
+  - id: auth.public.role_permissions
+    domain: Identity
+    columns:
+      - { name: role_id, type: bigint, nullable: false }
+      - { name: permission_id, type: bigint, nullable: false }
+      - { name: created_at, type: timestamp with time zone }
+  - id: auth.public.organizations
+    domain: Organizations
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: name, type: varchar(120) }
+      - { name: created_by, type: bigint }
+  - id: auth.public.memberships
+    domain: Organizations
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: organization_id, type: bigint, nullable: false }
+      - { name: user_id, type: bigint, nullable: false }
+      - { name: role_id, type: bigint, nullable: false }
+  - id: auth.public.invitations
+    domain: Organizations
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: organization_id, type: bigint, nullable: false }
+      - { name: email, type: varchar(255), pii: true }
+      - { name: created_by, type: bigint }
+relations:
+  - { from: { table: auth.public.user_profiles, columns: [user_id] }, to: { table: auth.public.users, columns: [id] }, cardinality: 1-1, optional: false, kind: db_fk, evidence: [db], review: reviewed }
+  - { from: { table: auth.public.role_permissions, columns: [role_id] }, to: { table: auth.public.roles, columns: [id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: [db], review: reviewed }
+  - { from: { table: auth.public.role_permissions, columns: [permission_id] }, to: { table: auth.public.permissions, columns: [id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: [db], review: reviewed }
+  - { from: { table: auth.public.organizations, columns: [created_by] }, to: { table: auth.public.users, columns: [id] }, cardinality: n-1, optional: true, kind: declared, evidence: ["auth-service:app/models/organization.rb#Organization"], review: reviewed }
+  - { from: { table: auth.public.memberships, columns: [organization_id] }, to: { table: auth.public.organizations, columns: [id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: [db], review: reviewed }
+  - { from: { table: auth.public.memberships, columns: [user_id] }, to: { table: auth.public.users, columns: [id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: [db], review: reviewed }
+  - { from: { table: auth.public.memberships, columns: [role_id] }, to: { table: auth.public.roles, columns: [id] }, cardinality: n-1, optional: false, kind: inferred, evidence: ["auth-service:app/models/membership.rb#Membership"], review: pending }
+  - { from: { table: auth.public.invitations, columns: [organization_id] }, to: { table: auth.public.organizations, columns: [id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: [db], review: reviewed }
+  - { from: { table: auth.public.invitations, columns: [created_by] }, to: { table: auth.public.users, columns: [id] }, cardinality: n-1, optional: true, kind: declared, evidence: ["auth-service:app/models/invitation.rb#Invitation"], review: reviewed }
