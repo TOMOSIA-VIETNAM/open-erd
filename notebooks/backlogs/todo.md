@@ -41,7 +41,8 @@ Chi tiết từng task: `plan.md`. Đánh dấu `[x]` khi task pass verify.
 - [x] 11. Pattern đặc biệt (STI, view, partition, tenant, NoSQL embedded, replica)
   - Acceptance: field `sti`, `kind`/`sources`, `partition`, `unique` (nhiều cột), `generated_by`, `embedded`, `tenant_schemas`, `topology` trong schema + validator; renderer: tag «view», line nét đứt mờ tới source, dòng fact cuối box, inset box cho embedded (relation từ `entity.column`), chồng thẻ cho bảng tenant, pill trên khung DB; fixtures cập nhật; `layout` mang toạ độ + màu theo `renamed_from`; `--version`
   - Verify: `node --test test/views.test.js test/model.test.js test/stability.test.js test/cli.test.js` + PNG (`test/fixtures/workspace-patterns`, `fixtures/{mongoose,multi-db,rails}/expected`) + `scripts/verify-viewer.js`
-- [ ] Checkpoint B
+- [x] Checkpoint B
+  - Chrome: mọi tương tác qua `engine/scripts/verify-viewer.js`. Safari 18.1: SVG render và viewer khởi động (toolbar, search, mode hiện đúng); tương tác trên Safari chưa tự động hoá được vì cần bật "Allow remote automation" trong Safari Settings.
 
 ## Phase 3: Excel + diff + locked facts
 
@@ -75,4 +76,5 @@ Chi tiết từng task: `plan.md`. Đánh dấu `[x]` khi task pass verify.
   - Acceptance: `scripts/gen-large.js` sinh workspace tổng hợp deterministic (150 / 1000 bảng 3 DB / 500 tenant); 150 bảng render < 10 s, svg < 5 MB, 0 line xuyên box, 0 text tràn; 1000 bảng layout+render < 60 s, Overview hiện < 2 s trong Chrome (`scripts/time-overview.js`); view `all` bỏ khi > `ALL_VIEW_MAX_TABLES` bảng
   - Verify: `npm test` (150 bảng) + `npm run test:large` (1000 bảng, tenant) + `node scripts/time-overview.js <erd.svg>` + `scripts/verify-viewer.js`
 - [x] 22. README + dist cuối
-- [ ] Checkpoint E
+- [x] Checkpoint E
+  - Dự án thật nội bộ (Rails, 75 bảng trong `schema.rb`, bản copy `app/ db/ config/` không có credentials): `init` headless xong trong ~8 phút, $2.31 → 63 bảng / 3 DB / 74 quan hệ / 8 polymorphic, `validate` pass, source copy không đổi, viewer qua mọi bước. Nhiều cột `unknown` type vì schema thật nằm trong gem `shared` không được copy — AI tự phát hiện và đề nghị `sync` khi có gem đó.
