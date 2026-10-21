@@ -2,18 +2,73 @@ import { DB_LABEL_FONT, ENGINE_FONT, LABEL_FONT, LABEL_OFFSET, clusterLabel, dbL
 import { buildDiagram } from '../../layout/diagram.js';
 import { resolveView } from '../../layout/index.js';
 import { STUB, routeEdges } from '../../layout/router.js';
-import { GRID, BADGE_ARROW_WIDTH, BADGE_FONT, DOMAIN_COUNT_FONT, DOMAIN_TITLE_FONT, HEADER_HEIGHT, PADDING_X, attachOffset } from '../../layout/table-box.js';
+import { GRID, BADGE_ARROW_WIDTH, BADGE_FONT, DOMAIN_COUNT_FONT, DOMAIN_TITLE_FONT, HEADER_HEIGHT, PADDING_X, ROW_HEIGHT, attachOffset } from '../../layout/table-box.js';
 import { ALL_VIEW, OVERVIEW, viewNames } from '../../layout/views.js';
+import { technicalColumns } from '../../model/columns.js';
 import { compareStrings } from '../../model/load.js';
 import { measureText } from '../../text/measure.js';
 import { FONT_FAMILY, TEXT_STYLE_CSS, fontFaceCss } from '../../text/font.js';
 import { PALETTE } from '../../palette.js';
 import { endMarkers, markerSvg } from './markers.js';
+import viewerBundle from './viewer-bundle.json' with { type: 'json' };
 
 const CANVAS_MARGIN = 40;
 const CORNER = 6;
 const EDGE_LABEL_FONT = { size: 10, weight: 700 };
 const EDGE_LABEL_PAD = { x: 4, y: 3 };
+
+// Rules the embedded viewer script relies on. Without script none of these
+// classes is ever set, so the static drawing is unaffected.
+const VIEWER_STYLE = `.row-hit { fill: transparent; }
+.column:hover .row-hit { fill: #eef3fb; }
+.column.hl-column .row-hit { fill: #fff1b8; }
+.domain, .stub, .table, .poly, .relation-group, .hub-badge { cursor: pointer; }
+.relation-hit { fill: none; stroke: transparent; stroke-width: 12; }
+.view.dimmed :is(.table, .stub, .poly, .domain, .relation-group):not(.hl) { opacity: 0.16; }
+.hl > rect:last-of-type { stroke: #5b8def; stroke-width: 2; }
+.selected > rect:last-of-type { stroke: #1d4ed8; stroke-width: 3; }
+.flow-target > rect:last-of-type { stroke: #e8590c; stroke-width: 3; animation: oe-pulse 0.9s ease-in-out infinite alternate; }
+.relation-group.hl .relation, .relation-group.hl .marker { stroke: #2563eb; stroke-width: 2; }
+.relation-group.flowing .relation { stroke-opacity: 0.35; }
+.flow { fill: none; stroke: #2563eb; stroke-width: 3; stroke-dasharray: 6 10; pointer-events: none; animation: oe-flow 0.8s linear infinite; }
+.poly-route { fill: none; stroke: #a07a2c; stroke-width: 1.8; stroke-dasharray: 2 3; }
+@keyframes oe-flow { to { stroke-dashoffset: -16; } }
+@keyframes oe-pulse { to { stroke-width: 6; } }
+.business .column-type { display: none; }
+.business .column.technical { opacity: 0.18; }
+.oe-ui { font-family: '${FONT_FAMILY}', sans-serif; font-size: 13px; color: #1f2a3d; box-sizing: border-box; }
+.oe-ui * { box-sizing: border-box; }
+.oe-toolbar { display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 12px; background: #ffffff; border-bottom: 1px solid #d5dbe4; position: relative; }
+.oe-crumbs { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; }
+.oe-crumbs .sep { color: #9aa4b5; }
+.oe-crumbs .here { font-weight: 700; }
+.oe-link { color: #1d4ed8; cursor: pointer; background: none; border: 0; padding: 0; font: inherit; }
+.oe-link:hover { text-decoration: underline; }
+.oe-btn { font: inherit; padding: 4px 10px; border: 1px solid #c3cad5; border-radius: 6px; background: #ffffff; color: #1f2a3d; cursor: pointer; }
+.oe-btn:hover { background: #f1f4f8; }
+.oe-btn:disabled { color: #a7b0bf; cursor: default; background: #ffffff; }
+.oe-btn.on { background: #1f2a3d; border-color: #1f2a3d; color: #ffffff; }
+.oe-seg { display: flex; }
+.oe-seg .oe-btn { border-radius: 0; }
+.oe-seg .oe-btn:first-child { border-radius: 6px 0 0 6px; }
+.oe-seg .oe-btn:last-child { border-radius: 0 6px 6px 0; margin-left: -1px; }
+.oe-search { position: relative; }
+.oe-search input { font: inherit; width: 220px; padding: 5px 9px; border: 1px solid #c3cad5; border-radius: 6px; }
+.oe-results { position: absolute; top: 34px; right: 0; width: 360px; max-height: 360px; overflow: auto; background: #ffffff; border: 1px solid #c3cad5; border-radius: 6px; box-shadow: 0 6px 18px rgba(20, 30, 50, 0.15); }
+.oe-result { display: block; width: 100%; text-align: left; padding: 6px 10px; border: 0; background: none; font: inherit; cursor: pointer; }
+.oe-result:hover, .oe-result.active { background: #eef3fb; }
+.oe-result .where { color: #7a8597; font-size: 11px; }
+.oe-panel { background: #ffffff; border: 1px solid #c3cad5; border-radius: 8px; padding: 12px 14px; box-shadow: 0 6px 18px rgba(20, 30, 50, 0.12); overflow: auto; }
+.oe-panel h3 { margin: 0 0 4px; font-size: 14px; word-break: break-all; }
+.oe-panel .sub { color: #7a8597; font-size: 12px; margin-bottom: 8px; word-break: break-all; }
+.oe-panel .row { display: flex; gap: 6px; align-items: center; margin: 8px 0; }
+.oe-panel ul { margin: 4px 0 0; padding-left: 16px; }
+.oe-panel li { margin: 3px 0; word-break: break-all; }
+.oe-panel p { margin: 6px 0; }
+.oe-tip { background: #1f2a3d; color: #f4f6f9; border-radius: 6px; padding: 8px 10px; font-size: 12px; line-height: 1.45; max-width: 340px; display: inline-block; }
+.oe-tip b { color: #ffffff; }
+.oe-tip .muted { color: #aab4c4; }
+.oe-tip .pii { color: #ffb4a2; font-weight: 700; }`;
 
 // Line colour carries the review state, dash pattern the kind:
 //   reviewed grey, pending amber, stale red;
@@ -51,7 +106,8 @@ text { font-family: '${FONT_FAMILY}', sans-serif; ${TEXT_STYLE_CSS} }
 .review-stale .edge-label text { fill: #a61f1f; }
 .kind-inferred.review-pending .relation, .kind-inferred.review-stale .relation { stroke-dasharray: 6 4; }
 .kind-cross_db .relation { stroke-dasharray: 10 3 2 3 2 3; }
-.kind-polymorphic .relation { stroke-dasharray: 2 3; }`;
+.kind-polymorphic .relation { stroke-dasharray: 2 3; }
+${VIEWER_STYLE}`;
 
 function escapeXml(text) {
   return text.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
@@ -175,6 +231,32 @@ function spreadEnds(links, byId) {
   return offsets;
 }
 
+// Routes from every polymorphic node to each of its targets drawn in the
+// view (as a table or a stub), attached at the target's first primary key
+// row: the id column points there. The viewer cannot route, so these are
+// computed here and shown on click.
+// ponytail: routed in a second pass that does not see the relation lines, so
+// a target line may run on top of one; fold them into the main pass if that
+// reads badly on real schemas.
+function routePolyTargets(nodes, byId, obstacles, groups) {
+  const edges = [];
+  const ends = [];
+  for (const n of nodes.filter((x) => x.kind === 'poly')) {
+    for (const target of n.node.association.targets) {
+      const t = byId.get(target);
+      if (!t) continue;
+      const column = t.kind === 'table' ? (t.node.table.columns.find((c) => c.pk) ?? t.node.table.columns[0]).name : null;
+      edges.push({
+        id: `${n.id}->${target}`,
+        from: { box: nodeRect(n), y: n.y + attachOffset(n.box, null), marker: 'none' },
+        to: { box: nodeRect(t), y: t.y + attachOffset(t.box, column), marker: 'none' },
+      });
+      ends.push({ poly: n.id, target });
+    }
+  }
+  return routeEdges(obstacles, groups.map((g) => g.frame), edges).map((r, i) => ({ ...ends[i], points: r.points }));
+}
+
 /**
  * Everything one view draws, with absolute coordinates: nodes, group frames,
  * routed lines with their end markers and labels. Kept separate from the SVG
@@ -201,6 +283,7 @@ export function buildScene(model, layout, name = ALL_VIEW, diagram = buildDiagra
   const routes = routeEdges(obstacles, view.groups.map((g) => g.frame), edges);
   const labelsOf = placeLabels(routes, view.links.map((link) => labelText(name, link)));
   const relations = view.links.map((link, i) => ({ link, ...routes[i], markers: markers[i], label: labelsOf[i] }));
+  const polyRoutes = routePolyTargets(view.nodes, byId, obstacles, view.groups);
 
   // Lines may detour outside every frame, so they count towards the canvas.
   const xs = [];
@@ -209,7 +292,7 @@ export function buildScene(model, layout, name = ALL_VIEW, diagram = buildDiagra
     xs.push(b.x, b.x + b.w);
     ys.push(b.y, b.y + b.h);
   }
-  for (const [px, py] of relations.flatMap((r) => r.points)) {
+  for (const [px, py] of [...relations, ...polyRoutes].flatMap((r) => r.points)) {
     xs.push(px);
     ys.push(py);
   }
@@ -217,7 +300,7 @@ export function buildScene(model, layout, name = ALL_VIEW, diagram = buildDiagra
   const y0 = Math.min(...ys) - CANVAS_MARGIN;
   const x1 = Math.max(...xs) + CANVAS_MARGIN;
   const y1 = Math.max(...ys) + CANVAS_MARGIN;
-  return { name, nodes: view.nodes, groups: view.groups, labels, relations, bounds: { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } };
+  return { name, nodes: view.nodes, groups: view.groups, labels, relations, polyRoutes, bounds: { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } };
 }
 
 function textEl(cls, x, y, fitted, anchor) {
@@ -235,12 +318,18 @@ function headerPath(x, y, w, fill) {
   );
 }
 
-function tableSvg(n, colors) {
+// Each row is a group so the viewer can show the column's details on hover
+// (the transparent rect makes the whole row hoverable) and fade technical
+// columns in Business mode.
+function tableSvg(n, colors, technical) {
   const { x, y, w, h, box } = n;
   const rows = box.rows.map((r) =>
     [
+      `<g class="${technical.has(r.column) ? 'column technical' : 'column'}" data-column="${escapeXml(r.column)}">`,
+      `<rect class="row-hit" x="${x}" y="${y + r.centerY - ROW_HEIGHT / 2}" width="${w}" height="${ROW_HEIGHT}"/>`,
       textEl(r.pk ? 'column-name pk' : 'column-name', x + PADDING_X, y + r.centerY, r.name),
       textEl('column-type', x + w - PADDING_X, y + r.centerY, r.type, 'end'),
+      '</g>',
     ].join(''),
   );
   const badges = box.badges.map((b) => {
@@ -332,9 +421,11 @@ function groupSvg(g, colorOf) {
   );
 }
 
+const pathData = (points) => points.map(([px, py], i) => `${i === 0 ? 'M' : 'L'}${px} ${py}`).join('');
+
 function relationSvg(r) {
   const { link } = r;
-  const d = r.points.map(([px, py], i) => `${i === 0 ? 'M' : 'L'}${px} ${py}`).join('');
+  const d = pathData(r.points);
   const [first, last] = [r.points[0], r.points[r.points.length - 1]];
   const markers =
     r.markers.from === 'none'
@@ -353,10 +444,28 @@ function relationSvg(r) {
   );
 }
 
-function viewSvg(scene, colorOf, visible) {
+// Lines from a polymorphic node to each of its targets in the view, hidden
+// until the viewer shows them on click.
+function polyRoutesSvg(routes) {
+  const byPoly = new Map();
+  for (const r of routes) {
+    if (!byPoly.has(r.poly)) byPoly.set(r.poly, []);
+    byPoly.get(r.poly).push(r);
+  }
+  return [...byPoly]
+    .map(
+      ([poly, list]) =>
+        `<g class="poly-routes" data-poly="${escapeXml(poly)}" style="display:none">` +
+        list.map((r) => `<path class="poly-route" data-target="${escapeXml(r.target)}" d="${pathData(r.points)}"/>`).join('') +
+        '</g>',
+    )
+    .join('');
+}
+
+function viewSvg(scene, colorOf, visible, technical) {
   const { x, y, w, h } = scene.bounds;
   const nodes = scene.nodes.map((n) => {
-    if (n.kind === 'table') return tableSvg(n, colorOf(n.node.cluster));
+    if (n.kind === 'table') return tableSvg(n, colorOf(n.node.cluster), technical.get(n.id));
     if (n.kind === 'poly') return polySvg(n);
     if (n.kind === 'stub') return stubSvg(n);
     return domainSvg(n, colorOf(n.id));
@@ -368,10 +477,64 @@ function viewSvg(scene, colorOf, visible) {
     `<g class="view" data-view="${escapeXml(scene.name)}" data-bounds="${x} ${y} ${w} ${h}"${hidden}>`,
     `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="#ffffff"/>`,
     `<g class="groups">${scene.groups.map((g) => groupSvg(g, colorOf)).join('')}</g>`,
-    `<g class="relations">${scene.relations.map(relationSvg).join('')}</g>`,
+    `<g class="relations">${scene.relations.map(relationSvg).join('')}${polyRoutesSvg(scene.polyRoutes)}</g>`,
     `<g class="nodes">${nodes.join('')}</g>`,
     '</g>',
   ].join('\n');
+}
+
+// The viewer bundle is generated by scripts/bundle-viewer.js; a CDATA
+// section cannot contain its own terminator.
+const VIEWER_SCRIPT = viewerBundle.source;
+if (VIEWER_SCRIPT.includes(']]>')) throw new Error('viewer bundle contains "]]>" and cannot sit in a CDATA section');
+
+// JSON inside an XML element: escaping <, > and & as \u escapes keeps it
+// valid JSON and leaves nothing for the XML parser to interpret.
+const scriptJson = (value) => JSON.stringify(value).replace(/[<>&]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
+
+/**
+ * What the viewer needs beyond the drawing: every node's details (for
+ * tooltips, search and panels) and every drawn relation (for the
+ * neighborhood view, which spans domains). Keys are written in a fixed
+ * order and lists come from the sorted model, so the text is deterministic.
+ */
+export function viewerData(model, diagram, technical = technicalColumns(model)) {
+  const nodes = {};
+  for (const id of [...diagram.nodes.keys()].sort(compareStrings)) {
+    const n = diagram.nodes.get(id);
+    if (n.kind === 'poly') {
+      const a = n.association;
+      nodes[id] = { kind: 'poly', cluster: n.cluster, table: a.table, name: a.name, typeColumn: a.type_column, idColumn: a.id_column, targets: a.targets };
+      continue;
+    }
+    const t = n.table;
+    nodes[id] = {
+      kind: 'table',
+      cluster: n.cluster,
+      ...(t.note ? { note: t.note } : {}),
+      columns: t.columns.map((c) => ({
+        name: c.name,
+        type: c.type,
+        ...(c.nullable === undefined ? {} : { nullable: c.nullable }),
+        ...(c.pk ? { pk: true } : {}),
+        ...(c.unique ? { unique: true } : {}),
+        ...(c.pii ? { pii: true } : {}),
+        ...(technical.get(id).has(c.name) ? { technical: true } : {}),
+        ...(c.enum ? { enum: c.enum } : {}),
+        ...(c.note ? { note: c.note } : {}),
+      })),
+    };
+  }
+  const links = diagram.links.map((l) => ({
+    id: l.id,
+    from: l.from.node,
+    to: l.to.node,
+    cardinality: l.cardinality,
+    kind: l.kind,
+    review: l.review,
+    ...(l.via ? { via: l.via } : {}),
+  }));
+  return { nodes, links };
 }
 
 /** Static SVG holding every view; the overview is the one visible. */
@@ -380,11 +543,14 @@ export function renderSvg(model, layout) {
   const scenes = viewNames(diagram).map((name) => buildScene(model, layout, name, diagram));
   // Indices past the palette cycle, which only happens once every tint is taken.
   const colorOf = (key) => PALETTE[layout.colors[key] % PALETTE.length];
+  const technical = technicalColumns(model);
   const { x, y, w, h } = scenes.find((s) => s.name === OVERVIEW).bounds;
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="${x} ${y} ${w} ${h}">`,
     `<style>${STYLE}</style>`,
-    ...scenes.map((s) => viewSvg(s, colorOf, s.name === OVERVIEW)),
+    ...scenes.map((s) => viewSvg(s, colorOf, s.name === OVERVIEW, technical)),
+    `<script type="application/json" id="open-erd-data">${scriptJson(viewerData(model, diagram, technical))}</script>`,
+    `<script><![CDATA[\n${VIEWER_SCRIPT}\n]]></script>`,
     '</svg>',
     '',
   ].join('\n');

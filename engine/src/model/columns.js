@@ -1,0 +1,37 @@
+// Column types that hold a point in time. Matched on type, not name, because
+// stacks name them differently (created_at, inserted_at, createdAt).
+export const TIMESTAMP_TYPE = /^(timestamp|timestamptz|datetime|date|time)\b/i;
+
+/**
+ * Columns a business reader does not need, per table id: Business mode in the
+ * viewer fades them out. A column is technical when it is
+ *   - a primary key column,
+ *   - an end of a relation (referencing or referenced, hub relations included),
+ *   - the type or id column of a polymorphic association, or
+ *   - timestamp-typed (created_at, updated_at, ...).
+ * Keys are how tables connect, and the diagram already shows that as lines;
+ * bookkeeping timestamps say nothing about the business. A column with an
+ * enum or a note is never technical: somebody documented what it means, so
+ * an author keeps a meaningful timestamp (paid_at) visible by giving it a note.
+ */
+export function technicalColumns(model) {
+  const keys = new Map(model.tables.map((t) => [t.id, new Set()]));
+  const add = (table, columns) => {
+    for (const c of columns) keys.get(table)?.add(c);
+  };
+  for (const r of model.relations) {
+    add(r.from.table, r.from.columns);
+    add(r.to.table, r.to.columns);
+  }
+  for (const a of model.polymorphic) add(a.table, [a.type_column, a.id_column]);
+  return new Map(
+    model.tables.map((t) => [
+      t.id,
+      new Set(
+        t.columns
+          .filter((c) => !c.enum && !c.note && (c.pk || keys.get(t.id).has(c.name) || TIMESTAMP_TYPE.test(c.type)))
+          .map((c) => c.name),
+      ),
+    ]),
+  );
+}

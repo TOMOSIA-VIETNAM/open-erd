@@ -121,7 +121,15 @@ Plugin (user gõ trong Claude Code):
 /open-erd:render    # xuất out/erd.svg, out/erd.xlsx (không gọi LLM)
 /open-erd:diff      # so 2 snapshot → out/diff.svg + sheet Changes
 /open-erd:snapshot  # tạo git tag trong workspace
+/open-erd:feedback <nội dung>  # tạo GitHub issue trên repo open-erd để góp ý / báo lỗi
 ```
+
+`/open-erd:feedback`:
+- Tạo issue trên repo `TOMOSIA-VIETNAM/open-erd` qua `gh` (account của người dùng). Không có `gh` hoặc chưa đăng nhập → in sẵn tiêu đề + nội dung và link tạo issue thủ công.
+- Body gồm nội dung góp ý, phiên bản plugin/engine, OS, lệnh vừa chạy. **Không** tự đính kèm model, tên bảng, đường dẫn hay dữ liệu dự án; muốn đính kèm thì người dùng tự thêm.
+- Luôn hiện bản nháp và xin xác nhận trước khi tạo issue (hành động ra bên ngoài).
+
+Cuối mỗi lần `init`, `sync`, `review`, `render`, `diff` hoàn tất, skill in 1 dòng gợi ý: `Góp ý / báo lỗi: /open-erd:feedback <nội dung>`.
 
 Chỉnh sửa nội dung/vị trí: user nói bằng lời, AI sửa `model/*.yaml` hoặc `layout.json`, chạy `layout` rồi `render`.
 
@@ -244,7 +252,7 @@ export function normalizeModel(model) {
 ## Boundaries
 
 - **Always**: sort input trước layout/render; ghi evidence cho mọi quan hệ AI suy ra; `npm test` trước commit; không đổi/xoá fact `reviewed` khi chưa có user xác nhận; profile lọc dữ liệu trước khi render.
-- **Ask first**: chọn vị trí workspace; chạy extract script lần đầu và sau mỗi lần sửa; đọc DB (từng lần); xác nhận rename; xoá fact `stale`; push lên remote; thêm dependency; đổi schema model.
+- **Ask first**: tạo issue feedback; chọn vị trí workspace; chạy extract script lần đầu và sau mỗi lần sửa; đọc DB (từng lần); xác nhận rename; xoá fact `stale`; push lên remote; thêm dependency; đổi schema model.
 - **Never**: ghi credentials vào workspace; đọc data rows; ghi bất cứ gì vào repo nguồn; boot app nguồn trong script extract; để LLM sinh SVG/XLSX trực tiếp; xoá test đang fail để cho pass.
 
 ## Success Criteria

@@ -2,7 +2,8 @@
 // so each view can be checked by eye. Only the overview is visible in the
 // file itself; for each view this writes a copy where that view is the
 // visible one and the root viewBox is the view's data-bounds, then
-// screenshots the copy.
+// screenshots the copy. The embedded viewer script is left out of the copies:
+// it would take over the page and show its own toolbar and fitted view.
 // Usage: node scripts/screenshot-views.js <erd.svg> <out dir>   (CHROME_PATH overrides the binary)
 import { execFile } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -25,6 +26,7 @@ function showView(svg, name) {
   if (!match) throw new Error(`no view "${name}"`);
   const [x, y, w, h] = match[2].split(' ');
   return svg
+    .replace(/<script[\s\S]*?<\/script>\n?/g, '')
     .replace(/<svg [^>]*>/, `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="${x} ${y} ${w} ${h}">`)
     .replace(/(<g class="view" data-view="([^"]+)" data-bounds="[^"]+")( style="display:none")?>/g, (_, head, view) =>
       view === name ? `${head}>` : `${head} style="display:none">`,

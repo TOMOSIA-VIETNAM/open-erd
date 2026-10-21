@@ -29,8 +29,12 @@ Chi tiết từng task: `plan.md`. Đánh dấu `[x]` khi task pass verify.
 - [x] 7. Multi-DB + Overview + Domain view
   - Acceptance: khung DB (engine) chứa domain; view `overview` (số quan hệ giữa domain), `all`, `domain:<db>/<domain>` (stub cạnh domain); `layout.json` theo view, 3 luật ổn định cho từng view; 1 SVG, không JS chỉ hiện overview
   - Verify: `node --test test/views.test.js test/stability.test.js test/layout.test.js` + PNG mọi view
-- [ ] 8. Viewer script (click, animation, search, modes, no-JS fallback)
-- [ ] 9. Neighborhood radial
+- [x] 8. Viewer script (click, animation, search, modes, no-JS fallback)
+  - Acceptance: viewer bundle (`src/render/svg/viewer/`, sinh bằng `npm run bundle-viewer`) + data JSON nhúng trong SVG, deterministic; chuyển view, click bảng/line/stub/polymorphic, tooltip cột, search, Business/Technical, pan/zoom, Esc; tắt JS vẫn thấy Overview
+  - Verify: `node --test test/viewer.test.js` + `node scripts/verify-viewer.js <erd.svg> <dir>` (Chrome headless, kiểm từng bước + console không lỗi). Safari chưa kiểm
+- [x] 9. Neighborhood radial
+  - Acceptance: double-click bảng hoặc nút trong panel → bảng + 1/2 hop, layout radial client-side không chồng box (N ≤ 40), Back về view trước
+  - Verify: `node --test test/viewer.test.js` + `scripts/verify-viewer.js`
 - [ ] 10. Profile public + determinism 100× + geometry tests
 - [ ] 11. Pattern đặc biệt (STI, view, partition, tenant, NoSQL embedded, replica)
 - [ ] Checkpoint B
@@ -45,10 +49,11 @@ Chi tiết từng task: `plan.md`. Đánh dấu `[x]` khi task pass verify.
 
 ## Phase 4: Plugin skills
 
-- [ ] 16. Fixtures nguồn + expected.yaml
-- [ ] 17. Skill init
-- [ ] 18. Skill sync + review
-- [ ] 19. Skill render / diff / snapshot
+- [x] 16. Fixtures nguồn + expected.yaml
+- [x] 17. Skill init
+- [x] 18. Skill sync + review
+- [x] 19. Skill render / diff / snapshot
+- [x] 19b. Skill feedback (gh issue, bản nháp + xác nhận, không đính kèm dữ liệu dự án) + dòng gợi ý cuối mỗi skill
 - [ ] 20. Eval
 - [ ] Checkpoint D
 

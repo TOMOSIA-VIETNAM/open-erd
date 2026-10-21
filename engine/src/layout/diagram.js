@@ -1,3 +1,4 @@
+import { TIMESTAMP_TYPE } from '../model/columns.js';
 import { compareStrings } from '../model/load.js';
 import { clusterKey } from './clusters.js';
 import { polyBox, tableBox } from './table-box.js';
@@ -5,11 +6,6 @@ import { polyBox, tableBox } from './table-box.js';
 // What the diagram draws, derived from the model once so layout and render
 // can never disagree on it: which tables are boxes, which relations are
 // lines, which become hub badges, and the virtual polymorphic nodes.
-
-// Columns a join table may carry besides its two foreign keys and still count
-// as "pure". Matched on type, not name, because stacks name them differently
-// (created_at, inserted_at, createdAt).
-const TIMESTAMP_TYPE = /^(timestamp|timestamptz|datetime|date|time)\b/i;
 
 // When one drawn line stands for several relations it takes the least
 // certain kind and review state among them, so collapsing never hides doubt.
@@ -52,7 +48,8 @@ function hubBadges(hubRelations) {
   return badges;
 }
 
-// Tables made of exactly two n-1 foreign keys (plus timestamps) that nothing
+// Tables made of exactly two n-1 foreign keys (plus timestamp columns, which a
+// join table may carry and still count as "pure") that nothing
 // references, that own no polymorphic association, and whose keys are drawn
 // as lines (a key to a hub stays a badge, so its table is kept).
 function joinTables(model, drawn) {

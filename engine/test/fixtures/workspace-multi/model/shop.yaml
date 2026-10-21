@@ -34,11 +34,18 @@ tables:
       - { name: tag_id, type: bigint, nullable: false }
   - id: shop._.orders
     domain: Orders
+    note: One order per checkout; the basket becomes order items.
     columns:
       - { name: id, type: bigint, pk: true }
       - { name: user_id, type: bigint, nullable: false }
       - { name: organization_id, type: bigint, nullable: true }
-      - { name: status, type: varchar(16) }
+      - name: status
+        type: varchar(16)
+        note: Lifecycle of the order; only paid orders are shipped.
+        enum:
+          pending: Created, waiting for payment
+          paid: Payment confirmed by the gateway
+          cancelled: Cancelled by the customer or by timeout
       - { name: placed_at, type: datetime }
   - id: shop._.order_items
     domain: Orders

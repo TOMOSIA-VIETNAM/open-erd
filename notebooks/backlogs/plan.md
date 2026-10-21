@@ -67,6 +67,7 @@ scaffold
 - Task 17: Skill `init` (hỏi vị trí, git init, viết extract script Node chỉ đọc file, xin phép chạy, chia domain, layout + render)
 - Task 18: Skill `sync` (chạy extract, cập nhật, rename, stale, commit) + `review`
 - Task 19: Skill `render`, `diff`, `snapshot`
+- Task 19b: Skill `feedback` (tạo GitHub issue trên repo open-erd sau khi xác nhận; không đính kèm dữ liệu dự án) + dòng gợi ý feedback cuối các skill
 - Task 20: Eval: chấm precision/recall (deterministic), runner gọi Claude headless chỉ khi user chạy
 
 **Checkpoint D** — chạy `init` → `sync` → `review` → `render` → `snapshot` → `diff` trên 1 fixture end-to-end.
