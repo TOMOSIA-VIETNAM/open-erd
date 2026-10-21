@@ -76,6 +76,7 @@ npm ci
 npm test              # unit, geometry, stability and determinism tests
 npm run test:large    # 1000-table and 500-tenant scale tests
 npm run build         # bundles the engine to dist/open-erd.mjs (committed)
+npm run eval          # runs Claude headless on every fixture and scores it (costs API usage; see evals/README.md)
 ```
 
 `fixtures/` holds small sample apps per stack with hand-written expected

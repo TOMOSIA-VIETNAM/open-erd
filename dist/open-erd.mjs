@@ -170358,7 +170358,8 @@ var package_default = {
     build: `node scripts/bundle-viewer.js && esbuild cli.js --bundle --platform=node --format=esm --target=node20 --outfile=../dist/open-erd.mjs "--banner:js=import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);"`,
     "build-metrics": "node scripts/build-metrics.js",
     "measure-chrome": "node scripts/measure-chrome.js",
-    "bundle-viewer": "node scripts/bundle-viewer.js"
+    "bundle-viewer": "node scripts/bundle-viewer.js",
+    eval: "node ../evals/run.mjs"
   },
   dependencies: {
     elkjs: "0.12.0",
