@@ -87,7 +87,9 @@ node <plugin root>/dist/open-erd.mjs layout   --workspace <ws>
 node <plugin root>/dist/open-erd.mjs render   --workspace <ws>
 ```
 
-Tell the user which nodes `layout` reports as moved.
+`validate` reporting a locked fact as missing or changed means step 5 missed
+it: restore it or mark it `stale`. Never run `lock` in sync. Tell the user
+which nodes `layout` reports as moved.
 
 ## 7. Commit and report
 

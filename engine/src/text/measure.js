@@ -2,7 +2,7 @@ import metrics from './inter-metrics.json' with { type: 'json' };
 
 // CJK glyphs come from the viewer's fallback font, not Inter; counting them as
 // one em is the widest they render, so boxes never overflow.
-const FULL_WIDTH = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}　-〿！-｠￠-￦]/u;
+export const FULL_WIDTH = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}　-〿！-｠￠-￦]/u;
 const ELLIPSIS = '…';
 
 // Characters outside the subset also render in a fallback font with unknown

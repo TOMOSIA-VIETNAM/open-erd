@@ -12,7 +12,8 @@ export function compareStrings(a, b) {
 
 const MODEL_FILE = /^model\/[^/]+\.yaml$/;
 
-function parseYaml(file, text, errors) {
+/** Parsed YAML of `file`, or undefined after pushing its syntax errors. */
+export function parseYaml(file, text, errors) {
   const doc = parseDocument(text);
   if (doc.errors.length > 0) {
     for (const e of doc.errors) {

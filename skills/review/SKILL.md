@@ -44,12 +44,16 @@ A `stale` item the user says is still right becomes `reviewed` again with the
 current evidence. Deleting a `stale` item always needs that explicit
 confirmation.
 
-Save the YAML after each answer, so stopping keeps the progress.
+Save the YAML after each answer, so stopping keeps the progress. When a
+confirmed correction or deletion touches a fact listed in
+`tests/locked.yaml`, remove that entry too (`lock` below re-adds it with the
+corrected values).
 
 ## 3. Finish
 
 ```bash
 node <plugin root>/dist/open-erd.mjs validate --workspace <ws>
+node <plugin root>/dist/open-erd.mjs lock     --workspace <ws>
 node <plugin root>/dist/open-erd.mjs layout   --workspace <ws>
 node <plugin root>/dist/open-erd.mjs render   --workspace <ws>
 ```

@@ -1,12 +1,15 @@
 #!/usr/bin/env node
-import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { execFile } from 'node:child_process';
+import { mkdir, readFile, readdir, realpath, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { parseArgs } from 'node:util';
+import { parseArgs, promisify } from 'node:util';
 import pkg from './package.json' with { type: 'json' };
-import { CONFIG_FILE } from './src/model/schema.js';
+import { CONFIG_FILE, LOCKED_FILE } from './src/model/schema.js';
 import { formatError, parseWorkspace } from './src/model/load.js';
+import { checkLocked, lockFacts, parseLocked, serializeLocked } from './src/model/lock.js';
 import { applyProfile } from './src/model/profile.js';
+import { buildWorkbook, serializeWorkbook } from './src/render/xlsx/workbook.js';
 import { checkLayout, computeLayout, formatReport } from './src/layout/index.js';
 import { LAYOUT_FILE, parseLayout, serializeLayout } from './src/layout/layout-file.js';
 import { renderSvg } from './src/render/svg/render.js';
@@ -14,9 +17,15 @@ import { renderSvg } from './src/render/svg/render.js';
 const COMMANDS = {
   validate: {
     usage: 'validate --workspace <dir>',
-    summary: 'check open-erd.yaml and model/*.yaml against the model schema',
+    summary: `check open-erd.yaml and model/*.yaml against the model schema, and that every fact in ${LOCKED_FILE} is still there unchanged or marked stale`,
     options: { workspace: { type: 'string' } },
     run: runValidate,
+  },
+  lock: {
+    usage: 'lock --workspace <dir>',
+    summary: `rewrite ${LOCKED_FILE} from the reviewed facts (keeps entries of stale facts); refuses while the model breaks the current file`,
+    options: { workspace: { type: 'string' } },
+    run: runLock,
   },
   layout: {
     usage: 'layout --workspace <dir>',
@@ -26,7 +35,7 @@ const COMMANDS = {
   },
   render: {
     usage: 'render --workspace <dir> [--profile <name>]',
-    summary: 'write out/erd.svg (out/erd.<profile>.svg with a sharing profile) from the model and layout.json; never writes layout.json',
+    summary: 'write out/erd.svg and out/erd.xlsx (out/erd.<profile>.svg and .xlsx with a sharing profile) from the model and layout.json; never writes layout.json',
     options: { workspace: { type: 'string' }, profile: { type: 'string' } },
     run: runRender,
   },
@@ -81,10 +90,66 @@ async function readLayout(workspace) {
   return parseLayout(text);
 }
 
+// Returns the parsed lock file, `null` when it is invalid (errors printed),
+// or undefined when the workspace has none yet.
+async function readLocked(workspace) {
+  let text;
+  try {
+    text = await readFile(join(workspace, LOCKED_FILE), 'utf8');
+  } catch (e) {
+    if (e.code === 'ENOENT') return undefined;
+    throw e;
+  }
+  const { locked, errors } = parseLocked(text);
+  for (const e of errors) console.error(formatError(e));
+  return locked;
+}
+
 async function runValidate({ workspace }) {
-  if (!(await loadModel(workspace))) return 1;
-  console.log(`${workspace}: valid`);
+  const model = await loadModel(workspace);
+  const locked = await readLocked(workspace);
+  if (!model || locked === null) return 1;
+  const broken = checkLocked(model, locked);
+  for (const e of broken) console.error(formatError(e));
+  if (broken.length > 0) {
+    console.error(`${broken.length} locked fact(s) changed or missing`);
+    return 1;
+  }
+  console.log(`${workspace}: valid${locked ? `, ${locked.relations?.length ?? 0} locked relation(s) and ${locked.polymorphic?.length ?? 0} polymorphic association(s) intact` : ''}`);
   return 0;
+}
+
+async function runLock({ workspace }) {
+  const model = await loadModel(workspace);
+  const previous = await readLocked(workspace);
+  if (!model || previous === null) return 1;
+  const locked = lockFacts(model, previous);
+  const file = join(workspace, LOCKED_FILE);
+  await mkdir(dirname(file), { recursive: true });
+  await writeFile(file, serializeLocked(locked));
+  console.log(`wrote ${file}: ${locked.relations.length} relation(s), ${locked.polymorphic.length} polymorphic association(s)`);
+  return 0;
+}
+
+// Fixed date for a workspace without its own git history (zip's own epoch).
+const NO_HISTORY_DATE = new Date('1980-01-01T00:00:00Z');
+
+/**
+ * Created/modified time written into the xlsx: the commit time of the
+ * workspace's HEAD, so the file says which state of the model it shows while
+ * rendering the same commit twice gives the same bytes. A folder that is not
+ * the root of its own repository (a fixture inside another repo, no git
+ * installed, no commit yet) gets NO_HISTORY_DATE: the time of an unrelated
+ * repository would change the bytes without the model changing.
+ */
+async function workspaceDate(workspace) {
+  const git = (...args) => promisify(execFile)('git', ['-C', workspace, ...args]).then((r) => r.stdout.trim());
+  try {
+    if ((await git('rev-parse', '--show-toplevel')) !== (await realpath(workspace))) return NO_HISTORY_DATE;
+    return new Date(Number(await git('log', '-1', '--format=%ct')) * 1000);
+  } catch {
+    return NO_HISTORY_DATE;
+  }
 }
 
 async function runLayout({ workspace }) {
@@ -107,18 +172,22 @@ async function runRender({ workspace, profile }) {
     return 1;
   }
   let svg;
+  let shown = model;
   if (profile === undefined) {
     svg = renderSvg(model, layout);
   } else {
     // Positions come from the layout of the full model, so check that one;
     // the filtered model is drawn at those positions (see resolveView).
     checkLayout(model, layout);
-    svg = renderSvg(applyProfile(model, profile), layout, { fitStored: true });
+    shown = applyProfile(model, profile);
+    svg = renderSvg(shown, layout, { fitStored: true });
   }
-  const file = join(workspace, 'out', profile === undefined ? 'erd.svg' : `erd.${profile}.svg`);
+  const xlsx = await serializeWorkbook(buildWorkbook(shown), { date: await workspaceDate(workspace) });
+  const base = join(workspace, 'out', profile === undefined ? 'erd' : `erd.${profile}`);
   await mkdir(join(workspace, 'out'), { recursive: true });
-  await writeFile(file, svg);
-  console.log(`wrote ${file}${profile === undefined ? '' : ` (profile ${profile})`}`);
+  await writeFile(`${base}.svg`, svg);
+  await writeFile(`${base}.xlsx`, xlsx);
+  console.log(`wrote ${base}.svg and ${base}.xlsx${profile === undefined ? '' : ` (profile ${profile})`}`);
   return 0;
 }
 

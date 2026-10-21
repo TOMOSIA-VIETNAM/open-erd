@@ -291,3 +291,18 @@ export const PROFILE_DEFAULTS = {
   hide: { tables: [], columns: [] },
 };
 export const BUILT_IN_PROFILES = { public: {} };
+
+// tests/locked.yaml: the reviewed facts `validate` protects, written by the
+// `lock` command from the model. Data only; each entry carries the
+// identity of a fact and the attributes a reviewer confirmed. Evidence is
+// left out: code moves while the fact stays true.
+export const LOCKED_FILE = 'tests/locked.yaml';
+const lockedFields = (spec) => Object.fromEntries(Object.entries(spec.fields).filter(([key]) => key !== 'evidence' && key !== 'review'));
+export const lockedFileSchema = {
+  type: 'object',
+  fields: {
+    schema_version: schemaVersion,
+    relations: { type: 'array', items: { type: 'object', fields: lockedFields(relation) } },
+    polymorphic: { type: 'array', items: { type: 'object', fields: lockedFields(polymorphic) } },
+  },
+};

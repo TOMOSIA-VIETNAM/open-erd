@@ -11,7 +11,9 @@ import { parseWorkspace } from '../src/model/load.js';
 import { applyProfile, resolveProfile } from '../src/model/profile.js';
 import { PROFILE_DEFAULTS } from '../src/model/schema.js';
 import { renderSvg } from '../src/render/svg/render.js';
+import { buildWorkbook, serializeWorkbook } from '../src/render/xlsx/workbook.js';
 import { loadWorkspace } from './helpers/shop.js';
+import { xlsxParts } from './helpers/xlsx.js';
 
 const CLI = fileURLToPath(new URL('../cli.js', import.meta.url));
 const PATTERNS = fileURLToPath(new URL('./fixtures/workspace-patterns', import.meta.url));
@@ -33,22 +35,33 @@ async function renders() {
   return { model, layout, full: renderSvg(model, layout), shared: renderSvg(applyProfile(model, 'public'), layout, { fitStored: true }) };
 }
 
-test('public output holds no hidden table, hidden or PII column, evidence or internal note', async () => {
-  const { model, full, shared } = await renders();
-  const evidence = [...new Set([...model.relations, ...model.polymorphic].flatMap((f) => f.evidence))];
-  assert.ok(evidence.length > 0);
-  for (const [what, text] of Object.entries(SECRETS)) {
-    assert.ok(full.includes(text), `full render lacks ${what}, so the check below proves nothing`);
-    assert.ok(!shared.includes(text), `public render leaks ${what}: ${text}`);
-  }
-  for (const e of evidence) {
-    assert.ok(full.includes(e), `full render lacks evidence ${e}`);
-    assert.ok(!shared.includes(e), `public render leaks evidence ${e}`);
-  }
-  // Business notes and enum meanings are what the shared file is for.
-  assert.ok(shared.includes('Customers and vendors of one tenant, in one table.'));
-  assert.ok(shared.includes('Buys products (Customer)'));
-});
+// Every XML part of the workbook, concatenated: shared strings, sheets,
+// hyperlink targets and document properties.
+async function xlsxText(model) {
+  const parts = xlsxParts(await serializeWorkbook(buildWorkbook(model), { date: new Date(0) }));
+  // XML escapes the quotes and ampersands a secret might contain.
+  return Object.values(parts).join('\n').replaceAll('&quot;', '"').replaceAll('&amp;', '&').replaceAll('&apos;', "'");
+}
+
+for (const output of ['svg', 'xlsx']) {
+  test(`public ${output} holds no hidden table, hidden or PII column, evidence or internal note`, async () => {
+    const { model, full: fullSvg, shared: sharedSvg } = await renders();
+    const [full, shared] = output === 'svg' ? [fullSvg, sharedSvg] : [await xlsxText(model), await xlsxText(applyProfile(model, 'public'))];
+    const evidence = [...new Set([...model.relations, ...model.polymorphic].flatMap((f) => f.evidence))];
+    assert.ok(evidence.length > 0);
+    for (const [what, text] of Object.entries(SECRETS)) {
+      assert.ok(full.includes(text), `full render lacks ${what}, so the check below proves nothing`);
+      assert.ok(!shared.includes(text), `public render leaks ${what}: ${text}`);
+    }
+    for (const e of evidence) {
+      assert.ok(full.includes(e), `full render lacks evidence ${e}`);
+      assert.ok(!shared.includes(e), `public render leaks evidence ${e}`);
+    }
+    // Business notes and enum meanings are what the shared file is for.
+    assert.ok(shared.includes('Customers and vendors of one tenant, in one table.'));
+    assert.ok(shared.includes('Buys products (Customer)'));
+  });
+}
 
 test('a profile keeps the full layout: shown boxes stay where they were', async () => {
   const { full, shared } = await renders();
@@ -110,7 +123,7 @@ test('profile config is validated: names, note fields, hidden columns', () => {
   assert.deepEqual(errors('profiles:\n  p: { hide: { tables: [a._.x] } }\n'), ['profiles.p.hide.tables[0]: unknown table "a._.x"']);
 });
 
-test('CLI: render --profile writes out/erd.<profile>.svg next to erd.svg', async () => {
+test('CLI: render --profile writes out/erd.<profile>.svg and .xlsx next to erd.svg and erd.xlsx', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'open-erd-'));
   const run = (...args) => promisify(execFile)(process.execPath, [CLI, ...args]);
   try {
@@ -118,8 +131,8 @@ test('CLI: render --profile writes out/erd.<profile>.svg next to erd.svg', async
     await run('layout', '--workspace', dir);
     await run('render', '--workspace', dir);
     const { stdout } = await run('render', '--workspace', dir, '--profile', 'public');
-    assert.match(stdout, /erd\.public\.svg \(profile public\)/);
-    assert.deepEqual((await readdir(join(dir, 'out'))).sort(), ['erd.public.svg', 'erd.svg']);
+    assert.match(stdout, /erd\.public\.xlsx \(profile public\)/);
+    assert.deepEqual((await readdir(join(dir, 'out'))).sort(), ['erd.public.svg', 'erd.public.xlsx', 'erd.svg', 'erd.xlsx']);
     assert.ok(!(await readFile(join(dir, 'out', 'erd.public.svg'), 'utf8')).includes('audit_secrets'));
     await assert.rejects(run('render', '--workspace', dir, '--profile', 'nope'), (e) => e.code === 1 && /unknown profile "nope"/.test(e.stderr));
   } finally {

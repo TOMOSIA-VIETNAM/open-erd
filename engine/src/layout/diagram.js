@@ -9,8 +9,9 @@ import { polyBox, tableBox } from './table-box.js';
 
 // When one drawn line stands for several relations it takes the least
 // certain kind and review state among them, so collapsing never hides doubt.
-const KIND_TRUST = ['db_fk', 'declared', 'cross_db', 'inferred'];
-const REVIEW_TRUST = ['reviewed', 'pending', 'stale'];
+// The review checklist walks them in the reverse order: least certain first.
+export const KIND_TRUST = ['db_fk', 'declared', 'cross_db', 'inferred'];
+export const REVIEW_TRUST = ['reviewed', 'pending', 'stale'];
 const leastTrusted = (values, order) => values.reduce((a, b) => (order.indexOf(b) > order.indexOf(a) ? b : a));
 
 /** Id of the line drawn for relation `r`. */
