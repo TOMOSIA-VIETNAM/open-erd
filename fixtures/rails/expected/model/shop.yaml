@@ -4,9 +4,8 @@ engine: postgresql
 tables:
   - id: shop.public.accounts
     domain: Accounts
-    note: >-
-      Single-table inheritance: every row is a Customer or a Vendor, chosen by
-      the type column (base class Account).
+    note: Every row is a Customer or a Vendor, chosen by the type column (base class Account).
+    sti: { column: type, subclasses: [Customer, Vendor] }
     columns:
       - { name: id, type: bigint, pk: true }
       - name: type
@@ -66,6 +65,7 @@ tables:
   - id: shop.public.products_tags
     domain: Catalog
     note: Join table of the has_and_belongs_to_many between products and tags; no model class.
+    unique: [[product_id, tag_id]]
     columns:
       - { name: product_id, type: bigint, nullable: false }
       - { name: tag_id, type: bigint, nullable: false }

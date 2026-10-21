@@ -1,0 +1,13 @@
+schema_version: 1
+sources:
+  - name: store-api
+  - name: docs-worker
+hidden:
+  tables: [store.tenant.audit_secrets]
+  columns: [store.tenant.accounts.tax_number]
+profiles:
+  # Shared with an integration partner: keeps evidence, also hides plans.
+  partner:
+    drop_evidence: false
+    hide:
+      tables: [store.public.plans]

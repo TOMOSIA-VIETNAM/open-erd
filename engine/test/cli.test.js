@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
+import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
@@ -38,4 +39,13 @@ test('unimplemented commands fail loudly', async () => {
 test('missing --workspace and unknown commands fail', async () => {
   assert.equal((await run('validate')).code, 1);
   assert.equal((await run('frobnicate')).code, 1);
+});
+
+test('--version prints the engine version from package.json', async () => {
+  const { version } = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+  for (const flag of ['--version', '-v']) {
+    const { code, stdout } = await run(flag);
+    assert.equal(code, 0);
+    assert.equal(stdout, `${version}\n`);
+  }
 });

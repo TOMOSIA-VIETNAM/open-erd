@@ -38,6 +38,8 @@ tables:
   - id: clinic.public.accounts_staffprofile_teams
     domain: Staff
     note: Auto-created join table of StaffProfile.teams.
+    generated_by: Django ManyToManyField
+    unique: [[staffprofile_id, team_id]]
     columns:
       - { name: id, type: bigint, pk: true }
       - { name: staffprofile_id, type: bigint, nullable: false }
@@ -94,6 +96,7 @@ tables:
   - id: clinic.public.clinic_appointmentprocedure
     domain: Care
     note: Through table of Appointment.procedures with the quantity performed.
+    unique: [[appointment_id, procedure_id]]
     columns:
       - { name: id, type: bigint, pk: true }
       - { name: appointment_id, type: bigint, nullable: false }

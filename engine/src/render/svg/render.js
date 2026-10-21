@@ -1,10 +1,10 @@
-import { DB_LABEL_FONT, ENGINE_FONT, LABEL_FONT, LABEL_OFFSET, clusterLabel, dbLabel, labelBox } from '../../layout/clusters.js';
-import { buildDiagram } from '../../layout/diagram.js';
+import { DB_FACT_FONT, DB_LABEL_FONT, ENGINE_FONT, LABEL_FONT, LABEL_OFFSET, clusterLabel, dbLabel, labelBox } from '../../layout/clusters.js';
+import { VIEW_SOURCE, buildDiagram, polyLinkId, relationId } from '../../layout/diagram.js';
 import { resolveView } from '../../layout/index.js';
 import { STUB, routeEdges } from '../../layout/router.js';
-import { GRID, BADGE_ARROW_WIDTH, BADGE_FONT, DOMAIN_COUNT_FONT, DOMAIN_TITLE_FONT, HEADER_HEIGHT, PADDING_X, ROW_HEIGHT, attachOffset } from '../../layout/table-box.js';
+import { GRID, BADGE_ARROW_WIDTH, BADGE_FONT, DOMAIN_COUNT_FONT, DOMAIN_TITLE_FONT, EMBED_INSET, FACT_FONT, HEADER_HEIGHT, PADDING_X, ROW_HEIGHT, TAG_FONT, attachOffset } from '../../layout/table-box.js';
 import { ALL_VIEW, OVERVIEW, viewNames } from '../../layout/views.js';
-import { technicalColumns } from '../../model/columns.js';
+import { columnEntries, technicalColumns } from '../../model/columns.js';
 import { compareStrings } from '../../model/load.js';
 import { measureText } from '../../text/measure.js';
 import { FONT_FAMILY, TEXT_STYLE_CSS, fontFaceCss } from '../../text/font.js';
@@ -25,6 +25,9 @@ const VIEWER_STYLE = `.row-hit { fill: transparent; }
 .domain, .stub, .table, .poly, .relation-group, .hub-badge { cursor: pointer; }
 .relation-hit { fill: none; stroke: transparent; stroke-width: 12; }
 .view.dimmed :is(.table, .stub, .poly, .domain, .relation-group):not(.hl) { opacity: 0.16; }
+.view.dimmed.center-selected :is(.table, .poly).hop-2:not(.hl) { opacity: 1; }
+.view.dimmed.center-selected .hop-2:not(.hl) > rect:last-of-type { stroke: #d9dee6; }
+.view.dimmed.center-selected .relation-group.hop-2:not(.hl) { opacity: 0.5; }
 .hl > rect:last-of-type { stroke: #5b8def; stroke-width: 2; }
 .selected > rect:last-of-type { stroke: #1d4ed8; stroke-width: 3; }
 .flow-target > rect:last-of-type { stroke: #e8590c; stroke-width: 3; animation: oe-pulse 0.9s ease-in-out infinite alternate; }
@@ -65,6 +68,7 @@ const VIEWER_STYLE = `.row-hit { fill: transparent; }
 .oe-panel ul { margin: 4px 0 0; padding-left: 16px; }
 .oe-panel li { margin: 3px 0; word-break: break-all; }
 .oe-panel p { margin: 6px 0; }
+.oe-panel .muted { color: #7a8597; }
 .oe-tip { background: #1f2a3d; color: #f4f6f9; border-radius: 6px; padding: 8px 10px; font-size: 12px; line-height: 1.45; max-width: 340px; display: inline-block; }
 .oe-tip b { color: #ffffff; }
 .oe-tip .muted { color: #aab4c4; }
@@ -107,15 +111,27 @@ text { font-family: '${FONT_FAMILY}', sans-serif; ${TEXT_STYLE_CSS} }
 .kind-inferred.review-pending .relation, .kind-inferred.review-stale .relation { stroke-dasharray: 6 4; }
 .kind-cross_db .relation { stroke-dasharray: 10 3 2 3 2 3; }
 .kind-polymorphic .relation { stroke-dasharray: 2 3; }
+.kind-view_source .relation { stroke: #a9b2c0; stroke-dasharray: 5 4; }
+.table-tag { font-size: ${TAG_FONT.size}px; font-weight: ${TAG_FONT.weight}; fill: #5f6b7e; letter-spacing: 0.02em; }
+.table.is-view > rect:last-of-type { stroke-dasharray: 5 3; }
+.tenant-copy { fill: #ffffff; stroke: #c9d1dc; stroke-width: 1; }
+.inset-box { fill: #f6f8fb; stroke: #d5dbe4; stroke-width: 1; }
+.inset-title { font-size: 12px; font-weight: 700; fill: #56627a; }
+.fact-text { font-size: ${FACT_FONT.size}px; font-weight: ${FACT_FONT.weight}; fill: #5f6b7e; }
+.db-fact-pill { fill: #eef1f5; stroke: #c3cad5; stroke-width: 1; }
+.db-fact { font-size: ${DB_FACT_FONT.size}px; font-weight: ${DB_FACT_FONT.weight}; fill: #3d4a5e; }
 ${VIEWER_STYLE}`;
 
 function escapeXml(text) {
   return text.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 }
 
+const camel = (name) => name.replace(/_(.)/g, (_, c) => c.toUpperCase());
+
 const nodeRect = (n) => ({ id: n.id, x: n.x, y: n.y, w: n.w, h: n.h });
 
 function labelText(view, link) {
+  if (link.kind === VIEW_SOURCE) return null;
   if (view === OVERVIEW) return link.kind === 'cross_db' ? `${link.count} · cross-DB` : String(link.count);
   return link.kind === 'cross_db' ? 'cross-DB' : null;
 }
@@ -262,13 +278,13 @@ function routePolyTargets(nodes, byId, obstacles, groups) {
  * routed lines with their end markers and labels. Kept separate from the SVG
  * text so geometry can be tested directly.
  */
-export function buildScene(model, layout, name = ALL_VIEW, diagram = buildDiagram(model)) {
-  const view = resolveView(model, layout, name, diagram);
+export function buildScene(model, layout, name = ALL_VIEW, diagram = buildDiagram(model), options = {}) {
+  const view = resolveView(model, layout, name, diagram, options);
   const byId = new Map(view.nodes.map((n) => [n.id, n]));
   const labels = view.groups.map((g) =>
     g.kind === 'cluster'
       ? { id: `label:${g.group.key}`, ...labelBox(g.frame, g.group.key) }
-      : { id: `label:${g.group.id}`, ...dbLabel(g.frame, g.group.database, g.group.engine).box },
+      : { id: `label:${g.group.id}`, ...dbLabel(g.frame, g.group.database, g.group.engine, g.group.facts).box },
   );
   const obstacles = [...view.nodes.map(nodeRect), ...labels];
   const spread = name === OVERVIEW ? spreadEnds(view.links, byId) : null;
@@ -278,7 +294,7 @@ export function buildScene(model, layout, name = ALL_VIEW, diagram = buildDiagra
     const offset = spread ? spread.get(`${link.id}\u0000${side}`) : attachOffset(n.box, e.column);
     return { box: nodeRect(n), y: n.y + offset, marker };
   };
-  const markers = view.links.map((l) => (name === OVERVIEW ? { from: 'none', to: 'none' } : endMarkers(l)));
+  const markers = view.links.map((l) => (name === OVERVIEW || l.kind === VIEW_SOURCE ? { from: 'none', to: 'none' } : endMarkers(l)));
   const edges = view.links.map((l, i) => ({ id: l.id, from: end(l, 'from', markers[i].from), to: end(l, 'to', markers[i].to) }));
   const routes = routeEdges(obstacles, view.groups.map((g) => g.frame), edges);
   const labelsOf = placeLabels(routes, view.links.map((link) => labelText(name, link)));
@@ -320,18 +336,27 @@ function headerPath(x, y, w, fill) {
 
 // Each row is a group so the viewer can show the column's details on hover
 // (the transparent rect makes the whole row hoverable) and fade technical
-// columns in Business mode.
+// columns in Business mode. Embedded columns are indented inside their
+// entity's inset box.
 function tableSvg(n, colors, technical) {
   const { x, y, w, h, box } = n;
-  const rows = box.rows.map((r) =>
-    [
+  const rows = box.rows.map((r) => {
+    const indent = EMBED_INSET * r.depth;
+    return [
       `<g class="${technical.has(r.column) ? 'column technical' : 'column'}" data-column="${escapeXml(r.column)}">`,
-      `<rect class="row-hit" x="${x}" y="${y + r.centerY - ROW_HEIGHT / 2}" width="${w}" height="${ROW_HEIGHT}"/>`,
-      textEl(r.pk ? 'column-name pk' : 'column-name', x + PADDING_X, y + r.centerY, r.name),
-      textEl('column-type', x + w - PADDING_X, y + r.centerY, r.type, 'end'),
+      `<rect class="row-hit" x="${x + indent}" y="${y + r.centerY - ROW_HEIGHT / 2}" width="${w - 2 * indent}" height="${ROW_HEIGHT}"/>`,
+      textEl(r.pk ? 'column-name pk' : 'column-name', x + PADDING_X + indent, y + r.centerY, r.name),
+      textEl('column-type', x + w - PADDING_X - indent, y + r.centerY, r.type, 'end'),
       '</g>',
-    ].join(''),
+    ].join('');
+  });
+  const insets = box.insets.map(
+    (e) =>
+      `<g class="embedded" data-entity="${escapeXml(e.entity)}">` +
+      `<rect class="inset-box" x="${x + EMBED_INSET}" y="${y + e.top + 1}" width="${w - 2 * EMBED_INSET}" height="${e.h - 2}" rx="4"/>` +
+      `${textEl('inset-title', x + PADDING_X + EMBED_INSET, y + e.title.centerY, e.title)}</g>`,
   );
+  const facts = box.facts.map((f) => textEl('fact-text', x + PADDING_X, y + f.centerY, f.text));
   const badges = box.badges.map((b) => {
     const cy = y + b.centerY;
     const ax = x + PADDING_X;
@@ -343,14 +368,25 @@ function tableSvg(n, colors, technical) {
     );
   });
   const separator = box.separatorY === null ? '' : `<path d="M${x} ${y + box.separatorY}H${x + w}" stroke="#e3e7ed"/>`;
+  const tag = box.tag ? textEl('table-tag', x + w - PADDING_X, y + box.tag.centerY, box.tag, 'end') : '';
+  // A table copied into every tenant schema is drawn as a small stack of
+  // cards. The copies stay inside the router margin, so no line touches them.
+  const copies = n.node.tenant
+    ? [8, 4].map((d) => `<rect class="tenant-copy" x="${x + d}" y="${y + d}" width="${w}" height="${h}" rx="${CORNER}"/>`).join('')
+    : '';
+  const kind = n.node.table.kind ?? 'table';
   return [
-    `<g class="table" data-id="${escapeXml(n.id)}"><title>${escapeXml(n.id)}</title>`,
+    `<g class="table${kind === 'table' ? '' : ' is-view'}" data-id="${escapeXml(n.id)}"><title>${escapeXml(n.id)}</title>`,
+    copies,
     `<rect class="table-box" x="${x}" y="${y}" width="${w}" height="${h}" rx="${CORNER}"/>`,
     headerPath(x, y, w, colors.header),
     `<path d="M${x} ${y + HEADER_HEIGHT}H${x + w}" stroke="${colors.stroke}"/>`,
     textEl('table-title', x + PADDING_X, y + box.title.centerY, box.title),
+    tag,
+    ...insets,
     ...rows,
     separator,
+    ...facts,
     ...badges,
     `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${CORNER}" fill="none" stroke="#b8c2d0"/>`,
     '</g>',
@@ -405,7 +441,7 @@ function groupSvg(g, colorOf) {
       '</g>'
     );
   }
-  const l = dbLabel(f, g.group.database, g.group.engine);
+  const l = dbLabel(f, g.group.database, g.group.engine, g.group.facts);
   const { x, y, w, h } = l.icon;
   const ry = 3;
   const icon =
@@ -413,10 +449,18 @@ function groupSvg(g, colorOf) {
     `<path class="db-icon" d="M${x} ${y + ry}A${w / 2} ${ry} 0 0 0 ${x + w} ${y + ry}" fill="none"/>`;
   return (
     `<g class="database" data-database="${escapeXml(g.group.database)}" data-engine="${escapeXml(g.group.engine)}">` +
+    (g.group.facts.length > 0 ? `<title>${escapeXml(g.group.facts.join('\n'))}</title>` : '') +
     `<rect class="db-frame" x="${f.x}" y="${f.y}" width="${f.w}" height="${f.h}" rx="16"/>${icon}` +
     `<text class="db-name" x="${l.name.x}" y="${l.cy}" dominant-baseline="central">${escapeXml(l.name.text)}</text>` +
     `<rect class="engine-pill" x="${l.pill.x}" y="${l.pill.y}" width="${l.pill.w}" height="${l.pill.h}" rx="9"/>` +
     `<text class="engine-name" x="${l.engine.x}" y="${l.cy}" dominant-baseline="central" text-anchor="middle">${escapeXml(l.engine.text)}</text>` +
+    l.facts
+      .map(
+        (p) =>
+          `<rect class="db-fact-pill" x="${p.pill.x}" y="${p.pill.y}" width="${p.pill.w}" height="${p.pill.h}" rx="9"/>` +
+          `<text class="db-fact" x="${p.x}" y="${l.cy}" dominant-baseline="central" text-anchor="middle">${escapeXml(p.text)}</text>`,
+      )
+      .join('') +
     '</g>'
   );
 }
@@ -499,29 +543,41 @@ const scriptJson = (value) => JSON.stringify(value).replace(/[<>&]/g, (c) => `\\
  * order and lists come from the sorted model, so the text is deterministic.
  */
 export function viewerData(model, diagram, technical = technicalColumns(model)) {
+  // Note fields in a fixed order; a sharing profile has already removed the
+  // ones it drops.
+  const notes = (o) => Object.fromEntries(['note', 'note_source', 'internal_note'].filter((f) => o[f]).map((f) => [f === 'note' ? f : camel(f), o[f]]));
+  const evidenceOf = new Map([
+    ...model.relations.map((r) => [relationId(r), r.evidence ?? []]),
+    ...model.polymorphic.map((a) => [polyLinkId(a), a.evidence ?? []]),
+  ]);
   const nodes = {};
   for (const id of [...diagram.nodes.keys()].sort(compareStrings)) {
     const n = diagram.nodes.get(id);
     if (n.kind === 'poly') {
       const a = n.association;
       nodes[id] = { kind: 'poly', cluster: n.cluster, table: a.table, name: a.name, typeColumn: a.type_column, idColumn: a.id_column, targets: a.targets };
+      if (a.evidence?.length > 0) nodes[id].evidence = a.evidence;
       continue;
     }
     const t = n.table;
     nodes[id] = {
       kind: 'table',
       cluster: n.cluster,
-      ...(t.note ? { note: t.note } : {}),
-      columns: t.columns.map((c) => ({
-        name: c.name,
+      ...(t.kind && t.kind !== 'table' ? { tableKind: t.kind } : {}),
+      ...notes(t),
+      ...(n.facts.length > 0 ? { facts: n.facts } : {}),
+      ...(t.sources ? { sources: t.sources } : {}),
+      columns: columnEntries(t).map(({ path, column: c, entity }) => ({
+        name: path,
+        ...(entity ? { entity: entity.name } : {}),
         type: c.type,
         ...(c.nullable === undefined ? {} : { nullable: c.nullable }),
         ...(c.pk ? { pk: true } : {}),
         ...(c.unique ? { unique: true } : {}),
         ...(c.pii ? { pii: true } : {}),
-        ...(technical.get(id).has(c.name) ? { technical: true } : {}),
+        ...(technical.get(id).has(path) ? { technical: true } : {}),
         ...(c.enum ? { enum: c.enum } : {}),
-        ...(c.note ? { note: c.note } : {}),
+        ...notes(c),
       })),
     };
   }
@@ -533,14 +589,19 @@ export function viewerData(model, diagram, technical = technicalColumns(model)) 
     kind: l.kind,
     review: l.review,
     ...(l.via ? { via: l.via } : {}),
+    ...(evidenceOf.get(l.id)?.length > 0 ? { evidence: evidenceOf.get(l.id) } : {}),
   }));
   return { nodes, links };
 }
 
-/** Static SVG holding every view; the overview is the one visible. */
-export function renderSvg(model, layout) {
+/**
+ * Static SVG holding every view; the overview is the one visible. Pass
+ * `{ fitStored: true }` for a model filtered by a sharing profile (see
+ * resolveView).
+ */
+export function renderSvg(model, layout, options = {}) {
   const diagram = buildDiagram(model);
-  const scenes = viewNames(diagram).map((name) => buildScene(model, layout, name, diagram));
+  const scenes = viewNames(diagram).map((name) => buildScene(model, layout, name, diagram, options));
   // Indices past the palette cycle, which only happens once every tint is taken.
   const colorOf = (key) => PALETTE[layout.colors[key] % PALETTE.length];
   const technical = technicalColumns(model);

@@ -1,6 +1,8 @@
 schema_version: 1
 database: billing
 engine: postgresql
+tenant_schemas:
+  - { schema: tenant, note: "One schema tenant_<slug> per tenants row, chosen through search_path (src/db/tenant-schema.ts)." }
 tables:
   - id: billing.public.plans
     domain: Plans
@@ -33,7 +35,7 @@ tables:
       - { name: created_at, type: timestamptz, nullable: false }
   - id: billing.tenant.customers
     domain: Billing
-    note: Schema-per-tenant, × N tenants (one schema tenant_<slug> per tenants row); modelled once under schema "tenant".
+    note: Customer company billed inside one tenant.
     columns:
       - { name: id, type: uuid, pk: true }
       - { name: email, type: varchar(255), nullable: false, pii: true }
@@ -41,7 +43,7 @@ tables:
       - { name: tax_id, type: varchar(40), nullable: true, pii: true }
   - id: billing.tenant.subscriptions
     domain: Billing
-    note: Schema-per-tenant, × N tenants (schema tenant_<slug>). A customer's subscription to a shared plan.
+    note: A customer's subscription to a shared plan.
     columns:
       - { name: id, type: uuid, pk: true }
       - { name: customer_id, type: uuid, nullable: false }
@@ -57,7 +59,7 @@ tables:
       - { name: current_period_end, type: timestamptz, nullable: false }
   - id: billing.tenant.invoices
     domain: Billing
-    note: Schema-per-tenant, × N tenants (schema tenant_<slug>). One-off invoices have no subscription.
+    note: One-off invoices have no subscription.
     columns:
       - { name: id, type: uuid, pk: true }
       - { name: customer_id, type: uuid, nullable: false }
@@ -74,7 +76,7 @@ tables:
       - { name: issued_at, type: timestamptz, nullable: true }
   - id: billing.tenant.invoice_lines
     domain: Billing
-    note: Schema-per-tenant, × N tenants (schema tenant_<slug>). product_id is a catalog-service product id.
+    note: product_id is a catalog-service product id.
     columns:
       - { name: id, type: uuid, pk: true }
       - { name: invoice_id, type: uuid, nullable: false }
@@ -84,7 +86,7 @@ tables:
       - { name: unit_price_cents, type: integer, nullable: false }
   - id: billing.tenant.payments
     domain: Billing
-    note: Schema-per-tenant, × N tenants (schema tenant_<slug>).
+    note: Payment received for an invoice.
     columns:
       - { name: id, type: uuid, pk: true }
       - { name: invoice_id, type: uuid, nullable: false }
@@ -100,7 +102,8 @@ tables:
       - { name: created_at, type: timestamptz, nullable: false }
   - id: billing.tenant.usage_events
     domain: Metering
-    note: Schema-per-tenant, × N tenants (schema tenant_<slug>). Partitioned by month on occurred_at; partitions usage_events_YYYY_MM are merged into this table.
+    note: Metered usage of a subscription; monthly partitions usage_events_YYYY_MM are merged into this table.
+    partition: { method: range, columns: [occurred_at], interval: month }
     columns:
       - { name: id, type: bigint, pk: true }
       - { name: occurred_at, type: timestamptz, pk: true }

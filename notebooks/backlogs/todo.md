@@ -35,8 +35,12 @@ Chi tiết từng task: `plan.md`. Đánh dấu `[x]` khi task pass verify.
 - [x] 9. Neighborhood radial
   - Acceptance: double-click bảng hoặc nút trong panel → bảng + 1/2 hop, layout radial client-side không chồng box (N ≤ 40), Back về view trước
   - Verify: `node --test test/viewer.test.js` + `scripts/verify-viewer.js`
-- [ ] 10. Profile public + determinism 100× + geometry tests
-- [ ] 11. Pattern đặc biệt (STI, view, partition, tenant, NoSQL embedded, replica)
+- [x] 10. Profile public + determinism 100× + geometry tests
+  - Acceptance: `profiles` trong `open-erd.yaml` (mặc định an toàn, `public` có sẵn); lọc trước render, vẽ tại toạ độ của layout đầy đủ (không re-layout); `render --profile <name>` ghi `out/erd.<name>.svg`; output public không chứa bảng/cột hidden, cột pii, evidence, internal_note, note_source; 100 lần render sha256 giống nhau; hình học kiểm mọi view của mọi workspace (engine + fixtures)
+  - Verify: `node --test test/profile.test.js test/determinism.test.js test/geometry.test.js`
+- [x] 11. Pattern đặc biệt (STI, view, partition, tenant, NoSQL embedded, replica)
+  - Acceptance: field `sti`, `kind`/`sources`, `partition`, `unique` (nhiều cột), `generated_by`, `embedded`, `tenant_schemas`, `topology` trong schema + validator; renderer: tag «view», line nét đứt mờ tới source, dòng fact cuối box, inset box cho embedded (relation từ `entity.column`), chồng thẻ cho bảng tenant, pill trên khung DB; fixtures cập nhật; `layout` mang toạ độ + màu theo `renamed_from`; `--version`
+  - Verify: `node --test test/views.test.js test/model.test.js test/stability.test.js test/cli.test.js` + PNG (`test/fixtures/workspace-patterns`, `fixtures/{mongoose,multi-db,rails}/expected`) + `scripts/verify-viewer.js`
 - [ ] Checkpoint B
 
 ## Phase 3: Excel + diff + locked facts

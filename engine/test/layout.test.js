@@ -12,7 +12,6 @@ import { buildDiagram } from '../src/layout/diagram.js';
 import { viewNames } from '../src/layout/views.js';
 import { endMarkers } from '../src/render/svg/markers.js';
 import { buildScene, renderSvg } from '../src/render/svg/render.js';
-import { assertSceneGeometry } from './helpers/geometry.js';
 import { SHOP, loadMulti, loadShop } from './helpers/shop.js';
 
 const CLI = fileURLToPath(new URL('../cli.js', import.meta.url));
@@ -27,12 +26,6 @@ for (const [fixture, load] of [
   ['shop', loadShop],
   ['multi', loadMulti],
 ]) {
-  test(`${fixture}: every view keeps lines clear of boxes and labels, and text inside boxes`, async () => {
-    const { scenes: all } = await scenes(await load());
-    assert.deepEqual(all.map((s) => s.name).slice(0, 2), ['overview', 'all']);
-    for (const scene of all) assertSceneGeometry(scene);
-  });
-
   // A row has two sides, so it can keep two different markers apart; a row
   // whose ends need three or more markers shares a point by necessity.
   test(`${fixture}: ends sharing an attachment point draw the same marker`, async () => {

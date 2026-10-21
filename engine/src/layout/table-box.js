@@ -47,36 +47,70 @@ function fit(text, maxWidth, font) {
   return { ...result, full: text, width: measureText(result.text, font) };
 }
 
+export const FACT_FONT = { size: 11, weight: 400 };
+export const TAG_FONT = { size: 10, weight: 700 };
+// Embedded entities are drawn as an inset box this far inside the table's
+// border; their rows are indented by the same amount on both sides.
+export const EMBED_INSET = 6;
+const TAG_GAP = 8;
+const TAGS = { view: '«view»', materialized_view: '«materialized view»' };
+
 /**
- * Size and text content of a table box. Layout uses `w`/`h`; the renderer uses
- * the same object, so the box always fits the text it draws. Offsets are
- * relative to the box's top-left corner.
+ * Size and text content of a table box, top to bottom:
+ *   header      table name, plus a «view» tag right-aligned for views;
+ *   rows        its columns, then each embedded entity as an inset with a
+ *               title row and its own (indented, depth 1) column rows;
+ *   facts       one muted line per special pattern (STI, partition, ...);
+ *   badges      one line per hub target.
+ * Facts and badges sit below one separator. Layout uses `w`/`h`; the
+ * renderer uses the same object, so the box always fits the text it draws.
+ * Offsets are relative to the box's top-left corner. Every row is ROW_HEIGHT
+ * tall, so each column's attachment point stays on the layout grid.
  */
-export function tableBox(table, badges = []) {
+export function tableBox(table, badges = [], facts = []) {
   // The cluster frame already names the domain and the database; the full id
   // goes into the tooltip.
   const label = table.id.split('.')[2];
+  const tagText = TAGS[table.kind];
+  const tagWidth = tagText ? measureText(tagText, TAG_FONT) + TAG_GAP : 0;
   const titleWidth = measureText(label, TITLE_FONT);
-  let natural = titleWidth + 2 * PADDING_X;
-  for (const c of table.columns) {
-    const nameWidth = measureText(c.name, c.pk ? PK_FONT : COLUMN_FONT);
-    natural = Math.max(natural, nameWidth + NAME_TYPE_GAP + measureText(c.type, TYPE_FONT) + 2 * PADDING_X);
+  const columnWidth = (c) => measureText(c.name, c.pk ? PK_FONT : COLUMN_FONT) + NAME_TYPE_GAP + measureText(c.type, TYPE_FONT);
+  const entityTitle = (e) => `${e.name}${e.array ? ' [ ]' : ''}`;
+  const embedded = table.embedded ?? [];
+  let natural = titleWidth + tagWidth + 2 * PADDING_X;
+  for (const c of table.columns) natural = Math.max(natural, columnWidth(c) + 2 * PADDING_X);
+  for (const e of embedded) {
+    natural = Math.max(natural, measureText(entityTitle(e), COLUMN_FONT) + 2 * (PADDING_X + EMBED_INSET));
+    for (const c of e.columns) natural = Math.max(natural, columnWidth(c) + 2 * (PADDING_X + EMBED_INSET));
   }
+  for (const f of facts) natural = Math.max(natural, measureText(f, FACT_FONT) + 2 * PADDING_X);
   const badgeText = (b) => `${b.target.split('.')[2]} ×${b.count}`;
   for (const b of badges) {
     natural = Math.max(natural, BADGE_ARROW_WIDTH + BADGE_ARROW_GAP + measureText(badgeText(b), BADGE_FONT) + 2 * PADDING_X);
   }
   const w = Math.min(MAX_WIDTH, ceilToGrid(Math.max(MIN_WIDTH, natural)));
   const inner = w - 2 * PADDING_X;
-  const rows = table.columns.map((c, i) => {
+  let slot = 0;
+  const centerOf = () => HEADER_HEIGHT + ROW_HEIGHT * slot++ + ROW_HEIGHT / 2;
+  const columnRow = (c, path, depth) => {
+    const room = inner - 2 * EMBED_INSET * depth;
     const nameFont = c.pk ? PK_FONT : COLUMN_FONT;
-    const type = fit(c.type, Math.min(measureText(c.type, TYPE_FONT), Math.max(inner * TYPE_SHARE, inner - NAME_TYPE_GAP - measureText(c.name, nameFont))), TYPE_FONT);
-    const name = fit(c.name, inner - NAME_TYPE_GAP - type.width, nameFont);
-    return { column: c.name, pk: c.pk === true, name, type, centerY: HEADER_HEIGHT + ROW_HEIGHT * i + ROW_HEIGHT / 2 };
+    const type = fit(c.type, Math.min(measureText(c.type, TYPE_FONT), Math.max(room * TYPE_SHARE, room - NAME_TYPE_GAP - measureText(c.name, nameFont))), TYPE_FONT);
+    const name = fit(c.name, room - NAME_TYPE_GAP - type.width, nameFont);
+    return { column: path, pk: c.pk === true, depth, name, type, centerY: centerOf() };
+  };
+  const rows = table.columns.map((c) => columnRow(c, c.name, 0));
+  const insets = embedded.map((e) => {
+    const top = HEADER_HEIGHT + ROW_HEIGHT * slot;
+    const title = { ...fit(entityTitle(e), inner - 2 * EMBED_INSET, COLUMN_FONT), centerY: centerOf() };
+    rows.push(...e.columns.map((c) => columnRow(c, `${e.name}.${c.name}`, 1)));
+    return { entity: e.name, top, h: HEADER_HEIGHT + ROW_HEIGHT * slot - top, title };
   });
-  const columnsEnd = HEADER_HEIGHT + ROW_HEIGHT * table.columns.length;
-  // Hub badges sit below the columns, after a separator, one row per hub target.
-  const badgeTop = columnsEnd + (badges.length > 0 ? BOTTOM_PADDING / 2 : 0);
+  const columnsEnd = HEADER_HEIGHT + ROW_HEIGHT * slot;
+  const footer = facts.length + badges.length > 0;
+  const footerTop = columnsEnd + (footer ? BOTTOM_PADDING / 2 : 0);
+  const factRows = facts.map((f, i) => ({ text: fit(f, inner, FACT_FONT), centerY: footerTop + ROW_HEIGHT * i + ROW_HEIGHT / 2 }));
+  const badgeTop = footerTop + ROW_HEIGHT * facts.length;
   const badgeRows = badges.map((b, i) => ({
     ...b,
     label: fit(badgeText(b), inner - BADGE_ARROW_WIDTH - BADGE_ARROW_GAP, BADGE_FONT),
@@ -87,9 +121,12 @@ export function tableBox(table, badges = []) {
     kind: 'table',
     w,
     h: badgeTop + ROW_HEIGHT * badges.length + BOTTOM_PADDING,
-    title: { ...fit(label, inner, TITLE_FONT), centerY: HEADER_HEIGHT / 2 },
+    title: { ...fit(label, inner - tagWidth, TITLE_FONT), centerY: HEADER_HEIGHT / 2 },
+    tag: tagText ? { ...fit(tagText, tagWidth - TAG_GAP, TAG_FONT), centerY: HEADER_HEIGHT / 2 } : null,
     rows,
-    separatorY: badges.length > 0 ? badgeTop : null,
+    insets,
+    separatorY: footer ? footerTop : null,
+    facts: factRows,
     badges: badgeRows,
   };
 }
@@ -144,13 +181,14 @@ export function rowCenter(box, column) {
 
 /**
  * Where a line attaches on a box side: the column's row for tables, the
- * header of a polymorphic node (it stands for the whole association), the
+ * header of a polymorphic node (it stands for the whole association) and of
+ * a table when the line names no column (a view's line to its sources), the
  * middle of stubs and domain boxes.
  */
 export function attachOffset(box, column) {
-  if (box.kind === 'table') return rowCenter(box, column);
+  if (box.kind === 'table' && column !== null) return rowCenter(box, column);
   // The header centre (15 px) is off the grid; one grid step lower still
   // lands inside the header.
-  if (box.kind === 'poly') return roundToGrid(HEADER_HEIGHT / 2);
+  if (box.kind === 'poly' || box.kind === 'table') return roundToGrid(HEADER_HEIGHT / 2);
   return box.h / 2;
 }

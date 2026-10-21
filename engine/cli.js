@@ -3,9 +3,11 @@ import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
+import pkg from './package.json' with { type: 'json' };
 import { CONFIG_FILE } from './src/model/schema.js';
 import { formatError, parseWorkspace } from './src/model/load.js';
-import { computeLayout, formatReport } from './src/layout/index.js';
+import { applyProfile } from './src/model/profile.js';
+import { checkLayout, computeLayout, formatReport } from './src/layout/index.js';
 import { LAYOUT_FILE, parseLayout, serializeLayout } from './src/layout/layout-file.js';
 import { renderSvg } from './src/render/svg/render.js';
 
@@ -23,9 +25,9 @@ const COMMANDS = {
     run: runLayout,
   },
   render: {
-    usage: 'render --workspace <dir>',
-    summary: 'write out/erd.svg from the model and layout.json (never writes layout.json)',
-    options: { workspace: { type: 'string' } },
+    usage: 'render --workspace <dir> [--profile <name>]',
+    summary: 'write out/erd.svg (out/erd.<profile>.svg with a sharing profile) from the model and layout.json; never writes layout.json',
+    options: { workspace: { type: 'string' }, profile: { type: 'string' } },
     run: runRender,
   },
   diff: {
@@ -38,7 +40,7 @@ const COMMANDS = {
 function helpText() {
   const width = Math.max(...Object.values(COMMANDS).map((c) => c.usage.length));
   const lines = Object.values(COMMANDS).map((c) => `  ${c.usage.padEnd(width)}  ${c.summary}`);
-  return ['Usage: open-erd <command> [options]', '', 'Commands:', ...lines, '', 'Options:', '  -h, --help  show this help'].join('\n');
+  return ['Usage: open-erd <command> [options]', '', 'Commands:', ...lines, '', 'Options:', '  -h, --help     show this help', '  -v, --version  print the engine version'].join('\n');
 }
 
 // Reads the workspace files the model loader needs into `{ relativePath: text }`.
@@ -94,7 +96,9 @@ async function runLayout({ workspace }) {
   return 0;
 }
 
-async function runRender({ workspace }) {
+// A profile render gets its own file name, so a shared file is never
+// mistaken for the full one (or the reverse) and both can sit side by side.
+async function runRender({ workspace, profile }) {
   const model = await loadModel(workspace);
   if (!model) return 1;
   const layout = await readLayout(workspace);
@@ -102,15 +106,28 @@ async function runRender({ workspace }) {
     console.error(`${LAYOUT_FILE} not found in ${workspace} (run layout first)`);
     return 1;
   }
-  const svg = renderSvg(model, layout);
+  let svg;
+  if (profile === undefined) {
+    svg = renderSvg(model, layout);
+  } else {
+    // Positions come from the layout of the full model, so check that one;
+    // the filtered model is drawn at those positions (see resolveView).
+    checkLayout(model, layout);
+    svg = renderSvg(applyProfile(model, profile), layout, { fitStored: true });
+  }
+  const file = join(workspace, 'out', profile === undefined ? 'erd.svg' : `erd.${profile}.svg`);
   await mkdir(join(workspace, 'out'), { recursive: true });
-  await writeFile(join(workspace, 'out', 'erd.svg'), svg);
-  console.log(`wrote ${join(workspace, 'out', 'erd.svg')}`);
+  await writeFile(file, svg);
+  console.log(`wrote ${file}${profile === undefined ? '' : ` (profile ${profile})`}`);
   return 0;
 }
 
 export async function main(argv) {
   const [name, ...rest] = argv;
+  if (name === '-v' || name === '--version') {
+    console.log(pkg.version);
+    return 0;
+  }
   if (!name || name === '-h' || name === '--help') {
     console.log(helpText());
     return name ? 0 : 1;

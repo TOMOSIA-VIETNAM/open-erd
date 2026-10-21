@@ -39,6 +39,9 @@ export function validateNode(value, spec, path = '', errors = []) {
   if (spec.oneOf && !spec.oneOf.includes(value)) {
     errors.push({ path: at, message: `must be one of ${spec.oneOf.join(' | ')}, got ${JSON.stringify(value)}` });
   }
+  if (spec.min !== undefined && value < spec.min) {
+    errors.push({ path: at, message: `must be at least ${spec.min}, got ${value}` });
+  }
   if (spec.pattern && !spec.pattern.test(value)) {
     errors.push({ path: at, message: `invalid value ${JSON.stringify(value)}, expected ${spec.hint}` });
   }
@@ -50,6 +53,9 @@ export function validateNode(value, spec, path = '', errors = []) {
   }
   if (spec.type === 'map') {
     for (const [key, item] of Object.entries(value)) {
+      if (spec.keys && !spec.keys.pattern.test(key)) {
+        errors.push({ path: joinPath(path, key), message: `invalid key ${JSON.stringify(key)}, expected ${spec.keys.hint}` });
+      }
       validateNode(item, spec.values, joinPath(path, key), errors);
     }
   }

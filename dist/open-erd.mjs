@@ -604,8 +604,8 @@ var require_Node = __commonJS({
         };
         const res = toJS.toJS(this, "", ctx);
         if (typeof onAnchor === "function")
-          for (const { count, res: res2 } of ctx.anchors.values())
-            onAnchor(res2, count);
+          for (const { count: count2, res: res2 } of ctx.anchors.values())
+            onAnchor(res2, count2);
         return typeof reviver === "function" ? applyReviver.applyReviver(reviver, { "": res }, "", res) : res;
       }
     };
@@ -713,13 +713,13 @@ var require_Alias = __commonJS({
         const anchor = anchors2 && source && anchors2.get(source);
         return anchor ? anchor.count * anchor.aliasCount : 0;
       } else if (identity.isCollection(node)) {
-        let count = 0;
+        let count2 = 0;
         for (const item of node.items) {
           const c = getAliasCount(doc, item, anchors2);
-          if (c > count)
-            count = c;
+          if (c > count2)
+            count2 = c;
         }
-        return count;
+        return count2;
       } else if (identity.isPair(node)) {
         const kc = getAliasCount(doc, node.key, anchors2);
         const vc = getAliasCount(doc, node.value, anchors2);
@@ -2046,7 +2046,7 @@ var require_YAMLMap = __commonJS({
       static from(schema, obj, ctx) {
         const { keepUndefined, replacer } = ctx;
         const map = new this(schema);
-        const add = (key, value) => {
+        const add2 = (key, value) => {
           if (typeof replacer === "function")
             value = replacer.call(obj, key, value);
           else if (Array.isArray(replacer) && !replacer.includes(key))
@@ -2056,10 +2056,10 @@ var require_YAMLMap = __commonJS({
         };
         if (obj instanceof Map) {
           for (const [key, value] of obj)
-            add(key, value);
+            add2(key, value);
         } else if (obj && typeof obj === "object") {
           for (const key of Object.keys(obj))
-            add(key, obj[key]);
+            add2(key, obj[key]);
         }
         if (typeof schema.sortMapEntries === "function") {
           map.items.sort(schema.sortMapEntries);
@@ -3672,8 +3672,8 @@ var require_Document = __commonJS({
         };
         const res = toJS.toJS(this.contents, jsonArg ?? "", ctx);
         if (typeof onAnchor === "function")
-          for (const { count, res: res2 } of ctx.anchors.values())
-            onAnchor(res2, count);
+          for (const { count: count2, res: res2 } of ctx.anchors.values())
+            onAnchor(res2, count2);
         return typeof reviver === "function" ? applyReviver.applyReviver(reviver, { "": res }, "", res) : res;
       }
       /**
@@ -3750,12 +3750,12 @@ var require_errors = __commonJS({
         lineStr = prev + lineStr;
       }
       if (/[^ ]/.test(lineStr)) {
-        let count = 1;
+        let count2 = 1;
         const end = error.linePos[1];
         if (end?.line === line && end.col > col) {
-          count = Math.max(1, Math.min(end.col - col, 80 - ci));
+          count2 = Math.max(1, Math.min(end.col - col, 80 - ci));
         }
-        const pointer = " ".repeat(ci) + "^".repeat(count);
+        const pointer = " ".repeat(ci) + "^".repeat(count2);
         error.message += `:
 
 ${lineStr}
@@ -99475,6 +99475,36 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
+// package.json
+var package_default = {
+  name: "open-erd-engine",
+  version: "0.1.0",
+  private: true,
+  description: "Deterministic ERD engine for open-erd: model to layout to SVG/XLSX/diff.",
+  license: "MIT",
+  type: "module",
+  engines: {
+    node: ">=20.10"
+  },
+  scripts: {
+    test: "node --test",
+    build: `node scripts/bundle-viewer.js && esbuild cli.js --bundle --platform=node --format=esm --target=node20 --outfile=../dist/open-erd.mjs "--banner:js=import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);"`,
+    "build-metrics": "node scripts/build-metrics.js",
+    "measure-chrome": "node scripts/measure-chrome.js",
+    "bundle-viewer": "node scripts/bundle-viewer.js"
+  },
+  dependencies: {
+    elkjs: "0.12.0",
+    exceljs: "^4.4.0",
+    yaml: "^2.9.1"
+  },
+  devDependencies: {
+    "@fontsource/inter": "5.3.0",
+    esbuild: "^0.28.2",
+    "opentype.js": "^2.0.0"
+  }
+};
+
 // src/model/schema.js
 var SCHEMA_VERSION = 1;
 var TABLE_ID_PATTERN = /^[^.\s]+\.[^.\s]+\.[^.\s]+$/;
@@ -99482,9 +99512,16 @@ var EVIDENCE_PATTERN = /^(db|[^:\s]+:\S+)$/;
 var CARDINALITIES = ["1-1", "1-n", "n-1", "n-n"];
 var RELATION_KINDS = ["db_fk", "declared", "inferred", "cross_db"];
 var REVIEW_STATES = ["pending", "reviewed", "stale"];
+var TABLE_KINDS = ["table", "view", "materialized_view"];
+var PARTITION_METHODS = ["range", "list", "hash"];
+var NOTE_FIELDS = ["note", "note_source", "internal_note"];
+var PROFILE_NAME = /^[A-Za-z0-9_-]+$/;
 var schemaVersion = { type: "integer", oneOf: [SCHEMA_VERSION], required: true };
 var text = { type: "string" };
 var identifier = { type: "string", pattern: /^\S+$/, hint: "non-empty, no whitespace" };
+var segment = { type: "string", pattern: /^[^.\s]+$/, hint: "no dots or whitespace" };
+var count = { type: "integer", min: 1 };
+var columnList = (minItems) => ({ type: "array", items: identifier, minItems });
 var tableId = {
   type: "string",
   pattern: TABLE_ID_PATTERN,
@@ -99503,8 +99540,25 @@ var column = {
     note: text,
     // Original-language note when `note` was translated to English.
     note_source: text,
+    internal_note: text,
     pii: { type: "boolean" },
     renamed_from: identifier
+  }
+};
+var embedded = {
+  type: "object",
+  fields: {
+    name: { ...segment, required: true },
+    // true for a list of subdocuments (`items: [ItemSchema]`).
+    array: { type: "boolean" },
+    note: text,
+    internal_note: text,
+    columns: {
+      type: "array",
+      items: { ...column, fields: { ...column.fields, name: { ...segment, required: true } } },
+      minItems: 1,
+      required: true
+    }
   }
 };
 var table = {
@@ -99512,10 +99566,41 @@ var table = {
   fields: {
     id: { ...tableId, required: true },
     domain: { ...text, required: true },
+    // `table` when omitted.
+    kind: { type: "string", oneOf: TABLE_KINDS },
+    // Tables a view reads from; only for kind view / materialized_view.
+    sources: { type: "array", items: tableId, minItems: 1 },
     note: text,
     note_source: text,
+    internal_note: text,
     renamed_from: tableId,
-    columns: { type: "array", items: column, minItems: 1, required: true }
+    columns: { type: "array", items: column, minItems: 1, required: true },
+    embedded: { type: "array", items: embedded, minItems: 1 },
+    // Single-table inheritance: one table, the class stored in `column`.
+    sti: {
+      type: "object",
+      fields: {
+        column: { ...identifier, required: true },
+        subclasses: { type: "array", items: identifier, minItems: 1, required: true }
+      }
+    },
+    // Partitions are merged into this one table; `interval` says how a range
+    // is cut (month, day, ...).
+    partition: {
+      type: "object",
+      fields: {
+        method: { type: "string", oneOf: PARTITION_METHODS, required: true },
+        columns: { ...columnList(1), required: true },
+        interval: text
+      }
+    },
+    // Unique keys spanning several columns; a single unique column is
+    // `unique: true` on the column itself.
+    unique: { type: "array", items: columnList(2), minItems: 1 },
+    // Set when a framework creates the table without any file declaring it
+    // (Django ManyToManyField, Prisma implicit many-to-many): names the
+    // mechanism, e.g. "Prisma implicit many-to-many".
+    generated_by: text
   }
 };
 var endpoint = {
@@ -99568,7 +99653,18 @@ var modelFileSchema = {
     engine: { ...identifier, required: true },
     tables: { type: "array", items: table, required: true },
     relations: { type: "array", items: relation },
-    polymorphic: { type: "array", items: polymorphic }
+    polymorphic: { type: "array", items: polymorphic },
+    // Schema-per-tenant: each tenant has its own copy of `schema`, modelled
+    // once. `count` is the number of tenants when known (it needs a database
+    // read; source code rarely tells).
+    tenant_schemas: {
+      type: "array",
+      minItems: 1,
+      items: { type: "object", fields: { schema: { ...segment, required: true }, count, note: text } }
+    },
+    // Replicas and shards of this one logical database; drawn as a note on
+    // its frame, never as separate databases.
+    topology: { type: "object", fields: { replicas: count, shards: count, note: text } }
   }
 };
 var CROSS_DB_FILE = "model/cross-db.yaml";
@@ -99578,6 +99674,25 @@ var crossDbFileSchema = {
     schema_version: schemaVersion,
     relations: { type: "array", items: relation, required: true }
   }
+};
+var hideSpec = {
+  type: "object",
+  fields: {
+    tables: { type: "array", items: tableId },
+    columns: {
+      type: "array",
+      items: { type: "string", pattern: /^[^.\s]+\.[^.\s]+\.[^.\s]+\.\S+$/, hint: "<table id>.<column>" }
+    }
+  }
+};
+var profileFields = {
+  // Relation and polymorphic evidence (repo paths, symbols).
+  drop_evidence: { type: "boolean" },
+  // Columns marked `pii`, and every relation that uses one.
+  drop_pii: { type: "boolean" },
+  drop_notes: { type: "array", items: { type: "string", oneOf: NOTE_FIELDS } },
+  // Hidden in this profile in addition to the top-level `hidden`.
+  hide: hideSpec
 };
 var CONFIG_FILE = "open-erd.yaml";
 var configSchema = {
@@ -99602,30 +99717,67 @@ var configSchema = {
     // timestamp columns) as one n-n line between the tables it joins.
     // Off by default: the join table often matters to readers.
     collapse_join_tables: { type: "boolean" },
-    // Excluded from shared profiles. Columns are `<table id>.<column>`.
-    hidden: {
-      type: "object",
-      fields: {
-        tables: { type: "array", items: tableId },
-        columns: {
-          type: "array",
-          items: { type: "string", pattern: /^[^.\s]+\.[^.\s]+\.[^.\s]+\.\S+$/, hint: "<table id>.<column>" }
-        }
-      }
+    // Left out of every profile render.
+    hidden: hideSpec,
+    // Sharing profiles by name, used by `render --profile <name>`. Fields left
+    // out take their value from PROFILE_DEFAULTS; `public` exists even when
+    // not declared here.
+    // A profile name is part of its output file name (out/erd.<name>.svg).
+    profiles: {
+      type: "map",
+      keys: { pattern: PROFILE_NAME, hint: "letters, digits, - and _" },
+      values: { type: "object", fields: profileFields }
     }
   }
 };
+var PROFILE_DEFAULTS = {
+  drop_evidence: true,
+  drop_pii: true,
+  drop_notes: ["internal_note", "note_source"],
+  hide: { tables: [], columns: [] }
+};
+var BUILT_IN_PROFILES = { public: {} };
 
 // src/model/load.js
 var import_yaml = __toESM(require_dist(), 1);
+
+// src/model/columns.js
+var TIMESTAMP_TYPE = /^(timestamp|timestamptz|datetime|date|time)\b/i;
+function columnEntries(table2) {
+  return [
+    ...table2.columns.map((column2) => ({ path: column2.name, column: column2, entity: null })),
+    ...(table2.embedded ?? []).flatMap(
+      (entity) => entity.columns.map((column2) => ({ path: `${entity.name}.${column2.name}`, column: column2, entity }))
+    )
+  ];
+}
+function technicalColumns(model) {
+  const keys = new Map(model.tables.map((t) => [t.id, /* @__PURE__ */ new Set()]));
+  const add2 = (table2, columns) => {
+    for (const c of columns) keys.get(table2)?.add(c);
+  };
+  for (const r of model.relations) {
+    add2(r.from.table, r.from.columns);
+    add2(r.to.table, r.to.columns);
+  }
+  for (const a of model.polymorphic) add2(a.table, [a.type_column, a.id_column]);
+  return new Map(
+    model.tables.map((t) => [
+      t.id,
+      new Set(
+        columnEntries(t).filter(({ path, column: c }) => !c.enum && !c.note && (c.pk || keys.get(t.id).has(path) || TIMESTAMP_TYPE.test(c.type))).map(({ path }) => path)
+      )
+    ])
+  );
+}
 
 // src/model/validate.js
 var SIMPLE_KEY = /^[A-Za-z_][A-Za-z0-9_]*$/;
 function joinPath(path, key) {
   if (typeof key === "number") return `${path}[${key}]`;
-  const segment = SIMPLE_KEY.test(key) ? key : JSON.stringify(key);
-  if (!path) return segment;
-  return SIMPLE_KEY.test(key) ? `${path}.${key}` : `${path}[${segment}]`;
+  const segment2 = SIMPLE_KEY.test(key) ? key : JSON.stringify(key);
+  if (!path) return segment2;
+  return SIMPLE_KEY.test(key) ? `${path}.${key}` : `${path}[${segment2}]`;
 }
 function describe(value) {
   if (value === null) return "null";
@@ -99653,6 +99805,9 @@ function validateNode(value, spec, path = "", errors = []) {
   if (spec.oneOf && !spec.oneOf.includes(value)) {
     errors.push({ path: at, message: `must be one of ${spec.oneOf.join(" | ")}, got ${JSON.stringify(value)}` });
   }
+  if (spec.min !== void 0 && value < spec.min) {
+    errors.push({ path: at, message: `must be at least ${spec.min}, got ${value}` });
+  }
   if (spec.pattern && !spec.pattern.test(value)) {
     errors.push({ path: at, message: `invalid value ${JSON.stringify(value)}, expected ${spec.hint}` });
   }
@@ -99664,6 +99819,9 @@ function validateNode(value, spec, path = "", errors = []) {
   }
   if (spec.type === "map") {
     for (const [key, item] of Object.entries(value)) {
+      if (spec.keys && !spec.keys.pattern.test(key)) {
+        errors.push({ path: joinPath(path, key), message: `invalid key ${JSON.stringify(key)}, expected ${spec.keys.hint}` });
+      }
       validateNode(item, spec.values, joinPath(path, key), errors);
     }
   }
@@ -99726,7 +99884,13 @@ function parseWorkspace(files) {
     const isCrossDb = file === CROSS_DB_FILE;
     if (!validateFile(file, data, isCrossDb ? crossDbFileSchema : modelFileSchema, errors)) continue;
     if (!isCrossDb) {
-      databases.push({ database: data.database, engine: data.engine, file });
+      databases.push({
+        database: data.database,
+        engine: data.engine,
+        file,
+        ...data.tenant_schemas ? { tenant_schemas: data.tenant_schemas } : {},
+        ...data.topology ? { topology: data.topology } : {}
+      });
       data.tables.forEach((table2, i) => tables.push({ table: table2, file, path: joinPath("tables", i), database: data.database }));
     }
     (data.relations ?? []).forEach((relation2, i) => relations.push({ relation: relation2, file, path: joinPath("relations", i) }));
@@ -99752,6 +99916,48 @@ function parseWorkspace(files) {
       }
       seen.add(column2.name);
     });
+    (table2.embedded ?? []).forEach((entity, i) => {
+      const at = `${path}.embedded[${i}]`;
+      if (seen.has(entity.name)) errors.push({ file, path: `${at}.name`, message: `${JSON.stringify(entity.name)} is already a column or embedded entity` });
+      seen.add(entity.name);
+      const inner = /* @__PURE__ */ new Set();
+      entity.columns.forEach((column2, k) => {
+        if (inner.has(column2.name)) errors.push({ file, path: `${at}.columns[${k}].name`, message: `duplicate column ${JSON.stringify(column2.name)}` });
+        inner.add(column2.name);
+      });
+    });
+  }
+  const columnsOf = new Map([...tablesById].map(([id, t]) => [id, new Set(columnEntries(t).map((e) => e.path))]));
+  const checkColumns = (file, path, tableId2, names2) => {
+    names2.forEach((name, i) => {
+      if (!columnsOf.get(tableId2).has(name)) {
+        errors.push({ file, path: `${path}[${i}]`, message: `unknown column ${JSON.stringify(name)} in ${tableId2}` });
+      }
+    });
+  };
+  for (const { table: table2, file, path } of tables) {
+    if (tablesById.get(table2.id) !== table2) continue;
+    if (table2.sources) {
+      if ((table2.kind ?? "table") === "table") {
+        errors.push({ file, path: `${path}.sources`, message: "only a view or materialized_view has sources" });
+      }
+      table2.sources.forEach((id, i) => {
+        if (!tablesById.has(id)) errors.push({ file, path: `${path}.sources[${i}]`, message: `unknown table ${JSON.stringify(id)}` });
+        else if (id === table2.id) errors.push({ file, path: `${path}.sources[${i}]`, message: "a view cannot read from itself" });
+      });
+    }
+    if (table2.sti && !columnsOf.get(table2.id).has(table2.sti.column)) {
+      errors.push({ file, path: `${path}.sti.column`, message: `unknown column ${JSON.stringify(table2.sti.column)} in ${table2.id}` });
+    }
+    if (table2.partition) checkColumns(file, `${path}.partition.columns`, table2.id, table2.partition.columns);
+    (table2.unique ?? []).forEach((key, i) => checkColumns(file, `${path}.unique[${i}]`, table2.id, key));
+  }
+  for (const db of databases) {
+    (db.tenant_schemas ?? []).forEach((t, i) => {
+      if (!tables.some((x) => x.database === db.database && x.table.id.split(".")[1] === t.schema)) {
+        errors.push({ file: db.file, path: `tenant_schemas[${i}].schema`, message: `no table of ${db.database} is in schema ${JSON.stringify(t.schema)}` });
+      }
+    });
   }
   for (const { relation: relation2, file, path } of relations) {
     for (const end of ["from", "to"]) {
@@ -99760,12 +99966,7 @@ function parseWorkspace(files) {
         errors.push({ file, path: `${path}.${end}.table`, message: `unknown table ${JSON.stringify(relation2[end].table)}` });
         continue;
       }
-      const names2 = new Set(target.columns.map((c) => c.name));
-      relation2[end].columns.forEach((name, i) => {
-        if (!names2.has(name)) {
-          errors.push({ file, path: `${path}.${end}.columns[${i}]`, message: `unknown column ${JSON.stringify(name)} in ${target.id}` });
-        }
-      });
+      checkColumns(file, `${path}.${end}.columns`, target.id, relation2[end].columns);
     }
     if (relation2.from.columns.length !== relation2.to.columns.length) {
       errors.push({ file, path: `${path}.to.columns`, message: "must have the same number of columns as from.columns" });
@@ -99777,9 +99978,8 @@ function parseWorkspace(files) {
     if (!owner) {
       errors.push({ file, path: `${path}.table`, message: `unknown table ${JSON.stringify(a.table)}` });
     } else {
-      const columns = new Set(owner.columns.map((c) => c.name));
       for (const field of ["type_column", "id_column"]) {
-        if (!columns.has(a[field])) {
+        if (!columnsOf.get(owner.id).has(a[field])) {
           errors.push({ file, path: `${path}.${field}`, message: `unknown column ${JSON.stringify(a[field])} in ${a.table}` });
         }
       }
@@ -99795,11 +99995,24 @@ function parseWorkspace(files) {
     });
   }
   if (config) {
-    for (const section of ["hub", "hidden"]) {
-      (config[section]?.tables ?? []).forEach((id, i) => {
+    const lists = [
+      ["hub", config.hub],
+      ["hidden", config.hidden],
+      ...Object.keys(config.profiles ?? {}).sort(compareStrings).map((name) => [joinPath(joinPath("profiles", name), "hide"), config.profiles[name].hide])
+    ];
+    for (const [section, list] of lists) {
+      (list?.tables ?? []).forEach((id, i) => {
         if (!tablesById.has(id)) {
           errors.push({ file: CONFIG_FILE, path: `${section}.tables[${i}]`, message: `unknown table ${JSON.stringify(id)}` });
         }
+      });
+    }
+    for (const [section, hide] of lists.slice(1)) {
+      (hide?.columns ?? []).forEach((ref, i) => {
+        const [tableId2, name] = splitColumnRef(ref);
+        const table2 = tablesById.get(tableId2);
+        const known = table2 && (columnsOf.get(tableId2).has(name) || (table2.embedded ?? []).some((e) => e.name === name));
+        if (!known) errors.push({ file: CONFIG_FILE, path: `${section}.columns[${i}]`, message: `unknown column ${JSON.stringify(ref)}` });
       });
     }
   }
@@ -99817,25 +100030,108 @@ function parseWorkspace(files) {
 }
 function normalizeModel(model) {
   const sortedList = (list) => [...list ?? []].sort(compareStrings);
+  const sortedLists = (section) => Object.fromEntries(Object.keys(section).sort(compareStrings).map((k) => [k, sortedList(section[k])]));
   const config = { ...model.config };
   for (const section of ["hub", "hidden"]) {
-    if (config[section]) {
-      config[section] = Object.fromEntries(
-        Object.keys(config[section]).sort(compareStrings).map((k) => [k, sortedList(config[section][k])])
-      );
-    }
+    if (config[section]) config[section] = sortedLists(config[section]);
+  }
+  if (config.profiles) {
+    config.profiles = Object.fromEntries(
+      Object.keys(config.profiles).sort(compareStrings).map((name) => {
+        const p = config.profiles[name];
+        return [name, { ...p, ...p.drop_notes ? { drop_notes: sortedList(p.drop_notes) } : {}, ...p.hide ? { hide: sortedLists(p.hide) } : {} }];
+      })
+    );
   }
   if (config.sources) config.sources = [...config.sources].sort((a, b) => compareStrings(a.name, b.name));
+  const byKey = (list) => [...list].sort((a, b) => compareStrings(a.join("\0"), b.join("\0")));
   return {
     config,
-    databases: [...model.databases].sort((a, b) => compareStrings(a.database, b.database)),
-    tables: [...model.tables].sort((a, b) => compareStrings(a.id, b.id)),
+    databases: [...model.databases].map((db) => db.tenant_schemas ? { ...db, tenant_schemas: [...db.tenant_schemas].sort((a, b) => compareStrings(a.schema, b.schema)) } : db).sort((a, b) => compareStrings(a.database, b.database)),
+    // STI subclasses, partition and unique key columns keep authored order:
+    // it is the class hierarchy and the index column order.
+    tables: [...model.tables].map((t) => ({
+      ...t,
+      ...t.sources ? { sources: sortedList(t.sources) } : {},
+      ...t.unique ? { unique: byKey(t.unique) } : {}
+    })).sort((a, b) => compareStrings(a.id, b.id)),
     relations: model.relations.map((r) => ({ ...r, evidence: sortedList(r.evidence) })).sort((a, b) => compareStrings(relationKey(a), relationKey(b))),
     polymorphic: (model.polymorphic ?? []).map((a) => ({ ...a, targets: sortedList(a.targets), evidence: sortedList(a.evidence) })).sort((a, b) => compareStrings(a.table, b.table) || compareStrings(a.name, b.name))
   };
 }
+function splitColumnRef(ref) {
+  const parts = ref.split(".");
+  return [parts.slice(0, 3).join("."), parts.slice(3).join(".")];
+}
 function formatError(e) {
   return `${e.file}: ${e.path}: ${e.message}`;
+}
+
+// src/model/profile.js
+function profileNames(config) {
+  return [.../* @__PURE__ */ new Set([...Object.keys(BUILT_IN_PROFILES), ...Object.keys(config.profiles ?? {})])].sort();
+}
+function resolveProfile(config, name) {
+  const declared = config.profiles?.[name];
+  if (!declared && !BUILT_IN_PROFILES[name]) {
+    throw new Error(`unknown profile "${name}" (known: ${profileNames(config).join(", ")})`);
+  }
+  const merged = { ...PROFILE_DEFAULTS, ...BUILT_IN_PROFILES[name], ...declared };
+  return { ...merged, hide: { tables: merged.hide.tables ?? [], columns: merged.hide.columns ?? [] } };
+}
+function withoutFields(object, fields) {
+  const copy = { ...object };
+  for (const f of fields) delete copy[f];
+  return copy;
+}
+function applyProfile(model, name) {
+  const p = resolveProfile(model.config, name);
+  const hiddenTables = /* @__PURE__ */ new Set([...model.config.hidden?.tables ?? [], ...p.hide.tables]);
+  const hiddenColumns = /* @__PURE__ */ new Set([...model.config.hidden?.columns ?? [], ...p.hide.columns]);
+  const dropNotes = p.drop_notes.filter((f) => NOTE_FIELDS.includes(f));
+  const keepColumn = (tableId2, path, column2) => !hiddenColumns.has(`${tableId2}.${path}`) && !(p.drop_pii && column2.pii);
+  const strip = (object) => withoutFields(object, dropNotes);
+  const kept = /* @__PURE__ */ new Map();
+  for (const t of model.tables) {
+    if (hiddenTables.has(t.id)) continue;
+    const columns = t.columns.filter((c) => keepColumn(t.id, c.name, c)).map(strip);
+    const embedded2 = (t.embedded ?? []).filter((e) => !hiddenColumns.has(`${t.id}.${e.name}`)).map((e) => ({ ...strip(e), columns: e.columns.filter((c) => keepColumn(t.id, `${e.name}.${c.name}`, c)).map(strip) })).filter((e) => e.columns.length > 0);
+    const paths = /* @__PURE__ */ new Set([...columns.map((c) => c.name), ...embedded2.flatMap((e) => e.columns.map((c) => `${e.name}.${c.name}`))]);
+    const has = (names) => names.every((n) => paths.has(n));
+    const table2 = withoutFields(strip(t), ["columns", "embedded", "sources", "sti", "partition", "unique"]);
+    table2.columns = columns;
+    if (embedded2.length > 0) table2.embedded = embedded2;
+    const sources = (t.sources ?? []).filter((id) => !hiddenTables.has(id));
+    if (sources.length > 0) table2.sources = sources;
+    if (t.sti && paths.has(t.sti.column)) table2.sti = t.sti;
+    if (t.partition && has(t.partition.columns)) table2.partition = t.partition;
+    const unique = (t.unique ?? []).filter(has);
+    if (unique.length > 0) table2.unique = unique;
+    kept.set(t.id, { table: table2, paths });
+  }
+  const endOk = (end) => kept.has(end.table) && end.columns.every((c) => kept.get(end.table).paths.has(c));
+  const evidence2 = (fact) => p.drop_evidence ? withoutFields(fact, ["evidence"]) : fact;
+  const polymorphic2 = [];
+  for (const a of model.polymorphic) {
+    const owner = kept.get(a.table);
+    const targets = a.targets.filter((id) => kept.has(id));
+    if (!owner || !owner.paths.has(a.type_column) || !owner.paths.has(a.id_column) || targets.length === 0) continue;
+    polymorphic2.push(evidence2({ ...a, targets }));
+  }
+  const hub = model.config.hub ? { ...model.config.hub, ...model.config.hub.tables ? { tables: model.config.hub.tables.filter((id) => kept.has(id)) } : {} } : void 0;
+  const config = withoutFields(model.config, ["hidden", "profiles", "hub"]);
+  if (hub) config.hub = hub;
+  return {
+    config,
+    databases: model.databases.map((db) => ({
+      ...db,
+      ...db.tenant_schemas ? { tenant_schemas: db.tenant_schemas.map(strip) } : {},
+      ...db.topology ? { topology: strip(db.topology) } : {}
+    })),
+    tables: [...kept.values()].map((k) => k.table),
+    relations: model.relations.filter((r) => endOk(r.from) && endOk(r.to)).map(evidence2),
+    polymorphic: polymorphic2
+  };
 }
 
 // src/palette.js
@@ -100404,43 +100700,32 @@ var DB_ICON = { w: 14, h: 16 };
 function engineName(engine) {
   return ENGINE_NAMES[engine] ?? engine;
 }
-function dbLabel(frame, database, engine) {
+var DB_FACT_FONT = { size: 11, weight: 400 };
+var PILL_GAP = 8;
+function dbLabel(frame, database, engine, facts = []) {
   const cy = frame.y + 32;
   const icon = { x: frame.x + 18, y: cy - DB_ICON.h / 2, ...DB_ICON };
   const nameX = icon.x + icon.w + 9;
   const nameW = Math.ceil(measureText(database, DB_LABEL_FONT));
   const engineText = engineName(engine);
   const pill = { x: nameX + nameW + 10, y: cy - 9, w: Math.ceil(measureText(engineText, ENGINE_FONT)) + 14, h: 18 };
+  const factPills = [];
+  let right = pill.x + pill.w;
+  for (const text2 of facts) {
+    const p = { x: right + PILL_GAP, y: cy - 9, w: Math.ceil(measureText(text2, DB_FACT_FONT)) + 14, h: 18 };
+    if (p.x + p.w + 18 > frame.x + frame.w) break;
+    factPills.push({ text: text2, x: p.x + p.w / 2, pill: p });
+    right = p.x + p.w;
+  }
   return {
     cy,
     icon,
     name: { x: nameX, text: database },
     engine: { text: engineText, x: pill.x + pill.w / 2 },
     pill,
-    box: { x: icon.x - 6, y: cy - 14, w: pill.x + pill.w + 6 - (icon.x - 6), h: 28 }
+    facts: factPills,
+    box: { x: icon.x - 6, y: cy - 14, w: right + 6 - (icon.x - 6), h: 28 }
   };
-}
-
-// src/model/columns.js
-var TIMESTAMP_TYPE = /^(timestamp|timestamptz|datetime|date|time)\b/i;
-function technicalColumns(model) {
-  const keys = new Map(model.tables.map((t) => [t.id, /* @__PURE__ */ new Set()]));
-  const add = (table2, columns) => {
-    for (const c of columns) keys.get(table2)?.add(c);
-  };
-  for (const r of model.relations) {
-    add(r.from.table, r.from.columns);
-    add(r.to.table, r.to.columns);
-  }
-  for (const a of model.polymorphic) add(a.table, [a.type_column, a.id_column]);
-  return new Map(
-    model.tables.map((t) => [
-      t.id,
-      new Set(
-        t.columns.filter((c) => !c.enum && !c.note && (c.pk || keys.get(t.id).has(c.name) || TIMESTAMP_TYPE.test(c.type))).map((c) => c.name)
-      )
-    ])
-  );
 }
 
 // src/layout/table-box.js
@@ -100475,28 +100760,53 @@ function fit(text2, maxWidth, font) {
   const result = truncate(text2, maxWidth, font);
   return { ...result, full: text2, width: measureText(result.text, font) };
 }
-function tableBox(table2, badges = []) {
+var FACT_FONT = { size: 11, weight: 400 };
+var TAG_FONT = { size: 10, weight: 700 };
+var EMBED_INSET = 6;
+var TAG_GAP = 8;
+var TAGS = { view: "\xABview\xBB", materialized_view: "\xABmaterialized view\xBB" };
+function tableBox(table2, badges = [], facts = []) {
   const label = table2.id.split(".")[2];
+  const tagText = TAGS[table2.kind];
+  const tagWidth = tagText ? measureText(tagText, TAG_FONT) + TAG_GAP : 0;
   const titleWidth = measureText(label, TITLE_FONT);
-  let natural = titleWidth + 2 * PADDING_X;
-  for (const c of table2.columns) {
-    const nameWidth = measureText(c.name, c.pk ? PK_FONT : COLUMN_FONT);
-    natural = Math.max(natural, nameWidth + NAME_TYPE_GAP + measureText(c.type, TYPE_FONT) + 2 * PADDING_X);
+  const columnWidth = (c) => measureText(c.name, c.pk ? PK_FONT : COLUMN_FONT) + NAME_TYPE_GAP + measureText(c.type, TYPE_FONT);
+  const entityTitle = (e) => `${e.name}${e.array ? " [ ]" : ""}`;
+  const embedded2 = table2.embedded ?? [];
+  let natural = titleWidth + tagWidth + 2 * PADDING_X;
+  for (const c of table2.columns) natural = Math.max(natural, columnWidth(c) + 2 * PADDING_X);
+  for (const e of embedded2) {
+    natural = Math.max(natural, measureText(entityTitle(e), COLUMN_FONT) + 2 * (PADDING_X + EMBED_INSET));
+    for (const c of e.columns) natural = Math.max(natural, columnWidth(c) + 2 * (PADDING_X + EMBED_INSET));
   }
+  for (const f of facts) natural = Math.max(natural, measureText(f, FACT_FONT) + 2 * PADDING_X);
   const badgeText = (b) => `${b.target.split(".")[2]} \xD7${b.count}`;
   for (const b of badges) {
     natural = Math.max(natural, BADGE_ARROW_WIDTH + BADGE_ARROW_GAP + measureText(badgeText(b), BADGE_FONT) + 2 * PADDING_X);
   }
   const w = Math.min(MAX_WIDTH, ceilToGrid(Math.max(MIN_WIDTH, natural)));
   const inner = w - 2 * PADDING_X;
-  const rows = table2.columns.map((c, i) => {
+  let slot = 0;
+  const centerOf = () => HEADER_HEIGHT + ROW_HEIGHT * slot++ + ROW_HEIGHT / 2;
+  const columnRow = (c, path, depth) => {
+    const room = inner - 2 * EMBED_INSET * depth;
     const nameFont = c.pk ? PK_FONT : COLUMN_FONT;
-    const type = fit(c.type, Math.min(measureText(c.type, TYPE_FONT), Math.max(inner * TYPE_SHARE, inner - NAME_TYPE_GAP - measureText(c.name, nameFont))), TYPE_FONT);
-    const name = fit(c.name, inner - NAME_TYPE_GAP - type.width, nameFont);
-    return { column: c.name, pk: c.pk === true, name, type, centerY: HEADER_HEIGHT + ROW_HEIGHT * i + ROW_HEIGHT / 2 };
+    const type = fit(c.type, Math.min(measureText(c.type, TYPE_FONT), Math.max(room * TYPE_SHARE, room - NAME_TYPE_GAP - measureText(c.name, nameFont))), TYPE_FONT);
+    const name = fit(c.name, room - NAME_TYPE_GAP - type.width, nameFont);
+    return { column: path, pk: c.pk === true, depth, name, type, centerY: centerOf() };
+  };
+  const rows = table2.columns.map((c) => columnRow(c, c.name, 0));
+  const insets = embedded2.map((e) => {
+    const top = HEADER_HEIGHT + ROW_HEIGHT * slot;
+    const title = { ...fit(entityTitle(e), inner - 2 * EMBED_INSET, COLUMN_FONT), centerY: centerOf() };
+    rows.push(...e.columns.map((c) => columnRow(c, `${e.name}.${c.name}`, 1)));
+    return { entity: e.name, top, h: HEADER_HEIGHT + ROW_HEIGHT * slot - top, title };
   });
-  const columnsEnd = HEADER_HEIGHT + ROW_HEIGHT * table2.columns.length;
-  const badgeTop = columnsEnd + (badges.length > 0 ? BOTTOM_PADDING / 2 : 0);
+  const columnsEnd = HEADER_HEIGHT + ROW_HEIGHT * slot;
+  const footer = facts.length + badges.length > 0;
+  const footerTop = columnsEnd + (footer ? BOTTOM_PADDING / 2 : 0);
+  const factRows = facts.map((f, i) => ({ text: fit(f, inner, FACT_FONT), centerY: footerTop + ROW_HEIGHT * i + ROW_HEIGHT / 2 }));
+  const badgeTop = footerTop + ROW_HEIGHT * facts.length;
   const badgeRows = badges.map((b, i) => ({
     ...b,
     label: fit(badgeText(b), inner - BADGE_ARROW_WIDTH - BADGE_ARROW_GAP, BADGE_FONT),
@@ -100507,9 +100817,12 @@ function tableBox(table2, badges = []) {
     kind: "table",
     w,
     h: badgeTop + ROW_HEIGHT * badges.length + BOTTOM_PADDING,
-    title: { ...fit(label, inner, TITLE_FONT), centerY: HEADER_HEIGHT / 2 },
+    title: { ...fit(label, inner - tagWidth, TITLE_FONT), centerY: HEADER_HEIGHT / 2 },
+    tag: tagText ? { ...fit(tagText, tagWidth - TAG_GAP, TAG_FONT), centerY: HEADER_HEIGHT / 2 } : null,
     rows,
-    separatorY: badges.length > 0 ? badgeTop : null,
+    insets,
+    separatorY: footer ? footerTop : null,
+    facts: factRows,
     badges: badgeRows
   };
 }
@@ -100536,8 +100849,8 @@ function polyBox(association) {
 function stubBox(table2) {
   return rowsBox("stub", table2.id.split(".")[2], MUTED_TITLE_FONT, [], COLUMN_FONT);
 }
-function domainBox(label, count) {
-  const countText = `${count} ${count === 1 ? "table" : "tables"}`;
+function domainBox(label, count2) {
+  const countText = `${count2} ${count2 === 1 ? "table" : "tables"}`;
   const w = Math.min(MAX_WIDTH, ceilToGrid(Math.max(MIN_WIDTH, measureText(label, DOMAIN_TITLE_FONT) + 2 * PADDING_X, measureText(countText, DOMAIN_COUNT_FONT) + 2 * PADDING_X)));
   const inner = w - 2 * PADDING_X;
   return {
@@ -100552,8 +100865,8 @@ function rowCenter(box, column2) {
   return box.rows.find((r) => r.column === column2).centerY;
 }
 function attachOffset(box, column2) {
-  if (box.kind === "table") return rowCenter(box, column2);
-  if (box.kind === "poly") return roundToGrid(HEADER_HEIGHT / 2);
+  if (box.kind === "table" && column2 !== null) return rowCenter(box, column2);
+  if (box.kind === "poly" || box.kind === "table") return roundToGrid(HEADER_HEIGHT / 2);
   return box.h / 2;
 }
 
@@ -100624,9 +100937,47 @@ function collapsedLink(joinId, [a, b]) {
     via: joinId
   };
 }
+var VIEW_SOURCE = "view_source";
+function viewSourceLinks(t) {
+  return (t.sources ?? []).map((source) => ({
+    id: `${t.id}=>${source}`,
+    from: { node: t.id, column: null },
+    to: { node: source, column: null },
+    cardinality: null,
+    optional: true,
+    kind: VIEW_SOURCE,
+    review: "reviewed"
+  }));
+}
+var plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+function tableFacts(t, tenancy) {
+  const facts = [];
+  if (t.sti) facts.push(`STI on ${t.sti.column}: ${t.sti.subclasses.join(", ")}`);
+  if (t.partition) {
+    const by = t.partition.interval ?? t.partition.method;
+    facts.push(`partitioned by ${by} on ${t.partition.columns.join(", ")}`);
+  }
+  for (const key of t.unique ?? []) facts.push(`unique (${key.join(", ")})`);
+  if (tenancy) facts.push(tenancy.count ? `\xD7 ${plural(tenancy.count, "tenant")}` : "one copy per tenant");
+  if (t.generated_by) facts.push(`generated by ${t.generated_by}`);
+  return facts;
+}
+function databaseFacts(db) {
+  const facts = [];
+  const topology = db.topology ?? {};
+  const parts = [topology.replicas && plural(topology.replicas, "replica"), topology.shards && plural(topology.shards, "shard")].filter(Boolean);
+  if (parts.length > 0) facts.push(parts.join(" \xB7 "));
+  for (const t of db.tenant_schemas ?? []) {
+    facts.push(t.count ? `schema ${t.schema} \xD7 ${plural(t.count, "tenant")}` : `schema ${t.schema}: one copy per tenant`);
+  }
+  return facts;
+}
+function polyLinkId(a) {
+  return `${a.table}(${a.id_column})->\xAB${a.name}\xBB`;
+}
 function polyLink(a) {
   return {
-    id: `${a.table}(${a.id_column})->\xAB${a.name}\xBB`,
+    id: polyLinkId(a),
     from: { node: a.table, column: a.id_column },
     to: { node: polyNodeId(a), column: null },
     cardinality: "n-1",
@@ -100640,10 +100991,16 @@ function buildDiagram(model) {
   const drawn = new Set(model.relations.filter((r) => !hubRelations.includes(r)));
   const joins = model.config.collapse_join_tables ? joinTables(model, drawn) : /* @__PURE__ */ new Map();
   const badges = hubBadges(hubRelations);
+  const tenancy = new Map(
+    model.databases.flatMap((db) => (db.tenant_schemas ?? []).map((t) => [`${db.database}.${t.schema}`, t]))
+  );
   const nodes = /* @__PURE__ */ new Map();
   for (const t of model.tables) {
     if (joins.has(t.id)) continue;
-    nodes.set(t.id, { id: t.id, kind: "table", cluster: clusterKey(t), box: tableBox(t, badges.get(t.id)), table: t });
+    const [db, schema] = t.id.split(".");
+    const tenant = tenancy.get(`${db}.${schema}`) ?? null;
+    const facts = tableFacts(t, tenant);
+    nodes.set(t.id, { id: t.id, kind: "table", cluster: clusterKey(t), box: tableBox(t, badges.get(t.id), facts), table: t, facts, tenant });
   }
   const tablesById = new Map(model.tables.map((t) => [t.id, t]));
   for (const a of model.polymorphic) {
@@ -100653,7 +101010,10 @@ function buildDiagram(model) {
   const links = [
     ...[...drawn].filter((r) => !joins.has(r.from.table)).map(relationLink),
     ...[...joins].map(([id, pair]) => collapsedLink(id, pair)),
-    ...model.polymorphic.map(polyLink)
+    ...model.polymorphic.map(polyLink),
+    // A join table collapsed into a line is never a view source target:
+    // views read tables, and a collapsed table is no longer drawn.
+    ...model.tables.flatMap(viewSourceLinks).filter((l) => nodes.has(l.from.node) && nodes.has(l.to.node))
   ].sort((a, b) => compareStrings(a.id, b.id));
   const clusters = /* @__PURE__ */ new Map();
   for (const n of [...nodes.values()].sort((a, b) => compareStrings(a.id, b.id))) {
@@ -100664,7 +101024,7 @@ function buildDiagram(model) {
 }
 function domainLinks(diagram) {
   const pairs = /* @__PURE__ */ new Map();
-  const add = (a, b, review2) => {
+  const add2 = (a, b, review2) => {
     if (a === b) return;
     const [from, to] = compareStrings(a, b) < 0 ? [a, b] : [b, a];
     const key = `${from}\0${to}`;
@@ -100674,15 +101034,16 @@ function domainLinks(diagram) {
     p.reviews.push(review2);
   };
   for (const l of diagram.links) {
+    if (l.kind === VIEW_SOURCE) continue;
     const owner = diagram.nodes.get(l.from.node).cluster;
     if (l.kind === "polymorphic") {
       const a = diagram.nodes.get(l.to.node).association;
       for (const t of a.targets) {
         const target = diagram.nodes.get(t);
-        if (target) add(owner, target.cluster, l.review);
+        if (target) add2(owner, target.cluster, l.review);
       }
     } else {
-      add(owner, diagram.nodes.get(l.to.node).cluster, l.review);
+      add2(owner, diagram.nodes.get(l.to.node).cluster, l.review);
     }
   }
   return [...pairs.values()].sort((a, b) => compareStrings(a.from, b.from) || compareStrings(a.to, b.to)).map((p) => ({
@@ -100888,6 +101249,136 @@ ${indent}}`;
 `;
 }
 
+// src/layout/views.js
+var ALL_VIEW = "all";
+var OVERVIEW = "overview";
+var DOMAIN_VIEW_PREFIX = "domain:";
+var STUB_SLOT = "related";
+var CLUSTER_ASPECT = 1.3;
+var PAGE_ASPECT = 16 / 9;
+var OVERVIEW_DB_ASPECT = 4;
+function viewNames(diagram) {
+  return [OVERVIEW, ALL_VIEW, ...[...diagram.clusters.keys()].map((k) => DOMAIN_VIEW_PREFIX + k)];
+}
+function clusterGroup(diagram, key) {
+  return {
+    id: key,
+    kind: "cluster",
+    key,
+    pad: CLUSTER_PAD,
+    gap: TABLE_GAP,
+    aspect: CLUSTER_ASPECT,
+    strategy: "layered",
+    children: diagram.clusters.get(key).map((id) => {
+      const node = diagram.nodes.get(id);
+      return { id, kind: node.kind, slot: key, box: node.box, node };
+    })
+  };
+}
+function dbGroups(model, diagram, aspect, childrenOf) {
+  return model.databases.map((db) => {
+    const keys = [...diagram.clusters.keys()].filter((k) => k.split("/")[0] === db.database);
+    return { id: `db:${db.database}`, kind: "db", database: db.database, engine: db.engine, facts: databaseFacts(db), keys };
+  }).filter((g) => g.keys.length > 0).map(({ keys, ...g }) => ({ ...g, pad: DB_PAD, gap: CLUSTER_GAP, aspect, strategy: "pack", children: childrenOf(g, keys) }));
+}
+var page = (children, extra = {}) => ({ id: "page", kind: "page", pad: null, gap: DB_GAP, aspect: PAGE_ASPECT, strategy: "pack", children, ...extra });
+function allView(model, diagram) {
+  return { root: page(dbGroups(model, diagram, PAGE_ASPECT, (_, keys) => keys.map((k) => clusterGroup(diagram, k)))), links: diagram.links };
+}
+function overview(model, diagram) {
+  const children = (g, keys) => keys.map((k) => {
+    const tables = diagram.clusters.get(k).filter((id) => diagram.nodes.get(id).kind === "table").length;
+    return { id: k, kind: "domain", slot: g.database, box: domainBox(clusterLabel(k), tables) };
+  });
+  return { root: page(dbGroups(model, diagram, OVERVIEW_DB_ASPECT, children)), links: domainLinks(diagram) };
+}
+function domainView(diagram, key) {
+  const core = clusterGroup(diagram, key);
+  const inside = new Set(diagram.clusters.get(key));
+  const links = diagram.links.filter((l) => inside.has(l.from.node) || inside.has(l.to.node));
+  const outside = [...new Set(links.flatMap((l) => [l.from.node, l.to.node]).filter((id) => !inside.has(id)))].sort(compareStrings);
+  const stubs = outside.map((id) => {
+    const node = diagram.nodes.get(id);
+    return { id, kind: "stub", slot: STUB_SLOT, box: stubBox(node.table), node };
+  });
+  return { root: page([core, ...stubs], { gap: STUB_GAP, strategy: "around", core: key }), links };
+}
+function viewTree(model, diagram, name) {
+  if (name === ALL_VIEW) return allView(model, diagram);
+  if (name === OVERVIEW) return overview(model, diagram);
+  if (name.startsWith(DOMAIN_VIEW_PREFIX) && diagram.clusters.has(name.slice(DOMAIN_VIEW_PREFIX.length))) {
+    return domainView(diagram, name.slice(DOMAIN_VIEW_PREFIX.length));
+  }
+  throw new Error(`unknown view "${name}"`);
+}
+function leavesOf(node) {
+  return node.children ? node.children.flatMap(leavesOf) : [node];
+}
+
+// src/layout/renames.js
+var add = (map, key, value) => {
+  if (!map.has(key)) map.set(key, /* @__PURE__ */ new Set());
+  map.get(key).add(value);
+};
+function carryRenames(model, diagram, previous) {
+  const current = new Set(model.tables.map((t) => t.id));
+  const ids = /* @__PURE__ */ new Map();
+  for (const t of model.tables) {
+    if (t.renamed_from && !current.has(t.renamed_from)) ids.set(t.renamed_from, t.id);
+  }
+  if (!previous || ids.size === 0) return { layout: previous, renamed: [] };
+  const tableIds = [...ids];
+  for (const a of model.polymorphic) {
+    const pair = tableIds.find(([, now]) => now === a.table);
+    if (pair) ids.set(polyNodeId({ ...a, table: pair[0] }), polyNodeId(a));
+  }
+  const all = previous.views?.[ALL_VIEW]?.clusters ?? {};
+  const slotOf = (id) => Object.keys(all).find((key) => all[key][id]);
+  const targets = /* @__PURE__ */ new Map();
+  for (const [old, now] of ids) {
+    const slot = slotOf(old);
+    if (slot) add(targets, slot, diagram.nodes.get(now)?.cluster);
+  }
+  const clusters = /* @__PURE__ */ new Map();
+  for (const [old, set] of targets) {
+    const [now] = set;
+    const fresh = now !== void 0 && !all[now] && previous.colors?.[now] === void 0;
+    if (set.size === 1 && now !== old && !diagram.clusters.has(old) && fresh) clusters.set(old, now);
+  }
+  const clusterOf = (key) => clusters.get(key) ?? key;
+  const views = {};
+  const carriedTables = /* @__PURE__ */ new Set();
+  for (const [view, body] of Object.entries(previous.views ?? {})) {
+    const name = view.startsWith(DOMAIN_VIEW_PREFIX) ? DOMAIN_VIEW_PREFIX + clusterOf(view.slice(DOMAIN_VIEW_PREFIX.length)) : view;
+    const out = {};
+    const put = (slot, id, node) => {
+      out[slot] ??= {};
+      out[slot][id] ??= node;
+    };
+    for (const [slot, members] of Object.entries(body.clusters)) {
+      for (const [id, node] of Object.entries(members)) {
+        if (view === OVERVIEW) {
+          const key = clusterOf(id);
+          put(key.split("/")[0], key, node);
+          continue;
+        }
+        const target = slot === STUB_SLOT ? slot : clusterOf(slot);
+        const now = ids.get(id);
+        const carried = now !== void 0 && (slot === STUB_SLOT || diagram.nodes.get(now)?.cluster === target);
+        put(target, carried ? now : id, node);
+        if (carried && view === ALL_VIEW) carriedTables.add(id);
+      }
+    }
+    views[name] = { clusters: out };
+  }
+  const colors = { ...previous.colors };
+  for (const [old, now] of clusters) if (colors[old] !== void 0) colors[now] ??= colors[old];
+  return {
+    layout: { ...previous, colors, views },
+    renamed: tableIds.filter(([old]) => carriedTables.has(old)).sort(([a], [b]) => compareStrings(a, b))
+  };
+}
+
 // src/layout/stability.js
 var AXES = [
   { pos: "x", size: "w" },
@@ -100991,72 +101482,6 @@ function insertNextTo(boxes, id, size, anchors, gap, aspect) {
   return best.result;
 }
 
-// src/layout/views.js
-var ALL_VIEW = "all";
-var OVERVIEW = "overview";
-var DOMAIN_VIEW_PREFIX = "domain:";
-var STUB_SLOT = "related";
-var CLUSTER_ASPECT = 1.3;
-var PAGE_ASPECT = 16 / 9;
-var OVERVIEW_DB_ASPECT = 4;
-function viewNames(diagram) {
-  return [OVERVIEW, ALL_VIEW, ...[...diagram.clusters.keys()].map((k) => DOMAIN_VIEW_PREFIX + k)];
-}
-function clusterGroup(diagram, key) {
-  return {
-    id: key,
-    kind: "cluster",
-    key,
-    pad: CLUSTER_PAD,
-    gap: TABLE_GAP,
-    aspect: CLUSTER_ASPECT,
-    strategy: "layered",
-    children: diagram.clusters.get(key).map((id) => {
-      const node = diagram.nodes.get(id);
-      return { id, kind: node.kind, slot: key, box: node.box, node };
-    })
-  };
-}
-function dbGroups(model, diagram, aspect, childrenOf) {
-  return model.databases.map((db) => {
-    const keys = [...diagram.clusters.keys()].filter((k) => k.split("/")[0] === db.database);
-    return { id: `db:${db.database}`, kind: "db", database: db.database, engine: db.engine, keys };
-  }).filter((g) => g.keys.length > 0).map(({ keys, ...g }) => ({ ...g, pad: DB_PAD, gap: CLUSTER_GAP, aspect, strategy: "pack", children: childrenOf(g, keys) }));
-}
-var page = (children, extra = {}) => ({ id: "page", kind: "page", pad: null, gap: DB_GAP, aspect: PAGE_ASPECT, strategy: "pack", children, ...extra });
-function allView(model, diagram) {
-  return { root: page(dbGroups(model, diagram, PAGE_ASPECT, (_, keys) => keys.map((k) => clusterGroup(diagram, k)))), links: diagram.links };
-}
-function overview(model, diagram) {
-  const children = (g, keys) => keys.map((k) => {
-    const tables = diagram.clusters.get(k).filter((id) => diagram.nodes.get(id).kind === "table").length;
-    return { id: k, kind: "domain", slot: g.database, box: domainBox(clusterLabel(k), tables) };
-  });
-  return { root: page(dbGroups(model, diagram, OVERVIEW_DB_ASPECT, children)), links: domainLinks(diagram) };
-}
-function domainView(diagram, key) {
-  const core = clusterGroup(diagram, key);
-  const inside = new Set(diagram.clusters.get(key));
-  const links = diagram.links.filter((l) => inside.has(l.from.node) || inside.has(l.to.node));
-  const outside = [...new Set(links.flatMap((l) => [l.from.node, l.to.node]).filter((id) => !inside.has(id)))].sort(compareStrings);
-  const stubs = outside.map((id) => {
-    const node = diagram.nodes.get(id);
-    return { id, kind: "stub", slot: STUB_SLOT, box: stubBox(node.table), node };
-  });
-  return { root: page([core, ...stubs], { gap: STUB_GAP, strategy: "around", core: key }), links };
-}
-function viewTree(model, diagram, name) {
-  if (name === ALL_VIEW) return allView(model, diagram);
-  if (name === OVERVIEW) return overview(model, diagram);
-  if (name.startsWith(DOMAIN_VIEW_PREFIX) && diagram.clusters.has(name.slice(DOMAIN_VIEW_PREFIX.length))) {
-    return domainView(diagram, name.slice(DOMAIN_VIEW_PREFIX.length));
-  }
-  throw new Error(`unknown view "${name}"`);
-}
-function leavesOf(node) {
-  return node.children ? node.children.flatMap(leavesOf) : [node];
-}
-
 // src/layout/index.js
 var sameSize = (a, b) => a.w === b.w && a.h === b.h;
 function mostLinked(id, placedIds, pairs) {
@@ -101092,11 +101517,11 @@ function placeAround(children, links, group, boxes) {
     for (const l of links) {
       const [mine, other] = l.from.node === stub.id ? [l.from, l.to] : l.to.node === stub.id ? [l.to, l.from] : [];
       if (!mine || !core.leaves.has(other.node)) continue;
-      const key = `${other.node}\0${other.column}`;
+      const key = JSON.stringify([other.node, other.column]);
       counts.set(key, (counts.get(key) ?? 0) + 1);
     }
     const [anchor] = [...counts].sort(([a, x], [b, y]) => y - x || compareStrings(a, b));
-    const [node, column2] = anchor[0].split("\0");
+    const [node, column2] = JSON.parse(anchor[0]);
     const leaf = core.leaves.get(node);
     const side = leaf.x + leaf.w / 2 < frame.x + frame.w / 2 ? -1 : 1;
     sides.get(side).push({ stub, want: leaf.y + attachOffset(boxes.get(node), column2) - stub.h / 2 });
@@ -101184,8 +101609,9 @@ function assignColors(previous, keys) {
   }
   return colors;
 }
-async function computeLayout(model, previous) {
+async function computeLayout(model, previousLayout) {
   const diagram = buildDiagram(model);
+  const { layout: previous, renamed } = carryRenames(model, diagram, previousLayout);
   const views = {};
   const report = {};
   for (const name of viewNames(diagram).sort(compareStrings)) {
@@ -101199,7 +101625,8 @@ async function computeLayout(model, previous) {
       clusters[slot][id] = { x, y, w, h };
     }
     views[name] = { clusters };
-    report[name] = diffLayouts(old, clusters);
+    const placed = new Set(Object.values(clusters).flatMap((members) => Object.keys(members)));
+    report[name] = { ...diffLayouts(old, clusters), renamed: renamed.filter(([, now]) => placed.has(now)) };
   }
   const layout = {
     schema_version: LAYOUT_SCHEMA_VERSION,
@@ -101247,9 +101674,10 @@ function formatReport(report) {
       `view ${view}`,
       ...r.added.map((id) => `  added      ${id}`),
       ...r.removed.map((id) => `  removed    ${id}`),
+      ...(r.renamed ?? []).map(([from, to]) => `  renamed    ${from} -> ${to}`),
       ...r.translated.map((t) => `  translated group ${t.cluster} by ${vec(t)}`),
       ...r.moved.map((m) => `  moved      ${m.id} by ${vec(m)}`),
-      `${r.added.length} added, ${r.removed.length} removed, ${r.translated.length} group(s) translated, ${r.moved.length} node(s) moved inside their group`
+      `${r.added.length} added, ${r.removed.length} removed, ${r.translated.length} group(s) translated, ${r.moved.length} node(s) moved inside their group` + (r.renamed?.length > 0 ? `, ${r.renamed.length} renamed` : "")
     );
   }
   return lines.join("\n");
@@ -101257,7 +101685,7 @@ function formatReport(report) {
 function overlaps(a, b) {
   return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 }
-function resolveView(model, layout, name, diagram = buildDiagram(model)) {
+function resolveView(model, layout, name, diagram = buildDiagram(model), { fitStored = false } = {}) {
   const { root, links } = viewTree(model, diagram, name);
   const stored = layout.views?.[name]?.clusters ?? {};
   const problems = [];
@@ -101265,8 +101693,9 @@ function resolveView(model, layout, name, diagram = buildDiagram(model)) {
   for (const leaf of leavesOf(root)) {
     const pos = stored[leaf.slot]?.[leaf.id];
     if (!pos) problems.push(`no position for ${leaf.id} in group "${leaf.slot}"`);
-    else if (!sameSize(pos, leaf.box)) problems.push(`${leaf.id} is ${leaf.box.w}x${leaf.box.h} but was laid out as ${pos.w}x${pos.h}`);
-    else nodes.push({ ...leaf, x: pos.x, y: pos.y, w: pos.w, h: pos.h });
+    else if (fitStored ? leaf.box.w > pos.w || leaf.box.h > pos.h : !sameSize(pos, leaf.box)) {
+      problems.push(`${leaf.id} is ${leaf.box.w}x${leaf.box.h} but was laid out as ${pos.w}x${pos.h}`);
+    } else nodes.push({ ...leaf, x: pos.x, y: pos.y, w: leaf.box.w, h: leaf.box.h });
   }
   for (let i = 0; i < nodes.length; i++) {
     for (let j = i + 1; j < nodes.length; j++) {
@@ -101293,6 +101722,10 @@ function resolveView(model, layout, name, diagram = buildDiagram(model)) {
   };
   frameOf(root);
   return { name, nodes, groups, links };
+}
+function checkLayout(model, layout) {
+  const diagram = buildDiagram(model);
+  for (const name of viewNames(diagram)) resolveView(model, layout, name, diagram);
 }
 
 // src/layout/router.js
@@ -101421,7 +101854,7 @@ function ports(grid, end, stubs) {
 function portPenalty(grid, port) {
   const used = grid.portMarkers.get(port.cell);
   if (!used) return 0;
-  return [...used].some(([marker, count]) => count > 0 && marker !== port.marker) ? MIXED_MARKERS : 0;
+  return [...used].some(([marker, count2]) => count2 > 0 && marker !== port.marker) ? MIXED_MARKERS : 0;
 }
 function search(grid, starts, goals, ownCells) {
   const { cols, rows } = grid;
@@ -101638,7 +102071,7 @@ function markerSvg(kind, x, y, side) {
 
 // src/render/svg/viewer-bundle.json
 var viewer_bundle_default = {
-  source: '(() => {\n  // src/render/svg/viewer/radial.js\n  function radialLayout(center, rings2, gap) {\n    const diagonal = (n) => Math.hypot(n.w, n.h);\n    const corner = (n, cx, cy) => ({ x: Math.round(cx - n.w / 2), y: Math.round(cy - n.h / 2) });\n    const positions = { [center.id]: corner(center, 0, 0) };\n    let radius = 0;\n    let previous = diagonal(center);\n    for (const ring of rings2) {\n      if (ring.length === 0) continue;\n      const foot = ring.map((n) => diagonal(n) + gap);\n      const total = foot.reduce((a, b) => a + b, 0);\n      const angles = [];\n      let run = -foot[0] / 2;\n      for (const f of foot) {\n        angles.push(-Math.PI / 2 + 2 * Math.PI * (run + f / 2) / total);\n        run += f;\n      }\n      const widest = Math.max(...ring.map(diagonal));\n      let r = radius + previous / 2 + widest / 2 + gap;\n      for (let i = 0; i < ring.length; i++) {\n        for (let k = i + 1; k < ring.length; k++) {\n          const apart = Math.abs(angles[k] - angles[i]);\n          const shorter = Math.min(apart, 2 * Math.PI - apart);\n          r = Math.max(r, (foot[i] + foot[k]) / 2 / (2 * Math.sin(shorter / 2)));\n        }\n      }\n      ring.forEach((n, i) => {\n        positions[n.id] = corner(n, r * Math.cos(angles[i]), r * Math.sin(angles[i]));\n      });\n      radius = r;\n      previous = widest;\n    }\n    return positions;\n  }\n  function straightLink(a, b) {\n    const ca = [a.x + a.w / 2, a.y + a.h / 2];\n    const cb = [b.x + b.w / 2, b.y + b.h / 2];\n    const dx = cb[0] - ca[0];\n    const dy = cb[1] - ca[1];\n    const exit = (box) => Math.min(dx === 0 ? Infinity : box.w / 2 / Math.abs(dx), dy === 0 ? Infinity : box.h / 2 / Math.abs(dy));\n    const ta = exit(a);\n    const tb = exit(b);\n    return [\n      [ca[0] + dx * ta, ca[1] + dy * ta],\n      [cb[0] - dx * tb, cb[1] - dy * tb]\n    ];\n  }\n\n  // src/render/svg/viewer/index.js\n  var SVG_NS = "http://www.w3.org/2000/svg";\n  var HTML_NS = "http://www.w3.org/1999/xhtml";\n  var OVERVIEW = "overview";\n  var ALL_VIEW = "all";\n  var DOMAIN_PREFIX = "domain:";\n  var NEIGHBORHOOD = "neighborhood";\n  var TOOLBAR_HEIGHT = 44;\n  var PANEL_WIDTH = 300;\n  var PANEL_MARGIN = 12;\n  var FIT_PADDING = 24;\n  var MAX_FIT_SCALE = 1.5;\n  var MIN_SCALE = 0.03;\n  var MAX_SCALE = 4;\n  var DRAG_THRESHOLD = 4;\n  var FOCUS_MARGIN = 160;\n  var FOCUS_MAX_SCALE = 1.2;\n  var RING_GAP = 40;\n  var NEIGHBORHOOD_MARGIN = 60;\n  var SEARCH_LIMIT = 40;\n  var TIP_OFFSET = 14;\n  var svg = document.documentElement;\n  var data = JSON.parse(document.getElementById("open-erd-data").textContent);\n  function el(tag, attrs = {}, children = [], ns = HTML_NS) {\n    const e = document.createElementNS(ns, tag);\n    for (const [k, v] of Object.entries(attrs)) {\n      if (k === "text") e.textContent = v;\n      else if (k === "on") for (const [type, fn] of Object.entries(v)) e.addEventListener(type, fn);\n      else e.setAttribute(k, v);\n    }\n    for (const c of children) if (c) e.append(c);\n    return e;\n  }\n  var svgEl = (tag, attrs = {}, children = []) => el(tag, attrs, children, SVG_NS);\n  var short = (id) => data.nodes[id]?.kind === "poly" ? `\xAB${data.nodes[id].name}\xBB` : id.split(".").length === 3 ? id.split(".")[2] : id;\n  var clusterOf = (id) => data.nodes[id]?.cluster;\n  var domainView = (cluster) => DOMAIN_PREFIX + cluster;\n  var nodeIdOf = (g) => g.getAttribute("data-id") ?? g.getAttribute("data-domain");\n  function boxOf(g) {\n    const r = g.querySelector("rect");\n    return { x: +r.getAttribute("x"), y: +r.getAttribute("y"), w: +r.getAttribute("width"), h: +r.getAttribute("height") };\n  }\n  var NODE_SELECTOR = ".table, .stub, .poly, .domain";\n  function indexView(view, offsets = /* @__PURE__ */ new Map()) {\n    const index = /* @__PURE__ */ new Map();\n    for (const g of view.querySelectorAll(NODE_SELECTOR)) {\n      const id = nodeIdOf(g);\n      const b = boxOf(g);\n      const o = offsets.get(id) ?? { dx: 0, dy: 0 };\n      index.set(id, { el: g, box: { x: b.x + o.dx, y: b.y + o.dy, w: b.w, h: b.h } });\n    }\n    return index;\n  }\n  var views = /* @__PURE__ */ new Map();\n  var indexes = /* @__PURE__ */ new Map();\n  for (const v of svg.querySelectorAll("g.view")) {\n    views.set(v.getAttribute("data-view"), v);\n    indexes.set(v.getAttribute("data-view"), indexView(v));\n  }\n  for (const t of svg.querySelectorAll(".nodes title")) t.remove();\n  function addHitPaths(root) {\n    for (const p of root.querySelectorAll(".relation-group > path.relation")) {\n      p.before(svgEl("path", { class: "relation-hit", d: p.getAttribute("d") }));\n    }\n  }\n  addHitPaths(svg);\n  var camera = svgEl("g", { class: "camera" });\n  views.values().next().value.before(camera);\n  for (const v of views.values()) camera.append(v);\n  svg.removeAttribute("viewBox");\n  svg.setAttribute("width", "100%");\n  svg.setAttribute("height", "100%");\n  svg.style.background = "#eef1f5";\n  function overlay(cls) {\n    const div = el("div", { class: `oe-ui ${cls}` });\n    const fo = svgEl("foreignObject", { x: 0, y: 0, width: 1, height: 1 }, [div]);\n    svg.append(fo);\n    return { fo, div };\n  }\n  var state = { view: OVERVIEW, hops: 1, center: null, history: [], cam: { x: 0, y: 0, s: 1 } };\n  var viewport = () => ({ w: window.innerWidth, h: window.innerHeight });\n  function applyCamera() {\n    const { x, y, s } = state.cam;\n    camera.setAttribute("transform", `translate(${x} ${y}) scale(${s})`);\n  }\n  function zoomToRect(r, maxScale) {\n    const { w, h } = viewport();\n    const area = { w, h: h - TOOLBAR_HEIGHT };\n    const s = Math.min((area.w - 2 * FIT_PADDING) / r.w, (area.h - 2 * FIT_PADDING) / r.h, maxScale);\n    state.cam = { s, x: (area.w - r.w * s) / 2 - r.x * s, y: TOOLBAR_HEIGHT + (area.h - r.h * s) / 2 - r.y * s };\n    applyCamera();\n  }\n  function viewBounds(name) {\n    const [x, y, w, h] = views.get(name).getAttribute("data-bounds").split(" ").map(Number);\n    return { x, y, w, h };\n  }\n  function zoomAt(clientX, clientY, factor) {\n    const { x, y, s } = state.cam;\n    const next = Math.min(MAX_SCALE, Math.max(MIN_SCALE, s * factor));\n    const wx = (clientX - x) / s;\n    const wy = (clientY - y) / s;\n    state.cam = { s: next, x: clientX - wx * next, y: clientY - wy * next };\n    applyCamera();\n  }\n  var currentView = () => views.get(state.view);\n  var currentIndex = () => indexes.get(state.view);\n  function showView(name) {\n    clearSelection();\n    hideTip();\n    for (const [n, v] of views) v.style.display = n === name ? "" : "none";\n    state.view = name;\n    zoomToRect(viewBounds(name), MAX_FIT_SCALE);\n    renderToolbar();\n  }\n  function snapshot() {\n    return { view: state.view, center: state.center, hops: state.hops };\n  }\n  function navigate(name, { focus, column } = {}) {\n    if (name !== state.view) {\n      state.history.push(snapshot());\n      showView(name);\n    }\n    if (focus) focusNode(focus, column);\n  }\n  function back() {\n    const prev = state.history.pop();\n    if (!prev) return;\n    if (prev.view === NEIGHBORHOOD) buildNeighborhood(prev.center, prev.hops);\n    showView(prev.view);\n  }\n  function homeView(id) {\n    const cluster = clusterOf(id);\n    return cluster ? domainView(cluster) : null;\n  }\n  function goToNode(id, column) {\n    if (!data.nodes[id] && indexes.get(OVERVIEW).has(id)) navigate(domainView(id));\n    else if (currentIndex().has(id) && state.view !== OVERVIEW) focusNode(id, column);\n    else if (homeView(id)) navigate(homeView(id), { focus: id, column });\n  }\n  function clearSelection() {\n    for (const v of views.values()) {\n      v.classList.remove("dimmed");\n      for (const e of v.querySelectorAll(".hl, .selected, .flow-target, .flowing, .hl-column")) {\n        e.classList.remove("hl", "selected", "flow-target", "flowing", "hl-column");\n      }\n      for (const e of v.querySelectorAll(".flow")) e.remove();\n      for (const e of v.querySelectorAll(".poly-routes")) e.style.display = "none";\n    }\n    hidePanel();\n  }\n  function relationGroups() {\n    return [...currentView().querySelectorAll(".relation-group")];\n  }\n  function selectNode(id) {\n    clearSelection();\n    const index = currentIndex();\n    const entry = index.get(id);\n    if (!entry) return;\n    const lit = /* @__PURE__ */ new Set([id]);\n    for (const g of relationGroups()) {\n      const [from, to] = [g.getAttribute("data-from"), g.getAttribute("data-to")];\n      if (from !== id && to !== id) continue;\n      g.classList.add("hl");\n      lit.add(from).add(to);\n    }\n    const poly = data.nodes[id]?.kind === "poly" ? data.nodes[id] : null;\n    if (poly) {\n      for (const routes of currentView().querySelectorAll(".poly-routes")) {\n        if (routes.getAttribute("data-poly") !== id) continue;\n        routes.style.display = "";\n        for (const p of routes.querySelectorAll(".poly-route")) lit.add(p.getAttribute("data-target"));\n      }\n    }\n    for (const n of lit) index.get(n)?.el.classList.add("hl");\n    entry.el.classList.add("selected");\n    currentView().classList.add("dimmed");\n    showPanel(poly ? polyPanel(id, poly) : nodePanel(id));\n  }\n  function focusNode(id, column) {\n    const entry = currentIndex().get(id);\n    if (!entry) return;\n    selectNode(id);\n    if (column) {\n      for (const c of entry.el.querySelectorAll(".column")) if (c.getAttribute("data-column") === column) c.classList.add("hl-column");\n    }\n    const b = entry.box;\n    zoomToRect({ x: b.x - FOCUS_MARGIN, y: b.y - FOCUS_MARGIN, w: b.w + 2 * FOCUS_MARGIN, h: b.h + 2 * FOCUS_MARGIN }, FOCUS_MAX_SCALE);\n  }\n  function flowRelation(g) {\n    clearSelection();\n    const index = currentIndex();\n    const [from, to] = [g.getAttribute("data-from"), g.getAttribute("data-to")];\n    g.classList.add("hl", "flowing");\n    index.get(from)?.el.classList.add("hl");\n    index.get(to)?.el.classList.add("hl", "flow-target");\n    g.append(svgEl("path", { class: "flow", d: g.querySelector("path.relation").getAttribute("d") }));\n    currentView().classList.add("dimmed");\n    showPanel(relationPanel(g));\n  }\n  function adjacency() {\n    const adj = /* @__PURE__ */ new Map();\n    const link2 = (a, b) => {\n      if (a === b) return;\n      if (!adj.has(a)) adj.set(a, /* @__PURE__ */ new Set());\n      adj.get(a).add(b);\n    };\n    for (const l of data.links) {\n      link2(l.from, l.to);\n      link2(l.to, l.from);\n    }\n    return adj;\n  }\n  var ADJACENCY = adjacency();\n  var byId = (a, b) => a < b ? -1 : a > b ? 1 : 0;\n  function rings(center, hops) {\n    const seen = /* @__PURE__ */ new Set([center]);\n    const result = [];\n    let previous = [center];\n    for (let hop = 1; hop <= hops; hop++) {\n      const parent = /* @__PURE__ */ new Map();\n      previous.forEach((p, i) => {\n        for (const n of [...ADJACENCY.get(p) ?? []].sort(byId)) {\n          if (!seen.has(n) && !parent.has(n)) parent.set(n, i);\n        }\n      });\n      const ring = [...parent.keys()].sort((a, b) => parent.get(a) - parent.get(b) || byId(a, b));\n      for (const n of ring) seen.add(n);\n      result.push(ring);\n      previous = ring;\n    }\n    return result;\n  }\n  function buildNeighborhood(center, hops) {\n    views.get(NEIGHBORHOOD)?.remove();\n    const source = indexes.get(ALL_VIEW);\n    const ids = [center, ...rings(center, hops).flat()].filter((id) => source.has(id));\n    const ringIds = rings(center, hops).map((r) => r.filter((id) => source.has(id)));\n    const size = (id) => ({ id, w: source.get(id).box.w, h: source.get(id).box.h });\n    const pos = radialLayout(size(center), ringIds.map((r) => r.map(size)), RING_GAP);\n    const shown = new Set(ids);\n    const offsets = /* @__PURE__ */ new Map();\n    const nodes = svgEl("g", { class: "nodes" });\n    const boxes = /* @__PURE__ */ new Map();\n    for (const id of ids) {\n      const { el: g, box } = source.get(id);\n      const dx = pos[id].x - box.x;\n      const dy = pos[id].y - box.y;\n      offsets.set(id, { dx, dy });\n      boxes.set(id, { x: pos[id].x, y: pos[id].y, w: box.w, h: box.h });\n      const copy = g.cloneNode(true);\n      copy.classList.remove("hl", "selected", "flow-target");\n      nodes.append(svgEl("g", { transform: `translate(${dx} ${dy})` }, [copy]));\n    }\n    const relations = svgEl("g", { class: "relations" });\n    const line = (a, b) => {\n      const [[x12, y12], [x2, y2]] = straightLink(boxes.get(a), boxes.get(b));\n      return `M${x12} ${y12}L${x2} ${y2}`;\n    };\n    for (const l of data.links) {\n      if (l.from === l.to || !shown.has(l.from) || !shown.has(l.to)) continue;\n      const d = line(l.from, l.to);\n      relations.append(\n        svgEl("g", { class: `relation-group kind-${l.kind} review-${l.review}`, "data-id": l.id, "data-from": l.from, "data-to": l.to }, [\n          svgEl("path", { class: "relation-hit", d }),\n          svgEl("path", { class: "relation", d })\n        ])\n      );\n    }\n    for (const id of ids.filter((n) => data.nodes[n]?.kind === "poly")) {\n      const targets = data.nodes[id].targets.filter((t) => shown.has(t));\n      if (targets.length === 0) continue;\n      relations.append(\n        svgEl(\n          "g",\n          { class: "poly-routes", "data-poly": id, style: "display:none" },\n          targets.map((t) => svgEl("path", { class: "poly-route", "data-target": t, d: line(id, t) }))\n        )\n      );\n    }\n    const all = [...boxes.values()];\n    const x0 = Math.min(...all.map((b) => b.x)) - NEIGHBORHOOD_MARGIN;\n    const y0 = Math.min(...all.map((b) => b.y)) - NEIGHBORHOOD_MARGIN;\n    const x1 = Math.max(...all.map((b) => b.x + b.w)) + NEIGHBORHOOD_MARGIN;\n    const y1 = Math.max(...all.map((b) => b.y + b.h)) + NEIGHBORHOOD_MARGIN;\n    const view = svgEl(\n      "g",\n      { class: "view", "data-view": NEIGHBORHOOD, "data-bounds": `${x0} ${y0} ${x1 - x0} ${y1 - y0}`, style: "display:none" },\n      [svgEl("rect", { x: x0, y: y0, width: x1 - x0, height: y1 - y0, fill: "#ffffff" }), relations, nodes]\n    );\n    camera.append(view);\n    views.set(NEIGHBORHOOD, view);\n    indexes.set(NEIGHBORHOOD, indexView(view, offsets));\n    state.center = center;\n    state.hops = hops;\n  }\n  function openNeighborhood(id, hops = state.hops) {\n    if (!indexes.get(ALL_VIEW).has(id)) return;\n    if (state.view !== NEIGHBORHOOD) state.history.push(snapshot());\n    buildNeighborhood(id, hops);\n    showView(NEIGHBORHOOD);\n    selectNode(id);\n  }\n  var toolbar = overlay("oe-toolbar");\n  var crumbs = el("div", { class: "oe-crumbs" });\n  var backButton = el("button", { class: "oe-btn", text: "\u2039 Back", title: "Previous view", on: { click: back } });\n  var hopButtons = [1, 2].map(\n    (n) => el("button", { class: "oe-btn", text: `${n} hop${n > 1 ? "s" : ""}`, on: { click: () => openNeighborhood(state.center, n) } })\n  );\n  var hopGroup = el("div", { class: "oe-seg" }, hopButtons);\n  var allButton = el("button", { class: "oe-btn", text: "All tables", on: { click: () => navigate(ALL_VIEW) } });\n  var searchInput = el("input", { type: "search", placeholder: "Search tables and columns", "aria-label": "Search tables and columns" });\n  var results = el("div", { class: "oe-results", style: "display:none" });\n  var modeButtons = ["Business", "Technical"].map(\n    (label) => el("button", { class: "oe-btn", text: label, on: { click: () => setBusiness(label === "Business") } })\n  );\n  toolbar.div.append(\n    backButton,\n    crumbs,\n    hopGroup,\n    allButton,\n    el("div", { class: "oe-search" }, [searchInput, results]),\n    el("div", { class: "oe-seg" }, modeButtons)\n  );\n  function setBusiness(on) {\n    svg.classList.toggle("business", on);\n    modeButtons[0].classList.toggle("on", on);\n    modeButtons[1].classList.toggle("on", !on);\n  }\n  function crumb(text, onClick) {\n    return onClick ? el("button", { class: "oe-link", text, on: { click: onClick } }) : el("span", { class: "here", text });\n  }\n  function renderToolbar() {\n    const parts = [crumb("Overview", state.view === OVERVIEW ? null : () => navigate(OVERVIEW))];\n    const cluster = state.view.startsWith(DOMAIN_PREFIX) ? state.view.slice(DOMAIN_PREFIX.length) : state.view === NEIGHBORHOOD ? clusterOf(state.center) : null;\n    if (state.view === ALL_VIEW) parts.push(crumb("All tables"));\n    if (cluster) {\n      const [db, ...domain] = cluster.split("/");\n      parts.push(crumb(db, () => showDatabase(db)));\n      parts.push(crumb(domain.join("/"), state.view === NEIGHBORHOOD ? () => navigate(domainView(cluster), { focus: state.center }) : null));\n    }\n    if (state.view === NEIGHBORHOOD) parts.push(crumb(`Neighborhood of ${short(state.center)}`));\n    crumbs.replaceChildren(...parts.flatMap((p, i) => i === 0 ? [p] : [el("span", { class: "sep", text: "\u203A" }), p]));\n    backButton.disabled = state.history.length === 0;\n    hopGroup.style.display = state.view === NEIGHBORHOOD ? "" : "none";\n    hopButtons.forEach((b, i) => b.classList.toggle("on", state.hops === i + 1));\n    allButton.classList.toggle("on", state.view === ALL_VIEW);\n    layoutOverlays();\n  }\n  function showDatabase(db) {\n    navigate(OVERVIEW);\n    for (const g of views.get(OVERVIEW).querySelectorAll(".database")) {\n      if (g.getAttribute("data-database") === db) zoomToRect(boxOf(g), MAX_FIT_SCALE);\n    }\n  }\n  function search(query) {\n    const q = query.trim().toLowerCase();\n    if (!q) return [];\n    const hits = [];\n    for (const [id, n] of Object.entries(data.nodes)) {\n      if (n.kind !== "table") continue;\n      const name = short(id).toLowerCase();\n      if (id.toLowerCase().includes(q)) hits.push({ id, rank: name.startsWith(q) ? 0 : 1 });\n      for (const c of n.columns) {\n        const cn = c.name.toLowerCase();\n        if (cn.includes(q)) hits.push({ id, column: c.name, rank: cn.startsWith(q) ? 2 : 3 });\n      }\n    }\n    return hits.sort((a, b) => a.rank - b.rank || byId(a.id, b.id) || byId(a.column ?? "", b.column ?? "")).slice(0, SEARCH_LIMIT);\n  }\n  var resultHits = [];\n  var resultItems = [];\n  var activeResult = 0;\n  function closeResults() {\n    results.style.display = "none";\n    resultHits = [];\n    resultItems = [];\n    layoutOverlays();\n  }\n  function pick(hit) {\n    closeResults();\n    searchInput.blur();\n    goToNode(hit.id, hit.column);\n  }\n  function renderResults() {\n    const hits = search(searchInput.value);\n    activeResult = 0;\n    if (!searchInput.value.trim()) return closeResults();\n    resultItems = hits.map(\n      (hit, i) => el("button", { class: `oe-result${i === 0 ? " active" : ""}`, on: { click: () => pick(hit) } }, [\n        el("div", { text: hit.column ? `${short(hit.id)}.${hit.column}` : short(hit.id) }),\n        el("div", { class: "where", text: `${hit.column ? "column" : "table"} \xB7 ${hit.id}` })\n      ])\n    );\n    results.replaceChildren(...resultItems.length > 0 ? resultItems : [el("div", { class: "oe-result", text: "No match" })]);\n    results.style.display = "";\n    resultHits = hits;\n    layoutOverlays();\n  }\n  searchInput.addEventListener("input", renderResults);\n  searchInput.addEventListener("keydown", (e) => {\n    if (e.key === "Enter" && resultHits[activeResult]) pick(resultHits[activeResult]);\n    else if ((e.key === "ArrowDown" || e.key === "ArrowUp") && resultItems.length > 0) {\n      e.preventDefault();\n      resultItems[activeResult].classList.remove("active");\n      activeResult = (activeResult + (e.key === "ArrowDown" ? 1 : resultItems.length - 1)) % resultItems.length;\n      resultItems[activeResult].classList.add("active");\n      resultItems[activeResult].scrollIntoView({ block: "nearest" });\n    } else return;\n    e.stopPropagation();\n  });\n  var panel = overlay("oe-panel");\n  panel.fo.style.display = "none";\n  function hidePanel() {\n    panel.fo.style.display = "none";\n  }\n  function showPanel(children) {\n    panel.div.replaceChildren(...children.filter(Boolean));\n    panel.fo.style.display = "";\n    layoutOverlays();\n  }\n  var link = (text, onClick) => el("button", { class: "oe-link", text, on: { click: onClick } });\n  function nodePanel(id) {\n    const n = data.nodes[id];\n    if (!n) return [el("h3", { text: id })];\n    const lines = data.links.filter((l) => l.from === id || l.to === id);\n    return [\n      el("h3", { text: short(id) }),\n      el("div", { class: "sub", text: `${id} \xB7 ${n.cluster.split("/").slice(1).join("/")}` }),\n      n.note ? el("p", { text: n.note }) : null,\n      el("div", { class: "row" }, [\n        el("span", { text: "Neighborhood" }),\n        ...[1, 2].map((h) => el("button", { class: "oe-btn", text: `${h} hop${h > 1 ? "s" : ""}`, on: { click: () => openNeighborhood(id, h) } }))\n      ]),\n      el("div", { class: "sub", text: `${lines.length} relation${lines.length === 1 ? "" : "s"}` }),\n      el(\n        "ul",\n        {},\n        lines.map((l) => {\n          const other = l.from === id ? l.to : l.from;\n          const arrow = l.from === id ? "\u2192" : "\u2190";\n          return el("li", {}, [el("span", { text: `${arrow} ` }), link(short(other), () => goToNode(other)), el("span", { class: "where", text: ` ${l.cardinality} \xB7 ${l.kind}` })]);\n        })\n      )\n    ];\n  }\n  function polyPanel(id, poly) {\n    return [\n      el("h3", { text: `\xAB${poly.name}\xBB` }),\n      el("div", { class: "sub", text: `${poly.table}.${poly.typeColumn} / ${poly.idColumn}` }),\n      el("p", { text: `Polymorphic: each row points at one of ${poly.targets.length} tables. Lines show the targets in this view.` }),\n      el(\n        "ul",\n        {},\n        poly.targets.map((t) => el("li", {}, [link(t, () => navigate(homeView(t), { focus: t }))]))\n      )\n    ];\n  }\n  function relationPanel(g) {\n    const id = g.getAttribute("data-id");\n    const l = data.links.find((x) => x.id === id);\n    const [from, to] = [g.getAttribute("data-from"), g.getAttribute("data-to")];\n    return [\n      el("h3", { text: `${short(from)} \u2192 ${short(to)}` }),\n      el("div", { class: "sub", text: id }),\n      l ? el("p", { text: `${l.cardinality} \xB7 ${l.kind} \xB7 ${l.review}${l.via ? ` \xB7 via ${l.via}` : ""}` }) : null,\n      el("div", { class: "row" }, [link(`Go to ${short(to)}`, () => goToNode(to))])\n    ];\n  }\n  var tip = overlay("oe-tip-host");\n  tip.fo.style.display = "none";\n  tip.fo.style.pointerEvents = "none";\n  function tipLines(target) {\n    const columnEl = target.closest(".column");\n    const nodeEl = target.closest(NODE_SELECTOR);\n    if (!nodeEl) return null;\n    const id = nodeIdOf(nodeEl);\n    const n = data.nodes[id];\n    const badge = target.closest(".hub-badge");\n    if (badge) {\n      const columns = JSON.parse(badge.getAttribute("data-columns"));\n      return [el("div", {}, [el("b", { text: columns.join(", ") }), el("span", { text: ` \u2192 ${badge.getAttribute("data-target")}` })]), el("div", { class: "muted", text: "Hub reference, drawn as a badge instead of lines" })];\n    }\n    if (columnEl && n?.kind === "table") {\n      const c = n.columns.find((x) => x.name === columnEl.getAttribute("data-column"));\n      if (!c) return null;\n      const flags = [c.type, c.nullable === true ? "nullable" : c.nullable === false ? "NOT NULL" : null, c.pk ? "primary key" : null, c.unique ? "unique" : null].filter(Boolean);\n      return [\n        el("div", {}, [el("b", { text: c.name }), c.pii ? el("span", { class: "pii", text: "  PII" }) : null]),\n        el("div", { class: "muted", text: flags.join(" \xB7 ") }),\n        c.note ? el("div", { text: c.note }) : null,\n        ...c.enum ? Object.entries(c.enum).map(([v, meaning]) => el("div", {}, [el("b", { text: v }), el("span", { text: `: ${meaning}` })])) : []\n      ];\n    }\n    if (nodeEl.classList.contains("domain")) {\n      return [el("b", { text: id.split("/").slice(1).join("/") }), el("div", { class: "muted", text: `${id.split("/")[0]} \xB7 click to open the domain` })];\n    }\n    if (nodeEl.classList.contains("stub")) {\n      return [el("b", { text: id }), el("div", { class: "muted", text: "Outside this domain \xB7 click to open its domain" })];\n    }\n    if (n?.kind === "poly") {\n      return [el("b", { text: `\xAB${n.name}\xBB` }), el("div", { text: n.targets.join(", ") }), el("div", { class: "muted", text: "Click to show its targets" })];\n    }\n    return [\n      el("b", { text: id }),\n      n?.note ? el("div", { text: n.note }) : null,\n      el("div", { class: "muted", text: "Click to highlight \xB7 double-click for its neighborhood" })\n    ];\n  }\n  function hideTip() {\n    tip.fo.style.display = "none";\n  }\n  function showTip(e) {\n    const lines = inUi(e) ? null : tipLines(e.target);\n    if (!lines) {\n      tip.fo.style.display = "none";\n      return;\n    }\n    tip.div.replaceChildren(el("div", { class: "oe-tip" }, lines.filter(Boolean)));\n    tip.fo.style.display = "";\n    const { w, h } = viewport();\n    tip.fo.setAttribute("width", 360);\n    tip.fo.setAttribute("height", h);\n    const r = tip.div.firstChild.getBoundingClientRect();\n    const x = e.clientX + TIP_OFFSET + r.width > w ? e.clientX - TIP_OFFSET - r.width : e.clientX + TIP_OFFSET;\n    const y = e.clientY + TIP_OFFSET + r.height > h ? e.clientY - TIP_OFFSET - r.height : e.clientY + TIP_OFFSET;\n    tip.fo.setAttribute("x", Math.max(0, x));\n    tip.fo.setAttribute("y", Math.max(TOOLBAR_HEIGHT, y));\n    tip.fo.setAttribute("width", Math.ceil(r.width) + 1);\n    tip.fo.setAttribute("height", Math.ceil(r.height) + 1);\n  }\n  function layoutOverlays() {\n    const { w, h } = viewport();\n    toolbar.fo.setAttribute("width", w);\n    toolbar.fo.setAttribute("height", h);\n    toolbar.fo.setAttribute("height", results.style.display === "none" ? TOOLBAR_HEIGHT : Math.ceil(TOOLBAR_HEIGHT + results.getBoundingClientRect().height + 8));\n    if (panel.fo.style.display !== "none") {\n      const room = h - TOOLBAR_HEIGHT - 2 * PANEL_MARGIN;\n      panel.fo.setAttribute("x", w - PANEL_WIDTH - PANEL_MARGIN);\n      panel.fo.setAttribute("y", TOOLBAR_HEIGHT + PANEL_MARGIN);\n      panel.fo.setAttribute("width", PANEL_WIDTH);\n      panel.div.style.maxHeight = `${room}px`;\n      panel.fo.setAttribute("height", room);\n      panel.fo.setAttribute("height", Math.ceil(panel.div.getBoundingClientRect().height) + 1);\n    }\n  }\n  var press = null;\n  var dragged = false;\n  var inUi = (e) => e.composedPath().some((n) => n.localName === "foreignObject");\n  svg.addEventListener("pointerdown", (e) => {\n    if (inUi(e) || e.button !== 0) return;\n    press = { x: e.clientX, y: e.clientY, cam: { ...state.cam }, id: e.pointerId };\n    dragged = false;\n  });\n  svg.addEventListener("pointermove", (e) => {\n    showTip(e);\n    if (!press) return;\n    const dx = e.clientX - press.x;\n    const dy = e.clientY - press.y;\n    if (!dragged && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;\n    if (!dragged) svg.setPointerCapture(press.id);\n    dragged = true;\n    state.cam = { ...press.cam, x: press.cam.x + dx, y: press.cam.y + dy };\n    applyCamera();\n  });\n  svg.addEventListener("pointerup", () => {\n    press = null;\n  });\n  svg.addEventListener("pointerleave", hideTip);\n  svg.addEventListener("click", (e) => {\n    if (inUi(e)) return;\n    if (dragged) {\n      dragged = false;\n      return;\n    }\n    closeResults();\n    const t = e.target;\n    const domain = t.closest(".domain");\n    if (domain) return navigate(domainView(domain.getAttribute("data-domain")));\n    const stub = t.closest(".stub");\n    if (stub) return navigate(homeView(stub.getAttribute("data-id")), { focus: stub.getAttribute("data-id") });\n    const node = t.closest(".table, .poly");\n    if (node) return selectNode(node.getAttribute("data-id"));\n    const relation = t.closest(".relation-group");\n    if (relation) return flowRelation(relation);\n    clearSelection();\n  });\n  svg.addEventListener("dblclick", (e) => {\n    if (inUi(e)) return;\n    const node = e.target.closest(".table, .poly");\n    if (node) openNeighborhood(node.getAttribute("data-id"));\n  });\n  svg.addEventListener(\n    "wheel",\n    (e) => {\n      if (inUi(e)) return;\n      e.preventDefault();\n      const delta = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;\n      zoomAt(e.clientX, e.clientY, Math.exp(-delta * 15e-4));\n    },\n    { passive: false }\n  );\n  document.addEventListener("keydown", (e) => {\n    if (e.key !== "Escape") return;\n    if (results.style.display !== "none") {\n      closeResults();\n      return;\n    }\n    clearSelection();\n  });\n  window.addEventListener("resize", () => {\n    layoutOverlays();\n    zoomToRect(viewBounds(state.view), MAX_FIT_SCALE);\n  });\n  svg.append(panel.fo, toolbar.fo, tip.fo);\n  setBusiness(false);\n  showView(OVERVIEW);\n})();\n'
+  source: '(() => {\n  // src/render/svg/viewer/radial.js\n  function radialLayout(center, rings2, gap) {\n    const diagonal = (n) => Math.hypot(n.w, n.h);\n    const corner = (n, cx, cy) => ({ x: Math.round(cx - n.w / 2), y: Math.round(cy - n.h / 2) });\n    const positions = { [center.id]: corner(center, 0, 0) };\n    let radius = 0;\n    let previous = diagonal(center);\n    for (const ring of rings2) {\n      if (ring.length === 0) continue;\n      const foot = ring.map((n) => diagonal(n) + gap);\n      const total = foot.reduce((a, b) => a + b, 0);\n      const angles = [];\n      let run = -foot[0] / 2;\n      for (const f of foot) {\n        angles.push(-Math.PI / 2 + 2 * Math.PI * (run + f / 2) / total);\n        run += f;\n      }\n      const widest = Math.max(...ring.map(diagonal));\n      let r = radius + previous / 2 + widest / 2 + gap;\n      for (let i = 0; i < ring.length; i++) {\n        for (let k = i + 1; k < ring.length; k++) {\n          const apart = Math.abs(angles[k] - angles[i]);\n          const shorter = Math.min(apart, 2 * Math.PI - apart);\n          r = Math.max(r, (foot[i] + foot[k]) / 2 / (2 * Math.sin(shorter / 2)));\n        }\n      }\n      ring.forEach((n, i) => {\n        positions[n.id] = corner(n, r * Math.cos(angles[i]), r * Math.sin(angles[i]));\n      });\n      radius = r;\n      previous = widest;\n    }\n    return positions;\n  }\n  function straightLink(a, b) {\n    const ca = [a.x + a.w / 2, a.y + a.h / 2];\n    const cb = [b.x + b.w / 2, b.y + b.h / 2];\n    const dx = cb[0] - ca[0];\n    const dy = cb[1] - ca[1];\n    const exit = (box) => Math.min(dx === 0 ? Infinity : box.w / 2 / Math.abs(dx), dy === 0 ? Infinity : box.h / 2 / Math.abs(dy));\n    const ta = exit(a);\n    const tb = exit(b);\n    return [\n      [ca[0] + dx * ta, ca[1] + dy * ta],\n      [cb[0] - dx * tb, cb[1] - dy * tb]\n    ];\n  }\n\n  // src/render/svg/viewer/index.js\n  var SVG_NS = "http://www.w3.org/2000/svg";\n  var HTML_NS = "http://www.w3.org/1999/xhtml";\n  var OVERVIEW = "overview";\n  var ALL_VIEW = "all";\n  var DOMAIN_PREFIX = "domain:";\n  var NEIGHBORHOOD = "neighborhood";\n  var TOOLBAR_HEIGHT = 44;\n  var PANEL_WIDTH = 300;\n  var PANEL_MARGIN = 12;\n  var FIT_PADDING = 24;\n  var MAX_FIT_SCALE = 1.5;\n  var MIN_SCALE = 0.03;\n  var MAX_SCALE = 4;\n  var DRAG_THRESHOLD = 4;\n  var FOCUS_MARGIN = 160;\n  var FOCUS_MAX_SCALE = 1.2;\n  var RING_GAP = 40;\n  var NEIGHBORHOOD_MARGIN = 60;\n  var SEARCH_LIMIT = 40;\n  var TIP_OFFSET = 14;\n  var svg = document.documentElement;\n  var data = JSON.parse(document.getElementById("open-erd-data").textContent);\n  function el(tag, attrs = {}, children = [], ns = HTML_NS) {\n    const e = document.createElementNS(ns, tag);\n    for (const [k, v] of Object.entries(attrs)) {\n      if (k === "text") e.textContent = v;\n      else if (k === "on") for (const [type, fn] of Object.entries(v)) e.addEventListener(type, fn);\n      else e.setAttribute(k, v);\n    }\n    for (const c of children) if (c) e.append(c);\n    return e;\n  }\n  var svgEl = (tag, attrs = {}, children = []) => el(tag, attrs, children, SVG_NS);\n  var short = (id) => data.nodes[id]?.kind === "poly" ? `\xAB${data.nodes[id].name}\xBB` : id.split(".").length === 3 ? id.split(".")[2] : id;\n  var clusterOf = (id) => data.nodes[id]?.cluster;\n  var domainView = (cluster) => DOMAIN_PREFIX + cluster;\n  var nodeIdOf = (g) => g.getAttribute("data-id") ?? g.getAttribute("data-domain");\n  function boxOf(g) {\n    const r = g.querySelector(":scope > .table-box, :scope > .db-frame") ?? g.querySelector(":scope > rect");\n    return { x: +r.getAttribute("x"), y: +r.getAttribute("y"), w: +r.getAttribute("width"), h: +r.getAttribute("height") };\n  }\n  var NODE_SELECTOR = ".table, .stub, .poly, .domain";\n  function indexView(view, offsets = /* @__PURE__ */ new Map()) {\n    const index = /* @__PURE__ */ new Map();\n    for (const g of view.querySelectorAll(NODE_SELECTOR)) {\n      const id = nodeIdOf(g);\n      const b = boxOf(g);\n      const o = offsets.get(id) ?? { dx: 0, dy: 0 };\n      index.set(id, { el: g, box: { x: b.x + o.dx, y: b.y + o.dy, w: b.w, h: b.h } });\n    }\n    return index;\n  }\n  var views = /* @__PURE__ */ new Map();\n  var indexes = /* @__PURE__ */ new Map();\n  for (const v of svg.querySelectorAll("g.view")) {\n    views.set(v.getAttribute("data-view"), v);\n    indexes.set(v.getAttribute("data-view"), indexView(v));\n  }\n  for (const t of svg.querySelectorAll(".nodes title")) t.remove();\n  function addHitPaths(root) {\n    for (const p of root.querySelectorAll(".relation-group > path.relation")) {\n      p.before(svgEl("path", { class: "relation-hit", d: p.getAttribute("d") }));\n    }\n  }\n  addHitPaths(svg);\n  var camera = svgEl("g", { class: "camera" });\n  views.values().next().value.before(camera);\n  for (const v of views.values()) camera.append(v);\n  svg.removeAttribute("viewBox");\n  svg.setAttribute("width", "100%");\n  svg.setAttribute("height", "100%");\n  svg.style.background = "#eef1f5";\n  function overlay(cls) {\n    const div = el("div", { class: `oe-ui ${cls}` });\n    const fo = svgEl("foreignObject", { x: 0, y: 0, width: 1, height: 1 }, [div]);\n    svg.append(fo);\n    return { fo, div };\n  }\n  var state = { view: OVERVIEW, hops: 1, center: null, history: [], cam: { x: 0, y: 0, s: 1 } };\n  var viewport = () => ({ w: window.innerWidth, h: window.innerHeight });\n  function applyCamera() {\n    const { x, y, s } = state.cam;\n    camera.setAttribute("transform", `translate(${x} ${y}) scale(${s})`);\n  }\n  function zoomToRect(r, maxScale) {\n    const { w, h } = viewport();\n    const panelOpen = panel.fo.style.display !== "none";\n    const area = { w: panelOpen ? w - PANEL_WIDTH - 2 * PANEL_MARGIN : w, h: h - TOOLBAR_HEIGHT };\n    const s = Math.min((area.w - 2 * FIT_PADDING) / r.w, (area.h - 2 * FIT_PADDING) / r.h, maxScale);\n    state.cam = { s, x: (area.w - r.w * s) / 2 - r.x * s, y: TOOLBAR_HEIGHT + (area.h - r.h * s) / 2 - r.y * s };\n    applyCamera();\n  }\n  function viewBounds(name) {\n    const [x, y, w, h] = views.get(name).getAttribute("data-bounds").split(" ").map(Number);\n    return { x, y, w, h };\n  }\n  function zoomAt(clientX, clientY, factor) {\n    const { x, y, s } = state.cam;\n    const next = Math.min(MAX_SCALE, Math.max(MIN_SCALE, s * factor));\n    const wx = (clientX - x) / s;\n    const wy = (clientY - y) / s;\n    state.cam = { s: next, x: clientX - wx * next, y: clientY - wy * next };\n    applyCamera();\n  }\n  var currentView = () => views.get(state.view);\n  var currentIndex = () => indexes.get(state.view);\n  function showView(name) {\n    clearSelection();\n    hideTip();\n    for (const [n, v] of views) v.style.display = n === name ? "" : "none";\n    state.view = name;\n    zoomToRect(viewBounds(name), MAX_FIT_SCALE);\n    renderToolbar();\n  }\n  function snapshot() {\n    return { view: state.view, center: state.center, hops: state.hops };\n  }\n  function navigate(name, { focus, column } = {}) {\n    if (name !== state.view) {\n      state.history.push(snapshot());\n      showView(name);\n    }\n    if (focus) focusNode(focus, column);\n  }\n  function back() {\n    const prev = state.history.pop();\n    if (!prev) return;\n    if (prev.view === NEIGHBORHOOD) buildNeighborhood(prev.center, prev.hops);\n    showView(prev.view);\n  }\n  function homeView(id) {\n    const cluster = clusterOf(id);\n    return cluster ? domainView(cluster) : null;\n  }\n  function goToNode(id, column) {\n    if (!data.nodes[id] && indexes.get(OVERVIEW).has(id)) navigate(domainView(id));\n    else if (currentIndex().has(id) && state.view !== OVERVIEW && !currentIndex().get(id).el.classList.contains("stub")) focusNode(id, column);\n    else if (homeView(id)) navigate(homeView(id), { focus: id, column });\n  }\n  function clearSelection() {\n    for (const v of views.values()) {\n      v.classList.remove("dimmed", "center-selected");\n      for (const e of v.querySelectorAll(".hl, .selected, .flow-target, .flowing, .hl-column")) {\n        e.classList.remove("hl", "selected", "flow-target", "flowing", "hl-column");\n      }\n      for (const e of v.querySelectorAll(".flow")) e.remove();\n      for (const e of v.querySelectorAll(".poly-routes")) e.style.display = "none";\n    }\n    hidePanel();\n  }\n  function relationGroups() {\n    return [...currentView().querySelectorAll(".relation-group")];\n  }\n  function selectNode(id) {\n    clearSelection();\n    const index = currentIndex();\n    const entry = index.get(id);\n    if (!entry) return;\n    const lit = /* @__PURE__ */ new Set([id]);\n    for (const g of relationGroups()) {\n      const [from, to] = [g.getAttribute("data-from"), g.getAttribute("data-to")];\n      if (from !== id && to !== id) continue;\n      g.classList.add("hl");\n      lit.add(from).add(to);\n    }\n    const poly = data.nodes[id]?.kind === "poly" ? data.nodes[id] : null;\n    if (poly) {\n      for (const routes of currentView().querySelectorAll(".poly-routes")) {\n        if (routes.getAttribute("data-poly") !== id) continue;\n        routes.style.display = "";\n        for (const p of routes.querySelectorAll(".poly-route")) lit.add(p.getAttribute("data-target"));\n      }\n    }\n    for (const n of lit) index.get(n)?.el.classList.add("hl");\n    entry.el.classList.add("selected");\n    currentView().classList.add("dimmed");\n    currentView().classList.toggle("center-selected", state.view === NEIGHBORHOOD && id === state.center);\n    showPanel(poly ? polyPanel(id, poly) : nodePanel(id));\n  }\n  function focusNode(id, column) {\n    const entry = currentIndex().get(id);\n    if (!entry) return;\n    selectNode(id);\n    if (column) {\n      for (const c of entry.el.querySelectorAll(".column")) if (c.getAttribute("data-column") === column) c.classList.add("hl-column");\n    }\n    const b = entry.box;\n    zoomToRect({ x: b.x - FOCUS_MARGIN, y: b.y - FOCUS_MARGIN, w: b.w + 2 * FOCUS_MARGIN, h: b.h + 2 * FOCUS_MARGIN }, FOCUS_MAX_SCALE);\n  }\n  function flowRelation(g) {\n    clearSelection();\n    const index = currentIndex();\n    const [from, to] = [g.getAttribute("data-from"), g.getAttribute("data-to")];\n    g.classList.add("hl", "flowing");\n    index.get(from)?.el.classList.add("hl");\n    index.get(to)?.el.classList.add("hl", "flow-target");\n    g.append(svgEl("path", { class: "flow", d: g.querySelector("path.relation").getAttribute("d") }));\n    currentView().classList.add("dimmed");\n    showPanel(relationPanel(g));\n  }\n  function adjacency() {\n    const adj = /* @__PURE__ */ new Map();\n    const link2 = (a, b) => {\n      if (a === b) return;\n      if (!adj.has(a)) adj.set(a, /* @__PURE__ */ new Set());\n      adj.get(a).add(b);\n    };\n    for (const l of data.links) {\n      link2(l.from, l.to);\n      link2(l.to, l.from);\n    }\n    return adj;\n  }\n  var ADJACENCY = adjacency();\n  var byId = (a, b) => a < b ? -1 : a > b ? 1 : 0;\n  function rings(center, hops) {\n    const seen = /* @__PURE__ */ new Set([center]);\n    const result = [];\n    let previous = [center];\n    for (let hop = 1; hop <= hops; hop++) {\n      const parent = /* @__PURE__ */ new Map();\n      previous.forEach((p, i) => {\n        for (const n of [...ADJACENCY.get(p) ?? []].sort(byId)) {\n          if (!seen.has(n) && !parent.has(n)) parent.set(n, i);\n        }\n      });\n      const ring = [...parent.keys()].sort((a, b) => parent.get(a) - parent.get(b) || byId(a, b));\n      for (const n of ring) seen.add(n);\n      result.push(ring);\n      previous = ring;\n    }\n    return result;\n  }\n  function buildNeighborhood(center, hops) {\n    views.get(NEIGHBORHOOD)?.remove();\n    const source = indexes.get(ALL_VIEW);\n    const ringIds = rings(center, hops).map((r) => r.filter((id) => source.has(id)));\n    const ids = [center, ...ringIds.flat()];\n    const outer = new Set(ringIds[1] ?? []);\n    const size = (id) => ({ id, w: source.get(id).box.w, h: source.get(id).box.h });\n    const pos = radialLayout(size(center), ringIds.map((r) => r.map(size)), RING_GAP);\n    const shown = new Set(ids);\n    const offsets = /* @__PURE__ */ new Map();\n    const nodes = svgEl("g", { class: "nodes" });\n    const boxes = /* @__PURE__ */ new Map();\n    for (const id of ids) {\n      const { el: g, box } = source.get(id);\n      const dx = pos[id].x - box.x;\n      const dy = pos[id].y - box.y;\n      offsets.set(id, { dx, dy });\n      boxes.set(id, { x: pos[id].x, y: pos[id].y, w: box.w, h: box.h });\n      const copy = g.cloneNode(true);\n      copy.classList.remove("hl", "selected", "flow-target");\n      if (outer.has(id)) copy.classList.add("hop-2");\n      nodes.append(svgEl("g", { transform: `translate(${dx} ${dy})` }, [copy]));\n    }\n    const relations = svgEl("g", { class: "relations" });\n    const line = (a, b) => {\n      const [[x12, y12], [x2, y2]] = straightLink(boxes.get(a), boxes.get(b));\n      return `M${x12} ${y12}L${x2} ${y2}`;\n    };\n    for (const l of data.links) {\n      if (l.from === l.to || !shown.has(l.from) || !shown.has(l.to)) continue;\n      const d = line(l.from, l.to);\n      relations.append(\n        svgEl("g", { class: `relation-group kind-${l.kind} review-${l.review}${outer.has(l.from) || outer.has(l.to) ? " hop-2" : ""}`, "data-id": l.id, "data-from": l.from, "data-to": l.to }, [\n          svgEl("path", { class: "relation-hit", d }),\n          svgEl("path", { class: "relation", d })\n        ])\n      );\n    }\n    for (const id of ids.filter((n) => data.nodes[n]?.kind === "poly")) {\n      const targets = data.nodes[id].targets.filter((t) => shown.has(t));\n      if (targets.length === 0) continue;\n      relations.append(\n        svgEl(\n          "g",\n          { class: "poly-routes", "data-poly": id, style: "display:none" },\n          targets.map((t) => svgEl("path", { class: "poly-route", "data-target": t, d: line(id, t) }))\n        )\n      );\n    }\n    const all = [...boxes.values()];\n    const x0 = Math.min(...all.map((b) => b.x)) - NEIGHBORHOOD_MARGIN;\n    const y0 = Math.min(...all.map((b) => b.y)) - NEIGHBORHOOD_MARGIN;\n    const x1 = Math.max(...all.map((b) => b.x + b.w)) + NEIGHBORHOOD_MARGIN;\n    const y1 = Math.max(...all.map((b) => b.y + b.h)) + NEIGHBORHOOD_MARGIN;\n    const view = svgEl(\n      "g",\n      { class: "view", "data-view": NEIGHBORHOOD, "data-bounds": `${x0} ${y0} ${x1 - x0} ${y1 - y0}`, style: "display:none" },\n      [svgEl("rect", { x: x0, y: y0, width: x1 - x0, height: y1 - y0, fill: "#ffffff" }), relations, nodes]\n    );\n    camera.append(view);\n    views.set(NEIGHBORHOOD, view);\n    indexes.set(NEIGHBORHOOD, indexView(view, offsets));\n    state.center = center;\n    state.hops = hops;\n  }\n  function openNeighborhood(id, hops = state.hops) {\n    if (!indexes.get(ALL_VIEW).has(id)) return;\n    if (state.view !== NEIGHBORHOOD) state.history.push(snapshot());\n    buildNeighborhood(id, hops);\n    showView(NEIGHBORHOOD);\n    selectNode(id);\n    zoomToRect(viewBounds(NEIGHBORHOOD), MAX_FIT_SCALE);\n  }\n  var toolbar = overlay("oe-toolbar");\n  var crumbs = el("div", { class: "oe-crumbs" });\n  var backButton = el("button", { class: "oe-btn", text: "\u2039 Back", title: "Previous view", on: { click: back } });\n  var hopButtons = [1, 2].map(\n    (n) => el("button", { class: "oe-btn", text: `${n} hop${n > 1 ? "s" : ""}`, on: { click: () => openNeighborhood(state.center, n) } })\n  );\n  var hopGroup = el("div", { class: "oe-seg" }, hopButtons);\n  var allButton = el("button", { class: "oe-btn", text: "All tables", on: { click: () => navigate(ALL_VIEW) } });\n  var searchInput = el("input", { type: "search", placeholder: "Search tables and columns", "aria-label": "Search tables and columns" });\n  var results = el("div", { class: "oe-results", style: "display:none" });\n  var modeButtons = ["Business", "Technical"].map(\n    (label) => el("button", { class: "oe-btn", text: label, on: { click: () => setBusiness(label === "Business") } })\n  );\n  toolbar.div.append(\n    backButton,\n    crumbs,\n    hopGroup,\n    allButton,\n    el("div", { class: "oe-search" }, [searchInput, results]),\n    el("div", { class: "oe-seg" }, modeButtons)\n  );\n  function setBusiness(on) {\n    svg.classList.toggle("business", on);\n    modeButtons[0].classList.toggle("on", on);\n    modeButtons[1].classList.toggle("on", !on);\n  }\n  function crumb(text, onClick) {\n    return onClick ? el("button", { class: "oe-link", text, on: { click: onClick } }) : el("span", { class: "here", text });\n  }\n  function renderToolbar() {\n    const parts = [crumb("Overview", state.view === OVERVIEW ? null : () => navigate(OVERVIEW))];\n    const cluster = state.view.startsWith(DOMAIN_PREFIX) ? state.view.slice(DOMAIN_PREFIX.length) : state.view === NEIGHBORHOOD ? clusterOf(state.center) : null;\n    if (state.view === ALL_VIEW) parts.push(crumb("All tables"));\n    if (cluster) {\n      const [db, ...domain] = cluster.split("/");\n      parts.push(crumb(db, () => showDatabase(db)));\n      parts.push(crumb(domain.join("/"), state.view === NEIGHBORHOOD ? () => navigate(domainView(cluster), { focus: state.center }) : null));\n    }\n    if (state.view === NEIGHBORHOOD) parts.push(crumb(`Neighborhood of ${short(state.center)}`));\n    crumbs.replaceChildren(...parts.flatMap((p, i) => i === 0 ? [p] : [el("span", { class: "sep", text: "\u203A" }), p]));\n    backButton.disabled = state.history.length === 0;\n    hopGroup.style.display = state.view === NEIGHBORHOOD ? "" : "none";\n    hopButtons.forEach((b, i) => b.classList.toggle("on", state.hops === i + 1));\n    allButton.classList.toggle("on", state.view === ALL_VIEW);\n    layoutOverlays();\n  }\n  function showDatabase(db) {\n    navigate(OVERVIEW);\n    for (const g of views.get(OVERVIEW).querySelectorAll(".database")) {\n      if (g.getAttribute("data-database") === db) zoomToRect(boxOf(g), MAX_FIT_SCALE);\n    }\n  }\n  function search(query) {\n    const q = query.trim().toLowerCase();\n    if (!q) return [];\n    const hits = [];\n    for (const [id, n] of Object.entries(data.nodes)) {\n      if (n.kind !== "table") continue;\n      const name = short(id).toLowerCase();\n      if (id.toLowerCase().includes(q)) hits.push({ id, rank: name.startsWith(q) ? 0 : 1 });\n      for (const c of n.columns) {\n        const cn = c.name.toLowerCase();\n        if (cn.includes(q)) hits.push({ id, column: c.name, rank: cn.startsWith(q) ? 2 : 3 });\n      }\n    }\n    return hits.sort((a, b) => a.rank - b.rank || byId(a.id, b.id) || byId(a.column ?? "", b.column ?? "")).slice(0, SEARCH_LIMIT);\n  }\n  var resultHits = [];\n  var resultItems = [];\n  var activeResult = 0;\n  function closeResults() {\n    results.style.display = "none";\n    resultHits = [];\n    resultItems = [];\n    layoutOverlays();\n  }\n  function pick(hit) {\n    closeResults();\n    searchInput.blur();\n    goToNode(hit.id, hit.column);\n  }\n  function renderResults() {\n    const hits = search(searchInput.value);\n    activeResult = 0;\n    if (!searchInput.value.trim()) return closeResults();\n    resultItems = hits.map(\n      (hit, i) => el("button", { class: `oe-result${i === 0 ? " active" : ""}`, on: { click: () => pick(hit) } }, [\n        el("div", { text: hit.column ? `${short(hit.id)}.${hit.column}` : short(hit.id) }),\n        el("div", { class: "where", text: `${hit.column ? "column" : "table"} \xB7 ${hit.id}` })\n      ])\n    );\n    results.replaceChildren(...resultItems.length > 0 ? resultItems : [el("div", { class: "oe-result", text: "No match" })]);\n    results.style.display = "";\n    resultHits = hits;\n    layoutOverlays();\n  }\n  searchInput.addEventListener("input", renderResults);\n  searchInput.addEventListener("keydown", (e) => {\n    if (e.key === "Enter" && resultHits[activeResult]) pick(resultHits[activeResult]);\n    else if ((e.key === "ArrowDown" || e.key === "ArrowUp") && resultItems.length > 0) {\n      e.preventDefault();\n      resultItems[activeResult].classList.remove("active");\n      activeResult = (activeResult + (e.key === "ArrowDown" ? 1 : resultItems.length - 1)) % resultItems.length;\n      resultItems[activeResult].classList.add("active");\n      resultItems[activeResult].scrollIntoView({ block: "nearest" });\n    } else return;\n    e.stopPropagation();\n  });\n  var panel = overlay("oe-panel");\n  panel.fo.style.display = "none";\n  function hidePanel() {\n    panel.fo.style.display = "none";\n  }\n  function showPanel(children) {\n    panel.div.replaceChildren(...children.filter(Boolean));\n    panel.fo.style.display = "";\n    layoutOverlays();\n  }\n  var link = (text, onClick) => el("button", { class: "oe-link", text, on: { click: onClick } });\n  var linkSummary = (l) => l.kind === "view_source" ? "view reads this table" : `${l.cardinality} \xB7 ${l.kind}`;\n  var evidenceList = (evidence) => evidence ? el("div", {}, [el("div", { class: "sub", text: "Evidence" }), el("ul", {}, evidence.map((e) => el("li", { text: e })))]) : null;\n  var noteLines = (n) => [\n    n.note ? el("p", { text: n.note }) : null,\n    n.internalNote ? el("p", { class: "muted", text: `Internal: ${n.internalNote}` }) : null,\n    n.noteSource ? el("p", { class: "muted", text: `Original: ${n.noteSource}` }) : null\n  ];\n  function nodePanel(id) {\n    const n = data.nodes[id];\n    if (!n) return [el("h3", { text: id })];\n    const lines = data.links.filter((l) => l.from === id || l.to === id);\n    return [\n      el("h3", { text: short(id) }),\n      el("div", { class: "sub", text: `${id} \xB7 ${n.cluster.split("/").slice(1).join("/")}${n.tableKind ? ` \xB7 ${n.tableKind.replace("_", " ")}` : ""}` }),\n      ...noteLines(n),\n      n.facts ? el("ul", {}, n.facts.map((f) => el("li", { text: f }))) : null,\n      n.sources ? el("p", {}, [el("span", { text: "Reads from " }), ...n.sources.flatMap((t, i) => [i > 0 ? el("span", { text: ", " }) : null, link(short(t), () => goToNode(t))])]) : null,\n      el("div", { class: "row" }, [\n        el("span", { text: "Neighborhood" }),\n        ...[1, 2].map((h) => el("button", { class: "oe-btn", text: `${h} hop${h > 1 ? "s" : ""}`, on: { click: () => openNeighborhood(id, h) } }))\n      ]),\n      el("div", { class: "sub", text: `${lines.length} relation${lines.length === 1 ? "" : "s"}` }),\n      el(\n        "ul",\n        {},\n        lines.map((l) => {\n          const other = l.from === id ? l.to : l.from;\n          const arrow = l.from === id ? "\u2192" : "\u2190";\n          return el("li", {}, [el("span", { text: `${arrow} ` }), link(short(other), () => goToNode(other)), el("span", { class: "where", text: ` ${linkSummary(l)}` })]);\n        })\n      )\n    ];\n  }\n  function polyPanel(id, poly) {\n    return [\n      el("h3", { text: `\xAB${poly.name}\xBB` }),\n      el("div", { class: "sub", text: `${poly.table}.${poly.typeColumn} / ${poly.idColumn}` }),\n      el("p", { text: `Polymorphic: each row points at one of ${poly.targets.length} tables. Lines show the targets in this view.` }),\n      evidenceList(poly.evidence),\n      el(\n        "ul",\n        {},\n        poly.targets.map((t) => el("li", {}, [link(t, () => navigate(homeView(t), { focus: t }))]))\n      )\n    ];\n  }\n  function relationPanel(g) {\n    const id = g.getAttribute("data-id");\n    const l = data.links.find((x) => x.id === id);\n    const [from, to] = [g.getAttribute("data-from"), g.getAttribute("data-to")];\n    return [\n      el("h3", { text: `${short(from)} \u2192 ${short(to)}` }),\n      el("div", { class: "sub", text: id }),\n      l ? el("p", { text: `${linkSummary(l)} \xB7 ${l.review}${l.via ? ` \xB7 via ${l.via}` : ""}` }) : null,\n      evidenceList(l?.evidence),\n      el("div", { class: "row" }, [link(`Go to ${short(to)}`, () => goToNode(to))])\n    ];\n  }\n  var tip = overlay("oe-tip-host");\n  tip.fo.style.display = "none";\n  tip.fo.style.pointerEvents = "none";\n  function tipLines(target) {\n    const columnEl = target.closest(".column");\n    const nodeEl = target.closest(NODE_SELECTOR);\n    if (!nodeEl) return null;\n    const id = nodeIdOf(nodeEl);\n    const n = data.nodes[id];\n    const badge = target.closest(".hub-badge");\n    if (badge) {\n      const columns = JSON.parse(badge.getAttribute("data-columns"));\n      return [el("div", {}, [el("b", { text: columns.join(", ") }), el("span", { text: ` \u2192 ${badge.getAttribute("data-target")}` })]), el("div", { class: "muted", text: "Hub reference, drawn as a badge instead of lines" })];\n    }\n    if (columnEl && n?.kind === "table") {\n      const c = n.columns.find((x) => x.name === columnEl.getAttribute("data-column"));\n      if (!c) return null;\n      const flags = [c.type, c.nullable === true ? "nullable" : c.nullable === false ? "NOT NULL" : null, c.pk ? "primary key" : null, c.unique ? "unique" : null].filter(Boolean);\n      return [\n        el("div", {}, [el("b", { text: c.name }), c.pii ? el("span", { class: "pii", text: "  PII" }) : null]),\n        el("div", { class: "muted", text: flags.join(" \xB7 ") }),\n        ...noteLines(c).map((e) => e && el("div", { class: e.className, text: e.textContent })),\n        ...c.enum ? Object.entries(c.enum).map(([v, meaning]) => el("div", {}, [el("b", { text: v }), el("span", { text: `: ${meaning}` })])) : []\n      ];\n    }\n    if (nodeEl.classList.contains("domain")) {\n      return [el("b", { text: id.split("/").slice(1).join("/") }), el("div", { class: "muted", text: `${id.split("/")[0]} \xB7 click to open the domain` })];\n    }\n    if (nodeEl.classList.contains("stub")) {\n      return [el("b", { text: id }), el("div", { class: "muted", text: "Outside this domain \xB7 click to open its domain" })];\n    }\n    if (n?.kind === "poly") {\n      return [el("b", { text: `\xAB${n.name}\xBB` }), el("div", { text: n.targets.join(", ") }), el("div", { class: "muted", text: "Click to show its targets" })];\n    }\n    return [\n      el("b", { text: id }),\n      n?.note ? el("div", { text: n.note }) : null,\n      ...(n?.facts ?? []).map((f) => el("div", { class: "muted", text: f })),\n      el("div", { class: "muted", text: "Click to highlight \xB7 double-click for its neighborhood" })\n    ];\n  }\n  function hideTip() {\n    tip.fo.style.display = "none";\n  }\n  function showTip(e) {\n    const lines = inUi(e) ? null : tipLines(e.target);\n    if (!lines) {\n      tip.fo.style.display = "none";\n      return;\n    }\n    tip.div.replaceChildren(el("div", { class: "oe-tip" }, lines.filter(Boolean)));\n    tip.fo.style.display = "";\n    const { w, h } = viewport();\n    tip.fo.setAttribute("width", 360);\n    tip.fo.setAttribute("height", h);\n    const r = tip.div.firstChild.getBoundingClientRect();\n    const x = e.clientX + TIP_OFFSET + r.width > w ? e.clientX - TIP_OFFSET - r.width : e.clientX + TIP_OFFSET;\n    const y = e.clientY + TIP_OFFSET + r.height > h ? e.clientY - TIP_OFFSET - r.height : e.clientY + TIP_OFFSET;\n    tip.fo.setAttribute("x", Math.max(0, x));\n    tip.fo.setAttribute("y", Math.max(TOOLBAR_HEIGHT, y));\n    tip.fo.setAttribute("width", Math.ceil(r.width) + 1);\n    tip.fo.setAttribute("height", Math.ceil(r.height) + 1);\n  }\n  function layoutOverlays() {\n    const { w, h } = viewport();\n    toolbar.fo.setAttribute("width", w);\n    toolbar.fo.setAttribute("height", h);\n    toolbar.fo.setAttribute("height", results.style.display === "none" ? TOOLBAR_HEIGHT : Math.ceil(TOOLBAR_HEIGHT + results.getBoundingClientRect().height + 8));\n    if (panel.fo.style.display !== "none") {\n      const room = h - TOOLBAR_HEIGHT - 2 * PANEL_MARGIN;\n      panel.fo.setAttribute("x", w - PANEL_WIDTH - PANEL_MARGIN);\n      panel.fo.setAttribute("y", TOOLBAR_HEIGHT + PANEL_MARGIN);\n      panel.fo.setAttribute("width", PANEL_WIDTH);\n      panel.div.style.maxHeight = `${room}px`;\n      panel.fo.setAttribute("height", room);\n      panel.fo.setAttribute("height", Math.ceil(panel.div.getBoundingClientRect().height) + 1);\n    }\n  }\n  var press = null;\n  var dragged = false;\n  var inUi = (e) => e.composedPath().some((n) => n.localName === "foreignObject");\n  svg.addEventListener("pointerdown", (e) => {\n    if (inUi(e) || e.button !== 0) return;\n    press = { x: e.clientX, y: e.clientY, cam: { ...state.cam }, id: e.pointerId };\n    dragged = false;\n  });\n  svg.addEventListener("pointermove", (e) => {\n    showTip(e);\n    if (!press) return;\n    const dx = e.clientX - press.x;\n    const dy = e.clientY - press.y;\n    if (!dragged && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;\n    if (!dragged) svg.setPointerCapture(press.id);\n    dragged = true;\n    state.cam = { ...press.cam, x: press.cam.x + dx, y: press.cam.y + dy };\n    applyCamera();\n  });\n  svg.addEventListener("pointerup", () => {\n    press = null;\n  });\n  svg.addEventListener("pointerleave", hideTip);\n  svg.addEventListener("click", (e) => {\n    if (inUi(e)) return;\n    if (dragged) {\n      dragged = false;\n      return;\n    }\n    closeResults();\n    const t = e.target;\n    const domain = t.closest(".domain");\n    if (domain) return navigate(domainView(domain.getAttribute("data-domain")));\n    const stub = t.closest(".stub");\n    if (stub) return navigate(homeView(stub.getAttribute("data-id")), { focus: stub.getAttribute("data-id") });\n    const node = t.closest(".table, .poly");\n    if (node) return selectNode(node.getAttribute("data-id"));\n    const relation = t.closest(".relation-group");\n    if (relation) return flowRelation(relation);\n    clearSelection();\n  });\n  svg.addEventListener("dblclick", (e) => {\n    if (inUi(e)) return;\n    const node = e.target.closest(".table, .poly");\n    if (node) openNeighborhood(node.getAttribute("data-id"));\n  });\n  svg.addEventListener(\n    "wheel",\n    (e) => {\n      if (inUi(e)) return;\n      e.preventDefault();\n      const delta = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;\n      zoomAt(e.clientX, e.clientY, Math.exp(-delta * 15e-4));\n    },\n    { passive: false }\n  );\n  document.addEventListener("keydown", (e) => {\n    if (e.key !== "Escape") return;\n    if (results.style.display !== "none") {\n      closeResults();\n      return;\n    }\n    clearSelection();\n  });\n  window.addEventListener("resize", () => {\n    layoutOverlays();\n    zoomToRect(viewBounds(state.view), MAX_FIT_SCALE);\n  });\n  svg.append(panel.fo, toolbar.fo, tip.fo);\n  setBusiness(false);\n  showView(OVERVIEW);\n})();\n'
 };
 
 // src/render/svg/render.js
@@ -101652,6 +102085,9 @@ var VIEWER_STYLE = `.row-hit { fill: transparent; }
 .domain, .stub, .table, .poly, .relation-group, .hub-badge { cursor: pointer; }
 .relation-hit { fill: none; stroke: transparent; stroke-width: 12; }
 .view.dimmed :is(.table, .stub, .poly, .domain, .relation-group):not(.hl) { opacity: 0.16; }
+.view.dimmed.center-selected :is(.table, .poly).hop-2:not(.hl) { opacity: 1; }
+.view.dimmed.center-selected .hop-2:not(.hl) > rect:last-of-type { stroke: #d9dee6; }
+.view.dimmed.center-selected .relation-group.hop-2:not(.hl) { opacity: 0.5; }
 .hl > rect:last-of-type { stroke: #5b8def; stroke-width: 2; }
 .selected > rect:last-of-type { stroke: #1d4ed8; stroke-width: 3; }
 .flow-target > rect:last-of-type { stroke: #e8590c; stroke-width: 3; animation: oe-pulse 0.9s ease-in-out infinite alternate; }
@@ -101692,6 +102128,7 @@ var VIEWER_STYLE = `.row-hit { fill: transparent; }
 .oe-panel ul { margin: 4px 0 0; padding-left: 16px; }
 .oe-panel li { margin: 3px 0; word-break: break-all; }
 .oe-panel p { margin: 6px 0; }
+.oe-panel .muted { color: #7a8597; }
 .oe-tip { background: #1f2a3d; color: #f4f6f9; border-radius: 6px; padding: 8px 10px; font-size: 12px; line-height: 1.45; max-width: 340px; display: inline-block; }
 .oe-tip b { color: #ffffff; }
 .oe-tip .muted { color: #aab4c4; }
@@ -101730,12 +102167,23 @@ text { font-family: '${FONT_FAMILY}', sans-serif; ${TEXT_STYLE_CSS} }
 .kind-inferred.review-pending .relation, .kind-inferred.review-stale .relation { stroke-dasharray: 6 4; }
 .kind-cross_db .relation { stroke-dasharray: 10 3 2 3 2 3; }
 .kind-polymorphic .relation { stroke-dasharray: 2 3; }
+.kind-view_source .relation { stroke: #a9b2c0; stroke-dasharray: 5 4; }
+.table-tag { font-size: ${TAG_FONT.size}px; font-weight: ${TAG_FONT.weight}; fill: #5f6b7e; letter-spacing: 0.02em; }
+.table.is-view > rect:last-of-type { stroke-dasharray: 5 3; }
+.tenant-copy { fill: #ffffff; stroke: #c9d1dc; stroke-width: 1; }
+.inset-box { fill: #f6f8fb; stroke: #d5dbe4; stroke-width: 1; }
+.inset-title { font-size: 12px; font-weight: 700; fill: #56627a; }
+.fact-text { font-size: ${FACT_FONT.size}px; font-weight: ${FACT_FONT.weight}; fill: #5f6b7e; }
+.db-fact-pill { fill: #eef1f5; stroke: #c3cad5; stroke-width: 1; }
+.db-fact { font-size: ${DB_FACT_FONT.size}px; font-weight: ${DB_FACT_FONT.weight}; fill: #3d4a5e; }
 ${VIEWER_STYLE}`;
 function escapeXml(text2) {
   return text2.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 }
+var camel = (name) => name.replace(/_(.)/g, (_, c) => c.toUpperCase());
 var nodeRect = (n) => ({ id: n.id, x: n.x, y: n.y, w: n.w, h: n.h });
 function labelText(view, link) {
+  if (link.kind === VIEW_SOURCE) return null;
   if (view === OVERVIEW) return link.kind === "cross_db" ? `${link.count} \xB7 cross-DB` : String(link.count);
   return link.kind === "cross_db" ? "cross-DB" : null;
 }
@@ -101837,11 +102285,11 @@ function routePolyTargets(nodes, byId, obstacles, groups) {
   }
   return routeEdges(obstacles, groups.map((g) => g.frame), edges).map((r, i) => ({ ...ends[i], points: r.points }));
 }
-function buildScene(model, layout, name = ALL_VIEW, diagram = buildDiagram(model)) {
-  const view = resolveView(model, layout, name, diagram);
+function buildScene(model, layout, name = ALL_VIEW, diagram = buildDiagram(model), options = {}) {
+  const view = resolveView(model, layout, name, diagram, options);
   const byId = new Map(view.nodes.map((n) => [n.id, n]));
   const labels = view.groups.map(
-    (g) => g.kind === "cluster" ? { id: `label:${g.group.key}`, ...labelBox(g.frame, g.group.key) } : { id: `label:${g.group.id}`, ...dbLabel(g.frame, g.group.database, g.group.engine).box }
+    (g) => g.kind === "cluster" ? { id: `label:${g.group.key}`, ...labelBox(g.frame, g.group.key) } : { id: `label:${g.group.id}`, ...dbLabel(g.frame, g.group.database, g.group.engine, g.group.facts).box }
   );
   const obstacles = [...view.nodes.map(nodeRect), ...labels];
   const spread = name === OVERVIEW ? spreadEnds(view.links, byId) : null;
@@ -101851,7 +102299,7 @@ function buildScene(model, layout, name = ALL_VIEW, diagram = buildDiagram(model
     const offset = spread ? spread.get(`${link.id}\0${side}`) : attachOffset(n.box, e.column);
     return { box: nodeRect(n), y: n.y + offset, marker };
   };
-  const markers = view.links.map((l) => name === OVERVIEW ? { from: "none", to: "none" } : endMarkers(l));
+  const markers = view.links.map((l) => name === OVERVIEW || l.kind === VIEW_SOURCE ? { from: "none", to: "none" } : endMarkers(l));
   const edges = view.links.map((l, i) => ({ id: l.id, from: end(l, "from", markers[i].from), to: end(l, "to", markers[i].to) }));
   const routes = routeEdges(obstacles, view.groups.map((g) => g.frame), edges);
   const labelsOf = placeLabels(routes, view.links.map((link) => labelText(name, link)));
@@ -101884,15 +102332,20 @@ function headerPath(x, y, w, fill) {
 }
 function tableSvg(n, colors, technical) {
   const { x, y, w, h, box } = n;
-  const rows = box.rows.map(
-    (r) => [
+  const rows = box.rows.map((r) => {
+    const indent = EMBED_INSET * r.depth;
+    return [
       `<g class="${technical.has(r.column) ? "column technical" : "column"}" data-column="${escapeXml(r.column)}">`,
-      `<rect class="row-hit" x="${x}" y="${y + r.centerY - ROW_HEIGHT / 2}" width="${w}" height="${ROW_HEIGHT}"/>`,
-      textEl(r.pk ? "column-name pk" : "column-name", x + PADDING_X, y + r.centerY, r.name),
-      textEl("column-type", x + w - PADDING_X, y + r.centerY, r.type, "end"),
+      `<rect class="row-hit" x="${x + indent}" y="${y + r.centerY - ROW_HEIGHT / 2}" width="${w - 2 * indent}" height="${ROW_HEIGHT}"/>`,
+      textEl(r.pk ? "column-name pk" : "column-name", x + PADDING_X + indent, y + r.centerY, r.name),
+      textEl("column-type", x + w - PADDING_X - indent, y + r.centerY, r.type, "end"),
       "</g>"
-    ].join("")
+    ].join("");
+  });
+  const insets = box.insets.map(
+    (e) => `<g class="embedded" data-entity="${escapeXml(e.entity)}"><rect class="inset-box" x="${x + EMBED_INSET}" y="${y + e.top + 1}" width="${w - 2 * EMBED_INSET}" height="${e.h - 2}" rx="4"/>${textEl("inset-title", x + PADDING_X + EMBED_INSET, y + e.title.centerY, e.title)}</g>`
   );
+  const facts = box.facts.map((f) => textEl("fact-text", x + PADDING_X, y + f.centerY, f.text));
   const badges = box.badges.map((b) => {
     const cy = y + b.centerY;
     const ax = x + PADDING_X;
@@ -101900,14 +102353,21 @@ function tableSvg(n, colors, technical) {
     return `<g class="hub-badge" data-target="${escapeXml(b.target)}" data-columns="${json(b.columns)}"><title>${escapeXml(`${b.columns.join(", ")} \u2192 ${b.target}`)}</title>${arrow}${textEl("badge-text", x + b.labelX, cy, b.label)}</g>`;
   });
   const separator = box.separatorY === null ? "" : `<path d="M${x} ${y + box.separatorY}H${x + w}" stroke="#e3e7ed"/>`;
+  const tag = box.tag ? textEl("table-tag", x + w - PADDING_X, y + box.tag.centerY, box.tag, "end") : "";
+  const copies = n.node.tenant ? [8, 4].map((d) => `<rect class="tenant-copy" x="${x + d}" y="${y + d}" width="${w}" height="${h}" rx="${CORNER}"/>`).join("") : "";
+  const kind = n.node.table.kind ?? "table";
   return [
-    `<g class="table" data-id="${escapeXml(n.id)}"><title>${escapeXml(n.id)}</title>`,
+    `<g class="table${kind === "table" ? "" : " is-view"}" data-id="${escapeXml(n.id)}"><title>${escapeXml(n.id)}</title>`,
+    copies,
     `<rect class="table-box" x="${x}" y="${y}" width="${w}" height="${h}" rx="${CORNER}"/>`,
     headerPath(x, y, w, colors.header),
     `<path d="M${x} ${y + HEADER_HEIGHT}H${x + w}" stroke="${colors.stroke}"/>`,
     textEl("table-title", x + PADDING_X, y + box.title.centerY, box.title),
+    tag,
+    ...insets,
     ...rows,
     separator,
+    ...facts,
     ...badges,
     `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${CORNER}" fill="none" stroke="#b8c2d0"/>`,
     "</g>"
@@ -101940,11 +102400,13 @@ function groupSvg(g, colorOf) {
     const colors = colorOf(g.group.key);
     return `<g class="cluster" data-cluster="${escapeXml(g.group.key)}"><rect x="${f.x}" y="${f.y}" width="${f.w}" height="${f.h}" rx="12" fill="${colors.fill}" stroke="${colors.stroke}"/><text class="cluster-label" x="${f.x + LABEL_OFFSET.x}" y="${f.y + LABEL_OFFSET.y}" dominant-baseline="central" fill="${colors.label}">${escapeXml(clusterLabel(g.group.key))}</text></g>`;
   }
-  const l = dbLabel(f, g.group.database, g.group.engine);
+  const l = dbLabel(f, g.group.database, g.group.engine, g.group.facts);
   const { x, y, w, h } = l.icon;
   const ry = 3;
   const icon = `<path class="db-icon" d="M${x} ${y + ry}V${y + h - ry}A${w / 2} ${ry} 0 0 0 ${x + w} ${y + h - ry}V${y + ry}A${w / 2} ${ry} 0 0 0 ${x} ${y + ry}Z"/><path class="db-icon" d="M${x} ${y + ry}A${w / 2} ${ry} 0 0 0 ${x + w} ${y + ry}" fill="none"/>`;
-  return `<g class="database" data-database="${escapeXml(g.group.database)}" data-engine="${escapeXml(g.group.engine)}"><rect class="db-frame" x="${f.x}" y="${f.y}" width="${f.w}" height="${f.h}" rx="16"/>${icon}<text class="db-name" x="${l.name.x}" y="${l.cy}" dominant-baseline="central">${escapeXml(l.name.text)}</text><rect class="engine-pill" x="${l.pill.x}" y="${l.pill.y}" width="${l.pill.w}" height="${l.pill.h}" rx="9"/><text class="engine-name" x="${l.engine.x}" y="${l.cy}" dominant-baseline="central" text-anchor="middle">${escapeXml(l.engine.text)}</text></g>`;
+  return `<g class="database" data-database="${escapeXml(g.group.database)}" data-engine="${escapeXml(g.group.engine)}">` + (g.group.facts.length > 0 ? `<title>${escapeXml(g.group.facts.join("\n"))}</title>` : "") + `<rect class="db-frame" x="${f.x}" y="${f.y}" width="${f.w}" height="${f.h}" rx="16"/>${icon}<text class="db-name" x="${l.name.x}" y="${l.cy}" dominant-baseline="central">${escapeXml(l.name.text)}</text><rect class="engine-pill" x="${l.pill.x}" y="${l.pill.y}" width="${l.pill.w}" height="${l.pill.h}" rx="9"/><text class="engine-name" x="${l.engine.x}" y="${l.cy}" dominant-baseline="central" text-anchor="middle">${escapeXml(l.engine.text)}</text>` + l.facts.map(
+    (p) => `<rect class="db-fact-pill" x="${p.pill.x}" y="${p.pill.y}" width="${p.pill.w}" height="${p.pill.h}" rx="9"/><text class="db-fact" x="${p.x}" y="${l.cy}" dominant-baseline="central" text-anchor="middle">${escapeXml(p.text)}</text>`
+  ).join("") + "</g>";
 }
 var pathData = (points) => points.map(([px, py], i) => `${i === 0 ? "M" : "L"}${px} ${py}`).join("");
 function relationSvg(r) {
@@ -101988,29 +102450,39 @@ var VIEWER_SCRIPT = viewer_bundle_default.source;
 if (VIEWER_SCRIPT.includes("]]>")) throw new Error('viewer bundle contains "]]>" and cannot sit in a CDATA section');
 var scriptJson = (value) => JSON.stringify(value).replace(/[<>&]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
 function viewerData(model, diagram, technical = technicalColumns(model)) {
+  const notes = (o) => Object.fromEntries(["note", "note_source", "internal_note"].filter((f) => o[f]).map((f) => [f === "note" ? f : camel(f), o[f]]));
+  const evidenceOf = new Map([
+    ...model.relations.map((r) => [relationId(r), r.evidence ?? []]),
+    ...model.polymorphic.map((a) => [polyLinkId(a), a.evidence ?? []])
+  ]);
   const nodes = {};
   for (const id of [...diagram.nodes.keys()].sort(compareStrings)) {
     const n = diagram.nodes.get(id);
     if (n.kind === "poly") {
       const a = n.association;
       nodes[id] = { kind: "poly", cluster: n.cluster, table: a.table, name: a.name, typeColumn: a.type_column, idColumn: a.id_column, targets: a.targets };
+      if (a.evidence?.length > 0) nodes[id].evidence = a.evidence;
       continue;
     }
     const t = n.table;
     nodes[id] = {
       kind: "table",
       cluster: n.cluster,
-      ...t.note ? { note: t.note } : {},
-      columns: t.columns.map((c) => ({
-        name: c.name,
+      ...t.kind && t.kind !== "table" ? { tableKind: t.kind } : {},
+      ...notes(t),
+      ...n.facts.length > 0 ? { facts: n.facts } : {},
+      ...t.sources ? { sources: t.sources } : {},
+      columns: columnEntries(t).map(({ path, column: c, entity }) => ({
+        name: path,
+        ...entity ? { entity: entity.name } : {},
         type: c.type,
         ...c.nullable === void 0 ? {} : { nullable: c.nullable },
         ...c.pk ? { pk: true } : {},
         ...c.unique ? { unique: true } : {},
         ...c.pii ? { pii: true } : {},
-        ...technical.get(id).has(c.name) ? { technical: true } : {},
+        ...technical.get(id).has(path) ? { technical: true } : {},
         ...c.enum ? { enum: c.enum } : {},
-        ...c.note ? { note: c.note } : {}
+        ...notes(c)
       }))
     };
   }
@@ -102021,13 +102493,14 @@ function viewerData(model, diagram, technical = technicalColumns(model)) {
     cardinality: l.cardinality,
     kind: l.kind,
     review: l.review,
-    ...l.via ? { via: l.via } : {}
+    ...l.via ? { via: l.via } : {},
+    ...evidenceOf.get(l.id)?.length > 0 ? { evidence: evidenceOf.get(l.id) } : {}
   }));
   return { nodes, links };
 }
-function renderSvg(model, layout) {
+function renderSvg(model, layout, options = {}) {
   const diagram = buildDiagram(model);
-  const scenes = viewNames(diagram).map((name) => buildScene(model, layout, name, diagram));
+  const scenes = viewNames(diagram).map((name) => buildScene(model, layout, name, diagram, options));
   const colorOf = (key) => PALETTE[layout.colors[key] % PALETTE.length];
   const technical = technicalColumns(model);
   const { x, y, w, h } = scenes.find((s) => s.name === OVERVIEW).bounds;
@@ -102059,9 +102532,9 @@ var COMMANDS = {
     run: runLayout
   },
   render: {
-    usage: "render --workspace <dir>",
-    summary: "write out/erd.svg from the model and layout.json (never writes layout.json)",
-    options: { workspace: { type: "string" } },
+    usage: "render --workspace <dir> [--profile <name>]",
+    summary: "write out/erd.svg (out/erd.<profile>.svg with a sharing profile) from the model and layout.json; never writes layout.json",
+    options: { workspace: { type: "string" }, profile: { type: "string" } },
     run: runRender
   },
   diff: {
@@ -102073,7 +102546,7 @@ var COMMANDS = {
 function helpText() {
   const width = Math.max(...Object.values(COMMANDS).map((c) => c.usage.length));
   const lines = Object.values(COMMANDS).map((c) => `  ${c.usage.padEnd(width)}  ${c.summary}`);
-  return ["Usage: open-erd <command> [options]", "", "Commands:", ...lines, "", "Options:", "  -h, --help  show this help"].join("\n");
+  return ["Usage: open-erd <command> [options]", "", "Commands:", ...lines, "", "Options:", "  -h, --help     show this help", "  -v, --version  print the engine version"].join("\n");
 }
 async function readWorkspaceFiles(dir) {
   const files = {};
@@ -102121,7 +102594,7 @@ async function runLayout({ workspace }) {
   console.log(formatReport(report));
   return 0;
 }
-async function runRender({ workspace }) {
+async function runRender({ workspace, profile }) {
   const model = await loadModel(workspace);
   if (!model) return 1;
   const layout = await readLayout(workspace);
@@ -102129,14 +102602,25 @@ async function runRender({ workspace }) {
     console.error(`${LAYOUT_FILE} not found in ${workspace} (run layout first)`);
     return 1;
   }
-  const svg = renderSvg(model, layout);
+  let svg;
+  if (profile === void 0) {
+    svg = renderSvg(model, layout);
+  } else {
+    checkLayout(model, layout);
+    svg = renderSvg(applyProfile(model, profile), layout, { fitStored: true });
+  }
+  const file = join(workspace, "out", profile === void 0 ? "erd.svg" : `erd.${profile}.svg`);
   await mkdir(join(workspace, "out"), { recursive: true });
-  await writeFile(join(workspace, "out", "erd.svg"), svg);
-  console.log(`wrote ${join(workspace, "out", "erd.svg")}`);
+  await writeFile(file, svg);
+  console.log(`wrote ${file}${profile === void 0 ? "" : ` (profile ${profile})`}`);
   return 0;
 }
 async function main(argv) {
   const [name, ...rest] = argv;
+  if (name === "-v" || name === "--version") {
+    console.log(package_default.version);
+    return 0;
+  }
   if (!name || name === "-h" || name === "--help") {
     console.log(helpText());
     return name ? 0 : 1;

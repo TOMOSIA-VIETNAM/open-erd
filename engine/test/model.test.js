@@ -220,3 +220,52 @@ test('a relation of kind polymorphic is rejected: associations have their own li
     'model/shop.yaml: relations[0].kind: must be one of db_fk | declared | inferred | cross_db, got "polymorphic"',
   ]);
 });
+
+test('special pattern fields must reference known columns and tables', () => {
+  const messages = (model) => parseWorkspace({ 'open-erd.yaml': 'schema_version: 1\n', 'model/a.yaml': `schema_version: 1\ndatabase: a\nengine: postgresql\n${model}` }).errors.map((e) => `${e.path}: ${e.message}`);
+  const t = (id, extra = '') => `  - id: ${id}\n    domain: D\n${extra}    columns: [{ name: id, type: int }, { name: kind, type: text }]\n`;
+  assert.deepEqual(messages(`tables:\n${t('a.tenant.t')}tenant_schemas: [{ schema: tenant, count: 0 }]\n`), [
+    'tenant_schemas[0].count: must be at least 1, got 0',
+  ]);
+  assert.deepEqual(
+    messages(
+      'tables:\n' +
+        t('a.public.t', '    sti: { column: type, subclasses: [A] }\n    partition: { method: range, columns: [at] }\n    unique: [[id, nope]]\n') +
+        t('a.public.v', '    kind: view\n    sources: [a.public.v, a.public.ghost]\n') +
+        t('a.public.w', '    sources: [a.public.t]\n') +
+        t('a.public.e', '    embedded:\n      - { name: kind, columns: [{ name: x, type: int }, { name: x, type: int }] }\n') +
+        'tenant_schemas: [{ schema: tenant }]\n',
+    ),
+    [
+      'tables[3].embedded[0].name: "kind" is already a column or embedded entity',
+      'tables[3].embedded[0].columns[1].name: duplicate column "x"',
+      'tables[0].sti.column: unknown column "type" in a.public.t',
+      'tables[0].partition.columns[0]: unknown column "at" in a.public.t',
+      'tables[0].unique[0][1]: unknown column "nope" in a.public.t',
+      'tables[1].sources[0]: a view cannot read from itself',
+      'tables[1].sources[1]: unknown table "a.public.ghost"',
+      'tables[2].sources: only a view or materialized_view has sources',
+      'tenant_schemas[0].schema: no table of a is in schema "tenant"',
+    ],
+  );
+});
+
+test('relations address embedded columns as <entity>.<column>', () => {
+  const files = {
+    'open-erd.yaml': 'schema_version: 1\n',
+    'model/d.yaml': `schema_version: 1
+database: d
+engine: mongodb
+tables:
+  - { id: d._.users, domain: D, columns: [{ name: _id, type: ObjectId, pk: true }] }
+  - id: d._.orders
+    domain: D
+    columns: [{ name: _id, type: ObjectId, pk: true }]
+    embedded: [{ name: items, array: true, columns: [{ name: buyer, type: ObjectId }] }]
+relations:
+  - { from: { table: d._.orders, columns: [items.buyer] }, to: { table: d._.users, columns: [_id] }, cardinality: n-1, optional: true, kind: declared, evidence: ["api:src/order.js#Order"], review: pending }
+  - { from: { table: d._.orders, columns: [items.seller] }, to: { table: d._.users, columns: [_id] }, cardinality: n-1, optional: true, kind: declared, evidence: ["api:src/order.js#Order"], review: pending }
+`,
+  };
+  assert.deepEqual(parseWorkspace(files).errors.map((e) => `${e.path}: ${e.message}`), ['relations[1].from.columns[0]: unknown column "items.seller" in d._.orders']);
+});

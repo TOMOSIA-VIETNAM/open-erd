@@ -1,6 +1,6 @@
 import { compareStrings } from '../model/load.js';
 import { CLUSTER_GAP, CLUSTER_PAD, DB_GAP, DB_PAD, STUB_GAP, TABLE_GAP, clusterLabel } from './clusters.js';
-import { domainLinks } from './diagram.js';
+import { databaseFacts, domainLinks } from './diagram.js';
 import { domainBox, stubBox } from './table-box.js';
 
 // Every view is a tree of nested groups over leaf boxes. Layout and render
@@ -55,7 +55,7 @@ function dbGroups(model, diagram, aspect, childrenOf) {
   return model.databases
     .map((db) => {
       const keys = [...diagram.clusters.keys()].filter((k) => k.split('/')[0] === db.database);
-      return { id: `db:${db.database}`, kind: 'db', database: db.database, engine: db.engine, keys };
+      return { id: `db:${db.database}`, kind: 'db', database: db.database, engine: db.engine, facts: databaseFacts(db), keys };
     })
     .filter((g) => g.keys.length > 0)
     .map(({ keys, ...g }) => ({ ...g, pad: DB_PAD, gap: CLUSTER_GAP, aspect, strategy: 'pack', children: childrenOf(g, keys) }));
