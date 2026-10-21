@@ -118,9 +118,16 @@ const domain = await evaluate(`(() => {
 await click(`document.querySelector('.domain[data-domain=${JSON.stringify(domain)}]')`);
 await shot('domain-view', viewIs(`domain:${domain}`));
 
-// The database crumb shows that database's whole frame on the overview.
+// The database crumb centres that database's whole frame on the overview. Small
+// frames hit the zoom cap, so "centred and fully visible" is the check, not size.
 await click(`document.querySelectorAll('.oe-crumbs .oe-link')[1]`);
-await shot('database-crumb', `${viewIs('overview')} && document.querySelector('.database[data-database=${JSON.stringify(domain.split('/')[0])}] .db-frame').getBoundingClientRect().width > innerWidth / 3`);
+await shot('database-crumb', `${viewIs('overview')} && (() => {
+  const r = document.querySelector('.database[data-database=${JSON.stringify(domain.split('/')[0])}] .db-frame').getBoundingClientRect();
+  const top = document.querySelector('.oe-toolbar')?.getBoundingClientRect().bottom ?? 0;
+  const visible = r.left >= 0 && r.right <= innerWidth && r.top >= top && r.bottom <= innerHeight;
+  const centred = Math.abs((r.left + r.right) / 2 - innerWidth / 2) < innerWidth * 0.2;
+  return visible && centred;
+})()`);
 await click(`document.querySelector('.domain[data-domain=${JSON.stringify(domain)}]')`);
 
 const table = await evaluate(`(() => { const g = ${visible}.querySelector('.relation-group'); return ${visible}.querySelector('.table[data-id="' + g.getAttribute('data-from') + '"]') ? g.getAttribute('data-from') : g.getAttribute('data-to'); })()`);
