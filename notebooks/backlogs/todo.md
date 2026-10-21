@@ -19,7 +19,7 @@ Chi tiết từng task: `plan.md`. Đánh dấu `[x]` khi task pass verify.
 - [x] 5. Layout stability
   - Acceptance: thêm/xoá bảng → 3 luật đúng; `render` không ghi `layout.json`
   - Verify: `node --test test/stability.test.js` (luật "render không ghi layout.json" ở `test/layout.test.js`)
-- [ ] Checkpoint A
+- [x] Checkpoint A
 
 ## Phase 2: Full diagram
 
@@ -66,13 +66,13 @@ Chi tiết từng task: `plan.md`. Đánh dấu `[x]` khi task pass verify.
 - [x] 18. Skill sync + review
 - [x] 19. Skill render / diff / snapshot
 - [x] 19b. Skill feedback (gh issue, bản nháp + xác nhận, không đính kèm dữ liệu dự án) + dòng gợi ý cuối mỗi skill
-- [ ] 20. Eval
-- [ ] Checkpoint D
+- [x] 20. Eval
+- [x] Checkpoint D
 
 ## Phase 5: Scale + docs
 
 - [x] 21. Fixture 1000 bảng / 500 tenant
   - Acceptance: `scripts/gen-large.js` sinh workspace tổng hợp deterministic (150 / 1000 bảng 3 DB / 500 tenant); 150 bảng render < 10 s, svg < 5 MB, 0 line xuyên box, 0 text tràn; 1000 bảng layout+render < 60 s, Overview hiện < 2 s trong Chrome (`scripts/time-overview.js`); view `all` bỏ khi > `ALL_VIEW_MAX_TABLES` bảng
   - Verify: `npm test` (150 bảng) + `npm run test:large` (1000 bảng, tenant) + `node scripts/time-overview.js <erd.svg>` + `scripts/verify-viewer.js`
-- [ ] 22. README + dist cuối
+- [x] 22. README + dist cuối
 - [ ] Checkpoint E
