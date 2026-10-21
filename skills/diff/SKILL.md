@@ -21,11 +21,20 @@ git -C <ws> log --oneline -5
 3. Run:
 
 ```bash
-node <plugin root>/dist/open-erd.mjs diff --workspace <ws> --from <ref> --to <ref|HEAD|WORKTREE>
+node <plugin root>/dist/open-erd.mjs diff --workspace <ws> --from <ref> --to <ref|HEAD|WORKTREE> [--profile <name>]
 ```
 
+   `--profile <name>` when the result will be shared outside the team (same
+   profiles as render). `--from` is always a git ref. A warning about
+   uncommitted changes with `--to HEAD` means the user's latest edits are
+   not included: offer `--to WORKTREE`.
+   The engine prints the summary line, then one sentence per change, and
+   writes `out/diff.svg` (opens on all tables; click a coloured table for its
+   changes) and `out/diff.xlsx` (the "to" side's sheets plus a Changes sheet,
+   opened first).
+
 4. Summarise in the user's language, for a reader who does not read code:
-   one sentence with the totals, then grouped by domain: tables added,
+   one sentence with the totals (the engine's summary line), then grouped by domain: tables added,
    removed, renamed ("possibly renamed" when the engine only guesses),
    columns and relations changed, enum values changed. Keep names as they
    are. Give the output paths the engine printed.

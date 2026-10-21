@@ -551,6 +551,7 @@ function nodePanel(id) {
   return [
     el('h3', { text: short(id) }),
     el('div', { class: 'sub', text: `${id} · ${n.cluster.split('/').slice(1).join('/')}${n.tableKind ? ` · ${n.tableKind.replace('_', ' ')}` : ''}` }),
+    changeList('nodes', id),
     ...noteLines(n),
     n.facts ? el('ul', {}, n.facts.map((f) => el('li', { text: f }))) : null,
     n.sources ? el('p', {}, [el('span', { text: 'Reads from ' }), ...n.sources.flatMap((t, i) => [i > 0 ? el('span', { text: ', ' }) : null, link(short(t), () => goToNode(t))])]) : null,
@@ -575,6 +576,7 @@ function polyPanel(id, poly) {
   return [
     el('h3', { text: `«${poly.name}»` }),
     el('div', { class: 'sub', text: `${poly.table}.${poly.typeColumn} / ${poly.idColumn}` }),
+    changeList('nodes', id),
     el('p', { text: `Polymorphic: each row points at one of ${poly.targets.length} tables. Lines show the targets in this view.` }),
     evidenceList(poly.evidence),
     el(
@@ -593,9 +595,21 @@ function relationPanel(g) {
     el('h3', { text: `${short(from)} → ${short(to)}` }),
     el('div', { class: 'sub', text: id }),
     l ? el('p', { text: `${linkSummary(l)} · ${l.review}${l.via ? ` · via ${l.via}` : ''}` }) : null,
+    changeList('links', id),
     evidenceList(l?.evidence),
     el('div', { class: 'row' }, [link(`Go to ${short(to)}`, () => goToNode(to))]),
   ];
+}
+
+// What changed between the two snapshots of a diff drawing; plain
+// drawings have no `changes`.
+function changeList(kind, id) {
+  const list = data.changes?.[kind][id];
+  if (!list) return null;
+  return el('div', { class: 'oe-changes' }, [
+    el('div', { class: 'sub', text: `Changes from ${data.changes.from} to ${data.changes.to}` }),
+    el('ul', {}, list.map((text) => el('li', { text }))),
+  ]);
 }
 
 // ---------------------------------------------------------------- tooltip
@@ -771,4 +785,6 @@ window.addEventListener('resize', () => {
 // tooltip over everything.
 svg.append(panel.fo, toolbar.fo, tip.fo);
 setBusiness(false);
-showView(OVERVIEW);
+// The view drawn visible without script is where the reader starts: the
+// overview, or all tables in a diff drawing.
+showView([...views].find(([, v]) => v.style.display !== 'none')?.[0] ?? OVERVIEW);

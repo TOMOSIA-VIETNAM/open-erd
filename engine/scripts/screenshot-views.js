@@ -25,9 +25,11 @@ function showView(svg, name) {
   const match = views.find((m) => m[1] === name);
   if (!match) throw new Error(`no view "${name}"`);
   const [x, y, w, h] = match[2].split(' ');
+  // The root's class (diff-mode in a diff drawing) carries styles.
+  const rootClass = /^<svg [^>]*?( class="[^"]*")/.exec(svg)?.[1] ?? '';
   return svg
     .replace(/<script[\s\S]*?<\/script>\n?/g, '')
-    .replace(/<svg [^>]*>/, `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="${x} ${y} ${w} ${h}">`)
+    .replace(/<svg [^>]*>/, `<svg xmlns="http://www.w3.org/2000/svg"${rootClass} width="${w}" height="${h}" viewBox="${x} ${y} ${w} ${h}">`)
     .replace(/(<g class="view" data-view="([^"]+)" data-bounds="[^"]+")( style="display:none")?>/g, (_, head, view) =>
       view === name ? `${head}>` : `${head} style="display:none">`,
     );

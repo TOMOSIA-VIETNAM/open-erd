@@ -16,6 +16,14 @@ const CANVAS_MARGIN = 40;
 const CORNER = 6;
 const EDGE_LABEL_FONT = { size: 10, weight: 700 };
 const EDGE_LABEL_PAD = { x: 4, y: 3 };
+const BANNER_TITLE_FONT = { size: 15, weight: 700 };
+const BANNER_SUMMARY_FONT = { size: 13, weight: 400 };
+const BANNER_LEGEND_FONT = { size: 12, weight: 400 };
+const BANNER_PAD = 14;
+const BANNER_LINE = 22;
+const BANNER_GAP = 24;
+const SWATCH = 12;
+const LEGEND_GAP = 18;
 
 // Rules the embedded viewer script relies on. Without script none of these
 // classes is ever set, so the static drawing is unaffected.
@@ -69,10 +77,43 @@ const VIEWER_STYLE = `.row-hit { fill: transparent; }
 .oe-panel li { margin: 3px 0; word-break: break-all; }
 .oe-panel p { margin: 6px 0; }
 .oe-panel .muted { color: #7a8597; }
+.oe-changes { background: #fff8eb; border: 1px solid #f3d9a4; border-radius: 6px; padding: 6px 10px; margin: 8px 0; }
+.oe-changes .sub { margin-bottom: 2px; color: #8a5a00; }
+.oe-changes li { word-break: normal; overflow-wrap: anywhere; }
 .oe-tip { background: #1f2a3d; color: #f4f6f9; border-radius: 6px; padding: 8px 10px; font-size: 12px; line-height: 1.45; max-width: 340px; display: inline-block; }
 .oe-tip b { color: #ffffff; }
 .oe-tip .muted { color: #aab4c4; }
 .oe-tip .pii { color: #ffb4a2; font-weight: 700; }`;
+
+// Diff colours: added green, removed red (dashed ghost, struck through),
+// changed amber, renamed blue. In a diff drawing the lines nothing changed
+// are greyed out, so review colours do not compete with change colours.
+const DIFF_COLORS = {
+  added: { stroke: '#2f9e44', fill: '#ebfbee' },
+  removed: { stroke: '#e03131', fill: '#fff5f5' },
+  changed: { stroke: '#f08c00', fill: '#fff4e6' },
+  renamed: { stroke: '#1c7ed6', fill: '#e7f5ff' },
+};
+const DIFF_STYLE = [
+  ...Object.entries(DIFF_COLORS).flatMap(([status, c]) => [
+    `.diff-${status} > rect:last-of-type { stroke: ${c.stroke}; stroke-width: 3; }`,
+    `.table.diff-${status} .table-box, .stub.diff-${status} .stub-box { fill: ${c.fill}; }`,
+    `.relation-group.diff-${status} .relation, .relation-group.diff-${status} .marker { stroke: ${c.stroke}; stroke-width: 2.2; }`,
+    `.column.col-${status} .row-hit { fill: ${c.fill}; }`,
+    `.col-mark.col-${status}, .legend-swatch.diff-${status} { fill: ${c.stroke}; }`,
+  ]),
+  '.diff-removed > rect:last-of-type { stroke-dasharray: 6 4; }',
+  '.table.diff-removed, .stub.diff-removed, .poly.diff-removed, .domain.diff-removed { opacity: 0.7; }',
+  '.diff-removed :is(.table-title, .stub-title, .poly-title, .domain-title), .column.col-removed text { text-decoration: line-through; }',
+  '.column.col-removed .column-name { fill: #c92a2a; }',
+  '.relation-group.diff-removed .relation { stroke-dasharray: 6 4; }',
+  '.diff-mode .relation-group:not(.diff-added, .diff-removed, .diff-changed) :is(.relation, .marker) { stroke: #c3cad5; stroke-dasharray: none; }',
+  '.diff-mode .relation-group:not(.diff-added, .diff-removed, .diff-changed) .edge-label text { fill: #9aa4b5; }',
+  '.banner-box { fill: #ffffff; stroke: #94a0b2; stroke-width: 1.2; }',
+  `.banner-title { font-size: ${BANNER_TITLE_FONT.size}px; font-weight: ${BANNER_TITLE_FONT.weight}; fill: #172033; }`,
+  `.banner-summary { font-size: ${BANNER_SUMMARY_FONT.size}px; font-weight: ${BANNER_SUMMARY_FONT.weight}; fill: #2a3546; }`,
+  `.banner-legend { font-size: ${BANNER_LEGEND_FONT.size}px; font-weight: ${BANNER_LEGEND_FONT.weight}; fill: #56627a; }`,
+].join('\n');
 
 // Line colour carries the review state, dash pattern the kind:
 //   reviewed grey, pending amber, stale red;
@@ -120,6 +161,7 @@ text { font-family: '${FONT_FAMILY}', sans-serif; ${TEXT_STYLE_CSS} }
 .fact-text { font-size: ${FACT_FONT.size}px; font-weight: ${FACT_FONT.weight}; fill: #5f6b7e; }
 .db-fact-pill { fill: #eef1f5; stroke: #c3cad5; stroke-width: 1; }
 .db-fact { font-size: ${DB_FACT_FONT.size}px; font-weight: ${DB_FACT_FONT.weight}; fill: #3d4a5e; }
+${DIFF_STYLE}
 ${VIEWER_STYLE}`;
 
 function escapeXml(text) {
@@ -127,6 +169,48 @@ function escapeXml(text) {
 }
 
 const camel = (name) => name.replace(/_(.)/g, (_, c) => c.toUpperCase());
+
+// Marks of a plain render: nothing changed.
+const NO_MARKS = { nodes: new Map(), columns: new Map(), links: new Map(), sentences: { nodes: new Map(), links: new Map() } };
+const diffClass = (marks, id) => (marks.nodes.has(id) ? ` diff-${marks.nodes.get(id)}` : '');
+const linkDiffClass = (marks, id) => (marks.links.has(id) ? ` diff-${marks.links.get(id)}` : '');
+// Native tooltip text: the id, then what changed, so a viewer without
+// script still tells what happened to an element.
+const titleText = (marks, id, text, kind = 'nodes') => [text, ...(marks.sentences[kind].get(id) ?? [])].join('\n');
+
+/**
+ * Banner of a diff drawing, above the content of a view: which snapshots
+ * are compared, the summary line and the colour legend. Returns the SVG
+ * and the view bounds grown to hold it.
+ */
+function diffBanner(bounds, diff) {
+  const title = `Changes from ${diff.from} to ${diff.to}`;
+  const legend = Object.keys(DIFF_COLORS).map((status) => {
+    const text = status[0].toUpperCase() + status.slice(1);
+    return { status, text, w: SWATCH + 6 + measureText(text, BANNER_LEGEND_FONT) };
+  });
+  const legendWidth = legend.reduce((n, l) => n + l.w, 0) + LEGEND_GAP * (legend.length - 1);
+  const w = Math.ceil(Math.max(measureText(title, BANNER_TITLE_FONT), measureText(diff.summary, BANNER_SUMMARY_FONT), legendWidth)) + 2 * BANNER_PAD;
+  const h = 3 * BANNER_LINE + 2 * BANNER_PAD - 8;
+  const x = bounds.x + CANVAS_MARGIN;
+  const y = bounds.y + CANVAS_MARGIN - BANNER_GAP - h;
+  const line = (i) => y + BANNER_PAD + BANNER_LINE * i + BANNER_LINE / 2 - 4;
+  let lx = x + BANNER_PAD;
+  const items = legend.map((l) => {
+    const item =
+      `<rect class="legend-swatch diff-${l.status}" x="${lx}" y="${line(2) - SWATCH / 2}" width="${SWATCH}" height="${SWATCH}" rx="2"/>` +
+      `<text class="banner-legend" x="${lx + SWATCH + 6}" y="${line(2)}" dominant-baseline="central">${l.text}</text>`;
+    lx += l.w + LEGEND_GAP;
+    return item;
+  });
+  const svg =
+    `<g class="diff-banner"><rect class="banner-box" x="${x}" y="${y}" width="${w}" height="${h}" rx="8"/>` +
+    `<text class="banner-title" x="${x + BANNER_PAD}" y="${line(0)}" dominant-baseline="central">${escapeXml(title)}</text>` +
+    `<text class="banner-summary" x="${x + BANNER_PAD}" y="${line(1)}" dominant-baseline="central">${escapeXml(diff.summary)}</text>` +
+    `${items.join('')}</g>`;
+  const top = y - CANVAS_MARGIN;
+  return { svg, bounds: { x: bounds.x, y: top, w: Math.max(bounds.w, w + 2 * CANVAS_MARGIN), h: bounds.y + bounds.h - top } };
+}
 
 const nodeRect = (n) => ({ id: n.id, x: n.x, y: n.y, w: n.w, h: n.h });
 
@@ -338,13 +422,17 @@ function headerPath(x, y, w, fill) {
 // (the transparent rect makes the whole row hoverable) and fade technical
 // columns in Business mode. Embedded columns are indented inside their
 // entity's inset box.
-function tableSvg(n, colors, technical) {
+function tableSvg(n, colors, technical, marks) {
   const { x, y, w, h, box } = n;
+  const columnMarks = marks.columns.get(n.id);
   const rows = box.rows.map((r) => {
     const indent = EMBED_INSET * r.depth;
+    const status = columnMarks?.get(r.column);
+    const top = y + r.centerY - ROW_HEIGHT / 2;
     return [
-      `<g class="${technical.has(r.column) ? 'column technical' : 'column'}" data-column="${escapeXml(r.column)}">`,
-      `<rect class="row-hit" x="${x + indent}" y="${y + r.centerY - ROW_HEIGHT / 2}" width="${w - 2 * indent}" height="${ROW_HEIGHT}"/>`,
+      `<g class="${technical.has(r.column) ? 'column technical' : 'column'}${status ? ` col-${status}` : ''}" data-column="${escapeXml(r.column)}">`,
+      `<rect class="row-hit" x="${x + indent}" y="${top}" width="${w - 2 * indent}" height="${ROW_HEIGHT}"/>`,
+      status ? `<rect class="col-mark col-${status}" x="${x + indent + 1}" y="${top + 2}" width="3" height="${ROW_HEIGHT - 4}"/>` : '',
       textEl(r.pk ? 'column-name pk' : 'column-name', x + PADDING_X + indent, y + r.centerY, r.name),
       textEl('column-type', x + w - PADDING_X - indent, y + r.centerY, r.type, 'end'),
       '</g>',
@@ -376,7 +464,7 @@ function tableSvg(n, colors, technical) {
     : '';
   const kind = n.node.table.kind ?? 'table';
   return [
-    `<g class="table${kind === 'table' ? '' : ' is-view'}" data-id="${escapeXml(n.id)}"><title>${escapeXml(n.id)}</title>`,
+    `<g class="table${kind === 'table' ? '' : ' is-view'}${diffClass(marks, n.id)}" data-id="${escapeXml(n.id)}"><title>${escapeXml(titleText(marks, n.id, n.id))}</title>`,
     copies,
     `<rect class="table-box" x="${x}" y="${y}" width="${w}" height="${h}" rx="${CORNER}"/>`,
     headerPath(x, y, w, colors.header),
@@ -395,14 +483,14 @@ function tableSvg(n, colors, technical) {
 
 // The virtual node carries the full association as data; lines to each
 // target are drawn by the embedded viewer script on click, never here.
-function polySvg(n) {
+function polySvg(n, marks) {
   const { x, y, w, h, box } = n;
   const a = n.node.association;
   const data =
     ` data-id="${escapeXml(n.id)}" data-table="${escapeXml(a.table)}" data-name="${escapeXml(a.name)}"` +
     ` data-type-column="${escapeXml(a.type_column)}" data-id-column="${escapeXml(a.id_column)}" data-targets="${json(a.targets)}"`;
   return [
-    `<g class="poly"${data}><title>${escapeXml(`${a.table}.${a.type_column} / ${a.id_column} → ${a.targets.join(', ')}`)}</title>`,
+    `<g class="poly${diffClass(marks, n.id)}"${data}><title>${escapeXml(titleText(marks, n.id, `${a.table}.${a.type_column} / ${a.id_column} → ${a.targets.join(', ')}`))}</title>`,
     `<rect class="poly-box" x="${x}" y="${y}" width="${w}" height="${h}" rx="${CORNER}"/>`,
     `<path d="M${x} ${y + HEADER_HEIGHT}H${x + w}" stroke="#e2d6bb"/>`,
     textEl('poly-title', x + PADDING_X, y + box.title.centerY, box.title),
@@ -411,19 +499,19 @@ function polySvg(n) {
   ].join('');
 }
 
-function stubSvg(n) {
+function stubSvg(n, marks) {
   const { x, y, w, h, box } = n;
   return (
-    `<g class="stub" data-id="${escapeXml(n.id)}"><title>${escapeXml(n.id)}</title>` +
+    `<g class="stub${diffClass(marks, n.id)}" data-id="${escapeXml(n.id)}"><title>${escapeXml(titleText(marks, n.id, n.id))}</title>` +
     `<rect class="stub-box" x="${x}" y="${y}" width="${w}" height="${h}" rx="${CORNER}"/>` +
     `${textEl('stub-title', x + PADDING_X, y + box.title.centerY, box.title)}</g>`
   );
 }
 
-function domainSvg(n, colors) {
+function domainSvg(n, colors, marks) {
   const { x, y, w, h, box } = n;
   return (
-    `<g class="domain" data-domain="${escapeXml(n.id)}"><title>${escapeXml(n.id)}</title>` +
+    `<g class="domain${diffClass(marks, n.id)}" data-domain="${escapeXml(n.id)}"><title>${escapeXml(n.id)}</title>` +
     `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="10" fill="${colors.header}" stroke="${colors.stroke}"/>` +
     `<text class="domain-title" x="${x + PADDING_X}" y="${y + box.title.centerY}" dominant-baseline="central" fill="${colors.label}">${escapeXml(box.title.text)}</text>` +
     `${textEl('domain-count', x + PADDING_X, y + box.count.centerY, box.count)}</g>`
@@ -467,7 +555,7 @@ function groupSvg(g, colorOf) {
 
 const pathData = (points) => points.map(([px, py], i) => `${i === 0 ? 'M' : 'L'}${px} ${py}`).join('');
 
-function relationSvg(r) {
+function relationSvg(r, marks) {
   const { link } = r;
   const d = pathData(r.points);
   const [first, last] = [r.points[0], r.points[r.points.length - 1]];
@@ -481,9 +569,9 @@ function relationSvg(r) {
     : '';
   const via = link.via ? ` data-via="${escapeXml(link.via)}"` : '';
   return (
-    `<g class="relation-group kind-${link.kind} review-${link.review}" data-id="${escapeXml(link.id)}"` +
+    `<g class="relation-group kind-${link.kind} review-${link.review}${linkDiffClass(marks, link.id)}" data-id="${escapeXml(link.id)}"` +
     ` data-from="${escapeXml(link.from.node)}" data-to="${escapeXml(link.to.node)}" data-kind="${link.kind}" data-review="${link.review}"${via}>` +
-    `<title>${escapeXml(link.via ? `${link.id} (n-n via ${link.via})` : link.id)}</title>` +
+    `<title>${escapeXml(titleText(marks, link.id, link.via ? `${link.id} (n-n via ${link.via})` : link.id, 'links'))}</title>` +
     `<path class="relation" d="${d}"/>${markers}${label}</g>`
   );
 }
@@ -506,13 +594,13 @@ function polyRoutesSvg(routes) {
     .join('');
 }
 
-function viewSvg(scene, colorOf, visible, technical) {
+function viewSvg(scene, colorOf, visible, technical, marks, banner) {
   const { x, y, w, h } = scene.bounds;
   const nodes = scene.nodes.map((n) => {
-    if (n.kind === 'table') return tableSvg(n, colorOf(n.node.cluster), technical.get(n.id));
-    if (n.kind === 'poly') return polySvg(n);
-    if (n.kind === 'stub') return stubSvg(n);
-    return domainSvg(n, colorOf(n.id));
+    if (n.kind === 'table') return tableSvg(n, colorOf(n.node.cluster), technical.get(n.id), marks);
+    if (n.kind === 'poly') return polySvg(n, marks);
+    if (n.kind === 'stub') return stubSvg(n, marks);
+    return domainSvg(n, colorOf(n.id), marks);
   });
   // Hidden views are shown by the embedded viewer script; without script the
   // overview alone is what a reader sees.
@@ -521,8 +609,9 @@ function viewSvg(scene, colorOf, visible, technical) {
     `<g class="view" data-view="${escapeXml(scene.name)}" data-bounds="${x} ${y} ${w} ${h}"${hidden}>`,
     `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="#ffffff"/>`,
     `<g class="groups">${scene.groups.map((g) => groupSvg(g, colorOf)).join('')}</g>`,
-    `<g class="relations">${scene.relations.map(relationSvg).join('')}${polyRoutesSvg(scene.polyRoutes)}</g>`,
+    `<g class="relations">${scene.relations.map((r) => relationSvg(r, marks)).join('')}${polyRoutesSvg(scene.polyRoutes)}</g>`,
     `<g class="nodes">${nodes.join('')}</g>`,
+    banner ?? '',
     '</g>',
   ].join('\n');
 }
@@ -542,7 +631,7 @@ const scriptJson = (value) => JSON.stringify(value).replace(/[<>&]/g, (c) => `\\
  * neighborhood view, which spans domains). Keys are written in a fixed
  * order and lists come from the sorted model, so the text is deterministic.
  */
-export function viewerData(model, diagram, technical = technicalColumns(model)) {
+export function viewerData(model, diagram, technical = technicalColumns(model), diff = null) {
   // Note fields in a fixed order; a sharing profile has already removed the
   // ones it drops.
   const notes = (o) => Object.fromEntries(['note', 'note_source', 'internal_note'].filter((f) => o[f]).map((f) => [f === 'note' ? f : camel(f), o[f]]));
@@ -591,26 +680,43 @@ export function viewerData(model, diagram, technical = technicalColumns(model)) 
     ...(l.via ? { via: l.via } : {}),
     ...(evidenceOf.get(l.id)?.length > 0 ? { evidence: evidenceOf.get(l.id) } : {}),
   }));
-  return { nodes, links };
+  if (!diff) return { nodes, links };
+  const sorted = (map) => Object.fromEntries([...map].sort(([a], [b]) => compareStrings(a, b)));
+  const { sentences } = diff.marks;
+  return { nodes, links, changes: { from: diff.from, to: diff.to, summary: diff.summary, nodes: sorted(sentences.nodes), links: sorted(sentences.links) } };
 }
 
 /**
  * Static SVG holding every view; the overview is the one visible. Pass
  * `{ fitStored: true }` for a model filtered by a sharing profile (see
  * resolveView).
+ *
+ * `{ diff: { from, to, summary, marks } }` draws a diff instead (`marks`
+ * from diffMarks, the model being the union model): changed elements are
+ * coloured, every view gets the summary banner, the viewer data carries the
+ * change sentences, and the view of all tables is the one visible, since
+ * that is where changes can be seen without script.
  */
 export function renderSvg(model, layout, options = {}) {
+  const { diff = null, ...sceneOptions } = options;
   const diagram = buildDiagram(model);
-  const scenes = viewNames(diagram).map((name) => buildScene(model, layout, name, diagram, options));
+  const marks = diff?.marks ?? NO_MARKS;
+  const visible = diff ? ALL_VIEW : OVERVIEW;
+  const scenes = viewNames(diagram).map((name) => {
+    const scene = buildScene(model, layout, name, diagram, sceneOptions);
+    if (!diff) return { scene };
+    const banner = diffBanner(scene.bounds, diff);
+    return { scene: { ...scene, bounds: banner.bounds }, banner: banner.svg };
+  });
   // Indices past the palette cycle, which only happens once every tint is taken.
   const colorOf = (key) => PALETTE[layout.colors[key] % PALETTE.length];
   const technical = technicalColumns(model);
-  const { x, y, w, h } = scenes.find((s) => s.name === OVERVIEW).bounds;
+  const { x, y, w, h } = scenes.find((s) => s.scene.name === visible).scene.bounds;
   return [
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="${x} ${y} ${w} ${h}">`,
+    `<svg xmlns="http://www.w3.org/2000/svg"${diff ? ' class="diff-mode"' : ''} width="${w}" height="${h}" viewBox="${x} ${y} ${w} ${h}">`,
     `<style>${STYLE}</style>`,
-    ...scenes.map((s) => viewSvg(s, colorOf, s.name === OVERVIEW, technical)),
-    `<script type="application/json" id="open-erd-data">${scriptJson(viewerData(model, diagram, technical))}</script>`,
+    ...scenes.map((s) => viewSvg(s.scene, colorOf, s.scene.name === visible, technical, marks, s.banner)),
+    `<script type="application/json" id="open-erd-data">${scriptJson(viewerData(model, diagram, technical, diff))}</script>`,
     `<script><![CDATA[\n${VIEWER_SCRIPT}\n]]></script>`,
     '</svg>',
     '',

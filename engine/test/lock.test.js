@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { cp, mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -114,24 +114,28 @@ test('lock file is validated like the model', () => {
 
 test('CLI: lock writes tests/locked.yaml, validate then fails on a removed reviewed fact', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'open-erd-lock-'));
-  const run = (...args) => promisify(execFile)(process.execPath, [CLI, ...args]);
-  await cp(MULTI, dir, { recursive: true });
-  const { stdout } = await run('lock', '--workspace', dir);
-  assert.match(stdout, /tests\/locked\.yaml: \d+ relation\(s\), 1 polymorphic association\(s\)/);
-  assert.match((await run('validate', '--workspace', dir)).stdout, /valid, \d+ locked relation\(s\) and 1 polymorphic association\(s\) intact/);
+  try {
+    const run = (...args) => promisify(execFile)(process.execPath, [CLI, ...args]);
+    await cp(MULTI, dir, { recursive: true });
+    const { stdout } = await run('lock', '--workspace', dir);
+    assert.match(stdout, /tests\/locked\.yaml: \d+ relation\(s\), 1 polymorphic association\(s\)/);
+    assert.match((await run('validate', '--workspace', dir)).stdout, /valid, \d+ locked relation\(s\) and 1 polymorphic association\(s\) intact/);
 
-  const file = join(dir, 'model', 'shop.yaml');
-  const text = await readFile(file, 'utf8');
-  await writeFile(file, text.replace(/\n {4}review: reviewed\n/, '\n    review: stale\n'));
-  // Marked stale: still passes.
-  assert.match((await run('validate', '--workspace', dir)).stdout, /: valid, /);
+    const file = join(dir, 'model', 'shop.yaml');
+    const text = await readFile(file, 'utf8');
+    await writeFile(file, text.replace(/\n {4}review: reviewed\n/, '\n    review: stale\n'));
+    // Marked stale: still passes.
+    assert.match((await run('validate', '--workspace', dir)).stdout, /: valid, /);
 
-  await writeFile(file, text.replace(/\npolymorphic:\n(?: {2}- [^\n]*\n(?: {4}[^\n]*\n)*)+/, '\n'));
-  await assert.rejects(run('validate', '--workspace', dir), (e) => {
-    assert.equal(e.code, 1);
-    assert.match(e.stderr, /^tests\/locked\.yaml: polymorphic\[0\]: polymorphic shop\._\.comments «commentable» was reviewed and is missing from the model/m);
-    assert.match(e.stderr, /1 locked fact\(s\) changed or missing/);
-    return true;
-  });
-  await assert.rejects(run('lock', '--workspace', dir), (e) => e.code === 1 && /«commentable» was reviewed and is missing/.test(e.stderr));
+    await writeFile(file, text.replace(/\npolymorphic:\n(?: {2}- [^\n]*\n(?: {4}[^\n]*\n)*)+/, '\n'));
+    await assert.rejects(run('validate', '--workspace', dir), (e) => {
+      assert.equal(e.code, 1);
+      assert.match(e.stderr, /^tests\/locked\.yaml: polymorphic\[0\]: polymorphic shop\._\.comments «commentable» was reviewed and is missing from the model/m);
+      assert.match(e.stderr, /1 locked fact\(s\) changed or missing/);
+      return true;
+    });
+    await assert.rejects(run('lock', '--workspace', dir), (e) => e.code === 1 && /«commentable» was reviewed and is missing/.test(e.stderr));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });

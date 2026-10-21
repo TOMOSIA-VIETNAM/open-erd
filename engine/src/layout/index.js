@@ -11,6 +11,10 @@ import { leavesOf, viewNames, viewTree } from './views.js';
 
 const sameSize = (a, b) => a.w === b.w && a.h === b.h;
 
+// Boxes taken from different sources (a hand-edited layout.json, or the diff
+// merging two snapshots) may overlap; such a group must go through settle.
+const anyOverlap = (boxes) => boxes.some((a, i) => boxes.slice(i + 1).some((b) => overlaps(a, b)));
+
 // The children of `group` sharing the most lines with `id` (all of them when
 // it has none), in id order.
 function mostLinked(id, placedIds, pairs) {
@@ -123,14 +127,24 @@ async function arrange(node, old, links, boxes) {
     .filter((l) => owner.has(l.from.node) && owner.has(l.to.node))
     .map((l) => ({ from: owner.get(l.from.node), to: owner.get(l.to.node) }));
 
+  const unchanged = kept.length > 0 && fresh.length === 0 && kept.every((r) => r.unchanged) && !anyOverlap(kept.map((r) => r.ref));
   let positions;
   if (kept.length === 0) {
     const children = results.map((r) => ({ id: r.id, w: r.extent.w, h: r.extent.h, origin: r.origin, extent: r.extent, leaves: r.leaves }));
     positions = await FRESH[node.strategy](children, pairs, node, links, boxes);
-  } else if (fresh.length === 0 && kept.every((r) => r.unchanged)) {
+  } else if (unchanged) {
     positions = new Map(results.map((r) => [r.id, r.origin]));
   } else {
-    const items = kept.map((r) => ({ id: r.id, key: { x: [r.ref.x, 0], y: [r.ref.y, 0] }, ref: r.ref, w: r.extent.w, h: r.extent.h }));
+    // Boxes stored at the very same corner would share both keys and could
+    // never be pulled apart; later ones (child order) rank after the first
+    // on y, so settle stacks them.
+    const corners = new Map();
+    const items = kept.map((r) => {
+      const corner = `${r.ref.x},${r.ref.y}`;
+      const rank = corners.get(corner) ?? 0;
+      corners.set(corner, rank + 1);
+      return { id: r.id, key: { x: [r.ref.x, 0], y: [r.ref.y, rank] }, ref: r.ref, w: r.extent.w, h: r.extent.h };
+    });
     const settled = settle(items, node.gap);
     const placed = new Map(kept.map((r) => [r.id, { ...settled.get(r.id), ...r.extent }]));
     const sizes = new Map(results.map((r) => [r.id, r.extent]));
@@ -155,7 +169,7 @@ async function arrange(node, old, links, boxes) {
   return {
     id: node.id,
     kept: kept.length > 0,
-    unchanged: fresh.length === 0 && kept.every((r) => r.unchanged),
+    unchanged,
     ref,
     origin,
     extent: { w: frame.x + frame.w - origin.x, h: frame.y + frame.h - origin.y },

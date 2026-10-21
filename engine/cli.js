@@ -6,13 +6,23 @@ import { pathToFileURL } from 'node:url';
 import { parseArgs, promisify } from 'node:util';
 import pkg from './package.json' with { type: 'json' };
 import { CONFIG_FILE, LOCKED_FILE } from './src/model/schema.js';
-import { formatError, parseWorkspace } from './src/model/load.js';
+import { compareStrings, formatError, parseWorkspace } from './src/model/load.js';
 import { checkLocked, lockFacts, parseLocked, serializeLocked } from './src/model/lock.js';
 import { applyProfile } from './src/model/profile.js';
-import { buildWorkbook, serializeWorkbook } from './src/render/xlsx/workbook.js';
+import { addChangesSheet, buildWorkbook, serializeWorkbook } from './src/render/xlsx/workbook.js';
+import { describeChange, diffModels, summarize, summaryLine } from './src/diff/changes.js';
+import { diffMarks, mergeLayouts, unionModel } from './src/diff/union.js';
 import { checkLayout, computeLayout, formatReport } from './src/layout/index.js';
 import { LAYOUT_FILE, parseLayout, serializeLayout } from './src/layout/layout-file.js';
 import { renderSvg } from './src/render/svg/render.js';
+
+// `--to` value meaning the workspace files on disk, committed or not.
+const WORKTREE = 'WORKTREE';
+// Workspace files a snapshot is made of.
+const SNAPSHOT_FILE = (path) => path === CONFIG_FILE || path === LAYOUT_FILE || /^model\/[^/]+\.yaml$/.test(path);
+
+const git = (workspace, ...args) =>
+  promisify(execFile)('git', ['-C', workspace, ...args], { maxBuffer: 256 * 1024 * 1024 }).then((r) => r.stdout);
 
 const COMMANDS = {
   validate: {
@@ -40,9 +50,12 @@ const COMMANDS = {
     run: runRender,
   },
   diff: {
-    usage: 'diff --workspace <dir> --from <ref> --to <ref|WORKTREE>',
-    summary: 'compare two snapshots, write out/diff.svg and the Changes sheet',
-    options: { workspace: { type: 'string' }, from: { type: 'string' }, to: { type: 'string' } },
+    usage: `diff --workspace <dir> --from <ref> --to <ref|${WORKTREE}> [--profile <name>]`,
+    summary:
+      `compare two snapshots of the workspace (git refs such as a tag or HEAD; ${WORKTREE} = the files on disk), print the changes, ` +
+      'write out/diff.svg and out/diff.xlsx (the "to" side plus a Changes sheet; out/diff.<profile>.* with a sharing profile, applied to both sides as the "to" side declares it)',
+    options: { workspace: { type: 'string' }, from: { type: 'string' }, to: { type: 'string' }, profile: { type: 'string' } },
+    run: runDiff,
   },
 };
 
@@ -142,11 +155,11 @@ const NO_HISTORY_DATE = new Date('1980-01-01T00:00:00Z');
  * installed, no commit yet) gets NO_HISTORY_DATE: the time of an unrelated
  * repository would change the bytes without the model changing.
  */
-async function workspaceDate(workspace) {
-  const git = (...args) => promisify(execFile)('git', ['-C', workspace, ...args]).then((r) => r.stdout.trim());
+async function workspaceDate(workspace, ref = 'HEAD') {
+  const run = async (...args) => (await git(workspace, ...args)).trim();
   try {
-    if ((await git('rev-parse', '--show-toplevel')) !== (await realpath(workspace))) return NO_HISTORY_DATE;
-    return new Date(Number(await git('log', '-1', '--format=%ct')) * 1000);
+    if ((await run('rev-parse', '--show-toplevel')) !== (await realpath(workspace))) return NO_HISTORY_DATE;
+    return new Date(Number(await run('log', '-1', '--format=%ct', ref)) * 1000);
   } catch {
     return NO_HISTORY_DATE;
   }
@@ -191,6 +204,84 @@ async function runRender({ workspace, profile }) {
   return 0;
 }
 
+/**
+ * Model and layout of one snapshot: `WORKTREE` reads the files on disk, any
+ * other value is a git ref of the workspace repository, read with git show
+ * so nothing is checked out. Returns null after printing the errors.
+ */
+async function readSnapshot(workspace, ref) {
+  let files;
+  let layoutText;
+  if (ref === WORKTREE) {
+    files = await readWorkspaceFiles(workspace);
+    try {
+      layoutText = await readFile(join(workspace, LAYOUT_FILE), 'utf8');
+    } catch (e) {
+      if (e.code !== 'ENOENT') throw e;
+    }
+  } else {
+    let paths;
+    try {
+      // Paths come out relative to the workspace, which may sit below the
+      // repository root.
+      paths = (await git(workspace, 'ls-tree', '-r', '--name-only', ref, '--', '.')).split('\n').filter(SNAPSHOT_FILE);
+    } catch (e) {
+      throw new Error(`cannot read snapshot "${ref}" of ${workspace}: ${e.stderr?.trim() || e.message}`);
+    }
+    files = {};
+    for (const path of paths.sort(compareStrings)) {
+      const text = await git(workspace, 'show', `${ref}:./${path}`);
+      if (path === LAYOUT_FILE) layoutText = text;
+      else files[path] = text;
+    }
+  }
+  const { model, errors } = parseWorkspace(files);
+  for (const e of errors) console.error(`${ref}: ${formatError(e)}`);
+  if (!model) return null;
+  // A snapshot without layout.json is laid out from scratch.
+  return { model, layout: layoutText === undefined ? undefined : parseLayout(layoutText) };
+}
+
+async function runDiff({ workspace, from, to, profile }) {
+  if (!from || !to) {
+    console.error(`Missing --from or --to\nUsage: open-erd ${COMMANDS.diff.usage}`);
+    return 1;
+  }
+  if (from === WORKTREE) {
+    console.error(`--from must be a git ref; ${WORKTREE} is only allowed as --to`);
+    return 1;
+  }
+  if (to === 'HEAD') {
+    const dirty = await git(workspace, 'status', '--porcelain', '--', CONFIG_FILE, 'model', LAYOUT_FILE).catch(() => '');
+    if (dirty.trim()) console.error(`warning: uncommitted changes in ${workspace} are not part of HEAD; use --to ${WORKTREE} to include them`);
+  }
+  const before = await readSnapshot(workspace, from);
+  const after = await readSnapshot(workspace, to);
+  if (!before || !after) return 1;
+  // Both sides are filtered by the profile as the newer snapshot declares
+  // it: the result is shared today, so today's hidden list applies.
+  const filter = (side) => (profile === undefined ? side.model : applyProfile({ ...side.model, config: after.model.config }, profile));
+  const [fromModel, toModel] = [filter(before), filter(after)];
+
+  const result = diffModels(fromModel, toModel);
+  const summary = summaryLine(summarize(result.changes));
+  const union = unionModel(fromModel, toModel, result);
+  const { layout } = await computeLayout(union, mergeLayouts(before.layout, after.layout));
+  const svg = renderSvg(union, layout, { diff: { from, to, summary, marks: diffMarks(union, result.changes) } });
+  const workbook = buildWorkbook(toModel);
+  addChangesSheet(workbook, toModel, result.changes);
+  const xlsx = await serializeWorkbook(workbook, { date: await workspaceDate(workspace, to === WORKTREE ? 'HEAD' : to) });
+
+  const base = join(workspace, 'out', profile === undefined ? 'diff' : `diff.${profile}`);
+  await mkdir(join(workspace, 'out'), { recursive: true });
+  await writeFile(`${base}.svg`, svg);
+  await writeFile(`${base}.xlsx`, xlsx);
+  console.log(`${from} → ${to}: ${summary}`);
+  for (const c of result.changes) console.log(`  ${c.table ?? c.database}: ${describeChange(c)}`);
+  console.log(`wrote ${base}.svg and ${base}.xlsx${profile === undefined ? '' : ` (profile ${profile})`}`);
+  return 0;
+}
+
 export async function main(argv) {
   const [name, ...rest] = argv;
   if (name === '-v' || name === '--version') {
@@ -220,10 +311,6 @@ export async function main(argv) {
   if (!values.workspace) {
     console.error(`Missing --workspace\nUsage: open-erd ${command.usage}`);
     return 1;
-  }
-  if (!command.run) {
-    console.error(`open-erd ${name}: not implemented yet`);
-    return 2;
   }
   try {
     return await command.run(values);

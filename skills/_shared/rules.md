@@ -31,16 +31,17 @@ node <plugin root>/dist/open-erd.mjs validate --workspace <ws>
 node <plugin root>/dist/open-erd.mjs lock     --workspace <ws>
 node <plugin root>/dist/open-erd.mjs layout   --workspace <ws>
 node <plugin root>/dist/open-erd.mjs render   --workspace <ws> [--profile <name>]
-node <plugin root>/dist/open-erd.mjs diff     --workspace <ws> --from <ref> --to <ref|HEAD|WORKTREE>
+node <plugin root>/dist/open-erd.mjs diff     --workspace <ws> --from <ref> --to <ref|HEAD|WORKTREE> [--profile <name>]
 ```
 
 Exit code 0 = success. Non-zero: show the engine's message, fix the cause in
-the workspace (never in the engine), run again. Exit code 2 with
-`not implemented yet`, or an option the engine rejects: tell the user this
-engine build does not support it yet and stop that step. `render` never writes
-`layout.json`; a render error about missing or stale positions means run
-`layout` first. `render` writes `out/erd.svg` and `out/erd.xlsx`
-(`out/erd.<profile>.*` with `--profile`).
+the workspace (never in the engine), run again. An option the engine
+rejects: tell the user this engine build does not support it and stop that
+step. `render` never writes `layout.json`; a render error about missing or
+stale positions means run `layout` first. `render` writes `out/erd.svg` and
+`out/erd.xlsx` (`out/erd.<profile>.*` with `--profile`). `diff` writes
+`out/diff.svg` and `out/diff.xlsx` (`out/diff.<profile>.*` with `--profile`)
+and never writes `layout.json` either.
 
 `validate` also checks `tests/locked.yaml`: every reviewed fact listed there
 must still be in the model unchanged, or marked `review: stale`. A locked-fact

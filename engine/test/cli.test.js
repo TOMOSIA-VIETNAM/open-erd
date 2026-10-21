@@ -30,12 +30,6 @@ test('validate exits 0 on a valid workspace and 1 with file paths on errors', as
   assert.match(bad.stderr, /^model\/shop\.yaml: tables\[2\]\.columns\[1\]\.enum: /m);
 });
 
-test('unimplemented commands fail loudly', async () => {
-  const { code, stderr } = await run('diff', '--workspace', fixture('workspace-valid'));
-  assert.equal(code, 2);
-  assert.match(stderr, /not implemented yet/);
-});
-
 test('missing --workspace and unknown commands fail', async () => {
   assert.equal((await run('validate')).code, 1);
   assert.equal((await run('frobnicate')).code, 1);
