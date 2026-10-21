@@ -343,6 +343,28 @@ test('renaming a database carries its clusters, domain views and colours', async
   for (const r of Object.values(report)) assert.deepEqual([r.added, r.removed], [[], []]);
 });
 
+// A schema above ALL_VIEW_MAX_TABLES has no view of all tables in
+// layout.json; renames are then found through the domain views.
+test('renames carry over from a layout without the view of all tables', async () => {
+  const model = await loadMulti();
+  const { layout: full } = await computeLayout(model);
+  const { all, ...views } = full.views;
+  const before = { ...full, views };
+  const move = (id) => (id.startsWith('activity.') ? `telemetry.${id.slice('activity.'.length)}` : null);
+  const renamed = renameTables(
+    { ...model, databases: model.databases.map((d) => (d.database === 'activity' ? { ...d, database: 'telemetry' } : d)) },
+    move,
+  );
+  const { layout: after, report } = await computeLayout(renamed, before);
+  const key = (k) => k.replace(/activity(?=[/.:])/g, 'telemetry').replace(/^overview activity /, 'overview telemetry ');
+  const expected = Object.fromEntries(Object.entries(positions(before)).map(([k, v]) => [key(k), v]));
+  const withoutAll = (p) => Object.fromEntries(Object.entries(p).filter(([k]) => !k.startsWith('all ')));
+  assert.deepEqual(withoutAll(positions(after)), expected);
+  for (const domain of ['Audit', 'Events']) assert.equal(after.colors[`telemetry/${domain}`], before.colors[`activity/${domain}`]);
+  assert.ok(report['domain:telemetry/Audit'].renamed.length > 0);
+  assert.deepEqual([report['domain:telemetry/Audit'].added, report['domain:telemetry/Audit'].removed], [[], []]);
+});
+
 test('a table renamed into another domain is placed there as new', async () => {
   const model = await loadShop();
   const { layout: before } = await computeLayout(model);

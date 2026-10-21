@@ -30,9 +30,24 @@ const PAGE_ASPECT = 16 / 9;
 // with straight lines instead of loops around a column.
 const OVERVIEW_DB_ASPECT = 4;
 
+// Above this many tables the view of all tables is left out. Routing it
+// grows much faster than the table count (on an Apple M4 a few seconds at
+// 150 tables, about 15 s at 300, 90 s at 500 and five minutes at 1000), and
+// at that size it is a canvas nobody reads as a whole: the overview, the
+// domain views and the neighborhood view (built from the domain views)
+// remain.
+export const ALL_VIEW_MAX_TABLES = 300;
+
+/** Whether the diagram is small enough to get the view of all tables. */
+export function hasAllView(diagram) {
+  let tables = 0;
+  for (const n of diagram.nodes.values()) if (n.kind === 'table') tables += 1;
+  return tables <= ALL_VIEW_MAX_TABLES;
+}
+
 /** All views of a diagram; the overview comes first because it is shown first. */
 export function viewNames(diagram) {
-  return [OVERVIEW, ALL_VIEW, ...[...diagram.clusters.keys()].map((k) => DOMAIN_VIEW_PREFIX + k)];
+  return [OVERVIEW, ...(hasAllView(diagram) ? [ALL_VIEW] : []), ...[...diagram.clusters.keys()].map((k) => DOMAIN_VIEW_PREFIX + k)];
 }
 
 function clusterGroup(diagram, key) {
@@ -92,7 +107,7 @@ function domainView(diagram, key) {
 
 /** The tree and the lines of view `name`; throws on an unknown view. */
 export function viewTree(model, diagram, name) {
-  if (name === ALL_VIEW) return allView(model, diagram);
+  if (name === ALL_VIEW && hasAllView(diagram)) return allView(model, diagram);
   if (name === OVERVIEW) return overview(model, diagram);
   if (name.startsWith(DOMAIN_VIEW_PREFIX) && diagram.clusters.has(name.slice(DOMAIN_VIEW_PREFIX.length))) {
     return domainView(diagram, name.slice(DOMAIN_VIEW_PREFIX.length));

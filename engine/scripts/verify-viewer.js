@@ -8,13 +8,11 @@
 // workspace with relations works. A diff drawing (diff.svg) starts on the
 // view of all tables; it first gets a step clicking a changed table, whose
 // panel must list its changes, then goes through the same steps.
-import { spawn } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { launchChrome } from './cdp.js';
 
-const CHROME = process.env.CHROME_PATH ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const VIEWPORT = { width: 1400, height: 900 };
 const [input, outDir] = process.argv.slice(2);
 if (!input || !outDir) {
@@ -25,44 +23,7 @@ if (!input || !outDir) {
 // The view the file shows without script, which is also where the viewer starts.
 const startView = /<g class="view" data-view="([^"]+)" data-bounds="[^"]+">/.exec(await readFile(input, 'utf8'))[1];
 
-const profile = await mkdtemp(join(tmpdir(), 'open-erd-cdp-'));
-const chrome = spawn(CHROME, ['--headless=new', '--hide-scrollbars', '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank']);
-// A failed step throws; Chrome must not outlive the script.
-process.on('exit', () => chrome.kill());
-const port = await new Promise((done, fail) => {
-  let text = '';
-  chrome.stderr.on('data', (chunk) => {
-    text += chunk;
-    const m = text.match(/DevTools listening on ws:\/\/[^:]+:(\d+)\//);
-    if (m) done(m[1]);
-  });
-  chrome.on('exit', () => fail(new Error(`chrome exited before listening:\n${text}`)));
-});
-const pages = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
-const socket = new WebSocket(pages.find((p) => p.type === 'page').webSocketDebuggerUrl);
-await new Promise((done) => socket.addEventListener('open', done, { once: true }));
-
-let nextId = 1;
-const pending = new Map();
-const listeners = [];
-socket.addEventListener('message', ({ data }) => {
-  const msg = JSON.parse(data);
-  if (msg.id && pending.has(msg.id)) {
-    const { done, fail } = pending.get(msg.id);
-    pending.delete(msg.id);
-    if (msg.error) fail(new Error(`${msg.error.message}`));
-    else done(msg.result);
-  } else if (msg.method) {
-    for (const l of listeners) l(msg);
-  }
-});
-const send = (method, params = {}) =>
-  new Promise((done, fail) => {
-    const id = nextId++;
-    pending.set(id, { done, fail });
-    socket.send(JSON.stringify({ id, method, params }));
-  });
-const once = (method) => new Promise((done) => listeners.push((m) => m.method === method && done(m.params)));
+const { send, once, listeners, close } = await launchChrome();
 
 const errors = [];
 listeners.push((m) => {
@@ -210,9 +171,16 @@ await click(`[...document.querySelectorAll('.oe-btn')].find((b) => b.textContent
 await shot('business-mode', `document.documentElement.classList.contains('business') && getComputedStyle(${inView('.column-type')}).display === 'none'`);
 await click(`[...document.querySelectorAll('.oe-btn')].find((b) => b.textContent === 'Technical')`);
 
-// The table highlighted earlier has lines; open its neighborhood from the full view.
-await click(`[...document.querySelectorAll('.oe-btn')].find((b) => b.textContent === 'All tables')`);
-await shot('all-tables', viewIs('all'));
+// The table highlighted earlier has lines; open its neighborhood from the
+// full view, or from its domain view in a schema too large for a full view.
+if (await evaluate(`document.querySelector('g.view[data-view="all"]') !== null`)) {
+  await click(`[...document.querySelectorAll('.oe-btn')].find((b) => b.textContent === 'All tables')`);
+  await shot('all-tables', viewIs('all'));
+} else {
+  await click(`document.querySelector('.oe-crumbs .oe-link')`);
+  await click(`document.querySelector('.domain[data-domain=${JSON.stringify(domain)}]')`);
+  await shot('no-all-tables', `${viewIs(`domain:${domain}`)} && [...document.querySelectorAll('.oe-btn')].find((b) => b.textContent === 'All tables').style.display === 'none'`);
+}
 await click(inView(`.table[data-id="${table}"]`), { where: 'top', count: 2 });
 await shot('neighborhood-1-hop', `${viewIs('neighborhood')} && ${visible}.querySelectorAll('.table, .poly').length > 1`);
 const oneHop = await evaluate(`${visible}.querySelectorAll('.table, .poly').length`);
@@ -252,12 +220,7 @@ await pause(300);
 await send('Emulation.setScriptExecutionDisabled', { value: false });
 await shot('no-script', `document.querySelector('.oe-toolbar') === null && ${viewIs(startView)} && document.querySelectorAll('g.view:not([style])').length === 1`);
 
-socket.close();
-// Chrome writes into its profile until it has exited.
-const exited = new Promise((done) => chrome.once('exit', done));
-chrome.kill();
-await exited;
-await rm(profile, { recursive: true, force: true });
+await close();
 if (errors.length > 0) console.error(`console errors:\n  ${errors.join('\n  ')}`);
 if (failures.length > 0) console.error(`failed checks:\n  ${failures.join('\n  ')}`);
 console.log(errors.length === 0 && failures.length === 0 ? 'viewer OK' : 'viewer FAILED');

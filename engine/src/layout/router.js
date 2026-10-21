@@ -18,68 +18,64 @@ export const STUB = MARGIN + GRID;
 export const SELF_STUB = STUB + 2 * GRID;
 const CANVAS_MARGIN = 6 * GRID;
 
-const STEP = 1;
-const BEND = 6;
-const CROSS = 8;
-const OVERLAP = 40;
+// Costs are whole numbers (one grid step is 5) so path costs add up exactly
+// and the search can keep its open states in buckets by cost.
+const STEP = 5;
+const BEND = 30;
+const CROSS = 40;
+const OVERLAP = 200;
 // Running right next to a box is legal but reads as "attached"; a small cost
 // moves lines one track further out when there is room.
-const NEAR_BOX = 0.4;
-const ALONG_FRAME = 1;
+const NEAR_BOX = 2;
+const ALONG_FRAME = 5;
 // Two relation ends with different markers on one attachment point would draw
 // overlapping, unreadable markers; they take the box's other side when free.
-const MIXED_MARKERS = 200;
+const MIXED_MARKERS = 1000;
 // Another relation's attachment point: passing through it would look like a
 // junction.
-const FOREIGN_PORT = 40;
+const FOREIGN_PORT = 200;
 
 const DX = [1, -1, 0, 0];
 const DY = [0, 0, 1, -1];
 const OPPOSITE = [1, 0, 3, 2];
 const HORIZONTAL = (d) => d < 2;
 
-class MinHeap {
+// Open states of one search, bucketed by f = cost so far + estimate. The
+// estimate never drops by more than a step costs, so states come out in
+// non-decreasing f and one pointer walks the buckets (Dial's algorithm):
+// constant time per state where a binary heap of millions of states spent
+// most of the routing time. Within a bucket states leave in insertion order,
+// which keeps ties deterministic.
+class BucketQueue {
   constructor() {
-    this.items = [];
-    this.seq = 0;
-  }
-  get size() {
-    return this.items.length;
-  }
-  // Ties on cost are broken by insertion order, which is itself deterministic.
-  less(a, b) {
-    return a.f < b.f || (a.f === b.f && a.seq < b.seq);
+    this.buckets = [];
+    // Bucket being drained and the next position in it. Buckets below it are
+    // never pushed to again, so no other bucket needs a position.
+    this.current = Infinity;
+    this.bucket = [];
+    this.next = 0;
+    this.size = 0;
   }
   push(f, state) {
-    const items = this.items;
-    items.push({ f, state, seq: this.seq++ });
-    let i = items.length - 1;
-    while (i > 0) {
-      const p = (i - 1) >> 1;
-      if (!this.less(items[i], items[p])) break;
-      [items[i], items[p]] = [items[p], items[i]];
-      i = p;
+    (this.buckets[f] ??= []).push(state);
+    this.size += 1;
+    // Only the start states, pushed before the first pop, can lower it.
+    if (f < this.current) {
+      this.current = f;
+      this.bucket = this.buckets[f];
+      this.next = 0;
     }
   }
+  // The state with the lowest f; its f is left in `f`.
   pop() {
-    const items = this.items;
-    const top = items[0];
-    const last = items.pop();
-    if (items.length > 0) {
-      items[0] = last;
-      let i = 0;
-      for (;;) {
-        const l = 2 * i + 1;
-        const r = l + 1;
-        let m = i;
-        if (l < items.length && this.less(items[l], items[m])) m = l;
-        if (r < items.length && this.less(items[r], items[m])) m = r;
-        if (m === i) break;
-        [items[i], items[m]] = [items[m], items[i]];
-        i = m;
-      }
+    while (this.next === this.bucket.length) {
+      this.current += 1;
+      this.bucket = this.buckets[this.current] ?? [];
+      this.next = 0;
     }
-    return top;
+    this.size -= 1;
+    this.f = this.current;
+    return this.bucket[this.next++];
   }
 }
 
@@ -131,6 +127,13 @@ function makeGrid(obstacles, frames) {
     occH: new Uint16Array(cols * rows),
     occV: new Uint16Array(cols * rows),
     foreignPorts: new Uint16Array(cols * rows),
+    // Search state per (cell, direction), shared by every search on this
+    // grid: an entry is valid only when its stamp is the current search's,
+    // so nothing is cleared or allocated between searches.
+    g: new Float64Array(cols * rows * 4),
+    came: new Int32Array(cols * rows * 4),
+    stamp: new Uint32Array(cols * rows * 4),
+    search: 0,
     portMarkers: new Map(),
     cell: (x, y) => ((y - y0) / GRID) * cols + (x - x0) / GRID,
     point: (cell) => [x0 + (cell % cols) * GRID, y0 + Math.floor(cell / cols) * GRID],
@@ -160,64 +163,68 @@ function portPenalty(grid, port) {
 }
 
 function search(grid, starts, goals, ownCells) {
-  const { cols, rows } = grid;
-  const n = cols * rows * 4;
-  const g = new Float64Array(n).fill(Infinity);
-  const came = new Int32Array(n).fill(-1);
-  const heap = new MinHeap();
-  const goalXY = goals.map((goal) => grid.point(goal.cell));
-  const h = (cell) => {
-    const [x, y] = grid.point(cell);
-    let best = Infinity;
-    for (const [gx, gy] of goalXY) best = Math.min(best, (Math.abs(gx - x) + Math.abs(gy - y)) / GRID);
+  const { cols, rows, blocked, near, occH, occV, alongH, alongV, foreignPorts, g, came, stamp } = grid;
+  const run = ++grid.search;
+  const open = new BucketQueue();
+  const gx = goals.map((goal) => goal.cell % cols);
+  const gy = goals.map((goal) => Math.floor(goal.cell / cols));
+  // Grid points are GRID apart, so distances in grid steps equal px / GRID.
+  const h = (cx, cy) => {
+    let best = Math.abs(gx[0] - cx) + Math.abs(gy[0] - cy);
+    for (let i = 1; i < gx.length; i++) best = Math.min(best, Math.abs(gx[i] - cx) + Math.abs(gy[i] - cy));
     return best * STEP;
   };
   for (const s of starts) {
     const state = s.cell * 4 + s.outward;
     g[state] = portPenalty(grid, s);
-    heap.push(g[state] + h(s.cell), state);
+    came[state] = -1;
+    stamp[state] = run;
+    open.push(g[state] + h(s.cell % cols, Math.floor(s.cell / cols)), state);
   }
   let best = { cost: Infinity };
-  while (heap.size > 0) {
-    const { f, state } = heap.pop();
+  while (open.size > 0) {
+    const state = open.pop();
+    const f = open.f;
     if (f >= best.cost) break;
     const cell = state >> 2;
     const dir = state & 3;
-    const cost = g[state];
-    if (f > cost + h(cell) + 1e-9) continue;
+    const here = g[state];
     const cx = cell % cols;
-    const cy = Math.floor(cell / cols);
+    const cy = (cell - cx) / cols;
+    // A state reached again more cheaply after it was queued.
+    if (f > here + h(cx, cy)) continue;
     for (let d = 0; d < 4; d++) {
       if (d === OPPOSITE[dir]) continue;
       const nx = cx + DX[d];
       const ny = cy + DY[d];
       if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
       const next = ny * cols + nx;
-      if (grid.blocked[next]) continue;
+      if (blocked[next]) continue;
       let step = STEP + (d !== dir ? BEND : 0);
       if (HORIZONTAL(d)) {
-        if (grid.occH[next]) step += OVERLAP;
-        if (grid.occV[next]) step += CROSS;
-        if (grid.alongH[next]) step += ALONG_FRAME;
+        if (occH[next]) step += OVERLAP;
+        if (occV[next]) step += CROSS;
+        if (alongH[next]) step += ALONG_FRAME;
       } else {
-        if (grid.occV[next]) step += OVERLAP;
-        if (grid.occH[next]) step += CROSS;
-        if (grid.alongV[next]) step += ALONG_FRAME;
+        if (occV[next]) step += OVERLAP;
+        if (occH[next]) step += CROSS;
+        if (alongV[next]) step += ALONG_FRAME;
       }
-      if (grid.near[next]) step += NEAR_BOX;
-      if (grid.foreignPorts[next] && !ownCells.has(next)) step += FOREIGN_PORT;
+      if (near[next]) step += NEAR_BOX;
+      if (foreignPorts[next] && !ownCells.has(next)) step += FOREIGN_PORT;
       const ns = next * 4 + d;
-      const ng = cost + step;
-      if (ng >= g[ns]) continue;
+      const ng = here + step;
+      if (stamp[ns] === run && ng >= g[ns]) continue;
       g[ns] = ng;
       came[ns] = state;
+      stamp[ns] = run;
       for (const goal of goals) {
         // Arriving while moving away from the box would need a U-turn.
         if (goal.cell !== next || d === goal.outward) continue;
         const total = ng + (d === OPPOSITE[goal.outward] ? 0 : BEND) + portPenalty(grid, goal);
         if (total < best.cost) best = { cost: total, state: ns, goal };
       }
-      heap.push(ng + h(next), ns);
+      open.push(ng + h(nx, ny), ns);
     }
   }
   if (!best.goal) return null;
@@ -228,18 +235,22 @@ function search(grid, starts, goals, ownCells) {
   return { cells, start, goal: best.goal };
 }
 
-function occupy(grid, { cells, start, goal }, delta) {
-  for (const port of [start, goal]) {
-    if (!grid.portMarkers.has(port.cell)) grid.portMarkers.set(port.cell, new Map());
-    const used = grid.portMarkers.get(port.cell);
-    used.set(port.marker, (used.get(port.marker) ?? 0) + delta);
-  }
+function occupyTracks(grid, cells, delta) {
   for (let i = 1; i < cells.length; i++) {
     const [a, b] = [cells[i - 1], cells[i]];
     const occ = Math.abs(a - b) === 1 ? grid.occH : grid.occV;
     occ[a] += delta;
     occ[b] += delta;
   }
+}
+
+function occupy(grid, { cells, start, goal }, delta) {
+  for (const port of [start, goal]) {
+    if (!grid.portMarkers.has(port.cell)) grid.portMarkers.set(port.cell, new Map());
+    const used = grid.portMarkers.get(port.cell);
+    used.set(port.marker, (used.get(port.marker) ?? 0) + delta);
+  }
+  occupyTracks(grid, cells, delta);
 }
 
 function simplify(points) {
@@ -331,18 +342,43 @@ export function routeEdges(obstacles, frames, edges) {
   };
   const order = [...prepared].sort((a, b) => length(a) - length(b) || compareStrings(a.edge.id, b.edge.id));
 
+  // Lines ending at the same attachment point with the same marker may share
+  // their last stretch: they meet at that point anyway, and a common trunk
+  // reads as one fan-in. Their tracks are therefore free for each other.
+  // Without this, every further line to a much-referenced row had to cross
+  // or detour around all earlier ones, which made routing cost grow with the
+  // square of the line count and spread the fan over many tracks.
   const routes = new Map();
+  const ends = new Map();
+  const endKey = (port) => `${port.cell}:${port.marker}`;
+  const partners = (p) => {
+    const found = new Set();
+    for (const port of [...p.starts, ...p.goals]) for (const q of ends.get(endKey(port)) ?? []) if (q !== p) found.add(q);
+    return [...found];
+  };
+  const attach = (p, found, delta) => {
+    occupy(grid, found, delta);
+    for (const port of [found.start, found.goal]) {
+      const key = endKey(port);
+      if (!ends.has(key)) ends.set(key, new Set());
+      if (delta > 0) ends.get(key).add(p);
+      else ends.get(key).delete(p);
+    }
+  };
   const route = (p) => {
+    const shared = partners(p);
+    for (const q of shared) occupyTracks(grid, routes.get(q).cells, -1);
     const found = search(grid, p.starts, p.goals, p.own);
+    for (const q of shared) occupyTracks(grid, routes.get(q).cells, 1);
     if (!found) throw new Error(`router: no path for relation ${p.edge.id}`);
-    occupy(grid, found, 1);
+    attach(p, found, 1);
     routes.set(p, found);
   };
   for (const p of order) route(p);
   // One rip-up pass: each line is re-routed knowing every other line, which
   // removes most crossings caused by routing order.
   for (const p of order) {
-    occupy(grid, routes.get(p), -1);
+    attach(p, routes.get(p), -1);
     route(p);
   }
 

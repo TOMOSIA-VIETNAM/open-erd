@@ -3,7 +3,7 @@ import { VIEW_SOURCE, buildDiagram, polyLinkId, relationId } from '../../layout/
 import { resolveView } from '../../layout/index.js';
 import { STUB, routeEdges } from '../../layout/router.js';
 import { GRID, BADGE_ARROW_WIDTH, BADGE_FONT, DOMAIN_COUNT_FONT, DOMAIN_TITLE_FONT, EMBED_INSET, FACT_FONT, HEADER_HEIGHT, PADDING_X, ROW_HEIGHT, TAG_FONT, attachOffset } from '../../layout/table-box.js';
-import { ALL_VIEW, OVERVIEW, viewNames } from '../../layout/views.js';
+import { ALL_VIEW, OVERVIEW, hasAllView, viewNames } from '../../layout/views.js';
 import { columnEntries, technicalColumns } from '../../model/columns.js';
 import { compareStrings } from '../../model/load.js';
 import { measureText } from '../../text/measure.js';
@@ -229,7 +229,8 @@ function labelText(view, link) {
 //      spread (used when a short line has no free stretch);
 //   3. on a vertical segment, middle first.
 // The first candidate that overlaps no placed label and no other line wins;
-// failing all, the first candidate. Route points keep MARGIN + GRID from
+// then the first one that at least overlaps no placed label (a crowded
+// overview has lines everywhere); failing all, the first candidate. Route points keep MARGIN + GRID from
 // foreign boxes, more than half a label's height, so a label on its line
 // stays clear of them.
 const LABEL_LIFT = 8;
@@ -290,15 +291,14 @@ function placeLabels(relations, texts) {
   return relations.map((r, i) => {
     if (!texts[i]) return null;
     const candidates = labelCandidates(r.points, labelSize(texts[i]));
-    const free = (c) =>
-      !placed.some((p) => rectsOverlap(c, p)) &&
-      !relations.some((o, j) => j !== i && o.points.slice(1).some((p, k) => segmentHits([o.points[k], p], c)));
+    const clearOfLabels = (c) => !placed.some((p) => rectsOverlap(c, p));
+    const free = (c) => clearOfLabels(c) && !relations.some((o, j) => j !== i && o.points.slice(1).some((p, k) => segmentHits([o.points[k], p], c)));
     // A line too short for any candidate still gets its label, centred on its
     // first segment.
     const [[ax, ay], [bx, by]] = r.points;
     const size = labelSize(texts[i]);
     const middle = { x: (ax + bx - size.w) / 2, y: (ay + by - size.h) / 2, ...size, cx: (ax + bx) / 2, cy: (ay + by) / 2 };
-    const choice = candidates.find(free) ?? candidates[0] ?? middle;
+    const choice = candidates.find(free) ?? candidates.find(clearOfLabels) ?? candidates[0] ?? middle;
     placed.push(choice);
     return { text: texts[i], ...choice };
   });
@@ -694,14 +694,17 @@ export function viewerData(model, diagram, technical = technicalColumns(model), 
  * `{ diff: { from, to, summary, marks } }` draws a diff instead (`marks`
  * from diffMarks, the model being the union model): changed elements are
  * coloured, every view gets the summary banner, the viewer data carries the
- * change sentences, and the view of all tables is the one visible, since
- * that is where changes can be seen without script.
+ * change sentences, and the view of all tables (the overview when the
+ * diagram has none) is the one visible, since that is where changes can be
+ * seen without script.
  */
 export function renderSvg(model, layout, options = {}) {
   const { diff = null, ...sceneOptions } = options;
   const diagram = buildDiagram(model);
   const marks = diff?.marks ?? NO_MARKS;
-  const visible = diff ? ALL_VIEW : OVERVIEW;
+  // A diagram too large for the view of all tables opens a diff on the
+  // overview, where the banner still tells what changed.
+  const visible = diff && hasAllView(diagram) ? ALL_VIEW : OVERVIEW;
   const scenes = viewNames(diagram).map((name) => {
     const scene = buildScene(model, layout, name, diagram, sceneOptions);
     if (!diff) return { scene };
