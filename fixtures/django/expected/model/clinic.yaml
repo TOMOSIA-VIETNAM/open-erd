@@ -1,0 +1,201 @@
+schema_version: 1
+database: clinic
+engine: postgresql
+tables:
+  - id: clinic.public.accounts_user
+    domain: Staff
+    note: Login account for every staff member (AUTH_USER_MODEL).
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: password, type: varchar(128) }
+      - { name: last_login, type: timestamp with time zone, nullable: true }
+      - { name: email, type: varchar(254), unique: true, pii: true }
+      - { name: full_name, type: varchar(120), pii: true }
+      - name: role
+        type: varchar(16)
+        enum:
+          admin: User.Role.ADMIN, administrator
+          doctor: User.Role.DOCTOR, doctor
+          nurse: User.Role.NURSE, nurse
+          reception: User.Role.RECEPTION, front desk
+      - { name: is_active, type: boolean }
+      - { name: date_joined, type: timestamp with time zone }
+  - id: clinic.public.accounts_team
+    domain: Staff
+    note: Department; departments nest through parent_id.
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: name, type: varchar(80) }
+      - { name: parent_id, type: bigint, nullable: true }
+  - id: clinic.public.accounts_staffprofile
+    domain: Staff
+    note: Clinical details of a staff member, one per user.
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: user_id, type: bigint, nullable: false, unique: true }
+      - { name: license_number, type: varchar(32), unique: true }
+      - { name: phone, type: varchar(20), pii: true }
+  - id: clinic.public.accounts_staffprofile_teams
+    domain: Staff
+    note: Auto-created join table of StaffProfile.teams.
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: staffprofile_id, type: bigint, nullable: false }
+      - { name: team_id, type: bigint, nullable: false }
+  - id: clinic.public.patients
+    domain: Care
+    note: Patient record (Patient model, custom db_table).
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: full_name, type: varchar(120), pii: true }
+      - { name: birth_date, type: date, pii: true }
+      - name: sex
+        type: varchar(1)
+        enum:
+          F: Patient.Sex.FEMALE, female
+          M: Patient.Sex.MALE, male
+          U: Patient.Sex.UNKNOWN, not stated
+      - { name: doctor_ref, type: bigint, nullable: true, note: "Primary doctor (field primary_doctor)." }
+  - id: clinic.public.clinic_room
+    domain: Care
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: code, type: varchar(10), unique: true }
+      - name: kind
+        type: smallint
+        enum:
+          "1": Room.Kind.CONSULTATION, consultation room
+          "2": Room.Kind.SURGERY, operating room
+          "3": Room.Kind.IMAGING, imaging room
+  - id: clinic.public.clinic_procedure
+    domain: Care
+    note: Price list of medical procedures.
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: code, type: varchar(16), unique: true }
+      - { name: name, type: varchar(200) }
+      - { name: price, type: "numeric(10,2)" }
+  - id: clinic.public.clinic_appointment
+    domain: Care
+    note: One patient visit with one doctor.
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: patient_id, type: bigint, nullable: false }
+      - { name: doctor_id, type: bigint, nullable: false }
+      - { name: room_id, type: bigint, nullable: true }
+      - { name: scheduled_at, type: timestamp with time zone }
+      - name: status
+        type: varchar(16)
+        enum:
+          booked: Appointment.Status.BOOKED, slot reserved
+          checked_in: Appointment.Status.CHECKED_IN, patient arrived
+          done: Appointment.Status.DONE, visit finished
+          no_show: Appointment.Status.NO_SHOW, patient did not come
+  - id: clinic.public.clinic_appointmentprocedure
+    domain: Care
+    note: Through table of Appointment.procedures with the quantity performed.
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: appointment_id, type: bigint, nullable: false }
+      - { name: procedure_id, type: bigint, nullable: false }
+      - { name: quantity, type: integer }
+  - id: clinic.public.clinic_note
+    domain: Care
+    note: Free-text note attached to a patient, an appointment or an invoice.
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: content_type_id, type: integer, nullable: false, note: "Points to django_content_type (framework table, not modelled)." }
+      - { name: object_id, type: bigint, nullable: false }
+      - { name: author_id, type: bigint, nullable: false }
+      - { name: body, type: text }
+      - { name: created_at, type: timestamp with time zone }
+  - id: clinic.public.clinic_medication
+    domain: Care
+    note: Medication catalogue synced nightly from the pharmacy.
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: name, type: varchar(200) }
+      - { name: atc_code, type: varchar(8) }
+  - id: clinic.public.clinic_prescription
+    domain: Care
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: appointment_id, type: bigint, nullable: false }
+      - { name: medication_id, type: bigint, nullable: false }
+      - { name: dosage, type: varchar(120) }
+      - { name: days, type: smallint }
+  - id: clinic.public.billing_insurer
+    domain: Billing
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: name, type: varchar(120) }
+      - { name: claim_endpoint, type: varchar(200) }
+  - id: clinic.public.billing_invoice
+    domain: Billing
+    note: One invoice per appointment.
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: appointment_id, type: bigint, nullable: false, unique: true }
+      - { name: patient_id, type: bigint, nullable: false }
+      - { name: insurer_id, type: integer, nullable: true }
+      - name: status
+        type: varchar(8)
+        enum:
+          draft: Invoice.Status.DRAFT, being prepared
+          issued: Invoice.Status.ISSUED, sent to patient
+          paid: Invoice.Status.PAID, fully paid
+          void: Invoice.Status.VOID, cancelled
+      - { name: total, type: "numeric(12,2)" }
+      - { name: issued_at, type: timestamp with time zone, nullable: true }
+  - id: clinic.public.billing_invoiceline
+    domain: Billing
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: invoice_id, type: bigint, nullable: false }
+      - { name: procedure_id, type: bigint, nullable: true }
+      - { name: description, type: varchar(200) }
+      - { name: amount, type: "numeric(10,2)" }
+  - id: clinic.public.billing_payment
+    domain: Billing
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: invoice_id, type: bigint, nullable: false }
+      - name: method
+        type: smallint
+        enum:
+          "1": Payment.Method.CASH, cash
+          "2": Payment.Method.CARD, card
+          "3": Payment.Method.INSURANCE, paid by insurer
+      - { name: amount, type: "numeric(12,2)" }
+      - { name: received_by_id, type: bigint, nullable: true }
+      - { name: received_at, type: timestamp with time zone }
+relations:
+  - { from: { table: clinic.public.accounts_team, columns: [parent_id] }, to: { table: clinic.public.accounts_team, columns: [id] }, cardinality: n-1, optional: true, kind: db_fk, evidence: ["clinic-django:accounts/models.py#Team"], review: pending }
+  - { from: { table: clinic.public.accounts_staffprofile, columns: [user_id] }, to: { table: clinic.public.accounts_user, columns: [id] }, cardinality: 1-1, optional: false, kind: db_fk, evidence: ["clinic-django:accounts/models.py#StaffProfile"], review: pending }
+  - { from: { table: clinic.public.accounts_staffprofile_teams, columns: [staffprofile_id] }, to: { table: clinic.public.accounts_staffprofile, columns: [id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: ["clinic-django:accounts/models.py#StaffProfile"], review: pending }
+  - { from: { table: clinic.public.accounts_staffprofile_teams, columns: [team_id] }, to: { table: clinic.public.accounts_team, columns: [id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: ["clinic-django:accounts/models.py#StaffProfile"], review: pending }
+  - { from: { table: clinic.public.patients, columns: [doctor_ref] }, to: { table: clinic.public.accounts_staffprofile, columns: [id] }, cardinality: n-1, optional: true, kind: db_fk, evidence: ["clinic-django:clinic/models.py#Patient"], review: pending }
+  - { from: { table: clinic.public.clinic_appointment, columns: [patient_id] }, to: { table: clinic.public.patients, columns: [id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: ["clinic-django:clinic/models.py#Appointment"], review: pending }
+  - { from: { table: clinic.public.clinic_appointment, columns: [doctor_id] }, to: { table: clinic.public.accounts_staffprofile, columns: [id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: ["clinic-django:clinic/models.py#Appointment"], review: pending }
+  - { from: { table: clinic.public.clinic_appointment, columns: [room_id] }, to: { table: clinic.public.clinic_room, columns: [id] }, cardinality: n-1, optional: true, kind: db_fk, evidence: ["clinic-django:clinic/models.py#Appointment"], review: pending }
+  - { from: { table: clinic.public.clinic_appointmentprocedure, columns: [appointment_id] }, to: { table: clinic.public.clinic_appointment, columns: [id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: ["clinic-django:clinic/models.py#AppointmentProcedure"], review: pending }
+  - { from: { table: clinic.public.clinic_appointmentprocedure, columns: [procedure_id] }, to: { table: clinic.public.clinic_procedure, columns: [id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: ["clinic-django:clinic/models.py#AppointmentProcedure"], review: pending }
+  - { from: { table: clinic.public.clinic_note, columns: [author_id] }, to: { table: clinic.public.accounts_user, columns: [id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: ["clinic-django:clinic/models.py#Note"], review: pending }
+  - { from: { table: clinic.public.clinic_prescription, columns: [appointment_id] }, to: { table: clinic.public.clinic_appointment, columns: [id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: ["clinic-django:clinic/models.py#Prescription"], review: pending }
+  - { from: { table: clinic.public.clinic_prescription, columns: [medication_id] }, to: { table: clinic.public.clinic_medication, columns: [id] }, cardinality: n-1, optional: false, kind: declared, evidence: ["clinic-django:clinic/models.py#Prescription"], review: pending }
+  - { from: { table: clinic.public.billing_invoice, columns: [appointment_id] }, to: { table: clinic.public.clinic_appointment, columns: [id] }, cardinality: 1-1, optional: false, kind: db_fk, evidence: ["clinic-django:billing/models.py#Invoice"], review: pending }
+  - { from: { table: clinic.public.billing_invoice, columns: [patient_id] }, to: { table: clinic.public.patients, columns: [id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: ["clinic-django:billing/models.py#Invoice"], review: pending }
+  - { from: { table: clinic.public.billing_invoice, columns: [insurer_id] }, to: { table: clinic.public.billing_insurer, columns: [id] }, cardinality: n-1, optional: true, kind: inferred, evidence: ["clinic-django:billing/services.py#submit_claim"], review: pending }
+  - { from: { table: clinic.public.billing_invoiceline, columns: [invoice_id] }, to: { table: clinic.public.billing_invoice, columns: [id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: ["clinic-django:billing/models.py#InvoiceLine"], review: pending }
+  - { from: { table: clinic.public.billing_invoiceline, columns: [procedure_id] }, to: { table: clinic.public.clinic_procedure, columns: [id] }, cardinality: n-1, optional: true, kind: declared, evidence: ["clinic-django:billing/models.py#InvoiceLine"], review: pending }
+  - { from: { table: clinic.public.billing_payment, columns: [invoice_id] }, to: { table: clinic.public.billing_invoice, columns: [id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: ["clinic-django:billing/models.py#Payment"], review: pending }
+  - { from: { table: clinic.public.billing_payment, columns: [received_by_id] }, to: { table: clinic.public.accounts_user, columns: [id] }, cardinality: n-1, optional: true, kind: db_fk, evidence: ["clinic-django:billing/models.py#Payment"], review: pending }
+polymorphic:
+  - name: content_object
+    table: clinic.public.clinic_note
+    type_column: content_type_id
+    id_column: object_id
+    optional: false
+    targets: [clinic.public.patients, clinic.public.clinic_appointment, clinic.public.billing_invoice]
+    evidence: ["clinic-django:clinic/models.py#Note", "clinic-django:billing/models.py#Invoice"]
+    review: pending

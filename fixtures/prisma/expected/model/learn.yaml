@@ -1,0 +1,163 @@
+schema_version: 1
+database: learn
+engine: postgresql
+tables:
+  - id: learn.public.users
+    domain: Identity
+    note: Platform account; role decides student, instructor or admin rights.
+    columns:
+      - { name: id, type: text, pk: true }
+      - { name: email, type: text, unique: true, pii: true }
+      - { name: display_name, type: text, pii: true }
+      - name: role
+        type: Role
+        enum:
+          STUDENT: Learner who enrolls in courses
+          INSTRUCTOR: Can author courses
+          ADMIN: Platform operator, can review courses
+      - { name: created_at, type: timestamp(3) }
+  - id: learn.public.user_profiles
+    domain: Identity
+    note: Optional public profile, at most one per user.
+    columns:
+      - { name: id, type: text, pk: true }
+      - { name: user_id, type: text, nullable: false, unique: true }
+      - { name: bio, type: text, nullable: true }
+      - { name: avatar_url, type: text, nullable: true }
+  - id: learn.public.categories
+    domain: Catalog
+    note: Course category tree; a category may have a parent category.
+    columns:
+      - { name: id, type: text, pk: true }
+      - { name: name, type: text }
+      - { name: parent_id, type: text, nullable: true }
+  - id: learn.public.courses
+    domain: Catalog
+    note: Course written by one instructor and optionally checked by a reviewer.
+    columns:
+      - { name: id, type: text, pk: true }
+      - { name: title, type: text }
+      - name: status
+        type: CourseStatus
+        note: Stored values come from @map on CourseStatus, not the TypeScript names.
+        enum:
+          draft: Being written, not visible to students
+          in_review: Submitted, waiting for the reviewer
+          published: Visible and open for enrollment
+          archived: Hidden, existing enrollments keep access
+      - { name: price_cents, type: integer }
+      - { name: author_id, type: text, nullable: false }
+      - { name: reviewer_id, type: text, nullable: true }
+      - { name: category_id, type: text, nullable: false }
+  - id: learn.public.lessons
+    domain: Catalog
+    note: Ordered lesson inside a course.
+    columns:
+      - { name: id, type: text, pk: true }
+      - { name: course_id, type: text, nullable: false }
+      - { name: position, type: integer }
+      - { name: title, type: text }
+      - { name: createdAt, type: timestamp(3), note: "No @map, so the column keeps the camelCase field name." }
+  - id: learn.public.tags
+    domain: Catalog
+    note: Free label attached to courses.
+    columns:
+      - { name: id, type: text, pk: true }
+      - { name: label, type: text, unique: true }
+  - id: learn.public._CourseToTag
+    domain: Catalog
+    note: Join table Prisma generates for the implicit many-to-many Course.tags / Tag.courses; A is the Course side because model names sort alphabetically.
+    columns:
+      - { name: A, type: text, pk: true, nullable: false, note: courses.id }
+      - { name: B, type: text, pk: true, nullable: false, note: tags.id }
+  - id: learn.public.enrollments
+    domain: Learning
+    note: A user's access to a course; keyed by the user and course pair.
+    columns:
+      - { name: user_id, type: text, pk: true, nullable: false }
+      - { name: course_id, type: text, pk: true, nullable: false }
+      - name: status
+        type: EnrollmentStatus
+        enum:
+          ACTIVE: Student currently has access
+          COMPLETED: Student finished every lesson
+          REFUNDED: Purchase refunded, access revoked
+      - { name: enrolled_at, type: timestamp(3) }
+  - id: learn.public.lesson_progress
+    domain: Learning
+    note: Completion of one lesson by one enrolled student.
+    columns:
+      - { name: id, type: text, pk: true }
+      - { name: user_id, type: text, nullable: false }
+      - { name: course_id, type: text, nullable: false }
+      - { name: lesson_id, type: text, nullable: false }
+      - { name: completed_at, type: timestamp(3), nullable: true }
+  - id: learn.public.course_reviews
+    domain: Learning
+    note: Student rating of a course, one per student per course.
+    columns:
+      - { name: id, type: text, pk: true }
+      - { name: course_id, type: text, nullable: false }
+      - { name: author_id, type: text, nullable: false }
+      - { name: rating, type: integer }
+      - { name: body, type: text, nullable: true }
+  - id: learn.public.coupons
+    domain: Sales
+    note: Discount code applied at checkout.
+    columns:
+      - { name: id, type: text, pk: true }
+      - { name: code, type: text, unique: true }
+      - { name: percent_off, type: integer }
+  - id: learn.public.orders
+    domain: Sales
+    note: Checkout of one or more courses by a user.
+    columns:
+      - { name: id, type: text, pk: true }
+      - { name: user_id, type: text, nullable: false }
+      - { name: coupon_code, type: text, nullable: true, note: "References coupons.code, not coupons.id." }
+      - name: status
+        type: OrderStatus
+        enum:
+          PENDING: Created, payment not confirmed
+          PAID: Payment confirmed
+          CANCELLED: Abandoned or cancelled before payment
+      - { name: total_cents, type: integer }
+      - { name: placed_at, type: timestamp(3) }
+  - id: learn.public.order_items
+    domain: Sales
+    note: One purchased course inside an order, with the price paid.
+    columns:
+      - { name: id, type: text, pk: true }
+      - { name: order_id, type: text, nullable: false }
+      - { name: course_id, type: text, nullable: false }
+      - { name: price_cents, type: integer }
+  - id: learn.public.audit_events
+    domain: Audit
+    note: Append-only activity log; actor_id is kept without a relation so events survive user deletion.
+    columns:
+      - { name: id, type: text, pk: true }
+      - { name: actor_id, type: text, nullable: true }
+      - { name: action, type: text }
+      - { name: target_type, type: text }
+      - { name: target_id, type: text }
+      - { name: created_at, type: timestamp(3) }
+relations:
+  - { from: { table: learn.public.user_profiles, columns: [user_id] }, to: { table: learn.public.users, columns: [id] }, cardinality: 1-1, optional: false, kind: db_fk, evidence: ["learn-prisma:prisma/schema.prisma#Profile"], review: pending }
+  - { from: { table: learn.public.categories, columns: [parent_id] }, to: { table: learn.public.categories, columns: [id] }, cardinality: n-1, optional: true, kind: db_fk, evidence: ["learn-prisma:prisma/schema.prisma#CategoryTree"], review: pending }
+  - { from: { table: learn.public.courses, columns: [author_id] }, to: { table: learn.public.users, columns: [id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: ["learn-prisma:prisma/schema.prisma#CourseAuthor"], review: pending }
+  - { from: { table: learn.public.courses, columns: [reviewer_id] }, to: { table: learn.public.users, columns: [id] }, cardinality: n-1, optional: true, kind: db_fk, evidence: ["learn-prisma:prisma/schema.prisma#CourseReviewer"], review: pending }
+  - { from: { table: learn.public.courses, columns: [category_id] }, to: { table: learn.public.categories, columns: [id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: ["learn-prisma:prisma/schema.prisma#Course"], review: pending }
+  - { from: { table: learn.public.lessons, columns: [course_id] }, to: { table: learn.public.courses, columns: [id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: ["learn-prisma:prisma/schema.prisma#Lesson"], review: pending }
+  - { from: { table: learn.public._CourseToTag, columns: [A] }, to: { table: learn.public.courses, columns: [id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: ["learn-prisma:prisma/schema.prisma#Tag"], review: pending }
+  - { from: { table: learn.public._CourseToTag, columns: [B] }, to: { table: learn.public.tags, columns: [id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: ["learn-prisma:prisma/schema.prisma#Tag"], review: pending }
+  - { from: { table: learn.public.enrollments, columns: [user_id] }, to: { table: learn.public.users, columns: [id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: ["learn-prisma:prisma/schema.prisma#Enrollment"], review: pending }
+  - { from: { table: learn.public.enrollments, columns: [course_id] }, to: { table: learn.public.courses, columns: [id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: ["learn-prisma:prisma/schema.prisma#Enrollment"], review: pending }
+  - { from: { table: learn.public.lesson_progress, columns: [user_id, course_id] }, to: { table: learn.public.enrollments, columns: [user_id, course_id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: ["learn-prisma:prisma/schema.prisma#LessonProgress"], review: pending }
+  - { from: { table: learn.public.lesson_progress, columns: [lesson_id] }, to: { table: learn.public.lessons, columns: [id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: ["learn-prisma:prisma/schema.prisma#LessonProgress"], review: pending }
+  - { from: { table: learn.public.course_reviews, columns: [course_id] }, to: { table: learn.public.courses, columns: [id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: ["learn-prisma:prisma/schema.prisma#Review"], review: pending }
+  - { from: { table: learn.public.course_reviews, columns: [author_id] }, to: { table: learn.public.users, columns: [id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: ["learn-prisma:prisma/schema.prisma#Review"], review: pending }
+  - { from: { table: learn.public.orders, columns: [user_id] }, to: { table: learn.public.users, columns: [id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: ["learn-prisma:prisma/schema.prisma#Order"], review: pending }
+  - { from: { table: learn.public.orders, columns: [coupon_code] }, to: { table: learn.public.coupons, columns: [code] }, cardinality: n-1, optional: true, kind: db_fk, evidence: ["learn-prisma:prisma/schema.prisma#Order"], review: pending }
+  - { from: { table: learn.public.order_items, columns: [order_id] }, to: { table: learn.public.orders, columns: [id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: ["learn-prisma:prisma/schema.prisma#OrderItem"], review: pending }
+  - { from: { table: learn.public.order_items, columns: [course_id] }, to: { table: learn.public.courses, columns: [id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: ["learn-prisma:prisma/schema.prisma#OrderItem"], review: pending }
+  - { from: { table: learn.public.audit_events, columns: [actor_id] }, to: { table: learn.public.users, columns: [id] }, cardinality: n-1, optional: true, kind: inferred, evidence: ["learn-prisma:src/services/audit-service.ts#listAuditWithActor"], review: pending }

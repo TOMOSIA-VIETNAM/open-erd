@@ -1,0 +1,244 @@
+schema_version: 1
+database: crm
+engine: mysql
+tables:
+  - id: crm._.users
+    domain: Identity
+    note: Application users (sales staff); soft-deleted via deleted_at.
+    columns:
+      - { name: id, type: bigint unsigned, pk: true }
+      - { name: name, type: varchar(255), pii: true }
+      - { name: email, type: varchar(255), unique: true, pii: true }
+      - { name: password, type: varchar(255), note: Password hash }
+      - name: role
+        type: varchar(32)
+        enum:
+          admin: UserRole::Admin
+          sales_manager: UserRole::SalesManager
+          sales_rep: UserRole::SalesRep
+      - { name: manager_id, type: bigint unsigned, nullable: true, note: Line manager of this user }
+      - { name: remember_token, type: varchar(100), nullable: true }
+      - { name: created_at, type: timestamp, nullable: true }
+      - { name: updated_at, type: timestamp, nullable: true }
+      - { name: deleted_at, type: timestamp, nullable: true }
+  - id: crm._.user_profiles
+    domain: Identity
+    note: One profile per user.
+    columns:
+      - { name: id, type: bigint unsigned, pk: true }
+      - { name: user_id, type: bigint unsigned, nullable: false, unique: true }
+      - { name: phone, type: varchar(32), nullable: true, pii: true }
+      - { name: timezone, type: varchar(64) }
+      - { name: avatar_url, type: varchar(255), nullable: true }
+      - { name: created_at, type: timestamp, nullable: true }
+      - { name: updated_at, type: timestamp, nullable: true }
+  - id: crm._.teams
+    domain: Identity
+    note: Sales teams.
+    columns:
+      - { name: id, type: bigint unsigned, pk: true }
+      - { name: name, type: varchar(120) }
+      - { name: owner_id, type: bigint unsigned, nullable: false }
+      - { name: created_at, type: timestamp, nullable: true }
+      - { name: updated_at, type: timestamp, nullable: true }
+  - id: crm._.team_members
+    domain: Identity
+    note: Membership of users in teams (pivot of Team::members).
+    columns:
+      - { name: team_id, type: bigint unsigned, pk: true, nullable: false }
+      - { name: user_id, type: bigint unsigned, pk: true, nullable: false }
+      - name: role
+        type: enum('member','lead')
+        enum:
+          member: Regular team member
+          lead: Team lead
+      - { name: created_at, type: timestamp, nullable: true }
+      - { name: updated_at, type: timestamp, nullable: true }
+  - id: crm._.companies
+    domain: Accounts
+    note: Customer and prospect organisations.
+    columns:
+      - { name: id, type: bigint unsigned, pk: true }
+      - { name: name, type: varchar(255) }
+      - { name: domain, type: varchar(255), nullable: true, unique: true }
+      - { name: industry, type: varchar(64), nullable: true }
+      - { name: owner_user_id, type: bigint unsigned, nullable: false }
+      - { name: created_at, type: timestamp, nullable: true }
+      - { name: updated_at, type: timestamp, nullable: true }
+  - id: crm._.contacts
+    domain: Accounts
+    note: People at companies the sales team talks to.
+    columns:
+      - { name: id, type: bigint unsigned, pk: true }
+      - { name: company_id, type: bigint unsigned, nullable: true }
+      - { name: first_name, type: varchar(80), pii: true }
+      - { name: last_name, type: varchar(80), pii: true }
+      - { name: email, type: varchar(255), nullable: true, pii: true }
+      - { name: phone, type: varchar(32), nullable: true, pii: true }
+      - name: lifecycle_stage
+        type: varchar(20)
+        enum:
+          lead: ContactStatus::Lead
+          qualified: ContactStatus::Qualified
+          customer: ContactStatus::Customer
+          churned: ContactStatus::Churned
+      - { name: created_at, type: timestamp, nullable: true }
+      - { name: updated_at, type: timestamp, nullable: true }
+  - id: crm._.pipelines
+    domain: Sales
+    note: Sales pipelines.
+    columns:
+      - { name: id, type: bigint unsigned, pk: true }
+      - { name: name, type: varchar(120) }
+      - { name: is_default, type: boolean }
+  - id: crm._.pipeline_stages
+    domain: Sales
+    note: Ordered stages of a pipeline.
+    columns:
+      - { name: id, type: bigint unsigned, pk: true }
+      - { name: pipeline_id, type: bigint unsigned, nullable: false }
+      - { name: name, type: varchar(80) }
+      - { name: position, type: smallint unsigned }
+      - { name: win_probability, type: tinyint unsigned }
+  - id: crm._.deals
+    domain: Sales
+    note: Sales opportunities moving through pipeline stages.
+    columns:
+      - { name: id, type: bigint unsigned, pk: true }
+      - { name: company_id, type: bigint unsigned, nullable: false }
+      - { name: contact_id, type: bigint unsigned, nullable: true }
+      - { name: owner_id, type: bigint unsigned, nullable: false }
+      - { name: pipeline_stage_id, type: bigint unsigned, nullable: false }
+      - { name: title, type: varchar(255) }
+      - { name: amount, type: "decimal(12,2)" }
+      - { name: currency, type: char(3) }
+      - name: status
+        type: varchar(10)
+        enum:
+          open: DealStatus::Open
+          won: DealStatus::Won
+          lost: DealStatus::Lost
+      - { name: closed_at, type: timestamp, nullable: true }
+      - { name: created_at, type: timestamp, nullable: true }
+      - { name: updated_at, type: timestamp, nullable: true }
+  - id: crm._.activities
+    domain: Engagement
+    note: Logged calls, emails and meetings on a company, contact or deal.
+    columns:
+      - { name: id, type: bigint unsigned, pk: true }
+      - name: subject_type
+        type: varchar(255)
+        enum:
+          company: Company (morph map alias)
+          contact: Contact (morph map alias)
+          deal: Deal (morph map alias)
+      - { name: subject_id, type: bigint unsigned, nullable: false }
+      - { name: user_id, type: bigint unsigned, nullable: false }
+      - name: type
+        type: tinyint unsigned
+        enum:
+          "1": ActivityType::Call
+          "2": ActivityType::Email
+          "3": ActivityType::Meeting
+      - { name: occurred_at, type: timestamp }
+      - { name: summary, type: text, nullable: true }
+      - { name: created_at, type: timestamp, nullable: true }
+      - { name: updated_at, type: timestamp, nullable: true }
+  - id: crm._.notes
+    domain: Engagement
+    note: Free-text notes attached to a contact or deal.
+    columns:
+      - { name: id, type: bigint unsigned, pk: true }
+      - name: noteable_type
+        type: varchar(255)
+        nullable: true
+        enum:
+          contact: Contact (morph map alias)
+          deal: Deal (morph map alias)
+      - { name: noteable_id, type: bigint unsigned, nullable: true }
+      - { name: author_id, type: bigint unsigned, nullable: false }
+      - { name: body, type: text }
+      - { name: created_at, type: timestamp, nullable: true }
+      - { name: updated_at, type: timestamp, nullable: true }
+  - id: crm._.tags
+    domain: Engagement
+    note: Labels applied to contacts and deals.
+    columns:
+      - { name: id, type: bigint unsigned, pk: true }
+      - { name: name, type: varchar(60), unique: true }
+      - { name: color, type: varchar(7), nullable: true }
+  - id: crm._.taggables
+    domain: Engagement
+    note: Polymorphic many-to-many between tags and contacts or deals.
+    columns:
+      - { name: tag_id, type: bigint unsigned, nullable: false }
+      - name: taggable_type
+        type: varchar(255)
+        enum:
+          contact: Contact (morph map alias)
+          deal: Deal (morph map alias)
+      - { name: taggable_id, type: bigint unsigned, nullable: false }
+  - id: crm._.email_campaigns
+    domain: Marketing
+    note: Bulk email campaigns.
+    columns:
+      - { name: id, type: bigint unsigned, pk: true }
+      - { name: name, type: varchar(255) }
+      - { name: subject, type: varchar(255) }
+      - { name: created_by, type: bigint unsigned, nullable: false }
+      - { name: scheduled_at, type: timestamp, nullable: true }
+      - { name: created_at, type: timestamp, nullable: true }
+      - { name: updated_at, type: timestamp, nullable: true }
+  - id: crm._.campaign_recipients
+    domain: Marketing
+    note: One row per contact a campaign is sent to.
+    columns:
+      - { name: id, type: bigint unsigned, pk: true }
+      - { name: campaign_id, type: bigint unsigned, nullable: false }
+      - { name: contact_id, type: bigint unsigned, nullable: false }
+      - { name: sent_at, type: timestamp, nullable: true }
+      - { name: opened_at, type: timestamp, nullable: true }
+relations:
+  - { from: { table: crm._.users, columns: [manager_id] }, to: { table: crm._.users, columns: [id] }, cardinality: n-1, optional: true, kind: db_fk, evidence: ["crm-laravel:database/migrations/2024_01_01_000001_create_users_table.php#users", "crm-laravel:app/Models/User.php#manager"], review: pending }
+  - { from: { table: crm._.user_profiles, columns: [user_id] }, to: { table: crm._.users, columns: [id] }, cardinality: 1-1, optional: false, kind: db_fk, evidence: ["crm-laravel:database/migrations/2024_01_01_000002_create_user_profiles_table.php#user_profiles", "crm-laravel:app/Models/User.php#profile"], review: pending }
+  - { from: { table: crm._.teams, columns: [owner_id] }, to: { table: crm._.users, columns: [id] }, cardinality: n-1, optional: false, kind: declared, evidence: ["crm-laravel:app/Models/Team.php#owner"], review: pending }
+  - { from: { table: crm._.team_members, columns: [team_id] }, to: { table: crm._.teams, columns: [id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: ["crm-laravel:database/migrations/2024_01_02_000001_create_teams_table.php#team_members"], review: pending }
+  - { from: { table: crm._.team_members, columns: [user_id] }, to: { table: crm._.users, columns: [id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: ["crm-laravel:database/migrations/2024_01_02_000001_create_teams_table.php#team_members"], review: pending }
+  - { from: { table: crm._.companies, columns: [owner_user_id] }, to: { table: crm._.users, columns: [id] }, cardinality: n-1, optional: false, kind: declared, evidence: ["crm-laravel:app/Models/Company.php#owner"], review: pending }
+  - { from: { table: crm._.contacts, columns: [company_id] }, to: { table: crm._.companies, columns: [id] }, cardinality: n-1, optional: true, kind: db_fk, evidence: ["crm-laravel:database/migrations/2024_01_03_000002_create_contacts_table.php#contacts"], review: pending }
+  - { from: { table: crm._.pipeline_stages, columns: [pipeline_id] }, to: { table: crm._.pipelines, columns: [id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: ["crm-laravel:database/migrations/2024_01_04_000001_create_pipelines_tables.php#pipeline_stages"], review: pending }
+  - { from: { table: crm._.deals, columns: [company_id] }, to: { table: crm._.companies, columns: [id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: ["crm-laravel:database/migrations/2024_01_04_000002_create_deals_table.php#deals"], review: pending }
+  - { from: { table: crm._.deals, columns: [contact_id] }, to: { table: crm._.contacts, columns: [id] }, cardinality: n-1, optional: true, kind: db_fk, evidence: ["crm-laravel:database/migrations/2024_01_04_000002_create_deals_table.php#deals"], review: pending }
+  - { from: { table: crm._.deals, columns: [owner_id] }, to: { table: crm._.users, columns: [id] }, cardinality: n-1, optional: false, kind: declared, evidence: ["crm-laravel:app/Models/Deal.php#owner"], review: pending }
+  - { from: { table: crm._.deals, columns: [pipeline_stage_id] }, to: { table: crm._.pipeline_stages, columns: [id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: ["crm-laravel:database/migrations/2024_01_04_000002_create_deals_table.php#pipeline_stages", "crm-laravel:app/Models/Deal.php#stage"], review: pending }
+  - { from: { table: crm._.activities, columns: [user_id] }, to: { table: crm._.users, columns: [id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: ["crm-laravel:database/migrations/2024_01_05_000001_create_activities_and_notes_tables.php#activities"], review: pending }
+  - { from: { table: crm._.notes, columns: [author_id] }, to: { table: crm._.users, columns: [id] }, cardinality: n-1, optional: false, kind: declared, evidence: ["crm-laravel:app/Models/Note.php#author"], review: pending }
+  - { from: { table: crm._.taggables, columns: [tag_id] }, to: { table: crm._.tags, columns: [id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: ["crm-laravel:database/migrations/2024_01_05_000002_create_tags_tables.php#taggables"], review: pending }
+  - { from: { table: crm._.email_campaigns, columns: [created_by] }, to: { table: crm._.users, columns: [id] }, cardinality: n-1, optional: false, kind: declared, evidence: ["crm-laravel:app/Models/EmailCampaign.php#creator"], review: pending }
+  - { from: { table: crm._.campaign_recipients, columns: [campaign_id] }, to: { table: crm._.email_campaigns, columns: [id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: ["crm-laravel:database/migrations/2024_01_06_000001_create_email_campaigns_tables.php#email_campaigns"], review: pending }
+  - { from: { table: crm._.campaign_recipients, columns: [contact_id] }, to: { table: crm._.contacts, columns: [id] }, cardinality: n-1, optional: false, kind: inferred, evidence: ["crm-laravel:app/Jobs/SendCampaignJob.php#handle"], review: pending }
+polymorphic:
+  - name: subject
+    table: crm._.activities
+    type_column: subject_type
+    id_column: subject_id
+    optional: false
+    targets: [crm._.companies, crm._.contacts, crm._.deals]
+    evidence: ["crm-laravel:app/Models/Activity.php#subject", "crm-laravel:app/Providers/AppServiceProvider.php#enforceMorphMap"]
+    review: pending
+  - name: noteable
+    table: crm._.notes
+    type_column: noteable_type
+    id_column: noteable_id
+    optional: true
+    targets: [crm._.contacts, crm._.deals]
+    evidence: ["crm-laravel:app/Models/Note.php#noteable", "crm-laravel:app/Providers/AppServiceProvider.php#enforceMorphMap"]
+    review: pending
+  - name: taggable
+    table: crm._.taggables
+    type_column: taggable_type
+    id_column: taggable_id
+    optional: false
+    targets: [crm._.contacts, crm._.deals]
+    evidence: ["crm-laravel:app/Models/Tag.php#morphedByMany", "crm-laravel:app/Models/Contact.php#tags", "crm-laravel:app/Models/Deal.php#tags"]
+    review: pending

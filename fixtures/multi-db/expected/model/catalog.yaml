@@ -1,0 +1,85 @@
+schema_version: 1
+database: catalog
+engine: mysql
+tables:
+  - id: catalog._.vendors
+    domain: Catalog
+    note: Suppliers that list products.
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: name, type: varchar(160), nullable: false }
+      - { name: contact_email, type: varchar(255), nullable: true, pii: true }
+      - { name: created_at, type: datetime, nullable: false }
+  - id: catalog._.categories
+    domain: Catalog
+    note: Category tree; parent_id points to the parent category.
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: parent_id, type: bigint, nullable: true }
+      - { name: name, type: varchar(120), nullable: false }
+      - { name: slug, type: varchar(120), nullable: false, unique: true }
+  - id: catalog._.products
+    domain: Catalog
+    note: Sellable product; billing invoice lines reference it by id.
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: category_id, type: bigint, nullable: false }
+      - { name: vendor_id, type: bigint, nullable: true }
+      - { name: name, type: varchar(255), nullable: false }
+      - name: status
+        type: enum
+        nullable: false
+        enum:
+          draft: Not visible to buyers yet
+          active: Listed and sellable
+          retired: No longer sold
+      - { name: created_at, type: datetime, nullable: false }
+  - id: catalog._.product_variants
+    domain: Catalog
+    note: Purchasable option of a product (size, color), identified by SKU.
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: product_id, type: bigint, nullable: false }
+      - { name: sku, type: varchar(64), nullable: false, unique: true }
+      - { name: option_label, type: varchar(120), nullable: true }
+  - id: catalog._.product_prices
+    domain: Pricing
+    note: Price of a variant in one currency from a given date.
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: variant_id, type: bigint, nullable: false }
+      - { name: currency, type: char(3), nullable: false }
+      - { name: amount_cents, type: int, nullable: false }
+      - { name: valid_from, type: datetime, nullable: false }
+  - id: catalog._.product_images
+    domain: Catalog
+    note: Product gallery images, ordered by position.
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: product_id, type: bigint, nullable: false }
+      - { name: url, type: varchar(500), nullable: false }
+      - { name: position, type: int, nullable: false }
+  - id: catalog._.stock_reservations
+    domain: Inventory
+    note: Stock held for a billing invoice until it is paid or expires.
+    columns:
+      - { name: id, type: bigint, pk: true }
+      - { name: variant_id, type: bigint, nullable: false }
+      - { name: invoice_id, type: char(36), nullable: true }
+      - { name: quantity, type: int, nullable: false }
+      - name: status
+        type: enum
+        nullable: false
+        enum:
+          held: Stock set aside, invoice not yet paid
+          committed: Invoice paid, stock consumed
+          released: Hold expired or cancelled
+      - { name: expires_at, type: datetime, nullable: false }
+relations:
+  - { from: { table: catalog._.categories, columns: [parent_id] }, to: { table: catalog._.categories, columns: [id] }, cardinality: n-1, optional: true, kind: db_fk, evidence: ["catalog-service:migrations/20240101000000-create-catalog.js#categories"], review: pending }
+  - { from: { table: catalog._.products, columns: [category_id] }, to: { table: catalog._.categories, columns: [id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: ["catalog-service:migrations/20240101000000-create-catalog.js#products"], review: pending }
+  - { from: { table: catalog._.products, columns: [vendor_id] }, to: { table: catalog._.vendors, columns: [id] }, cardinality: n-1, optional: true, kind: db_fk, evidence: ["catalog-service:migrations/20240101000000-create-catalog.js#products"], review: pending }
+  - { from: { table: catalog._.product_variants, columns: [product_id] }, to: { table: catalog._.products, columns: [id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: ["catalog-service:migrations/20240101000000-create-catalog.js#product_variants"], review: pending }
+  - { from: { table: catalog._.product_prices, columns: [variant_id] }, to: { table: catalog._.product_variants, columns: [id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: ["catalog-service:migrations/20240101000000-create-catalog.js#product_prices"], review: pending }
+  - { from: { table: catalog._.product_images, columns: [product_id] }, to: { table: catalog._.products, columns: [id] }, cardinality: n-1, optional: false, kind: declared, evidence: ["catalog-service:src/models/product-image.js#ProductImage"], review: pending }
+  - { from: { table: catalog._.stock_reservations, columns: [variant_id] }, to: { table: catalog._.product_variants, columns: [id] }, cardinality: n-1, optional: false, kind: db_fk, evidence: ["catalog-service:migrations/20240301000000-create-stock-reservations.js#stock_reservations"], review: pending }

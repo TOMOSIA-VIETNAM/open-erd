@@ -1,0 +1,204 @@
+// Online course platform. Postgres, default relationMode (Prisma emits real
+// foreign keys for every @relation).
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  STUDENT
+  INSTRUCTOR
+  ADMIN
+}
+
+// Stored values differ from the TypeScript names.
+enum CourseStatus {
+  DRAFT     @map("draft")
+  IN_REVIEW @map("in_review")
+  PUBLISHED @map("published")
+  ARCHIVED  @map("archived")
+}
+
+enum EnrollmentStatus {
+  ACTIVE
+  COMPLETED
+  REFUNDED
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  CANCELLED
+}
+
+model User {
+  id              String       @id @default(cuid())
+  email           String       @unique
+  displayName     String       @map("display_name")
+  role            Role         @default(STUDENT)
+  createdAt       DateTime     @default(now()) @map("created_at")
+  profile         Profile?
+  authoredCourses Course[]     @relation("CourseAuthor")
+  reviewedCourses Course[]     @relation("CourseReviewer")
+  enrollments     Enrollment[]
+  reviews         Review[]
+  orders          Order[]
+
+  @@map("users")
+}
+
+model Profile {
+  id        String  @id @default(cuid())
+  userId    String  @unique @map("user_id")
+  bio       String?
+  avatarUrl String? @map("avatar_url")
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_profiles")
+}
+
+model Category {
+  id       String     @id @default(cuid())
+  name     String
+  parentId String?    @map("parent_id")
+  parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children Category[] @relation("CategoryTree")
+  courses  Course[]
+
+  @@map("categories")
+}
+
+model Course {
+  id          String       @id @default(cuid())
+  title       String
+  status      CourseStatus @default(DRAFT)
+  priceCents  Int          @map("price_cents")
+  authorId    String       @map("author_id")
+  reviewerId  String?      @map("reviewer_id")
+  categoryId  String       @map("category_id")
+  author      User         @relation("CourseAuthor", fields: [authorId], references: [id])
+  reviewer    User?        @relation("CourseReviewer", fields: [reviewerId], references: [id])
+  category    Category     @relation(fields: [categoryId], references: [id])
+  lessons     Lesson[]
+  tags        Tag[]
+  enrollments Enrollment[]
+  reviews     Review[]
+  orderItems  OrderItem[]
+
+  @@map("courses")
+}
+
+// No @map on createdAt: the column keeps the camelCase field name.
+model Lesson {
+  id        String           @id @default(cuid())
+  courseId  String           @map("course_id")
+  position  Int
+  title     String
+  createdAt DateTime         @default(now())
+  course    Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  progress  LessonProgress[]
+
+  @@unique([courseId, position])
+  @@map("lessons")
+}
+
+// Implicit many-to-many with Course: Prisma creates the join table itself.
+model Tag {
+  id      String   @id @default(cuid())
+  label   String   @unique
+  courses Course[]
+
+  @@map("tags")
+}
+
+model Enrollment {
+  userId     String           @map("user_id")
+  courseId   String           @map("course_id")
+  status     EnrollmentStatus @default(ACTIVE)
+  enrolledAt DateTime         @default(now()) @map("enrolled_at")
+  user       User             @relation(fields: [userId], references: [id])
+  course     Course           @relation(fields: [courseId], references: [id])
+  progress   LessonProgress[]
+
+  @@id([userId, courseId])
+  @@map("enrollments")
+}
+
+model LessonProgress {
+  id          String     @id @default(cuid())
+  userId      String     @map("user_id")
+  courseId    String     @map("course_id")
+  lessonId    String     @map("lesson_id")
+  completedAt DateTime?  @map("completed_at")
+  enrollment  Enrollment @relation(fields: [userId, courseId], references: [userId, courseId], onDelete: Cascade)
+  lesson      Lesson     @relation(fields: [lessonId], references: [id])
+
+  @@unique([userId, lessonId])
+  @@map("lesson_progress")
+}
+
+model Review {
+  id       String  @id @default(cuid())
+  courseId String  @map("course_id")
+  authorId String  @map("author_id")
+  rating   Int
+  body     String?
+  course   Course  @relation(fields: [courseId], references: [id])
+  author   User    @relation(fields: [authorId], references: [id])
+
+  @@unique([courseId, authorId])
+  @@map("course_reviews")
+}
+
+model Coupon {
+  id           String  @id @default(cuid())
+  code         String  @unique
+  percentOff   Int     @map("percent_off")
+  orders       Order[]
+
+  @@map("coupons")
+}
+
+model Order {
+  id         String      @id @default(cuid())
+  userId     String      @map("user_id")
+  couponCode String?     @map("coupon_code")
+  status     OrderStatus @default(PENDING)
+  totalCents Int         @map("total_cents")
+  placedAt   DateTime    @default(now()) @map("placed_at")
+  user       User        @relation(fields: [userId], references: [id])
+  // References a unique column, not the primary key.
+  coupon     Coupon?     @relation(fields: [couponCode], references: [code])
+  items      OrderItem[]
+
+  @@map("orders")
+}
+
+model OrderItem {
+  id         String @id @default(cuid())
+  orderId    String @map("order_id")
+  courseId   String @map("course_id")
+  priceCents Int    @map("price_cents")
+  order      Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  course     Course @relation(fields: [courseId], references: [id])
+
+  @@map("order_items")
+}
+
+// Append-only log. actorId is deliberately not a relation so events survive
+// user deletion.
+model AuditEvent {
+  id         String   @id @default(cuid())
+  actorId    String?  @map("actor_id")
+  action     String
+  targetType String   @map("target_type")
+  targetId   String   @map("target_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([actorId])
+  @@map("audit_events")
+}
