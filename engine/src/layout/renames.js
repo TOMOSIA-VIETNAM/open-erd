@@ -33,7 +33,14 @@ export function carryRenames(model, diagram, previous) {
     if (pair) ids.set(polyNodeId({ ...a, table: pair[0] }), polyNodeId(a));
   }
 
-  const all = previous.views?.[ALL_VIEW]?.clusters ?? {};
+  // Where each table was: the view of all tables, or, for a large schema
+  // laid out without it, the domain views (each table in its own cluster).
+  const hasAll = previous.views?.[ALL_VIEW] !== undefined;
+  const ownSlot = (view, slot) => (hasAll ? view === ALL_VIEW : view.startsWith(DOMAIN_VIEW_PREFIX) && slot !== STUB_SLOT);
+  const all = {};
+  for (const [view, body] of Object.entries(previous.views ?? {})) {
+    for (const [slot, members] of Object.entries(body.clusters)) if (ownSlot(view, slot)) all[slot] = { ...all[slot], ...members };
+  }
   const slotOf = (id) => Object.keys(all).find((key) => all[key][id]);
   const targets = new Map();
   for (const [old, now] of ids) {
@@ -71,7 +78,7 @@ export function carryRenames(model, diagram, previous) {
         // as removed.
         const carried = now !== undefined && (slot === STUB_SLOT || diagram.nodes.get(now)?.cluster === target);
         put(target, carried ? now : id, node);
-        if (carried && view === ALL_VIEW) carriedTables.add(id);
+        if (carried && ownSlot(view, slot)) carriedTables.add(id);
       }
     }
     views[name] = { clusters: out };

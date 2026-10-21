@@ -72,14 +72,40 @@ function placeAround(children, links, group, boxes) {
   }
   for (const [side, list] of sides) {
     list.sort((a, b) => a.want - b.want || compareStrings(a.stub.id, b.stub.id));
-    let bottom = -Infinity;
-    for (const { stub, want } of list) {
-      const y = Math.max(want, bottom + group.gap);
-      bottom = y + stub.h;
-      positions.set(stub.id, { x: side < 0 ? frame.x - group.gap - stub.w : frame.x + frame.w + group.gap, y });
+    const x = (stub) => (side < 0 ? frame.x - group.gap - stub.w : frame.x + frame.w + group.gap);
+    for (const block of stackAround(list, group.gap)) {
+      let y = block.top;
+      for (const { stub } of block.items) {
+        positions.set(stub.id, { x: x(stub), y });
+        y += stub.h + group.gap;
+      }
     }
   }
   return positions;
+}
+
+// Stacks boxes in the given order, `gap` apart, each as close to its wanted
+// top `want` as the others allow: a run of boxes that would overlap is
+// centred on their wanted tops (least squares), so a crowd of stubs linked
+// to one row spreads above and below it instead of hanging below it.
+// Returns runs as [{ top, items }], top to bottom.
+function stackAround(list, gap) {
+  const blocks = [];
+  for (const item of list) {
+    let block = { items: [item], height: item.stub.h, sum: item.want };
+    for (;;) {
+      block.top = Math.round(block.sum / block.items.length);
+      const prev = blocks.at(-1);
+      if (!prev || prev.top + prev.height + gap <= block.top) break;
+      blocks.pop();
+      // Each item of the later run now sits below the earlier run, so its
+      // wanted top counts minus that offset.
+      const shift = prev.height + gap;
+      block = { items: [...prev.items, ...block.items], height: shift + block.height, sum: prev.sum + block.sum - shift * block.items.length };
+    }
+    blocks.push(block);
+  }
+  return blocks;
 }
 
 const FRESH = {

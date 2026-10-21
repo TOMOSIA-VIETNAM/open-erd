@@ -10,6 +10,7 @@
   },
   "scripts": {
     "test": "node --test",
+    "test:large": "OPEN_ERD_LARGE=1 node --test test/scale.test.js",
     "build": "node scripts/bundle-viewer.js && esbuild cli.js --bundle --platform=node --format=esm --target=node20 --outfile=../dist/open-erd.mjs \"--banner:js=import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);\"",
     "build-metrics": "node scripts/build-metrics.js",
     "measure-chrome": "node scripts/measure-chrome.js",

@@ -79,6 +79,16 @@ for (const v of svg.querySelectorAll('g.view')) {
   views.set(v.getAttribute('data-view'), v);
   indexes.set(v.getAttribute('data-view'), indexView(v));
 }
+// Every table and polymorphic node as a full box, for the neighborhood view:
+// taken from the view of all tables, or, in a large schema drawn without
+// that view, from each node's own domain view (stubs are only names).
+const fullBoxes =
+  indexes.get(ALL_VIEW) ??
+  new Map(
+    [...indexes]
+      .filter(([name]) => name.startsWith(DOMAIN_PREFIX))
+      .flatMap(([, index]) => [...index].filter(([, entry]) => !entry.el.classList.contains('stub'))),
+  );
 // The viewer draws its own tooltips; native ones would show on top of them.
 for (const t of svg.querySelectorAll('.nodes title')) t.remove();
 
@@ -312,7 +322,7 @@ function rings(center, hops) {
  */
 function buildNeighborhood(center, hops) {
   views.get(NEIGHBORHOOD)?.remove();
-  const source = indexes.get(ALL_VIEW);
+  const source = fullBoxes;
   const ringIds = rings(center, hops).map((r) => r.filter((id) => source.has(id)));
   const ids = [center, ...ringIds.flat()];
   const outer = new Set(ringIds[1] ?? []);
@@ -378,7 +388,7 @@ function buildNeighborhood(center, hops) {
 }
 
 function openNeighborhood(id, hops = state.hops) {
-  if (!indexes.get(ALL_VIEW).has(id)) return;
+  if (!fullBoxes.has(id)) return;
   if (state.view !== NEIGHBORHOOD) state.history.push(snapshot());
   buildNeighborhood(id, hops);
   showView(NEIGHBORHOOD);
@@ -397,6 +407,7 @@ const hopButtons = [1, 2].map((n) =>
 );
 const hopGroup = el('div', { class: 'oe-seg' }, hopButtons);
 const allButton = el('button', { class: 'oe-btn', text: 'All tables', on: { click: () => navigate(ALL_VIEW) } });
+if (!views.has(ALL_VIEW)) allButton.style.display = 'none';
 const searchInput = el('input', { type: 'search', placeholder: 'Search tables and columns', 'aria-label': 'Search tables and columns' });
 const results = el('div', { class: 'oe-results', style: 'display:none' });
 const modeButtons = ['Business', 'Technical'].map((label) =>

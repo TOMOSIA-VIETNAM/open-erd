@@ -6,10 +6,11 @@ import { computeLayout } from '../src/layout/index.js';
 import { serializeLayout } from '../src/layout/layout-file.js';
 import { SELF_STUB } from '../src/layout/router.js';
 import { POLY_VISIBLE_TARGETS } from '../src/layout/table-box.js';
-import { STUB_SLOT, viewNames } from '../src/layout/views.js';
+import { ALL_VIEW, ALL_VIEW_MAX_TABLES, STUB_SLOT, viewNames } from '../src/layout/views.js';
+import { normalizeModel } from '../src/model/load.js';
 import { buildScene, renderSvg } from '../src/render/svg/render.js';
 import { pathLength } from './helpers/geometry.js';
-import { loadMulti, loadWorkspace } from './helpers/shop.js';
+import { loadMulti, loadWorkspace, table } from './helpers/shop.js';
 
 async function multi(change = (m) => m) {
   const model = change(await loadMulti());
@@ -215,4 +216,12 @@ test('special patterns: view sources, facts, embedded rows, tenant stacks, datab
   assert.match(svg, /<text class="db-fact"[^>]*>2 replicas<\/text>/);
   assert.match(svg, /<text class="db-fact"[^>]*>schema tenant × 120 tenants<\/text>/);
   assert.match(svg, /<text class="db-fact"[^>]*>4 shards<\/text>/);
+});
+
+test('the view of all tables exists up to ALL_VIEW_MAX_TABLES tables', async () => {
+  const base = await loadMulti();
+  const sized = (n) =>
+    buildDiagram(normalizeModel({ ...base, relations: [], polymorphic: [], tables: Array.from({ length: n }, (_, i) => table(`shop._.t${i}`, 'Bulk', [])) }));
+  assert.ok(viewNames(sized(ALL_VIEW_MAX_TABLES)).includes(ALL_VIEW));
+  assert.deepEqual(viewNames(sized(ALL_VIEW_MAX_TABLES + 1)), ['overview', 'domain:shop/Bulk']);
 });

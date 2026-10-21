@@ -20,7 +20,8 @@ import { compareStrings } from '../model/load.js';
 // Each view keeps its own positions, grouped by the innermost group a node
 // is stored under:
 //   "all"                    "<database>/<domain>" -> table ids, and polymorphic
-//                            nodes as "<table id>«<association name>»"
+//                            nodes as "<table id>«<association name>»"; absent
+//                            above ALL_VIEW_MAX_TABLES tables (see views.js)
 //   "domain:<db>/<domain>"   the same for that one domain, plus "related" ->
 //                            stubs of the tables outside it, by table id
 //   "overview"               "<database>" -> domain boxes, by "<database>/<domain>"
