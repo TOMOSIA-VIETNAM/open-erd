@@ -11640,7 +11640,7 @@ var require_BufferList = __commonJS({
         this.tail = null;
         this.length = 0;
       }
-      BufferList.prototype.push = function push(v) {
+      BufferList.prototype.push = function push2(v) {
         var entry = { data: v, next: null };
         if (this.length > 0) this.tail.next = entry;
         else this.head = entry;
@@ -15123,7 +15123,7 @@ var require_crc32 = __commonJS({
       return table2;
     }
     var crcTable = makeTable();
-    function crc32(crc, buf, len, pos) {
+    function crc322(crc, buf, len, pos) {
       var t = crcTable, end = pos + len;
       crc = crc ^ -1;
       for (var i = pos; i < end; i++) {
@@ -15145,7 +15145,7 @@ var require_crc32 = __commonJS({
       }
       var isArray = utils.getTypeOf(input) !== "string";
       if (isArray) {
-        return crc32(crc | 0, input, input.length, 0);
+        return crc322(crc | 0, input, input.length, 0);
       } else {
         return crc32str(crc | 0, input, input.length, 0);
       }
@@ -15158,7 +15158,7 @@ var require_Crc32Probe = __commonJS({
   "node_modules/jszip/lib/stream/Crc32Probe.js"(exports2, module2) {
     "use strict";
     var GenericWorker = require_GenericWorker();
-    var crc32 = require_crc32();
+    var crc322 = require_crc32();
     var utils = require_utils();
     function Crc32Probe() {
       GenericWorker.call(this, "Crc32Probe");
@@ -15166,7 +15166,7 @@ var require_Crc32Probe = __commonJS({
     }
     utils.inherits(Crc32Probe, GenericWorker);
     Crc32Probe.prototype.processChunk = function(chunk) {
-      this.streamInfo.crc32 = crc32(chunk.data, this.streamInfo.crc32 || 0);
+      this.streamInfo.crc32 = crc322(chunk.data, this.streamInfo.crc32 || 0);
       this.push(chunk);
     };
     module2.exports = Crc32Probe;
@@ -15204,10 +15204,10 @@ var require_compressedObject = __commonJS({
     var DataWorker = require_DataWorker();
     var Crc32Probe = require_Crc32Probe();
     var DataLengthProbe = require_DataLengthProbe();
-    function CompressedObject(compressedSize, uncompressedSize, crc32, compression, data) {
+    function CompressedObject(compressedSize, uncompressedSize, crc322, compression, data) {
       this.compressedSize = compressedSize;
       this.uncompressedSize = uncompressedSize;
-      this.crc32 = crc32;
+      this.crc32 = crc322;
       this.compression = compression;
       this.compressedContent = data;
     }
@@ -16129,7 +16129,7 @@ var require_crc322 = __commonJS({
       return table2;
     }
     var crcTable = makeTable();
-    function crc32(crc, buf, len, pos) {
+    function crc322(crc, buf, len, pos) {
       var t = crcTable, end = pos + len;
       crc ^= -1;
       for (var i = pos; i < end; i++) {
@@ -16137,7 +16137,7 @@ var require_crc322 = __commonJS({
       }
       return crc ^ -1;
     }
-    module2.exports = crc32;
+    module2.exports = crc322;
   }
 });
 
@@ -16175,7 +16175,7 @@ var require_deflate = __commonJS({
     var utils = require_common();
     var trees = require_trees();
     var adler32 = require_adler32();
-    var crc32 = require_crc322();
+    var crc322 = require_crc322();
     var msg = require_messages();
     var Z_NO_FLUSH = 0;
     var Z_PARTIAL_FLUSH = 1;
@@ -16278,7 +16278,7 @@ var require_deflate = __commonJS({
       if (strm.state.wrap === 1) {
         strm.adler = adler32(strm.adler, buf, len, start);
       } else if (strm.state.wrap === 2) {
-        strm.adler = crc32(strm.adler, buf, len, start);
+        strm.adler = crc322(strm.adler, buf, len, start);
       }
       strm.next_in += len;
       strm.total_in += len;
@@ -16920,7 +16920,7 @@ var require_deflate = __commonJS({
               put_byte(s, s.gzhead.extra.length >> 8 & 255);
             }
             if (s.gzhead.hcrc) {
-              strm.adler = crc32(strm.adler, s.pending_buf, s.pending, 0);
+              strm.adler = crc322(strm.adler, s.pending_buf, s.pending, 0);
             }
             s.gzindex = 0;
             s.status = EXTRA_STATE;
@@ -16957,7 +16957,7 @@ var require_deflate = __commonJS({
           while (s.gzindex < (s.gzhead.extra.length & 65535)) {
             if (s.pending === s.pending_buf_size) {
               if (s.gzhead.hcrc && s.pending > beg) {
-                strm.adler = crc32(strm.adler, s.pending_buf, s.pending - beg, beg);
+                strm.adler = crc322(strm.adler, s.pending_buf, s.pending - beg, beg);
               }
               flush_pending(strm);
               beg = s.pending;
@@ -16969,7 +16969,7 @@ var require_deflate = __commonJS({
             s.gzindex++;
           }
           if (s.gzhead.hcrc && s.pending > beg) {
-            strm.adler = crc32(strm.adler, s.pending_buf, s.pending - beg, beg);
+            strm.adler = crc322(strm.adler, s.pending_buf, s.pending - beg, beg);
           }
           if (s.gzindex === s.gzhead.extra.length) {
             s.gzindex = 0;
@@ -16985,7 +16985,7 @@ var require_deflate = __commonJS({
           do {
             if (s.pending === s.pending_buf_size) {
               if (s.gzhead.hcrc && s.pending > beg) {
-                strm.adler = crc32(strm.adler, s.pending_buf, s.pending - beg, beg);
+                strm.adler = crc322(strm.adler, s.pending_buf, s.pending - beg, beg);
               }
               flush_pending(strm);
               beg = s.pending;
@@ -17002,7 +17002,7 @@ var require_deflate = __commonJS({
             put_byte(s, val);
           } while (val !== 0);
           if (s.gzhead.hcrc && s.pending > beg) {
-            strm.adler = crc32(strm.adler, s.pending_buf, s.pending - beg, beg);
+            strm.adler = crc322(strm.adler, s.pending_buf, s.pending - beg, beg);
           }
           if (val === 0) {
             s.gzindex = 0;
@@ -17018,7 +17018,7 @@ var require_deflate = __commonJS({
           do {
             if (s.pending === s.pending_buf_size) {
               if (s.gzhead.hcrc && s.pending > beg) {
-                strm.adler = crc32(strm.adler, s.pending_buf, s.pending - beg, beg);
+                strm.adler = crc322(strm.adler, s.pending_buf, s.pending - beg, beg);
               }
               flush_pending(strm);
               beg = s.pending;
@@ -17035,7 +17035,7 @@ var require_deflate = __commonJS({
             put_byte(s, val);
           } while (val !== 0);
           if (s.gzhead.hcrc && s.pending > beg) {
-            strm.adler = crc32(strm.adler, s.pending_buf, s.pending - beg, beg);
+            strm.adler = crc322(strm.adler, s.pending_buf, s.pending - beg, beg);
           }
           if (val === 0) {
             s.status = HCRC_STATE;
@@ -18093,7 +18093,7 @@ var require_inflate = __commonJS({
     "use strict";
     var utils = require_common();
     var adler32 = require_adler32();
-    var crc32 = require_crc322();
+    var crc322 = require_crc322();
     var inflate_fast = require_inffast();
     var inflate_table = require_inftrees();
     var CODES = 0;
@@ -18111,7 +18111,7 @@ var require_inflate = __commonJS({
     var Z_BUF_ERROR = -5;
     var Z_DEFLATED = 8;
     var HEAD = 1;
-    var FLAGS = 2;
+    var FLAGS2 = 2;
     var TIME = 3;
     var OS = 4;
     var EXLEN = 5;
@@ -18123,7 +18123,7 @@ var require_inflate = __commonJS({
     var DICT = 11;
     var TYPE = 12;
     var TYPEDO = 13;
-    var STORED = 14;
+    var STORED2 = 14;
     var COPY_ = 15;
     var COPY = 16;
     var TABLE = 17;
@@ -18397,10 +18397,10 @@ var require_inflate = __commonJS({
                 state.check = 0;
                 hbuf[0] = hold & 255;
                 hbuf[1] = hold >>> 8 & 255;
-                state.check = crc32(state.check, hbuf, 2, 0);
+                state.check = crc322(state.check, hbuf, 2, 0);
                 hold = 0;
                 bits = 0;
-                state.mode = FLAGS;
+                state.mode = FLAGS2;
                 break;
               }
               state.flags = 0;
@@ -18434,7 +18434,7 @@ var require_inflate = __commonJS({
               hold = 0;
               bits = 0;
               break;
-            case FLAGS:
+            case FLAGS2:
               while (bits < 16) {
                 if (have === 0) {
                   break inf_leave;
@@ -18460,7 +18460,7 @@ var require_inflate = __commonJS({
               if (state.flags & 512) {
                 hbuf[0] = hold & 255;
                 hbuf[1] = hold >>> 8 & 255;
-                state.check = crc32(state.check, hbuf, 2, 0);
+                state.check = crc322(state.check, hbuf, 2, 0);
               }
               hold = 0;
               bits = 0;
@@ -18483,7 +18483,7 @@ var require_inflate = __commonJS({
                 hbuf[1] = hold >>> 8 & 255;
                 hbuf[2] = hold >>> 16 & 255;
                 hbuf[3] = hold >>> 24 & 255;
-                state.check = crc32(state.check, hbuf, 4, 0);
+                state.check = crc322(state.check, hbuf, 4, 0);
               }
               hold = 0;
               bits = 0;
@@ -18505,7 +18505,7 @@ var require_inflate = __commonJS({
               if (state.flags & 512) {
                 hbuf[0] = hold & 255;
                 hbuf[1] = hold >>> 8 & 255;
-                state.check = crc32(state.check, hbuf, 2, 0);
+                state.check = crc322(state.check, hbuf, 2, 0);
               }
               hold = 0;
               bits = 0;
@@ -18528,7 +18528,7 @@ var require_inflate = __commonJS({
                 if (state.flags & 512) {
                   hbuf[0] = hold & 255;
                   hbuf[1] = hold >>> 8 & 255;
-                  state.check = crc32(state.check, hbuf, 2, 0);
+                  state.check = crc322(state.check, hbuf, 2, 0);
                 }
                 hold = 0;
                 bits = 0;
@@ -18561,7 +18561,7 @@ var require_inflate = __commonJS({
                     );
                   }
                   if (state.flags & 512) {
-                    state.check = crc32(state.check, input, copy, next);
+                    state.check = crc322(state.check, input, copy, next);
                   }
                   have -= copy;
                   next += copy;
@@ -18587,7 +18587,7 @@ var require_inflate = __commonJS({
                   }
                 } while (len && copy < have);
                 if (state.flags & 512) {
-                  state.check = crc32(state.check, input, copy, next);
+                  state.check = crc322(state.check, input, copy, next);
                 }
                 have -= copy;
                 next += copy;
@@ -18613,7 +18613,7 @@ var require_inflate = __commonJS({
                   }
                 } while (len && copy < have);
                 if (state.flags & 512) {
-                  state.check = crc32(state.check, input, copy, next);
+                  state.check = crc322(state.check, input, copy, next);
                 }
                 have -= copy;
                 next += copy;
@@ -18702,7 +18702,7 @@ var require_inflate = __commonJS({
               bits -= 1;
               switch (hold & 3) {
                 case 0:
-                  state.mode = STORED;
+                  state.mode = STORED2;
                   break;
                 case 1:
                   fixedtables(state);
@@ -18723,7 +18723,7 @@ var require_inflate = __commonJS({
               hold >>>= 2;
               bits -= 2;
               break;
-            case STORED:
+            case STORED2:
               hold >>>= bits & 7;
               bits -= bits & 7;
               while (bits < 32) {
@@ -19188,7 +19188,7 @@ var require_inflate = __commonJS({
                 state.total += _out;
                 if (_out) {
                   strm.adler = state.check = /*UPDATE(state.check, put - _out, _out);*/
-                  state.flags ? crc32(state.check, output, _out, put - _out) : adler32(state.check, output, _out, put - _out);
+                  state.flags ? crc322(state.check, output, _out, put - _out) : adler32(state.check, output, _out, put - _out);
                 }
                 _out = left;
                 if ((state.flags ? hold : zswap32(hold)) !== state.check) {
@@ -19254,7 +19254,7 @@ var require_inflate = __commonJS({
       state.total += _out;
       if (state.wrap && _out) {
         strm.adler = state.check = /*UPDATE(state.check, strm.next_out - _out, _out);*/
-        state.flags ? crc32(state.check, output, _out, strm.next_out - _out) : adler32(state.check, output, _out, strm.next_out - _out);
+        state.flags ? crc322(state.check, output, _out, strm.next_out - _out) : adler32(state.check, output, _out, strm.next_out - _out);
       }
       strm.data_type = state.bits + (state.last ? 64 : 0) + (state.mode === TYPE ? 128 : 0) + (state.mode === LEN_ || state.mode === COPY_ ? 256 : 0);
       if ((_in === 0 && _out === 0 || flush === Z_FINISH) && ret2 === Z_OK) {
@@ -19678,7 +19678,7 @@ var require_ZipFileWorker = __commonJS({
     var utils = require_utils();
     var GenericWorker = require_GenericWorker();
     var utf8 = require_utf8();
-    var crc32 = require_crc32();
+    var crc322 = require_crc32();
     var signature = require_signature();
     var decToHex = function(dec, bytes) {
       var hex = "", i;
@@ -19742,7 +19742,7 @@ var require_ZipFileWorker = __commonJS({
       if (useUTF8ForFileName) {
         unicodePathExtraField = // Version
         decToHex(1, 1) + // NameCRC32
-        decToHex(crc32(encodedFileName), 4) + // UnicodeName
+        decToHex(crc322(encodedFileName), 4) + // UnicodeName
         utfEncodedFileName;
         extraFields += // Info-ZIP Unicode Path Extra Field
         "up" + // size
@@ -19752,7 +19752,7 @@ var require_ZipFileWorker = __commonJS({
       if (useUTF8ForComment) {
         unicodeCommentExtraField = // Version
         decToHex(1, 1) + // CommentCRC32
-        decToHex(crc32(encodedComment), 4) + // UnicodeName
+        decToHex(crc322(encodedComment), 4) + // UnicodeName
         utfEncodedComment;
         extraFields += // Info-ZIP Unicode Path Extra Field
         "uc" + // size
@@ -21216,7 +21216,7 @@ var require_buffer_list = __commonJS({
       }
       _createClass(BufferList, [{
         key: "push",
-        value: function push(v) {
+        value: function push2(v) {
           var entry = {
             data: v,
             next: null
@@ -24409,10 +24409,10 @@ var require_xml_stream = __commonJS({
     function pushAttribute(xml, name, value) {
       xml.push(` ${name}="${utils.xmlEncode(value.toString())}"`);
     }
-    function pushAttributes(xml, attributes) {
-      if (attributes) {
+    function pushAttributes(xml, attributes2) {
+      if (attributes2) {
         const tmp = [];
-        _2.each(attributes, (value, name) => {
+        _2.each(attributes2, (value, name) => {
           if (value !== void 0) {
             pushAttribute(tmp, name, value);
           }
@@ -24438,7 +24438,7 @@ var require_xml_stream = __commonJS({
         pushAttributes(xml, docAttributes);
         xml.push("?>\n");
       }
-      openNode(name, attributes) {
+      openNode(name, attributes2) {
         const parent = this.tos;
         const xml = this._xml;
         if (parent && this.open) {
@@ -24447,7 +24447,7 @@ var require_xml_stream = __commonJS({
         this._stack.push(name);
         xml.push(OPEN_ANGLE);
         xml.push(name);
-        pushAttributes(xml, attributes);
+        pushAttributes(xml, attributes2);
         this.leaf = true;
         this.open = true;
       }
@@ -24495,8 +24495,8 @@ var require_xml_stream = __commonJS({
         this.open = false;
         this.leaf = false;
       }
-      leafNode(name, attributes, text2) {
-        this.openNode(name, attributes);
+      leafNode(name, attributes2, text2) {
+        this.openNode(name, attributes2);
         if (text2 !== void 0) {
           this.writeText(text2);
         }
@@ -26327,7 +26327,7 @@ var require_saxes = __commonJS({
         if (attribList.length === 0) {
           return;
         }
-        const { attributes } = tag;
+        const { attributes: attributes2 } = tag;
         const seen = /* @__PURE__ */ new Set();
         for (const attr of attribList) {
           const { name, prefix, local } = attr;
@@ -26349,18 +26349,18 @@ var require_saxes = __commonJS({
           }
           seen.add(eqname);
           attr.uri = uri;
-          attributes[name] = attr;
+          attributes2[name] = attr;
         }
         this.attribList = [];
       }
       processAttribsPlain() {
         const { attribList } = this;
-        const attributes = this.tag.attributes;
+        const attributes2 = this.tag.attributes;
         for (const { name, value } of attribList) {
-          if (attributes[name] !== void 0) {
+          if (attributes2[name] !== void 0) {
             this.fail(`duplicate attribute: ${name}.`);
           }
-          attributes[name] = value;
+          attributes2[name] = value;
         }
         this.attribList = [];
       }
@@ -29716,7 +29716,7 @@ var require_workbook_view_xform = __commonJS({
     var BaseXform = require_base_xform();
     var WorkbookViewXform = class extends BaseXform {
       render(xmlStream, model) {
-        const attributes = {
+        const attributes2 = {
           xWindow: model.x || 0,
           yWindow: model.y || 0,
           windowWidth: model.width || 12e3,
@@ -29725,9 +29725,9 @@ var require_workbook_view_xform = __commonJS({
           activeTab: model.activeTab
         };
         if (model.visibility && model.visibility !== "visible") {
-          attributes.visibility = model.visibility;
+          attributes2.visibility = model.visibility;
         }
-        xmlStream.leafNode("workbookView", attributes);
+        xmlStream.leafNode("workbookView", attributes2);
       }
       parseOpen(node) {
         if (node.name === "workbookView") {
@@ -30868,16 +30868,16 @@ var require_data_validations_xform = __commonJS({
     var colCache = require_col_cache();
     var BaseXform = require_base_xform();
     var Range = require_range();
-    function assign(definedName, attributes, name, defaultValue) {
-      const value = attributes[name];
+    function assign(definedName, attributes2, name, defaultValue) {
+      const value = attributes2[name];
       if (value !== void 0) {
         definedName[name] = value;
       } else if (defaultValue !== void 0) {
         definedName[name] = defaultValue;
       }
     }
-    function assignBool(definedName, attributes, name, defaultValue) {
-      const value = attributes[name];
+    function assignBool(definedName, attributes2, name, defaultValue) {
+      const value = attributes2[name];
       if (value !== void 0) {
         definedName[name] = utils.parseBoolean(value);
       } else if (defaultValue !== void 0) {
@@ -31264,20 +31264,20 @@ var require_sheet_format_properties_xform = __commonJS({
       }
       render(xmlStream, model) {
         if (model) {
-          const attributes = {
+          const attributes2 = {
             defaultRowHeight: model.defaultRowHeight,
             outlineLevelRow: model.outlineLevelRow,
             outlineLevelCol: model.outlineLevelCol,
             "x14ac:dyDescent": model.dyDescent
           };
           if (model.defaultColWidth) {
-            attributes.defaultColWidth = model.defaultColWidth;
+            attributes2.defaultColWidth = model.defaultColWidth;
           }
           if (!model.defaultRowHeight || model.defaultRowHeight !== 15) {
-            attributes.customHeight = "1";
+            attributes2.customHeight = "1";
           }
-          if (_2.some(attributes, (value) => value !== void 0)) {
-            xmlStream.leafNode("sheetFormatPr", attributes);
+          if (_2.some(attributes2, (value) => value !== void 0)) {
+            xmlStream.leafNode("sheetFormatPr", attributes2);
           }
         }
       }
@@ -31517,7 +31517,7 @@ var require_sheet_protection_xform = __commonJS({
       }
       render(xmlStream, model) {
         if (model) {
-          const attributes = {
+          const attributes2 = {
             sheet: booleanToXml(model.sheet, "1"),
             selectLockedCells: model.selectLockedCells === false ? "1" : void 0,
             selectUnlockedCells: model.selectUnlockedCells === false ? "1" : void 0,
@@ -31534,15 +31534,15 @@ var require_sheet_protection_xform = __commonJS({
             pivotTables: booleanToXml(model.pivotTables, "0")
           };
           if (model.sheet) {
-            attributes.algorithmName = model.algorithmName;
-            attributes.hashValue = model.hashValue;
-            attributes.saltValue = model.saltValue;
-            attributes.spinCount = model.spinCount;
-            attributes.objects = booleanToXml(model.objects === false, "1");
-            attributes.scenarios = booleanToXml(model.scenarios === false, "1");
+            attributes2.algorithmName = model.algorithmName;
+            attributes2.hashValue = model.hashValue;
+            attributes2.saltValue = model.saltValue;
+            attributes2.spinCount = model.spinCount;
+            attributes2.objects = booleanToXml(model.objects === false, "1");
+            attributes2.scenarios = booleanToXml(model.scenarios === false, "1");
           }
-          if (_2.some(attributes, (value) => value !== void 0)) {
-            xmlStream.leafNode(this.tag, attributes);
+          if (_2.some(attributes2, (value) => value !== void 0)) {
+            xmlStream.leafNode(this.tag, attributes2);
           }
         }
       }
@@ -31599,7 +31599,7 @@ var require_page_margins_xform = __commonJS({
       }
       render(xmlStream, model) {
         if (model) {
-          const attributes = {
+          const attributes2 = {
             left: model.left,
             right: model.right,
             top: model.top,
@@ -31607,8 +31607,8 @@ var require_page_margins_xform = __commonJS({
             header: model.header,
             footer: model.footer
           };
-          if (_2.some(attributes, (value) => value !== void 0)) {
-            xmlStream.leafNode(this.tag, attributes);
+          if (_2.some(attributes2, (value) => value !== void 0)) {
+            xmlStream.leafNode(this.tag, attributes2);
           }
         }
       }
@@ -31682,7 +31682,7 @@ var require_page_setup_xform = __commonJS({
       }
       render(xmlStream, model) {
         if (model) {
-          const attributes = {
+          const attributes2 = {
             paperSize: model.paperSize,
             orientation: model.orientation,
             horizontalDpi: model.horizontalDpi,
@@ -31700,8 +31700,8 @@ var require_page_setup_xform = __commonJS({
             usePrinterDefaults: booleanToXml(model.usePrinterDefaults),
             copies: model.copies
           };
-          if (_2.some(attributes, (value) => value !== void 0)) {
-            xmlStream.leafNode(this.tag, attributes);
+          if (_2.some(attributes2, (value) => value !== void 0)) {
+            xmlStream.leafNode(this.tag, attributes2);
           }
         }
       }
@@ -31755,14 +31755,14 @@ var require_print_options_xform = __commonJS({
       }
       render(xmlStream, model) {
         if (model) {
-          const attributes = {
+          const attributes2 = {
             headings: booleanToXml(model.showRowColHeaders),
             gridLines: booleanToXml(model.showGridLines),
             horizontalCentered: booleanToXml(model.horizontalCentered),
             verticalCentered: booleanToXml(model.verticalCentered)
           };
-          if (_2.some(attributes, (value) => value !== void 0)) {
-            xmlStream.leafNode(this.tag, attributes);
+          if (_2.some(attributes2, (value) => value !== void 0)) {
+            xmlStream.leafNode(this.tag, attributes2);
           }
         }
       }
@@ -32406,11 +32406,11 @@ var require_icon_set_xform = __commonJS({
         });
         xmlStream.closeNode();
       }
-      createNewModel({ attributes }) {
+      createNewModel({ attributes: attributes2 }) {
         return {
-          iconSet: BaseXform.toStringValue(attributes.iconSet, "3TrafficLights"),
-          reverse: BaseXform.toBoolValue(attributes.reverse),
-          showValue: BaseXform.toBoolValue(attributes.showValue),
+          iconSet: BaseXform.toStringValue(attributes2.iconSet, "3TrafficLights"),
+          reverse: BaseXform.toBoolValue(attributes2.reverse),
+          showValue: BaseXform.toBoolValue(attributes2.showValue),
           cfvo: []
         };
       }
@@ -32490,8 +32490,8 @@ var require_cf_rule_xform = __commonJS({
           return void 0;
       }
     };
-    var opType = (attributes) => {
-      const { type, operator } = attributes;
+    var opType = (attributes2) => {
+      const { type, operator } = attributes2;
       switch (type) {
         case "containsText":
         case "containsBlanks":
@@ -32652,16 +32652,16 @@ var require_cf_rule_xform = __commonJS({
         }
         xmlStream.closeNode();
       }
-      createNewModel({ attributes }) {
+      createNewModel({ attributes: attributes2 }) {
         return {
-          ...opType(attributes),
-          dxfId: BaseXform.toIntValue(attributes.dxfId),
-          priority: BaseXform.toIntValue(attributes.priority),
-          timePeriod: attributes.timePeriod,
-          percent: BaseXform.toBoolValue(attributes.percent),
-          bottom: BaseXform.toBoolValue(attributes.bottom),
-          rank: BaseXform.toIntValue(attributes.rank),
-          aboveAverage: BaseXform.toBoolValue(attributes.aboveAverage)
+          ...opType(attributes2),
+          dxfId: BaseXform.toIntValue(attributes2.dxfId),
+          priority: BaseXform.toIntValue(attributes2.priority),
+          timePeriod: attributes2.timePeriod,
+          percent: BaseXform.toBoolValue(attributes2.percent),
+          bottom: BaseXform.toBoolValue(attributes2.bottom),
+          rank: BaseXform.toIntValue(attributes2.rank),
+          aboveAverage: BaseXform.toBoolValue(attributes2.aboveAverage)
         };
       }
       onParserClose(name, parser) {
@@ -32711,9 +32711,9 @@ var require_conditional_formatting_xform = __commonJS({
         });
         xmlStream.closeNode();
       }
-      createNewModel({ attributes }) {
+      createNewModel({ attributes: attributes2 }) {
         return {
-          ref: attributes.sqref,
+          ref: attributes2.sqref,
           rules: []
         };
       }
@@ -33260,23 +33260,23 @@ var require_databar_ext_xform = __commonJS({
         this.axisColorXform.render(xmlStream, model.axisColor);
         xmlStream.closeNode();
       }
-      createNewModel({ attributes }) {
+      createNewModel({ attributes: attributes2 }) {
         return {
           cfvo: [],
-          minLength: BaseXform.toIntValue(attributes.minLength, 0),
-          maxLength: BaseXform.toIntValue(attributes.maxLength, 100),
-          border: BaseXform.toBoolValue(attributes.border, false),
-          gradient: BaseXform.toBoolValue(attributes.gradient, true),
+          minLength: BaseXform.toIntValue(attributes2.minLength, 0),
+          maxLength: BaseXform.toIntValue(attributes2.maxLength, 100),
+          border: BaseXform.toBoolValue(attributes2.border, false),
+          gradient: BaseXform.toBoolValue(attributes2.gradient, true),
           negativeBarColorSameAsPositive: BaseXform.toBoolValue(
-            attributes.negativeBarColorSameAsPositive,
+            attributes2.negativeBarColorSameAsPositive,
             true
           ),
           negativeBarBorderColorSameAsPositive: BaseXform.toBoolValue(
-            attributes.negativeBarBorderColorSameAsPositive,
+            attributes2.negativeBarBorderColorSameAsPositive,
             true
           ),
-          axisPosition: BaseXform.toStringValue(attributes.axisPosition, "auto"),
-          direction: BaseXform.toStringValue(attributes.direction, "leftToRight")
+          axisPosition: BaseXform.toStringValue(attributes2.axisPosition, "auto"),
+          direction: BaseXform.toStringValue(attributes2.direction, "leftToRight")
         };
       }
       onParserClose(name, parser) {
@@ -33309,10 +33309,10 @@ var require_cf_icon_ext_xform = __commonJS({
           iconId: model.iconId
         });
       }
-      parseOpen({ attributes }) {
+      parseOpen({ attributes: attributes2 }) {
         this.model = {
-          iconSet: attributes.iconSet,
-          iconId: BaseXform.toIntValue(attributes.iconId)
+          iconSet: attributes2.iconSet,
+          iconId: BaseXform.toIntValue(attributes2.iconId)
         };
       }
       parseClose(name) {
@@ -33359,12 +33359,12 @@ var require_icon_set_ext_xform = __commonJS({
         }
         xmlStream.closeNode();
       }
-      createNewModel({ attributes }) {
+      createNewModel({ attributes: attributes2 }) {
         return {
           cfvo: [],
-          iconSet: BaseXform.toStringValue(attributes.iconSet, "3TrafficLights"),
-          reverse: BaseXform.toBoolValue(attributes.reverse, false),
-          showValue: BaseXform.toBoolValue(attributes.showValue, true)
+          iconSet: BaseXform.toStringValue(attributes2.iconSet, "3TrafficLights"),
+          reverse: BaseXform.toBoolValue(attributes2.reverse, false),
+          showValue: BaseXform.toBoolValue(attributes2.showValue, true)
         };
       }
       onParserClose(name, parser) {
@@ -33459,11 +33459,11 @@ var require_cf_rule_ext_xform = __commonJS({
         this.iconSetXform.render(xmlStream, model);
         xmlStream.closeNode();
       }
-      createNewModel({ attributes }) {
+      createNewModel({ attributes: attributes2 }) {
         return {
-          type: attributes.type,
-          x14Id: attributes.id,
-          priority: BaseXform.toIntValue(attributes.priority)
+          type: attributes2.type,
+          x14Id: attributes2.id,
+          priority: BaseXform.toIntValue(attributes2.priority)
         };
       }
       onParserClose(name, parser) {
@@ -35070,11 +35070,11 @@ var require_filter_column_xform = __commonJS({
           this.parser.parseOpen(node);
           return true;
         }
-        const { attributes } = node;
+        const { attributes: attributes2 } = node;
         switch (node.name) {
           case this.tag:
             this.model = {
-              filterButton: attributes.hiddenButton === "0"
+              filterButton: attributes2.hiddenButton === "0"
             };
             return true;
           default:
@@ -35205,12 +35205,12 @@ var require_table_column_xform = __commonJS({
       }
       parseOpen(node) {
         if (node.name === this.tag) {
-          const { attributes } = node;
+          const { attributes: attributes2 } = node;
           this.model = {
-            name: attributes.name,
-            totalsRowLabel: attributes.totalsRowLabel,
-            totalsRowFunction: attributes.totalsRowFunction,
-            dxfId: attributes.dxfId
+            name: attributes2.name,
+            totalsRowLabel: attributes2.totalsRowLabel,
+            totalsRowFunction: attributes2.totalsRowFunction,
+            dxfId: attributes2.dxfId
           };
           return true;
         }
@@ -35246,13 +35246,13 @@ var require_table_style_info_xform = __commonJS({
       }
       parseOpen(node) {
         if (node.name === this.tag) {
-          const { attributes } = node;
+          const { attributes: attributes2 } = node;
           this.model = {
-            theme: attributes.name ? attributes.name : null,
-            showFirstColumn: attributes.showFirstColumn === "1",
-            showLastColumn: attributes.showLastColumn === "1",
-            showRowStripes: attributes.showRowStripes === "1",
-            showColumnStripes: attributes.showColumnStripes === "1"
+            theme: attributes2.name ? attributes2.name : null,
+            showFirstColumn: attributes2.showFirstColumn === "1",
+            showLastColumn: attributes2.showLastColumn === "1",
+            showRowStripes: attributes2.showRowStripes === "1",
+            showColumnStripes: attributes2.showColumnStripes === "1"
           };
           return true;
         }
@@ -35320,16 +35320,16 @@ var require_table_xform = __commonJS({
           this.parser.parseOpen(node);
           return true;
         }
-        const { name, attributes } = node;
+        const { name, attributes: attributes2 } = node;
         switch (name) {
           case this.tag:
             this.reset();
             this.model = {
-              name: attributes.name,
-              displayName: attributes.displayName || attributes.name,
-              tableRef: attributes.ref,
-              totalsRow: attributes.totalsRowCount === "1",
-              headerRow: attributes.headerRowCount === "1"
+              name: attributes2.name,
+              displayName: attributes2.displayName || attributes2.name,
+              tableRef: attributes2.ref,
+              totalsRow: attributes2.totalsRowCount === "1",
+              headerRow: attributes2.headerRowCount === "1"
             };
             break;
           default:
@@ -35565,7 +35565,7 @@ var require_vml_textbox_xform = __commonJS({
         });
       }
       render(xmlStream, model) {
-        const attributes = {
+        const attributes2 = {
           style: "mso-direction-alt:auto"
         };
         if (model && model.note) {
@@ -35576,10 +35576,10 @@ var require_vml_textbox_xform = __commonJS({
             }).join(",");
           }
           if (inset) {
-            attributes.inset = inset;
+            attributes2.inset = inset;
           }
         }
-        xmlStream.openNode("v:textbox", attributes);
+        xmlStream.openNode("v:textbox", attributes2);
         xmlStream.leafNode("div", { style: "text-align:left" });
         xmlStream.closeNode();
       }
@@ -43556,7 +43556,7 @@ var require_async = __commonJS({
       function priorityQueue(worker, concurrency) {
         var q = queue(worker, concurrency);
         var {
-          push,
+          push: push2,
           pushAsync
         } = q;
         q._tasks = new Heap();
@@ -43576,7 +43576,7 @@ var require_async = __commonJS({
           });
         }
         q.push = function(data, priority = 0, callback) {
-          return push(createDataItems(data, priority), callback);
+          return push2(createDataItems(data, priority), callback);
         };
         q.pushAsync = function(data, priority = 0, callback) {
           return pushAsync(createDataItems(data, priority), callback);
@@ -44960,7 +44960,7 @@ var require_BufferList2 = __commonJS({
         this.tail = null;
         this.length = 0;
       }
-      BufferList.prototype.push = function push(v) {
+      BufferList.prototype.push = function push2(v) {
         var entry = { data: v, next: null };
         if (this.length > 0) this.tail.next = entry;
         else this.head = entry;
@@ -47024,7 +47024,7 @@ var require_BufferList3 = __commonJS({
         this.tail = null;
         this.length = 0;
       }
-      BufferList.prototype.push = function push(v) {
+      BufferList.prototype.push = function push2(v) {
         var entry = { data: v, next: null };
         if (this.length > 0) this.tail.next = entry;
         else this.head = entry;
@@ -52790,17 +52790,17 @@ var require_core = __commonJS({
       function onGlobMatch(match2) {
         globber.pause();
         var ignoreMatch = false;
-        var entryData = Object.assign({}, data);
-        entryData.name = match2.relative;
-        entryData.prefix = destpath;
-        entryData.stats = match2.stat;
-        entryData.callback = globber.resume.bind(globber);
+        var entryData2 = Object.assign({}, data);
+        entryData2.name = match2.relative;
+        entryData2.prefix = destpath;
+        entryData2.stats = match2.stat;
+        entryData2.callback = globber.resume.bind(globber);
         try {
           if (dataFunction) {
-            entryData = dataFunction(entryData);
-            if (entryData === false) {
+            entryData2 = dataFunction(entryData2);
+            if (entryData2 === false) {
               ignoreMatch = true;
-            } else if (typeof entryData !== "object") {
+            } else if (typeof entryData2 !== "object") {
               throw new ArchiverError("DIRECTORYFUNCTIONINVALIDDATA", { dirpath });
             }
           }
@@ -52812,7 +52812,7 @@ var require_core = __commonJS({
           globber.resume();
           return;
         }
-        this._append(match2.absolute, entryData);
+        this._append(match2.absolute, entryData2);
       }
       var globber = glob(dirpath, globOptions);
       globber.on("error", onGlobError.bind(this));
@@ -52847,11 +52847,11 @@ var require_core = __commonJS({
       }
       function onGlobMatch(match2) {
         globber.pause();
-        var entryData = Object.assign({}, data);
-        entryData.callback = globber.resume.bind(globber);
-        entryData.stats = match2.stat;
-        entryData.name = match2.relative;
-        this._append(match2.absolute, entryData);
+        var entryData2 = Object.assign({}, data);
+        entryData2.callback = globber.resume.bind(globber);
+        entryData2.stats = match2.stat;
+        entryData2.name = match2.relative;
+        this._append(match2.absolute, entryData2);
       }
       var globber = glob(options.cwd || ".", options);
       globber.on("error", onGlobError.bind(this));
@@ -53520,7 +53520,7 @@ var require_archive_output_stream = __commonJS({
 var require_buffer_crc32 = __commonJS({
   "node_modules/buffer-crc32/index.js"(exports2, module2) {
     var Buffer2 = __require("buffer").Buffer;
-    var CRC_TABLE = [
+    var CRC_TABLE2 = [
       0,
       1996959894,
       3993919788,
@@ -53779,7 +53779,7 @@ var require_buffer_crc32 = __commonJS({
       755167117
     ];
     if (typeof Int32Array !== "undefined") {
-      CRC_TABLE = new Int32Array(CRC_TABLE);
+      CRC_TABLE2 = new Int32Array(CRC_TABLE2);
     }
     function ensureBuffer(input) {
       if (Buffer2.isBuffer(input)) {
@@ -53806,20 +53806,20 @@ var require_buffer_crc32 = __commonJS({
       }
       var crc = ~~previous ^ -1;
       for (var n = 0; n < buf.length; n++) {
-        crc = CRC_TABLE[(crc ^ buf[n]) & 255] ^ crc >>> 8;
+        crc = CRC_TABLE2[(crc ^ buf[n]) & 255] ^ crc >>> 8;
       }
       return crc ^ -1;
     }
-    function crc32() {
+    function crc322() {
       return bufferizeInt(_crc32.apply(null, arguments));
     }
-    crc32.signed = function() {
+    crc322.signed = function() {
       return _crc32.apply(null, arguments);
     };
-    crc32.unsigned = function() {
+    crc322.unsigned = function() {
       return _crc32.apply(null, arguments) >>> 0;
     };
-    module2.exports = crc32;
+    module2.exports = crc322;
   }
 });
 
@@ -53926,7 +53926,7 @@ var require_crc32_stream = __commonJS({
   "node_modules/crc32-stream/lib/crc32-stream.js"(exports2, module2) {
     "use strict";
     var { Transform } = require_readable2();
-    var crc32 = require_crc323();
+    var crc322 = require_crc323();
     var CRC32Stream = class extends Transform {
       constructor(options) {
         super(options);
@@ -53936,7 +53936,7 @@ var require_crc32_stream = __commonJS({
       }
       _transform(chunk, encoding, callback) {
         if (chunk) {
-          this.checksum = crc32.buf(chunk, this.checksum) >>> 0;
+          this.checksum = crc322.buf(chunk, this.checksum) >>> 0;
           this.rawSize += chunk.length;
         }
         callback(null, chunk);
@@ -53962,7 +53962,7 @@ var require_deflate_crc32_stream = __commonJS({
   "node_modules/crc32-stream/lib/deflate-crc32-stream.js"(exports2, module2) {
     "use strict";
     var { DeflateRaw } = __require("zlib");
-    var crc32 = require_crc323();
+    var crc322 = require_crc323();
     var DeflateCRC32Stream = class extends DeflateRaw {
       constructor(options) {
         super(options);
@@ -53979,7 +53979,7 @@ var require_deflate_crc32_stream = __commonJS({
       }
       _transform(chunk, encoding, callback) {
         if (chunk) {
-          this.checksum = crc32.buf(chunk, this.checksum) >>> 0;
+          this.checksum = crc322.buf(chunk, this.checksum) >>> 0;
           this.rawSize += chunk.length;
         }
         super._transform(chunk, encoding, callback);
@@ -54019,7 +54019,7 @@ var require_lib4 = __commonJS({
 var require_zip_archive_output_stream = __commonJS({
   "node_modules/compress-commons/lib/archivers/zip/zip-archive-output-stream.js"(exports2, module2) {
     var inherits2 = __require("util").inherits;
-    var crc32 = require_buffer_crc32();
+    var crc322 = require_buffer_crc32();
     var { CRC32Stream } = require_lib4();
     var { DeflateCRC32Stream } = require_lib4();
     var ArchiveOutputStream = require_archive_output_stream();
@@ -54067,7 +54067,7 @@ var require_zip_archive_output_stream = __commonJS({
       if (method === constants.METHOD_STORED) {
         ae.setSize(source.length);
         ae.setCompressedSize(source.length);
-        ae.setCrc(crc32.unsigned(source));
+        ae.setCrc(crc322.unsigned(source));
       }
       this._writeLocalFileHeader(ae);
       if (method === constants.METHOD_STORED) {
@@ -55950,7 +55950,7 @@ var require_json = __commonJS({
   "node_modules/archiver/lib/plugins/json.js"(exports2, module2) {
     var inherits2 = __require("util").inherits;
     var Transform = require_readable2().Transform;
-    var crc32 = require_buffer_crc32();
+    var crc322 = require_buffer_crc32();
     var util = require_archiver_utils();
     var Json = function(options) {
       if (!(this instanceof Json)) {
@@ -55981,7 +55981,7 @@ var require_json = __commonJS({
           return;
         }
         data.size = sourceBuffer.length || 0;
-        data.crc32 = crc32.unsigned(sourceBuffer);
+        data.crc32 = crc322.unsigned(sourceBuffer);
         self2.files.push(data);
         callback(null, data);
       }
@@ -58904,7 +58904,7 @@ var require_object_inspect = __commonJS({
         return inspect_(value, opts, depth + 1, seen);
       }
       if (typeof obj2 === "function" && !isRegExp(obj2)) {
-        var name = nameOf(obj2);
+        var name = nameOf2(obj2);
         var keys = arrObjKeys(obj2, inspect);
         return "[Function" + (name ? ": " + name : " (anonymous)") + "]" + (keys.length > 0 ? " { " + $join.call(keys, ", ") + " }" : "");
       }
@@ -59083,7 +59083,7 @@ var require_object_inspect = __commonJS({
     function toStr(obj2) {
       return objectToString.call(obj2);
     }
-    function nameOf(f) {
+    function nameOf2(f) {
       if (f.name) {
         return f.name;
       }
@@ -69499,7 +69499,7 @@ var require_BufferList5 = __commonJS({
         this.tail = null;
         this.length = 0;
       }
-      BufferList.prototype.push = function push(v) {
+      BufferList.prototype.push = function push2(v) {
         var entry = { data: v, next: null };
         if (this.length > 0) this.tail.next = entry;
         else this.head = entry;
@@ -71708,7 +71708,7 @@ var require_BufferList6 = __commonJS({
         this.tail = null;
         this.length = 0;
       }
-      BufferList.prototype.push = function push(v) {
+      BufferList.prototype.push = function push2(v) {
         var entry = { data: v, next: null };
         if (this.length > 0) this.tail.next = entry;
         else this.head = entry;
@@ -75812,7 +75812,7 @@ var require_BigInteger = __commonJS({
         return [arrayToSmall(result), arrayToSmall(remainder)];
       }
       function divMod2(a, b) {
-        var a_l = a.length, b_l = b.length, result = [], part = [], base = BASE, guess, xlen, highx, highy, check;
+        var a_l = a.length, b_l = b.length, result = [], part = [], base = BASE, guess2, xlen, highx, highy, check;
         while (a_l) {
           part.unshift(a[--a_l]);
           trim(part);
@@ -75826,13 +75826,13 @@ var require_BigInteger = __commonJS({
           if (xlen > b_l) {
             highx = (highx + 1) * base;
           }
-          guess = Math.ceil(highx / highy);
+          guess2 = Math.ceil(highx / highy);
           do {
-            check = multiplySmall(b, guess);
+            check = multiplySmall(b, guess2);
             if (compareAbs(check, part) <= 0) break;
-            guess--;
-          } while (guess);
-          result.push(guess);
+            guess2--;
+          } while (guess2);
+          result.push(guess2);
           part = subtract(part, check);
         }
         result.reverse();
@@ -171806,8 +171806,8 @@ function tableBox(table2, badges = [], facts = []) {
     badges: badgeRows
   };
 }
-function rowsBox(kind, titleText, titleFont, lines2, lineFont) {
-  let natural = measureText(titleText, titleFont) + 2 * PADDING_X;
+function rowsBox(kind, titleText2, titleFont, lines2, lineFont) {
+  let natural = measureText(titleText2, titleFont) + 2 * PADDING_X;
   for (const l2 of lines2) natural = Math.max(natural, measureText(l2, lineFont) + 2 * PADDING_X);
   const w = Math.min(MAX_WIDTH, ceilToGrid(Math.max(MIN_WIDTH, natural)));
   const inner = w - 2 * PADDING_X;
@@ -171817,7 +171817,7 @@ function rowsBox(kind, titleText, titleFont, lines2, lineFont) {
     // Line ends must sit on the layout grid, so a box without rows is one grid
     // step taller than a header and attaches (and centres its title) at 20 px.
     h: lines2.length === 0 ? HEADER_HEIGHT + GRID : HEADER_HEIGHT + ROW_HEIGHT * lines2.length + BOTTOM_PADDING,
-    title: { ...fit(titleText, inner, titleFont), centerY: lines2.length === 0 ? (HEADER_HEIGHT + GRID) / 2 : HEADER_HEIGHT / 2 },
+    title: { ...fit(titleText2, inner, titleFont), centerY: lines2.length === 0 ? (HEADER_HEIGHT + GRID) / 2 : HEADER_HEIGHT / 2 },
     rows: lines2.map((l2, i) => ({ name: fit(l2, inner, lineFont), centerY: HEADER_HEIGHT + ROW_HEIGHT * i + ROW_HEIGHT / 2 }))
   };
 }
@@ -172036,11 +172036,315 @@ function domainLinks(diagram) {
   }));
 }
 
+// src/diff/changes.js
+var POSSIBLE_RENAME_SIMILARITY = 0.6;
+var TABLE_FIELDS = ["domain", "kind", ...NOTE_FIELDS, "sources", "sti", "partition", "unique", "generated_by"];
+var COLUMN_FIELDS = ["type", "nullable", "pk", "unique", "pii", ...NOTE_FIELDS];
+var ENTITY_FIELDS = ["array", "note", "internal_note"];
+var DATABASE_FIELDS = ["engine", "tenant_schemas", "topology"];
+var RELATION_FIELDS = ["cardinality", "optional", "kind", "review"];
+var POLYMORPHIC_FIELDS = ["type_column", "id_column", "optional", "review"];
+var CHANGE_KINDS = [
+  "database_added",
+  "database_removed",
+  "database_changed",
+  "table_added",
+  "table_removed",
+  "table_renamed",
+  "table_changed",
+  "entity_added",
+  "entity_removed",
+  "entity_changed",
+  "column_added",
+  "column_removed",
+  "column_renamed",
+  "column_changed",
+  "enum_value_added",
+  "enum_value_removed",
+  "enum_meaning_changed",
+  "relation_added",
+  "relation_removed",
+  "relation_changed",
+  "polymorphic_added",
+  "polymorphic_removed",
+  "polymorphic_changed",
+  "polymorphic_target_added",
+  "polymorphic_target_removed"
+];
+function showValue(value) {
+  if (value === void 0 || value === null) return "";
+  if (typeof value === "boolean") return value ? "yes" : "no";
+  if (Array.isArray(value)) return value.map(showValue).join(Array.isArray(value[0]) ? "; " : ", ");
+  if (typeof value === "object") return Object.entries(value).map(([k, v]) => `${k}: ${showValue(v)}`).join(", ");
+  return String(value);
+}
+var differs = (a, b) => showValue(a) !== showValue(b);
+var nameOf = (id) => id.split(".")[2];
+var dbOf = (id) => id.split(".")[0];
+var endText2 = (end, tableName2 = nameOf) => `${tableName2(end.table)}.${end.columns.join(", ")}`;
+var relationText = (r) => `${endText2(r.from)} \u2192 ${endText2(r.to)}`;
+var relationKey2 = (r) => `${r.from.table}(${r.from.columns.join(",")})\0${r.to.table}(${r.to.columns.join(",")})`;
+function fieldChanges(before, after, fields, base) {
+  return fields.filter((f) => differs(before[f], after[f])).map((field) => ({ ...base, field, before: before[field], after: after[field] }));
+}
+function matchByName(fromItems, toItems, key, renamedKey) {
+  const fromByKey = new Map(fromItems.map((x) => [key(x), x]));
+  const toKeys = new Set(toItems.map(key));
+  const used = /* @__PURE__ */ new Set();
+  const pairs = [];
+  const added = [];
+  const deferred = [];
+  for (const t of toItems) {
+    if (fromByKey.has(key(t))) {
+      pairs.push({ from: fromByKey.get(key(t)), to: t, renamed: false });
+      used.add(key(t));
+    } else deferred.push(t);
+  }
+  for (const t of deferred) {
+    const old = renamedKey(t);
+    if (old !== void 0 && fromByKey.has(old) && !toKeys.has(old) && !used.has(old)) {
+      pairs.push({ from: fromByKey.get(old), to: t, renamed: true });
+      used.add(old);
+    } else added.push(t);
+  }
+  return { pairs, added, removed: fromItems.filter((x) => !used.has(key(x))) };
+}
+function possibleRenames(removed, added) {
+  const names = (t) => new Set(columnEntries(t).map((e) => e.path));
+  const candidates = [];
+  for (const a of added) {
+    const an = names(a);
+    for (const r of removed) {
+      const rn = names(r);
+      const shared = [...an].filter((n) => rn.has(n)).length;
+      const score = shared / (an.size + rn.size - shared);
+      if (score >= POSSIBLE_RENAME_SIMILARITY) candidates.push({ added: a.id, removed: r.id, shared, total: (/* @__PURE__ */ new Set([...an, ...rn])).size, score });
+    }
+  }
+  candidates.sort((x, y) => y.score - x.score || compareStrings(x.added, y.added) || compareStrings(x.removed, y.removed));
+  const taken = /* @__PURE__ */ new Set();
+  const result = [];
+  for (const c of candidates) {
+    if (taken.has(c.added) || taken.has(c.removed)) continue;
+    taken.add(c.added).add(c.removed);
+    result.push(c);
+  }
+  return result;
+}
+function enumChanges(before, after, base) {
+  const a = before.enum ?? {};
+  const b = after.enum ?? {};
+  const out = [];
+  for (const value of Object.keys(b)) {
+    if (!(value in a)) out.push({ ...base, kind: "enum_value_added", value, after: b[value] });
+    else if (a[value] !== b[value]) out.push({ ...base, kind: "enum_meaning_changed", value, before: a[value], after: b[value] });
+  }
+  for (const value of Object.keys(a)) if (!(value in b)) out.push({ ...base, kind: "enum_value_removed", value, before: a[value] });
+  return out;
+}
+function tableChanges(from, to, base) {
+  const changes = fieldChanges(from, to, TABLE_FIELDS, { ...base, kind: "table_changed" });
+  const entities = matchByName(from.embedded ?? [], to.embedded ?? [], (e) => e.name, () => void 0);
+  for (const e of entities.added) changes.push({ ...base, kind: "entity_added", column: e.name });
+  for (const e of entities.removed) changes.push({ ...base, kind: "entity_removed", column: e.name });
+  for (const { from: a, to: b } of entities.pairs) changes.push(...fieldChanges(a, b, ENTITY_FIELDS, { ...base, kind: "entity_changed", column: a.name }));
+  const columns = /* @__PURE__ */ new Map();
+  const entries = (t) => columnEntries(t).map((e) => ({ ...e, old: e.column.renamed_from === void 0 ? void 0 : e.entity ? `${e.entity.name}.${e.column.renamed_from}` : e.column.renamed_from }));
+  const cols = matchByName(entries(from), entries(to), (e) => e.path, (e) => e.old);
+  const goneEntity = new Set(entities.removed.map((e) => e.name));
+  const newEntity = new Set(entities.added.map((e) => e.name));
+  for (const e of cols.added) if (!newEntity.has(e.entity?.name)) changes.push({ ...base, kind: "column_added", column: e.path, after: e.column.type });
+  for (const e of cols.removed) if (!goneEntity.has(e.entity?.name)) changes.push({ ...base, kind: "column_removed", column: e.path, before: e.column.type });
+  for (const { from: a, to: b, renamed } of cols.pairs) {
+    columns.set(a.path, b.path);
+    const at = { ...base, column: b.path };
+    if (renamed) changes.push({ ...at, kind: "column_renamed", before: a.path, after: b.path });
+    changes.push(...fieldChanges(a.column, b.column, COLUMN_FIELDS, { ...at, kind: "column_changed" }));
+    changes.push(...enumChanges(a.column, b.column, at));
+  }
+  return { changes, columns };
+}
+function compareChanges(a, b) {
+  return compareStrings(a.database, b.database) || compareStrings(a.table ?? "", b.table ?? "") || CHANGE_KINDS.indexOf(a.kind) - CHANGE_KINDS.indexOf(b.kind) || compareStrings(a.subject ?? "", b.subject ?? "") || compareStrings(a.column ?? "", b.column ?? "") || compareStrings(a.value ?? "", b.value ?? "") || compareStrings(a.field ?? "", b.field ?? "");
+}
+function diffModels(from, to) {
+  const changes = [];
+  const dbs = matchByName(from.databases, to.databases, (d) => d.database, () => void 0);
+  for (const d of dbs.added) changes.push({ kind: "database_added", database: d.database, table: null, after: d.engine });
+  for (const d of dbs.removed) changes.push({ kind: "database_removed", database: d.database, table: null, before: d.engine });
+  for (const { from: a, to: b } of dbs.pairs) changes.push(...fieldChanges(a, b, DATABASE_FIELDS, { kind: "database_changed", database: a.database, table: null }));
+  const tables = matchByName(from.tables, to.tables, (t) => t.id, (t) => t.renamed_from);
+  const tableMap = /* @__PURE__ */ new Map();
+  const columnMap = /* @__PURE__ */ new Map();
+  for (const { from: a, to: b, renamed } of tables.pairs) {
+    tableMap.set(a.id, b.id);
+    const base = { database: dbOf(b.id), table: b.id };
+    if (renamed) changes.push({ ...base, kind: "table_renamed", before: a.id, after: b.id });
+    const inner = tableChanges(a, b, base);
+    changes.push(...inner.changes);
+    columnMap.set(b.id, inner.columns);
+  }
+  const guesses = possibleRenames(tables.removed, tables.added);
+  const guessFor = (id, side) => guesses.find((g) => g[side] === id);
+  for (const t of tables.added) {
+    const g = guessFor(t.id, "added");
+    changes.push({ kind: "table_added", database: dbOf(t.id), table: t.id, after: t.domain, ...g ? { possibly: { table: g.removed, shared: g.shared, total: g.total } } : {} });
+  }
+  for (const t of tables.removed) {
+    const g = guessFor(t.id, "removed");
+    changes.push({ kind: "table_removed", database: dbOf(t.id), table: t.id, before: t.domain, ...g ? { possibly: { table: g.added, shared: g.shared, total: g.total } } : {} });
+  }
+  const table2 = (id) => tableMap.get(id) ?? id;
+  const column2 = (tableId2, path) => columnMap.get(table2(tableId2))?.get(path) ?? path;
+  const end = (e) => ({ table: table2(e.table), columns: e.columns.map((c) => column2(e.table, c)) });
+  const mapped = (r) => ({ ...r, from: end(r.from), to: end(r.to) });
+  const rels = matchByName(from.relations.map(mapped), to.relations, relationKey2, () => void 0);
+  const relBase = (r) => ({ database: dbOf(r.from.table), table: r.from.table, subject: relationText(r), relation: r });
+  for (const r of rels.added) changes.push({ ...relBase(r), kind: "relation_added" });
+  for (const r of rels.removed) changes.push({ ...relBase(r), kind: "relation_removed" });
+  for (const { from: a, to: b } of rels.pairs) changes.push(...fieldChanges(a, b, RELATION_FIELDS, { ...relBase(b), kind: "relation_changed" }));
+  const polyMapped = (a) => ({
+    ...a,
+    table: table2(a.table),
+    type_column: column2(a.table, a.type_column),
+    id_column: column2(a.table, a.id_column),
+    targets: a.targets.map(table2).sort(compareStrings)
+  });
+  const polys = matchByName(from.polymorphic.map(polyMapped), to.polymorphic, (a) => `${a.table}\0${a.name}`, () => void 0);
+  const polyBase = (a) => ({ database: dbOf(a.table), table: a.table, subject: `\xAB${a.name}\xBB`, association: a });
+  for (const a of polys.added) changes.push({ ...polyBase(a), kind: "polymorphic_added" });
+  for (const a of polys.removed) changes.push({ ...polyBase(a), kind: "polymorphic_removed" });
+  for (const { from: a, to: b } of polys.pairs) {
+    changes.push(...fieldChanges(a, b, POLYMORPHIC_FIELDS, { ...polyBase(b), kind: "polymorphic_changed" }));
+    for (const t of b.targets.filter((x) => !a.targets.includes(x))) changes.push({ ...polyBase(b), kind: "polymorphic_target_added", value: t });
+    for (const t of a.targets.filter((x) => !b.targets.includes(x))) changes.push({ ...polyBase(b), kind: "polymorphic_target_removed", value: t });
+  }
+  return { changes: changes.sort(compareChanges), tables: tableMap, columns: columnMap };
+}
+var FIELD_WORDS = {
+  domain: "domain",
+  kind: "kind",
+  note: "note",
+  note_source: "original note",
+  internal_note: "internal note",
+  sources: "source tables",
+  sti: "single-table inheritance",
+  partition: "partitioning",
+  unique: "unique keys",
+  generated_by: "generated by",
+  type: "type",
+  nullable: "nullable",
+  pk: "primary key",
+  pii: "personal data (PII)",
+  array: "list of documents",
+  engine: "engine",
+  tenant_schemas: "tenant schemas",
+  topology: "replicas and shards",
+  cardinality: "cardinality",
+  optional: "optional",
+  review: "review state",
+  type_column: "type column",
+  id_column: "id column"
+};
+var quoted = (value) => `\u201C${showValue(value)}\u201D`;
+var fieldWord = (c) => c.field === "unique" && c.kind === "column_changed" ? "unique" : FIELD_WORDS[c.field];
+var FLAGS = /* @__PURE__ */ new Set(["pk", "unique", "pii", "array", "optional"]);
+var fromTo = (c) => {
+  const word = fieldWord(c);
+  if (FLAGS.has(c.field) && (c.kind !== "table_changed" || c.field !== "unique")) return c.after ? `now ${word}` : `no longer ${word}`;
+  if (c.field === "nullable" && c.after !== void 0) return c.after ? "now nullable" : "now NOT NULL";
+  if (c.before === void 0) return `${word} set to ${quoted(c.after)}`;
+  if (c.after === void 0) return `${word} ${quoted(c.before)} removed`;
+  return `${word} changed from ${quoted(c.before)} to ${quoted(c.after)}`;
+};
+var guess = (c, direction) => c.possibly ? ` (possibly renamed ${direction} ${nameOf(c.possibly.table)}: ${c.possibly.shared} of ${c.possibly.total} columns match)` : "";
+var relationSummary = (r) => `${r.cardinality}${r.optional ? ", optional" : ""}, ${r.kind}`;
+function describeChange(c) {
+  const t = c.table ? nameOf(c.table) : "";
+  switch (c.kind) {
+    case "database_added":
+      return `Database ${c.database} added (${c.after})`;
+    case "database_removed":
+      return `Database ${c.database} removed`;
+    case "database_changed":
+      return `Database ${c.database}: ${fromTo(c)}`;
+    case "table_added":
+      return `Table ${t} added in domain ${c.after}${guess(c, "from")}`;
+    case "table_removed":
+      return `Table ${t} removed${guess(c, "to")}`;
+    case "table_renamed":
+      return `Table renamed from ${c.before} to ${c.after}`;
+    case "table_changed":
+      return `Table ${t}: ${fromTo(c)}`;
+    case "entity_added":
+      return `Embedded document ${c.column} added`;
+    case "entity_removed":
+      return `Embedded document ${c.column} removed`;
+    case "entity_changed":
+      return `Embedded document ${c.column}: ${fromTo(c)}`;
+    case "column_added":
+      return `Column ${c.column} added (${c.after})`;
+    case "column_removed":
+      return `Column ${c.column} removed`;
+    case "column_renamed":
+      return `Column renamed from ${c.before} to ${c.after}`;
+    case "column_changed":
+      return `Column ${c.column}: ${fromTo(c)}`;
+    case "enum_value_added":
+      return `Enum ${c.column}: added value ${quoted(c.value)} (${c.after})`;
+    case "enum_value_removed":
+      return `Enum ${c.column}: removed value ${quoted(c.value)}`;
+    case "enum_meaning_changed":
+      return `Enum ${c.column}: meaning of ${quoted(c.value)} changed from ${quoted(c.before)} to ${quoted(c.after)}`;
+    case "relation_added":
+      return `Relation ${c.subject} added (${relationSummary(c.relation)})`;
+    case "relation_removed":
+      return `Relation ${c.subject} removed`;
+    case "relation_changed":
+      return `Relation ${c.subject}: ${fromTo(c)}`;
+    case "polymorphic_added":
+      return `Polymorphic ${c.subject} on ${t} added (targets: ${c.association.targets.map(nameOf).join(", ")})`;
+    case "polymorphic_removed":
+      return `Polymorphic ${c.subject} on ${t} removed`;
+    case "polymorphic_changed":
+      return `Polymorphic ${c.subject} on ${t}: ${fromTo(c)}`;
+    case "polymorphic_target_added":
+      return `Polymorphic ${c.subject} on ${t}: added target ${nameOf(c.value)}`;
+    case "polymorphic_target_removed":
+      return `Polymorphic ${c.subject} on ${t}: removed target ${nameOf(c.value)}`;
+    default:
+      throw new Error(`unknown change kind ${c.kind}`);
+  }
+}
+function changeLabel(kind) {
+  const [scope, ...rest] = kind.split("_");
+  const words = { polymorphic: "Polymorphic", entity: "Embedded document", enum: "Enum" };
+  return `${words[scope] ?? scope[0].toUpperCase() + scope.slice(1)} ${rest.join(" ")}`;
+}
+function summarize(changes) {
+  const count2 = (kind) => changes.filter((c) => c.kind === kind).length;
+  const distinct = (kinds, key) => new Set(changes.filter((c) => kinds.some((k) => c.kind.startsWith(k))).map(key)).size;
+  return {
+    tablesAdded: count2("table_added"),
+    tablesRemoved: count2("table_removed"),
+    tablesRenamed: count2("table_renamed"),
+    columnsChanged: distinct(["column_", "enum_", "entity_"], (c) => `${c.table}\0${c.column}`),
+    relationsChanged: distinct(["relation_", "polymorphic_"], (c) => c.relation ? relationKey2(c.relation) : `${c.table}\0${c.subject}`)
+  };
+}
+function summaryLine(s) {
+  return `+${s.tablesAdded} tables \xB7 \u2212${s.tablesRemoved} tables \xB7 ${s.tablesRenamed} renamed \xB7 ${s.columnsChanged} columns changed \xB7 ${s.relationsChanged} relations changed`;
+}
+
 // src/render/xlsx/zip.js
+import { inflateRawSync } from "node:zlib";
 var EOCD = 101010256;
 var CENTRAL = 33639248;
 var LOCAL = 67324752;
 var EOCD_SIZE = 22;
+var STORED = 0;
+var DEFLATED = 8;
+var UTF8_FLAG = 1 << 11;
 function findEocd(buf) {
   const stop = Math.max(0, buf.length - EOCD_SIZE - 65535);
   for (let i = buf.length - EOCD_SIZE; i >= stop; i--) {
@@ -172062,8 +172366,11 @@ function zipEntries(buf) {
     if (buf.readUInt32LE(localOffset) !== LOCAL) throw new Error(`bad local header at ${localOffset}`);
     entries.push({
       name: buf.toString("utf8", at + 46, at + 46 + nameLength),
+      flags: buf.readUInt16LE(at + 8),
       method: buf.readUInt16LE(at + 10),
+      crc: buf.readUInt32LE(at + 16),
       compressedSize: buf.readUInt32LE(at + 20),
+      size: buf.readUInt32LE(at + 24),
       centralOffset: at,
       localOffset,
       dataOffset: localOffset + 30 + buf.readUInt16LE(localOffset + 26) + buf.readUInt16LE(localOffset + 28)
@@ -172072,17 +172379,75 @@ function zipEntries(buf) {
   }
   return entries;
 }
+function entryData(buf, e) {
+  const raw = buf.subarray(e.dataOffset, e.dataOffset + e.compressedSize);
+  if (e.method === STORED) return raw;
+  if (e.method === DEFLATED) return inflateRawSync(raw);
+  throw new Error(`${e.name}: unsupported zip compression method ${e.method}`);
+}
+var CRC_TABLE = Array.from({ length: 256 }, (_2, n) => {
+  let c = n;
+  for (let k = 0; k < 8; k++) c = c & 1 ? 3988292384 ^ c >>> 1 : c >>> 1;
+  return c >>> 0;
+});
+function crc32(bytes) {
+  let c = 4294967295;
+  for (const b of bytes) c = CRC_TABLE[(c ^ b) & 255] ^ c >>> 8;
+  return (c ^ 4294967295) >>> 0;
+}
 var DOS_TIME = 0;
 var DOS_DATE = 1 << 5 | 1;
-function withFixedEntryTimes(buf) {
-  const out = Buffer.from(buf);
-  for (const e of zipEntries(out)) {
-    out.writeUInt16LE(DOS_TIME, e.centralOffset + 12);
-    out.writeUInt16LE(DOS_DATE, e.centralOffset + 14);
-    out.writeUInt16LE(DOS_TIME, e.localOffset + 10);
-    out.writeUInt16LE(DOS_DATE, e.localOffset + 12);
+function rebuildZip(buf, change = () => void 0) {
+  const entries = zipEntries(buf);
+  const byName = new Map(entries.map((e) => [e.name, e]));
+  const read = (name) => {
+    const e = byName.get(name);
+    return e ? entryData(buf, e).toString("utf8") : void 0;
+  };
+  const locals = [];
+  const centrals = [];
+  let offset = 0;
+  for (const e of entries) {
+    const replaced = change(e.name, read);
+    if (replaced === null) continue;
+    let fields;
+    if (replaced === void 0) {
+      fields = { flags: e.flags & UTF8_FLAG, method: e.method, crc: e.crc, size: e.size, data: buf.subarray(e.dataOffset, e.dataOffset + e.compressedSize) };
+    } else {
+      const data = Buffer.from(replaced, "utf8");
+      fields = { flags: e.flags & UTF8_FLAG, method: STORED, crc: crc32(data), size: data.length, data };
+    }
+    const name = Buffer.from(e.name, "utf8");
+    const common = Buffer.alloc(26);
+    common.writeUInt16LE(20, 0);
+    common.writeUInt16LE(fields.flags, 2);
+    common.writeUInt16LE(fields.method, 4);
+    common.writeUInt16LE(DOS_TIME, 6);
+    common.writeUInt16LE(DOS_DATE, 8);
+    common.writeUInt32LE(fields.crc, 10);
+    common.writeUInt32LE(fields.data.length, 14);
+    common.writeUInt32LE(fields.size, 18);
+    common.writeUInt16LE(name.length, 22);
+    common.writeUInt16LE(0, 24);
+    const local = Buffer.alloc(4);
+    local.writeUInt32LE(LOCAL, 0);
+    locals.push(local, common, name, fields.data);
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(CENTRAL, 0);
+    central.writeUInt16LE(20, 4);
+    common.copy(central, 6);
+    central.writeUInt32LE(offset, 42);
+    centrals.push(central, name);
+    offset += 30 + name.length + fields.data.length;
   }
-  return out;
+  const directory = Buffer.concat(centrals);
+  const eocd = Buffer.alloc(EOCD_SIZE);
+  eocd.writeUInt32LE(EOCD, 0);
+  eocd.writeUInt16LE(centrals.length / 2, 8);
+  eocd.writeUInt16LE(centrals.length / 2, 10);
+  eocd.writeUInt32LE(directory.length, 12);
+  eocd.writeUInt32LE(offset, 16);
+  return Buffer.concat([...locals, directory, eocd]);
 }
 
 // src/render/xlsx/workbook.js
@@ -172094,8 +172459,8 @@ var yesNo = (value) => value === void 0 ? "" : value ? "yes" : "no";
 var flag = (value) => value ? "yes" : "";
 var lines = (list) => (list ?? []).join("\n");
 var tableName = (id) => id.split(".")[2];
-var endText2 = (end) => `${end.table}.${end.columns.join(", ")}`;
-var link = (text2, sheet, row) => ({ text: text2, hyperlink: `#'${sheet}'!A${row}` });
+var endText3 = (end) => `${end.table}.${end.columns.join(", ")}`;
+var link = (text2, sheet, row) => ({ text: text2, hyperlink: `#'${sheet}'!A${row}`, tooltip: text2 });
 var cellText = (cell) => String(cell?.text ?? cell ?? "");
 var textWidth = (line) => [...line].reduce((n, ch) => n + (FULL_WIDTH.test(ch) ? 2 : 1), 0);
 function widthOf(header, rows, index) {
@@ -172135,8 +172500,10 @@ var SHEETS = {
   relations: "Relations",
   enums: "Enums",
   polymorphic: "Polymorphic",
-  review: "To review"
+  review: "To review",
+  changes: "Changes"
 };
+var tableRows = (model) => new Map(model.tables.map((t, i) => [t.id, i + 2]));
 function tenancyOf(model) {
   const byKey = new Map(model.databases.flatMap((db) => (db.tenant_schemas ?? []).map((t) => [`${db.database}.${t.schema}`, t])));
   return (t) => byKey.get(t.id.split(".").slice(0, 2).join(".")) ?? null;
@@ -172162,12 +172529,12 @@ function reviewQueue(model) {
 function describe2(item) {
   const f = item.fact;
   if (item.kind === "polymorphic") return `${f.table}.${f.type_column} + ${f.id_column} \u2192 \xAB${f.name}\xBB: ${f.targets.join(", ")}`;
-  return `${endText2(f.from)} \u2192 ${endText2(f.to)} (${f.cardinality}${f.optional ? ", optional" : ""})`;
+  return `${endText3(f.from)} \u2192 ${endText3(f.to)} (${f.cardinality}${f.optional ? ", optional" : ""})`;
 }
 function buildWorkbook(model) {
   const workbook = new import_exceljs.default.Workbook();
   const tenancy = tenancyOf(model);
-  const tableRow = new Map(model.tables.map((t, i) => [t.id, i + 2]));
+  const tableRow = tableRows(model);
   const tableLink = (id) => link(id, SHEETS.tables, tableRow.get(id));
   const overview2 = [];
   const groupRows = [];
@@ -172261,12 +172628,224 @@ function buildWorkbook(model) {
   );
   return workbook;
 }
+function addChangesSheet(workbook, model, changes) {
+  const tableRow = tableRows(model);
+  const tableCell = (id) => id === null ? "" : tableRow.has(id) ? link(id, SHEETS.tables, tableRow.get(id)) : id;
+  addSheet(
+    workbook,
+    SHEETS.changes,
+    [{ header: "Database" }, { header: "Table" }, { header: "Change" }, { header: "Detail", wrap: true }, { header: "Before", wrap: true }, { header: "After", wrap: true }],
+    changes.map((c) => [c.database, tableCell(c.table), changeLabel(c.kind), describeChange(c), showValue(c.before), showValue(c.after)])
+  );
+  workbook.views = [{ activeTab: workbook.worksheets.length - 1 }];
+}
 async function serializeWorkbook(workbook, { date }) {
   workbook.creator = "open-erd";
   workbook.lastModifiedBy = "open-erd";
   workbook.created = date;
   workbook.modified = date;
-  return withFixedEntryTimes(Buffer.from(await workbook.xlsx.writeBuffer()));
+  return rebuildZip(Buffer.from(await workbook.xlsx.writeBuffer()), internalLinks);
+}
+var SHEET_PART = /^xl\/worksheets\/(sheet\d+\.xml)$/;
+var SHEET_RELS_PART = /^xl\/worksheets\/_rels\/(sheet\d+\.xml)\.rels$/;
+var RELATIONSHIP = /<Relationship ([^>]*?)\/>/g;
+var HYPERLINK = /<hyperlink ([^>]*?)\/>/g;
+var attributes = (text2) => Object.fromEntries([...text2.matchAll(/([\w:]+)="([^"]*)"/g)].map((m) => [m[1], m[2]]));
+var isInternal = (rel) => rel.TargetMode === "External" && rel.Target.startsWith("#");
+function internalTargets(relsXml) {
+  const targets = /* @__PURE__ */ new Map();
+  for (const m of (relsXml ?? "").matchAll(RELATIONSHIP)) {
+    const rel = attributes(m[1]);
+    if (isInternal(rel)) targets.set(rel.Id, rel.Target.slice(1));
+  }
+  return targets;
+}
+function internalLinks(name, read) {
+  const sheet = SHEET_PART.exec(name);
+  if (sheet) {
+    const targets = internalTargets(read(`xl/worksheets/_rels/${sheet[1]}.rels`));
+    if (targets.size === 0) return void 0;
+    return read(name).replace(HYPERLINK, (whole, attrs) => {
+      const a = attributes(attrs);
+      const target = targets.get(a["r:id"]);
+      if (target === void 0) return whole;
+      return `<hyperlink ref="${a.ref}" location="${target}"${a.tooltip === void 0 ? "" : ` display="${a.tooltip}"`}/>`;
+    });
+  }
+  if (SHEET_RELS_PART.test(name)) {
+    const xml = read(name);
+    if (internalTargets(xml).size === 0) return void 0;
+    const kept = xml.replace(RELATIONSHIP, (whole, attrs) => isInternal(attributes(attrs)) ? "" : whole);
+    return kept.includes("<Relationship ") ? kept : null;
+  }
+  return void 0;
+}
+
+// src/layout/layout-file.js
+var LAYOUT_FILE = "layout.json";
+var LAYOUT_SCHEMA_VERSION = 1;
+var NODE_FIELDS = ["x", "y", "w", "h"];
+function isObject2(v) {
+  return v !== null && typeof v === "object" && !Array.isArray(v);
+}
+function parseLayout(text2) {
+  let data;
+  try {
+    data = JSON.parse(text2);
+  } catch (e) {
+    throw new Error(`${LAYOUT_FILE}: invalid JSON: ${e.message}`);
+  }
+  const fail = (path, message) => {
+    throw new Error(`${LAYOUT_FILE}: ${path}: ${message}`);
+  };
+  if (!isObject2(data)) fail("(root)", "must be an object");
+  if (data.schema_version !== LAYOUT_SCHEMA_VERSION) fail("schema_version", `must be ${LAYOUT_SCHEMA_VERSION}`);
+  if (!isObject2(data.colors)) fail("colors", "must be an object");
+  for (const [cluster, index] of Object.entries(data.colors)) {
+    if (!Number.isInteger(index) || index < 0) fail(`colors["${cluster}"]`, "must be a non-negative integer");
+  }
+  if (!isObject2(data.views)) fail("views", "must be an object");
+  for (const [view, body] of Object.entries(data.views)) {
+    if (!isObject2(body) || !isObject2(body.clusters)) fail(`views.${view}.clusters`, "must be an object");
+    for (const [cluster, nodes] of Object.entries(body.clusters)) {
+      if (!isObject2(nodes)) fail(`views.${view}.clusters["${cluster}"]`, "must be an object");
+      for (const [id, node] of Object.entries(nodes)) {
+        const path = `views.${view}.clusters["${cluster}"]["${id}"]`;
+        if (!isObject2(node)) fail(path, "must be an object");
+        for (const field of NODE_FIELDS) {
+          if (!Number.isInteger(node[field])) fail(`${path}.${field}`, "must be an integer");
+        }
+        if (node.w <= 0 || node.h <= 0) fail(path, "w and h must be positive");
+      }
+    }
+  }
+  return data;
+}
+function sortedEntries(obj2) {
+  return Object.entries(obj2).sort(([a], [b]) => compareStrings(a, b));
+}
+function serializeLayout(layout) {
+  const node = (n) => `{ ${NODE_FIELDS.map((f) => `"${f}": ${n[f]}`).join(", ")} }`;
+  const block = (entries, indent, render) => entries.length === 0 ? "{}" : `{
+${entries.map(([k, v]) => `${indent}  ${JSON.stringify(k)}: ${render(v)}`).join(",\n")}
+${indent}}`;
+  const views = block(
+    sortedEntries(layout.views),
+    "  ",
+    (view) => block(
+      [["clusters", view.clusters]],
+      "    ",
+      (clusters) => block(sortedEntries(clusters), "      ", (nodes) => block(sortedEntries(nodes), "        ", node))
+    )
+  );
+  const colors = block(sortedEntries(layout.colors), "  ", String);
+  return `{
+  "schema_version": ${LAYOUT_SCHEMA_VERSION},
+  "colors": ${colors},
+  "views": ${views}
+}
+`;
+}
+
+// src/diff/union.js
+var TABLE_CONTENT = /^(table_changed|entity_|column_|enum_)/;
+var withoutRename = ({ renamed_from, ...rest }) => rest;
+var columnWithoutRename = (c) => c.renamed_from === void 0 ? c : withoutRename(c);
+function withRemoved(to, from, changes) {
+  const lost = changes.filter((c) => c.table === to.id && (c.kind === "column_removed" || c.kind === "entity_removed"));
+  const table2 = { ...withoutRename(to), columns: to.columns.map(columnWithoutRename) };
+  if (to.embedded) table2.embedded = to.embedded.map((e) => ({ ...e, columns: e.columns.map(columnWithoutRename) }));
+  for (const c of lost) {
+    const [entityName, name] = c.column.includes(".") ? c.column.split(".") : [null, c.column];
+    if (c.kind === "entity_removed") {
+      table2.embedded = [...table2.embedded ?? [], from.embedded.find((e) => e.name === c.column)];
+    } else if (!entityName) {
+      table2.columns = [...table2.columns, from.columns.find((col) => col.name === name)];
+    } else {
+      const old = from.embedded.find((e) => e.name === entityName).columns.find((col) => col.name === name);
+      table2.embedded = table2.embedded.map((e) => e.name === entityName ? { ...e, columns: [...e.columns, old] } : e);
+    }
+  }
+  return table2;
+}
+function unionModel(from, to, result) {
+  const old = new Map([...result.tables].map(([a, b]) => [b, a]));
+  const fromById = new Map(from.tables.map((t) => [t.id, t]));
+  const tables = to.tables.map((t) => old.has(t.id) ? withRemoved(t, fromById.get(old.get(t.id)), result.changes) : withoutRename(t));
+  for (const t of from.tables) if (!result.tables.has(t.id)) tables.push(withoutRename(t));
+  const removed = (kind) => result.changes.filter((c) => c.kind === kind);
+  const dbs = new Set(to.databases.map((d) => d.database));
+  return {
+    config: to.config,
+    databases: [...to.databases, ...from.databases.filter((d) => !dbs.has(d.database))].sort((a, b) => compareStrings(a.database, b.database)),
+    tables: tables.sort((a, b) => compareStrings(a.id, b.id)),
+    relations: [...to.relations, ...removed("relation_removed").map((c) => c.relation)].sort((a, b) => compareStrings(relationId(a), relationId(b))),
+    polymorphic: [...to.polymorphic, ...removed("polymorphic_removed").map((c) => c.association)].sort(
+      (a, b) => compareStrings(a.table, b.table) || compareStrings(a.name, b.name)
+    )
+  };
+}
+function mergeLayouts(fromLayout, toLayout) {
+  const views = {};
+  for (const layout of [fromLayout, toLayout]) {
+    for (const [name, view] of Object.entries(layout?.views ?? {})) {
+      views[name] ??= { clusters: {} };
+      for (const [slot, members] of Object.entries(view.clusters)) {
+        views[name].clusters[slot] = { ...views[name].clusters[slot], ...members };
+      }
+    }
+  }
+  return { schema_version: LAYOUT_SCHEMA_VERSION, colors: { ...fromLayout?.colors, ...toLayout?.colors }, views };
+}
+var push = (map, key, value) => {
+  if (!map.has(key)) map.set(key, []);
+  map.get(key).push(value);
+};
+function diffMarks(union, changes) {
+  const nodes = /* @__PURE__ */ new Map();
+  const columns = /* @__PURE__ */ new Map();
+  const links = /* @__PURE__ */ new Map();
+  const sentences = { nodes: /* @__PURE__ */ new Map(), links: /* @__PURE__ */ new Map() };
+  const setColumn = (table2, path, status) => {
+    if (!columns.has(table2)) columns.set(table2, /* @__PURE__ */ new Map());
+    if (status !== "changed" || !columns.get(table2).has(path)) columns.get(table2).set(path, status);
+  };
+  const tablesById = new Map(union.tables.map((t) => [t.id, t]));
+  for (const c of changes) {
+    const text2 = describeChange(c);
+    if (c.kind === "table_added" || c.kind === "table_removed") nodes.set(c.table, c.kind === "table_added" ? "added" : "removed");
+    else if (c.kind === "table_renamed") nodes.set(c.table, "renamed");
+    else if (TABLE_CONTENT.test(c.kind) && !nodes.has(c.table)) nodes.set(c.table, "changed");
+    if (c.kind === "entity_added" || c.kind === "entity_removed") {
+      const entity = tablesById.get(c.table).embedded.find((e) => e.name === c.column);
+      for (const col of entity.columns) setColumn(c.table, `${c.column}.${col.name}`, c.kind === "entity_added" ? "added" : "removed");
+    } else if (c.kind.startsWith("column_") || c.kind.startsWith("enum_")) {
+      setColumn(c.table, c.column, { column_added: "added", column_removed: "removed", column_renamed: "renamed" }[c.kind] ?? "changed");
+    }
+    if (c.relation) {
+      const id = relationId(c.relation);
+      links.set(id, { relation_added: "added", relation_removed: "removed" }[c.kind] ?? "changed");
+      push(sentences.links, id, text2);
+      push(sentences.nodes, c.relation.from.table, text2);
+      if (c.relation.to.table !== c.relation.from.table) push(sentences.nodes, c.relation.to.table, text2);
+    } else if (c.association) {
+      const status = { polymorphic_added: "added", polymorphic_removed: "removed" }[c.kind] ?? "changed";
+      nodes.set(polyNodeId(c.association), status);
+      links.set(polyLinkId(c.association), status);
+      for (const id of [polyNodeId(c.association), c.table]) push(sentences.nodes, id, text2);
+      push(sentences.links, polyLinkId(c.association), text2);
+    } else if (c.table) {
+      push(sentences.nodes, c.table, text2);
+    }
+  }
+  const byCluster = /* @__PURE__ */ new Map();
+  for (const t of union.tables) push(byCluster, clusterKey(t), nodes.get(t.id));
+  for (const [key, list] of byCluster) {
+    if (list.every((s) => s === "added")) nodes.set(key, "added");
+    else if (list.every((s) => s === "removed")) nodes.set(key, "removed");
+    else if (list.some((s) => s !== void 0)) nodes.set(key, "changed");
+  }
+  return { nodes, columns, links, sentences };
 }
 
 // src/palette.js
@@ -172404,72 +172983,6 @@ async function layoutTables(boxes, links) {
 }
 function layoutGroups(frames, links, gap, aspectRatio) {
   return pack(frames, links.map((l2) => [l2.from, l2.to]), gap + 20, aspectRatio);
-}
-
-// src/layout/layout-file.js
-var LAYOUT_FILE = "layout.json";
-var LAYOUT_SCHEMA_VERSION = 1;
-var NODE_FIELDS = ["x", "y", "w", "h"];
-function isObject2(v) {
-  return v !== null && typeof v === "object" && !Array.isArray(v);
-}
-function parseLayout(text2) {
-  let data;
-  try {
-    data = JSON.parse(text2);
-  } catch (e) {
-    throw new Error(`${LAYOUT_FILE}: invalid JSON: ${e.message}`);
-  }
-  const fail = (path, message) => {
-    throw new Error(`${LAYOUT_FILE}: ${path}: ${message}`);
-  };
-  if (!isObject2(data)) fail("(root)", "must be an object");
-  if (data.schema_version !== LAYOUT_SCHEMA_VERSION) fail("schema_version", `must be ${LAYOUT_SCHEMA_VERSION}`);
-  if (!isObject2(data.colors)) fail("colors", "must be an object");
-  for (const [cluster, index] of Object.entries(data.colors)) {
-    if (!Number.isInteger(index) || index < 0) fail(`colors["${cluster}"]`, "must be a non-negative integer");
-  }
-  if (!isObject2(data.views)) fail("views", "must be an object");
-  for (const [view, body] of Object.entries(data.views)) {
-    if (!isObject2(body) || !isObject2(body.clusters)) fail(`views.${view}.clusters`, "must be an object");
-    for (const [cluster, nodes] of Object.entries(body.clusters)) {
-      if (!isObject2(nodes)) fail(`views.${view}.clusters["${cluster}"]`, "must be an object");
-      for (const [id, node] of Object.entries(nodes)) {
-        const path = `views.${view}.clusters["${cluster}"]["${id}"]`;
-        if (!isObject2(node)) fail(path, "must be an object");
-        for (const field of NODE_FIELDS) {
-          if (!Number.isInteger(node[field])) fail(`${path}.${field}`, "must be an integer");
-        }
-        if (node.w <= 0 || node.h <= 0) fail(path, "w and h must be positive");
-      }
-    }
-  }
-  return data;
-}
-function sortedEntries(obj2) {
-  return Object.entries(obj2).sort(([a], [b]) => compareStrings(a, b));
-}
-function serializeLayout(layout) {
-  const node = (n) => `{ ${NODE_FIELDS.map((f) => `"${f}": ${n[f]}`).join(", ")} }`;
-  const block = (entries, indent, render) => entries.length === 0 ? "{}" : `{
-${entries.map(([k, v]) => `${indent}  ${JSON.stringify(k)}: ${render(v)}`).join(",\n")}
-${indent}}`;
-  const views = block(
-    sortedEntries(layout.views),
-    "  ",
-    (view) => block(
-      [["clusters", view.clusters]],
-      "    ",
-      (clusters) => block(sortedEntries(clusters), "      ", (nodes) => block(sortedEntries(nodes), "        ", node))
-    )
-  );
-  const colors = block(sortedEntries(layout.colors), "  ", String);
-  return `{
-  "schema_version": ${LAYOUT_SCHEMA_VERSION},
-  "colors": ${colors},
-  "views": ${views}
-}
-`;
 }
 
 // src/layout/views.js
@@ -172645,8 +173158,8 @@ function fallbackConstraint(a, b, gap) {
     const order = compareKeys(a.key[pos], b.key[pos]);
     if (order === 0) continue;
     const [first, second] = order < 0 ? [a, b] : [b, a];
-    const push = first.ref[pos] + first[size] + gap - second.ref[pos];
-    if (!best || push < best.push) best = { axis: pos, first, second, gap, push };
+    const push2 = first.ref[pos] + first[size] + gap - second.ref[pos];
+    if (!best || push2 < best.push) best = { axis: pos, first, second, gap, push: push2 };
   }
   return best;
 }
@@ -172707,6 +173220,7 @@ function insertNextTo(boxes, id, size, anchors, gap, aspect) {
 
 // src/layout/index.js
 var sameSize = (a, b) => a.w === b.w && a.h === b.h;
+var anyOverlap = (boxes) => boxes.some((a, i) => boxes.slice(i + 1).some((b) => overlaps(a, b)));
 function mostLinked(id, placedIds, pairs) {
   const links = new Map(placedIds.map((k) => [k, 0]));
   for (const { from: a, to: b } of pairs) {
@@ -172787,14 +173301,21 @@ async function arrange(node, old, links, boxes) {
   const owner = /* @__PURE__ */ new Map();
   for (const r of results) for (const id of r.leaves.keys()) owner.set(id, r.id);
   const pairs = links.filter((l2) => owner.has(l2.from.node) && owner.has(l2.to.node)).map((l2) => ({ from: owner.get(l2.from.node), to: owner.get(l2.to.node) }));
+  const unchanged = kept.length > 0 && fresh.length === 0 && kept.every((r) => r.unchanged) && !anyOverlap(kept.map((r) => r.ref));
   let positions;
   if (kept.length === 0) {
     const children = results.map((r) => ({ id: r.id, w: r.extent.w, h: r.extent.h, origin: r.origin, extent: r.extent, leaves: r.leaves }));
     positions = await FRESH[node.strategy](children, pairs, node, links, boxes);
-  } else if (fresh.length === 0 && kept.every((r) => r.unchanged)) {
+  } else if (unchanged) {
     positions = new Map(results.map((r) => [r.id, r.origin]));
   } else {
-    const items = kept.map((r) => ({ id: r.id, key: { x: [r.ref.x, 0], y: [r.ref.y, 0] }, ref: r.ref, w: r.extent.w, h: r.extent.h }));
+    const corners = /* @__PURE__ */ new Map();
+    const items = kept.map((r) => {
+      const corner = `${r.ref.x},${r.ref.y}`;
+      const rank = corners.get(corner) ?? 0;
+      corners.set(corner, rank + 1);
+      return { id: r.id, key: { x: [r.ref.x, 0], y: [r.ref.y, rank] }, ref: r.ref, w: r.extent.w, h: r.extent.h };
+    });
     const settled = settle(items, node.gap);
     const placed = new Map(kept.map((r) => [r.id, { ...settled.get(r.id), ...r.extent }]));
     const sizes = new Map(results.map((r) => [r.id, r.extent]));
@@ -172815,7 +173336,7 @@ async function arrange(node, old, links, boxes) {
   return {
     id: node.id,
     kept: kept.length > 0,
-    unchanged: fresh.length === 0 && kept.every((r) => r.unchanged),
+    unchanged,
     ref,
     origin,
     extent: { w: frame.x + frame.w - origin.x, h: frame.y + frame.h - origin.y },
@@ -173294,7 +173815,7 @@ function markerSvg(kind, x, y, side) {
 
 // src/render/svg/viewer-bundle.json
 var viewer_bundle_default = {
-  source: '(() => {\n  // src/render/svg/viewer/radial.js\n  function radialLayout(center, rings2, gap) {\n    const diagonal = (n) => Math.hypot(n.w, n.h);\n    const corner = (n, cx, cy) => ({ x: Math.round(cx - n.w / 2), y: Math.round(cy - n.h / 2) });\n    const positions = { [center.id]: corner(center, 0, 0) };\n    let radius = 0;\n    let previous = diagonal(center);\n    for (const ring of rings2) {\n      if (ring.length === 0) continue;\n      const foot = ring.map((n) => diagonal(n) + gap);\n      const total = foot.reduce((a, b) => a + b, 0);\n      const angles = [];\n      let run = -foot[0] / 2;\n      for (const f of foot) {\n        angles.push(-Math.PI / 2 + 2 * Math.PI * (run + f / 2) / total);\n        run += f;\n      }\n      const widest = Math.max(...ring.map(diagonal));\n      let r = radius + previous / 2 + widest / 2 + gap;\n      for (let i = 0; i < ring.length; i++) {\n        for (let k = i + 1; k < ring.length; k++) {\n          const apart = Math.abs(angles[k] - angles[i]);\n          const shorter = Math.min(apart, 2 * Math.PI - apart);\n          r = Math.max(r, (foot[i] + foot[k]) / 2 / (2 * Math.sin(shorter / 2)));\n        }\n      }\n      ring.forEach((n, i) => {\n        positions[n.id] = corner(n, r * Math.cos(angles[i]), r * Math.sin(angles[i]));\n      });\n      radius = r;\n      previous = widest;\n    }\n    return positions;\n  }\n  function straightLink(a, b) {\n    const ca = [a.x + a.w / 2, a.y + a.h / 2];\n    const cb = [b.x + b.w / 2, b.y + b.h / 2];\n    const dx = cb[0] - ca[0];\n    const dy = cb[1] - ca[1];\n    const exit = (box) => Math.min(dx === 0 ? Infinity : box.w / 2 / Math.abs(dx), dy === 0 ? Infinity : box.h / 2 / Math.abs(dy));\n    const ta = exit(a);\n    const tb = exit(b);\n    return [\n      [ca[0] + dx * ta, ca[1] + dy * ta],\n      [cb[0] - dx * tb, cb[1] - dy * tb]\n    ];\n  }\n\n  // src/render/svg/viewer/index.js\n  var SVG_NS = "http://www.w3.org/2000/svg";\n  var HTML_NS = "http://www.w3.org/1999/xhtml";\n  var OVERVIEW = "overview";\n  var ALL_VIEW = "all";\n  var DOMAIN_PREFIX = "domain:";\n  var NEIGHBORHOOD = "neighborhood";\n  var TOOLBAR_HEIGHT = 44;\n  var PANEL_WIDTH = 300;\n  var PANEL_MARGIN = 12;\n  var FIT_PADDING = 24;\n  var MAX_FIT_SCALE = 1.5;\n  var MIN_SCALE = 0.03;\n  var MAX_SCALE = 4;\n  var DRAG_THRESHOLD = 4;\n  var FOCUS_MARGIN = 160;\n  var FOCUS_MAX_SCALE = 1.2;\n  var RING_GAP = 40;\n  var NEIGHBORHOOD_MARGIN = 60;\n  var SEARCH_LIMIT = 40;\n  var TIP_OFFSET = 14;\n  var svg = document.documentElement;\n  var data = JSON.parse(document.getElementById("open-erd-data").textContent);\n  function el(tag, attrs = {}, children = [], ns = HTML_NS) {\n    const e = document.createElementNS(ns, tag);\n    for (const [k, v] of Object.entries(attrs)) {\n      if (k === "text") e.textContent = v;\n      else if (k === "on") for (const [type, fn] of Object.entries(v)) e.addEventListener(type, fn);\n      else e.setAttribute(k, v);\n    }\n    for (const c of children) if (c) e.append(c);\n    return e;\n  }\n  var svgEl = (tag, attrs = {}, children = []) => el(tag, attrs, children, SVG_NS);\n  var short = (id) => data.nodes[id]?.kind === "poly" ? `\xAB${data.nodes[id].name}\xBB` : id.split(".").length === 3 ? id.split(".")[2] : id;\n  var clusterOf = (id) => data.nodes[id]?.cluster;\n  var domainView = (cluster) => DOMAIN_PREFIX + cluster;\n  var nodeIdOf = (g) => g.getAttribute("data-id") ?? g.getAttribute("data-domain");\n  function boxOf(g) {\n    const r = g.querySelector(":scope > .table-box, :scope > .db-frame") ?? g.querySelector(":scope > rect");\n    return { x: +r.getAttribute("x"), y: +r.getAttribute("y"), w: +r.getAttribute("width"), h: +r.getAttribute("height") };\n  }\n  var NODE_SELECTOR = ".table, .stub, .poly, .domain";\n  function indexView(view, offsets = /* @__PURE__ */ new Map()) {\n    const index = /* @__PURE__ */ new Map();\n    for (const g of view.querySelectorAll(NODE_SELECTOR)) {\n      const id = nodeIdOf(g);\n      const b = boxOf(g);\n      const o = offsets.get(id) ?? { dx: 0, dy: 0 };\n      index.set(id, { el: g, box: { x: b.x + o.dx, y: b.y + o.dy, w: b.w, h: b.h } });\n    }\n    return index;\n  }\n  var views = /* @__PURE__ */ new Map();\n  var indexes = /* @__PURE__ */ new Map();\n  for (const v of svg.querySelectorAll("g.view")) {\n    views.set(v.getAttribute("data-view"), v);\n    indexes.set(v.getAttribute("data-view"), indexView(v));\n  }\n  for (const t of svg.querySelectorAll(".nodes title")) t.remove();\n  function addHitPaths(root) {\n    for (const p of root.querySelectorAll(".relation-group > path.relation")) {\n      p.before(svgEl("path", { class: "relation-hit", d: p.getAttribute("d") }));\n    }\n  }\n  addHitPaths(svg);\n  var camera = svgEl("g", { class: "camera" });\n  views.values().next().value.before(camera);\n  for (const v of views.values()) camera.append(v);\n  svg.removeAttribute("viewBox");\n  svg.setAttribute("width", "100%");\n  svg.setAttribute("height", "100%");\n  svg.style.background = "#eef1f5";\n  function overlay(cls) {\n    const div = el("div", { class: `oe-ui ${cls}` });\n    const fo = svgEl("foreignObject", { x: 0, y: 0, width: 1, height: 1 }, [div]);\n    svg.append(fo);\n    return { fo, div };\n  }\n  var state = { view: OVERVIEW, hops: 1, center: null, history: [], cam: { x: 0, y: 0, s: 1 } };\n  var viewport = () => ({ w: window.innerWidth, h: window.innerHeight });\n  function applyCamera() {\n    const { x, y, s } = state.cam;\n    camera.setAttribute("transform", `translate(${x} ${y}) scale(${s})`);\n  }\n  function zoomToRect(r, maxScale) {\n    const { w, h } = viewport();\n    const panelOpen = panel.fo.style.display !== "none";\n    const area = { w: panelOpen ? w - PANEL_WIDTH - 2 * PANEL_MARGIN : w, h: h - TOOLBAR_HEIGHT };\n    const s = Math.min((area.w - 2 * FIT_PADDING) / r.w, (area.h - 2 * FIT_PADDING) / r.h, maxScale);\n    state.cam = { s, x: (area.w - r.w * s) / 2 - r.x * s, y: TOOLBAR_HEIGHT + (area.h - r.h * s) / 2 - r.y * s };\n    applyCamera();\n  }\n  function viewBounds(name) {\n    const [x, y, w, h] = views.get(name).getAttribute("data-bounds").split(" ").map(Number);\n    return { x, y, w, h };\n  }\n  function zoomAt(clientX, clientY, factor) {\n    const { x, y, s } = state.cam;\n    const next = Math.min(MAX_SCALE, Math.max(MIN_SCALE, s * factor));\n    const wx = (clientX - x) / s;\n    const wy = (clientY - y) / s;\n    state.cam = { s: next, x: clientX - wx * next, y: clientY - wy * next };\n    applyCamera();\n  }\n  var currentView = () => views.get(state.view);\n  var currentIndex = () => indexes.get(state.view);\n  function showView(name) {\n    clearSelection();\n    hideTip();\n    for (const [n, v] of views) v.style.display = n === name ? "" : "none";\n    state.view = name;\n    zoomToRect(viewBounds(name), MAX_FIT_SCALE);\n    renderToolbar();\n  }\n  function snapshot() {\n    return { view: state.view, center: state.center, hops: state.hops };\n  }\n  function navigate(name, { focus, column } = {}) {\n    if (name !== state.view) {\n      state.history.push(snapshot());\n      showView(name);\n    }\n    if (focus) focusNode(focus, column);\n  }\n  function back() {\n    const prev = state.history.pop();\n    if (!prev) return;\n    if (prev.view === NEIGHBORHOOD) buildNeighborhood(prev.center, prev.hops);\n    showView(prev.view);\n  }\n  function homeView(id) {\n    const cluster = clusterOf(id);\n    return cluster ? domainView(cluster) : null;\n  }\n  function goToNode(id, column) {\n    if (!data.nodes[id] && indexes.get(OVERVIEW).has(id)) navigate(domainView(id));\n    else if (currentIndex().has(id) && state.view !== OVERVIEW && !currentIndex().get(id).el.classList.contains("stub")) focusNode(id, column);\n    else if (homeView(id)) navigate(homeView(id), { focus: id, column });\n  }\n  function clearSelection() {\n    for (const v of views.values()) {\n      v.classList.remove("dimmed", "center-selected");\n      for (const e of v.querySelectorAll(".hl, .selected, .flow-target, .flowing, .hl-column")) {\n        e.classList.remove("hl", "selected", "flow-target", "flowing", "hl-column");\n      }\n      for (const e of v.querySelectorAll(".flow")) e.remove();\n      for (const e of v.querySelectorAll(".poly-routes")) e.style.display = "none";\n    }\n    hidePanel();\n  }\n  function relationGroups() {\n    return [...currentView().querySelectorAll(".relation-group")];\n  }\n  function selectNode(id) {\n    clearSelection();\n    const index = currentIndex();\n    const entry = index.get(id);\n    if (!entry) return;\n    const lit = /* @__PURE__ */ new Set([id]);\n    for (const g of relationGroups()) {\n      const [from, to] = [g.getAttribute("data-from"), g.getAttribute("data-to")];\n      if (from !== id && to !== id) continue;\n      g.classList.add("hl");\n      lit.add(from).add(to);\n    }\n    const poly = data.nodes[id]?.kind === "poly" ? data.nodes[id] : null;\n    if (poly) {\n      for (const routes of currentView().querySelectorAll(".poly-routes")) {\n        if (routes.getAttribute("data-poly") !== id) continue;\n        routes.style.display = "";\n        for (const p of routes.querySelectorAll(".poly-route")) lit.add(p.getAttribute("data-target"));\n      }\n    }\n    for (const n of lit) index.get(n)?.el.classList.add("hl");\n    entry.el.classList.add("selected");\n    currentView().classList.add("dimmed");\n    currentView().classList.toggle("center-selected", state.view === NEIGHBORHOOD && id === state.center);\n    showPanel(poly ? polyPanel(id, poly) : nodePanel(id));\n  }\n  function focusNode(id, column) {\n    const entry = currentIndex().get(id);\n    if (!entry) return;\n    selectNode(id);\n    if (column) {\n      for (const c of entry.el.querySelectorAll(".column")) if (c.getAttribute("data-column") === column) c.classList.add("hl-column");\n    }\n    const b = entry.box;\n    zoomToRect({ x: b.x - FOCUS_MARGIN, y: b.y - FOCUS_MARGIN, w: b.w + 2 * FOCUS_MARGIN, h: b.h + 2 * FOCUS_MARGIN }, FOCUS_MAX_SCALE);\n  }\n  function flowRelation(g) {\n    clearSelection();\n    const index = currentIndex();\n    const [from, to] = [g.getAttribute("data-from"), g.getAttribute("data-to")];\n    g.classList.add("hl", "flowing");\n    index.get(from)?.el.classList.add("hl");\n    index.get(to)?.el.classList.add("hl", "flow-target");\n    g.append(svgEl("path", { class: "flow", d: g.querySelector("path.relation").getAttribute("d") }));\n    currentView().classList.add("dimmed");\n    showPanel(relationPanel(g));\n  }\n  function adjacency() {\n    const adj = /* @__PURE__ */ new Map();\n    const link2 = (a, b) => {\n      if (a === b) return;\n      if (!adj.has(a)) adj.set(a, /* @__PURE__ */ new Set());\n      adj.get(a).add(b);\n    };\n    for (const l of data.links) {\n      link2(l.from, l.to);\n      link2(l.to, l.from);\n    }\n    return adj;\n  }\n  var ADJACENCY = adjacency();\n  var byId = (a, b) => a < b ? -1 : a > b ? 1 : 0;\n  function rings(center, hops) {\n    const seen = /* @__PURE__ */ new Set([center]);\n    const result = [];\n    let previous = [center];\n    for (let hop = 1; hop <= hops; hop++) {\n      const parent = /* @__PURE__ */ new Map();\n      previous.forEach((p, i) => {\n        for (const n of [...ADJACENCY.get(p) ?? []].sort(byId)) {\n          if (!seen.has(n) && !parent.has(n)) parent.set(n, i);\n        }\n      });\n      const ring = [...parent.keys()].sort((a, b) => parent.get(a) - parent.get(b) || byId(a, b));\n      for (const n of ring) seen.add(n);\n      result.push(ring);\n      previous = ring;\n    }\n    return result;\n  }\n  function buildNeighborhood(center, hops) {\n    views.get(NEIGHBORHOOD)?.remove();\n    const source = indexes.get(ALL_VIEW);\n    const ringIds = rings(center, hops).map((r) => r.filter((id) => source.has(id)));\n    const ids = [center, ...ringIds.flat()];\n    const outer = new Set(ringIds[1] ?? []);\n    const size = (id) => ({ id, w: source.get(id).box.w, h: source.get(id).box.h });\n    const pos = radialLayout(size(center), ringIds.map((r) => r.map(size)), RING_GAP);\n    const shown = new Set(ids);\n    const offsets = /* @__PURE__ */ new Map();\n    const nodes = svgEl("g", { class: "nodes" });\n    const boxes = /* @__PURE__ */ new Map();\n    for (const id of ids) {\n      const { el: g, box } = source.get(id);\n      const dx = pos[id].x - box.x;\n      const dy = pos[id].y - box.y;\n      offsets.set(id, { dx, dy });\n      boxes.set(id, { x: pos[id].x, y: pos[id].y, w: box.w, h: box.h });\n      const copy = g.cloneNode(true);\n      copy.classList.remove("hl", "selected", "flow-target");\n      if (outer.has(id)) copy.classList.add("hop-2");\n      nodes.append(svgEl("g", { transform: `translate(${dx} ${dy})` }, [copy]));\n    }\n    const relations = svgEl("g", { class: "relations" });\n    const line = (a, b) => {\n      const [[x12, y12], [x2, y2]] = straightLink(boxes.get(a), boxes.get(b));\n      return `M${x12} ${y12}L${x2} ${y2}`;\n    };\n    for (const l of data.links) {\n      if (l.from === l.to || !shown.has(l.from) || !shown.has(l.to)) continue;\n      const d = line(l.from, l.to);\n      relations.append(\n        svgEl("g", { class: `relation-group kind-${l.kind} review-${l.review}${outer.has(l.from) || outer.has(l.to) ? " hop-2" : ""}`, "data-id": l.id, "data-from": l.from, "data-to": l.to }, [\n          svgEl("path", { class: "relation-hit", d }),\n          svgEl("path", { class: "relation", d })\n        ])\n      );\n    }\n    for (const id of ids.filter((n) => data.nodes[n]?.kind === "poly")) {\n      const targets = data.nodes[id].targets.filter((t) => shown.has(t));\n      if (targets.length === 0) continue;\n      relations.append(\n        svgEl(\n          "g",\n          { class: "poly-routes", "data-poly": id, style: "display:none" },\n          targets.map((t) => svgEl("path", { class: "poly-route", "data-target": t, d: line(id, t) }))\n        )\n      );\n    }\n    const all = [...boxes.values()];\n    const x0 = Math.min(...all.map((b) => b.x)) - NEIGHBORHOOD_MARGIN;\n    const y0 = Math.min(...all.map((b) => b.y)) - NEIGHBORHOOD_MARGIN;\n    const x1 = Math.max(...all.map((b) => b.x + b.w)) + NEIGHBORHOOD_MARGIN;\n    const y1 = Math.max(...all.map((b) => b.y + b.h)) + NEIGHBORHOOD_MARGIN;\n    const view = svgEl(\n      "g",\n      { class: "view", "data-view": NEIGHBORHOOD, "data-bounds": `${x0} ${y0} ${x1 - x0} ${y1 - y0}`, style: "display:none" },\n      [svgEl("rect", { x: x0, y: y0, width: x1 - x0, height: y1 - y0, fill: "#ffffff" }), relations, nodes]\n    );\n    camera.append(view);\n    views.set(NEIGHBORHOOD, view);\n    indexes.set(NEIGHBORHOOD, indexView(view, offsets));\n    state.center = center;\n    state.hops = hops;\n  }\n  function openNeighborhood(id, hops = state.hops) {\n    if (!indexes.get(ALL_VIEW).has(id)) return;\n    if (state.view !== NEIGHBORHOOD) state.history.push(snapshot());\n    buildNeighborhood(id, hops);\n    showView(NEIGHBORHOOD);\n    selectNode(id);\n    zoomToRect(viewBounds(NEIGHBORHOOD), MAX_FIT_SCALE);\n  }\n  var toolbar = overlay("oe-toolbar");\n  var crumbs = el("div", { class: "oe-crumbs" });\n  var backButton = el("button", { class: "oe-btn", text: "\u2039 Back", title: "Previous view", on: { click: back } });\n  var hopButtons = [1, 2].map(\n    (n) => el("button", { class: "oe-btn", text: `${n} hop${n > 1 ? "s" : ""}`, on: { click: () => openNeighborhood(state.center, n) } })\n  );\n  var hopGroup = el("div", { class: "oe-seg" }, hopButtons);\n  var allButton = el("button", { class: "oe-btn", text: "All tables", on: { click: () => navigate(ALL_VIEW) } });\n  var searchInput = el("input", { type: "search", placeholder: "Search tables and columns", "aria-label": "Search tables and columns" });\n  var results = el("div", { class: "oe-results", style: "display:none" });\n  var modeButtons = ["Business", "Technical"].map(\n    (label) => el("button", { class: "oe-btn", text: label, on: { click: () => setBusiness(label === "Business") } })\n  );\n  toolbar.div.append(\n    backButton,\n    crumbs,\n    hopGroup,\n    allButton,\n    el("div", { class: "oe-search" }, [searchInput, results]),\n    el("div", { class: "oe-seg" }, modeButtons)\n  );\n  function setBusiness(on) {\n    svg.classList.toggle("business", on);\n    modeButtons[0].classList.toggle("on", on);\n    modeButtons[1].classList.toggle("on", !on);\n  }\n  function crumb(text, onClick) {\n    return onClick ? el("button", { class: "oe-link", text, on: { click: onClick } }) : el("span", { class: "here", text });\n  }\n  function renderToolbar() {\n    const parts = [crumb("Overview", state.view === OVERVIEW ? null : () => navigate(OVERVIEW))];\n    const cluster = state.view.startsWith(DOMAIN_PREFIX) ? state.view.slice(DOMAIN_PREFIX.length) : state.view === NEIGHBORHOOD ? clusterOf(state.center) : null;\n    if (state.view === ALL_VIEW) parts.push(crumb("All tables"));\n    if (cluster) {\n      const [db, ...domain] = cluster.split("/");\n      parts.push(crumb(db, () => showDatabase(db)));\n      parts.push(crumb(domain.join("/"), state.view === NEIGHBORHOOD ? () => navigate(domainView(cluster), { focus: state.center }) : null));\n    }\n    if (state.view === NEIGHBORHOOD) parts.push(crumb(`Neighborhood of ${short(state.center)}`));\n    crumbs.replaceChildren(...parts.flatMap((p, i) => i === 0 ? [p] : [el("span", { class: "sep", text: "\u203A" }), p]));\n    backButton.disabled = state.history.length === 0;\n    hopGroup.style.display = state.view === NEIGHBORHOOD ? "" : "none";\n    hopButtons.forEach((b, i) => b.classList.toggle("on", state.hops === i + 1));\n    allButton.classList.toggle("on", state.view === ALL_VIEW);\n    layoutOverlays();\n  }\n  function showDatabase(db) {\n    navigate(OVERVIEW);\n    for (const g of views.get(OVERVIEW).querySelectorAll(".database")) {\n      if (g.getAttribute("data-database") === db) zoomToRect(boxOf(g), MAX_FIT_SCALE);\n    }\n  }\n  function search(query) {\n    const q = query.trim().toLowerCase();\n    if (!q) return [];\n    const hits = [];\n    for (const [id, n] of Object.entries(data.nodes)) {\n      if (n.kind !== "table") continue;\n      const name = short(id).toLowerCase();\n      if (id.toLowerCase().includes(q)) hits.push({ id, rank: name.startsWith(q) ? 0 : 1 });\n      for (const c of n.columns) {\n        const cn = c.name.toLowerCase();\n        if (cn.includes(q)) hits.push({ id, column: c.name, rank: cn.startsWith(q) ? 2 : 3 });\n      }\n    }\n    return hits.sort((a, b) => a.rank - b.rank || byId(a.id, b.id) || byId(a.column ?? "", b.column ?? "")).slice(0, SEARCH_LIMIT);\n  }\n  var resultHits = [];\n  var resultItems = [];\n  var activeResult = 0;\n  function closeResults() {\n    results.style.display = "none";\n    resultHits = [];\n    resultItems = [];\n    layoutOverlays();\n  }\n  function pick(hit) {\n    closeResults();\n    searchInput.blur();\n    goToNode(hit.id, hit.column);\n  }\n  function renderResults() {\n    const hits = search(searchInput.value);\n    activeResult = 0;\n    if (!searchInput.value.trim()) return closeResults();\n    resultItems = hits.map(\n      (hit, i) => el("button", { class: `oe-result${i === 0 ? " active" : ""}`, on: { click: () => pick(hit) } }, [\n        el("div", { text: hit.column ? `${short(hit.id)}.${hit.column}` : short(hit.id) }),\n        el("div", { class: "where", text: `${hit.column ? "column" : "table"} \xB7 ${hit.id}` })\n      ])\n    );\n    results.replaceChildren(...resultItems.length > 0 ? resultItems : [el("div", { class: "oe-result", text: "No match" })]);\n    results.style.display = "";\n    resultHits = hits;\n    layoutOverlays();\n  }\n  searchInput.addEventListener("input", renderResults);\n  searchInput.addEventListener("keydown", (e) => {\n    if (e.key === "Enter" && resultHits[activeResult]) pick(resultHits[activeResult]);\n    else if ((e.key === "ArrowDown" || e.key === "ArrowUp") && resultItems.length > 0) {\n      e.preventDefault();\n      resultItems[activeResult].classList.remove("active");\n      activeResult = (activeResult + (e.key === "ArrowDown" ? 1 : resultItems.length - 1)) % resultItems.length;\n      resultItems[activeResult].classList.add("active");\n      resultItems[activeResult].scrollIntoView({ block: "nearest" });\n    } else return;\n    e.stopPropagation();\n  });\n  var panel = overlay("oe-panel");\n  panel.fo.style.display = "none";\n  function hidePanel() {\n    panel.fo.style.display = "none";\n  }\n  function showPanel(children) {\n    panel.div.replaceChildren(...children.filter(Boolean));\n    panel.fo.style.display = "";\n    layoutOverlays();\n  }\n  var link = (text, onClick) => el("button", { class: "oe-link", text, on: { click: onClick } });\n  var linkSummary = (l) => l.kind === "view_source" ? "view reads this table" : `${l.cardinality} \xB7 ${l.kind}`;\n  var evidenceList = (evidence) => evidence ? el("div", {}, [el("div", { class: "sub", text: "Evidence" }), el("ul", {}, evidence.map((e) => el("li", { text: e })))]) : null;\n  var noteLines = (n) => [\n    n.note ? el("p", { text: n.note }) : null,\n    n.internalNote ? el("p", { class: "muted", text: `Internal: ${n.internalNote}` }) : null,\n    n.noteSource ? el("p", { class: "muted", text: `Original: ${n.noteSource}` }) : null\n  ];\n  function nodePanel(id) {\n    const n = data.nodes[id];\n    if (!n) return [el("h3", { text: id })];\n    const lines = data.links.filter((l) => l.from === id || l.to === id);\n    return [\n      el("h3", { text: short(id) }),\n      el("div", { class: "sub", text: `${id} \xB7 ${n.cluster.split("/").slice(1).join("/")}${n.tableKind ? ` \xB7 ${n.tableKind.replace("_", " ")}` : ""}` }),\n      ...noteLines(n),\n      n.facts ? el("ul", {}, n.facts.map((f) => el("li", { text: f }))) : null,\n      n.sources ? el("p", {}, [el("span", { text: "Reads from " }), ...n.sources.flatMap((t, i) => [i > 0 ? el("span", { text: ", " }) : null, link(short(t), () => goToNode(t))])]) : null,\n      el("div", { class: "row" }, [\n        el("span", { text: "Neighborhood" }),\n        ...[1, 2].map((h) => el("button", { class: "oe-btn", text: `${h} hop${h > 1 ? "s" : ""}`, on: { click: () => openNeighborhood(id, h) } }))\n      ]),\n      el("div", { class: "sub", text: `${lines.length} relation${lines.length === 1 ? "" : "s"}` }),\n      el(\n        "ul",\n        {},\n        lines.map((l) => {\n          const other = l.from === id ? l.to : l.from;\n          const arrow = l.from === id ? "\u2192" : "\u2190";\n          return el("li", {}, [el("span", { text: `${arrow} ` }), link(short(other), () => goToNode(other)), el("span", { class: "where", text: ` ${linkSummary(l)}` })]);\n        })\n      )\n    ];\n  }\n  function polyPanel(id, poly) {\n    return [\n      el("h3", { text: `\xAB${poly.name}\xBB` }),\n      el("div", { class: "sub", text: `${poly.table}.${poly.typeColumn} / ${poly.idColumn}` }),\n      el("p", { text: `Polymorphic: each row points at one of ${poly.targets.length} tables. Lines show the targets in this view.` }),\n      evidenceList(poly.evidence),\n      el(\n        "ul",\n        {},\n        poly.targets.map((t) => el("li", {}, [link(t, () => navigate(homeView(t), { focus: t }))]))\n      )\n    ];\n  }\n  function relationPanel(g) {\n    const id = g.getAttribute("data-id");\n    const l = data.links.find((x) => x.id === id);\n    const [from, to] = [g.getAttribute("data-from"), g.getAttribute("data-to")];\n    return [\n      el("h3", { text: `${short(from)} \u2192 ${short(to)}` }),\n      el("div", { class: "sub", text: id }),\n      l ? el("p", { text: `${linkSummary(l)} \xB7 ${l.review}${l.via ? ` \xB7 via ${l.via}` : ""}` }) : null,\n      evidenceList(l?.evidence),\n      el("div", { class: "row" }, [link(`Go to ${short(to)}`, () => goToNode(to))])\n    ];\n  }\n  var tip = overlay("oe-tip-host");\n  tip.fo.style.display = "none";\n  tip.fo.style.pointerEvents = "none";\n  function tipLines(target) {\n    const columnEl = target.closest(".column");\n    const nodeEl = target.closest(NODE_SELECTOR);\n    if (!nodeEl) return null;\n    const id = nodeIdOf(nodeEl);\n    const n = data.nodes[id];\n    const badge = target.closest(".hub-badge");\n    if (badge) {\n      const columns = JSON.parse(badge.getAttribute("data-columns"));\n      return [el("div", {}, [el("b", { text: columns.join(", ") }), el("span", { text: ` \u2192 ${badge.getAttribute("data-target")}` })]), el("div", { class: "muted", text: "Hub reference, drawn as a badge instead of lines" })];\n    }\n    if (columnEl && n?.kind === "table") {\n      const c = n.columns.find((x) => x.name === columnEl.getAttribute("data-column"));\n      if (!c) return null;\n      const flags = [c.type, c.nullable === true ? "nullable" : c.nullable === false ? "NOT NULL" : null, c.pk ? "primary key" : null, c.unique ? "unique" : null].filter(Boolean);\n      return [\n        el("div", {}, [el("b", { text: c.name }), c.pii ? el("span", { class: "pii", text: "  PII" }) : null]),\n        el("div", { class: "muted", text: flags.join(" \xB7 ") }),\n        ...noteLines(c).map((e) => e && el("div", { class: e.className, text: e.textContent })),\n        ...c.enum ? Object.entries(c.enum).map(([v, meaning]) => el("div", {}, [el("b", { text: v }), el("span", { text: `: ${meaning}` })])) : []\n      ];\n    }\n    if (nodeEl.classList.contains("domain")) {\n      return [el("b", { text: id.split("/").slice(1).join("/") }), el("div", { class: "muted", text: `${id.split("/")[0]} \xB7 click to open the domain` })];\n    }\n    if (nodeEl.classList.contains("stub")) {\n      return [el("b", { text: id }), el("div", { class: "muted", text: "Outside this domain \xB7 click to open its domain" })];\n    }\n    if (n?.kind === "poly") {\n      return [el("b", { text: `\xAB${n.name}\xBB` }), el("div", { text: n.targets.join(", ") }), el("div", { class: "muted", text: "Click to show its targets" })];\n    }\n    return [\n      el("b", { text: id }),\n      n?.note ? el("div", { text: n.note }) : null,\n      ...(n?.facts ?? []).map((f) => el("div", { class: "muted", text: f })),\n      el("div", { class: "muted", text: "Click to highlight \xB7 double-click for its neighborhood" })\n    ];\n  }\n  function hideTip() {\n    tip.fo.style.display = "none";\n  }\n  function showTip(e) {\n    const lines = inUi(e) ? null : tipLines(e.target);\n    if (!lines) {\n      tip.fo.style.display = "none";\n      return;\n    }\n    tip.div.replaceChildren(el("div", { class: "oe-tip" }, lines.filter(Boolean)));\n    tip.fo.style.display = "";\n    const { w, h } = viewport();\n    tip.fo.setAttribute("width", 360);\n    tip.fo.setAttribute("height", h);\n    const r = tip.div.firstChild.getBoundingClientRect();\n    const x = e.clientX + TIP_OFFSET + r.width > w ? e.clientX - TIP_OFFSET - r.width : e.clientX + TIP_OFFSET;\n    const y = e.clientY + TIP_OFFSET + r.height > h ? e.clientY - TIP_OFFSET - r.height : e.clientY + TIP_OFFSET;\n    tip.fo.setAttribute("x", Math.max(0, x));\n    tip.fo.setAttribute("y", Math.max(TOOLBAR_HEIGHT, y));\n    tip.fo.setAttribute("width", Math.ceil(r.width) + 1);\n    tip.fo.setAttribute("height", Math.ceil(r.height) + 1);\n  }\n  function layoutOverlays() {\n    const { w, h } = viewport();\n    toolbar.fo.setAttribute("width", w);\n    toolbar.fo.setAttribute("height", h);\n    toolbar.fo.setAttribute("height", results.style.display === "none" ? TOOLBAR_HEIGHT : Math.ceil(TOOLBAR_HEIGHT + results.getBoundingClientRect().height + 8));\n    if (panel.fo.style.display !== "none") {\n      const room = h - TOOLBAR_HEIGHT - 2 * PANEL_MARGIN;\n      panel.fo.setAttribute("x", w - PANEL_WIDTH - PANEL_MARGIN);\n      panel.fo.setAttribute("y", TOOLBAR_HEIGHT + PANEL_MARGIN);\n      panel.fo.setAttribute("width", PANEL_WIDTH);\n      panel.div.style.maxHeight = `${room}px`;\n      panel.fo.setAttribute("height", room);\n      panel.fo.setAttribute("height", Math.ceil(panel.div.getBoundingClientRect().height) + 1);\n    }\n  }\n  var press = null;\n  var dragged = false;\n  var inUi = (e) => e.composedPath().some((n) => n.localName === "foreignObject");\n  svg.addEventListener("pointerdown", (e) => {\n    if (inUi(e) || e.button !== 0) return;\n    press = { x: e.clientX, y: e.clientY, cam: { ...state.cam }, id: e.pointerId };\n    dragged = false;\n  });\n  svg.addEventListener("pointermove", (e) => {\n    showTip(e);\n    if (!press) return;\n    const dx = e.clientX - press.x;\n    const dy = e.clientY - press.y;\n    if (!dragged && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;\n    if (!dragged) svg.setPointerCapture(press.id);\n    dragged = true;\n    state.cam = { ...press.cam, x: press.cam.x + dx, y: press.cam.y + dy };\n    applyCamera();\n  });\n  svg.addEventListener("pointerup", () => {\n    press = null;\n  });\n  svg.addEventListener("pointerleave", hideTip);\n  svg.addEventListener("click", (e) => {\n    if (inUi(e)) return;\n    if (dragged) {\n      dragged = false;\n      return;\n    }\n    closeResults();\n    const t = e.target;\n    const domain = t.closest(".domain");\n    if (domain) return navigate(domainView(domain.getAttribute("data-domain")));\n    const stub = t.closest(".stub");\n    if (stub) return navigate(homeView(stub.getAttribute("data-id")), { focus: stub.getAttribute("data-id") });\n    const node = t.closest(".table, .poly");\n    if (node) return selectNode(node.getAttribute("data-id"));\n    const relation = t.closest(".relation-group");\n    if (relation) return flowRelation(relation);\n    clearSelection();\n  });\n  svg.addEventListener("dblclick", (e) => {\n    if (inUi(e)) return;\n    const node = e.target.closest(".table, .poly");\n    if (node) openNeighborhood(node.getAttribute("data-id"));\n  });\n  svg.addEventListener(\n    "wheel",\n    (e) => {\n      if (inUi(e)) return;\n      e.preventDefault();\n      const delta = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;\n      zoomAt(e.clientX, e.clientY, Math.exp(-delta * 15e-4));\n    },\n    { passive: false }\n  );\n  document.addEventListener("keydown", (e) => {\n    if (e.key !== "Escape") return;\n    if (results.style.display !== "none") {\n      closeResults();\n      return;\n    }\n    clearSelection();\n  });\n  window.addEventListener("resize", () => {\n    layoutOverlays();\n    zoomToRect(viewBounds(state.view), MAX_FIT_SCALE);\n  });\n  svg.append(panel.fo, toolbar.fo, tip.fo);\n  setBusiness(false);\n  showView(OVERVIEW);\n})();\n'
+  source: '(() => {\n  // src/render/svg/viewer/radial.js\n  function radialLayout(center, rings2, gap) {\n    const diagonal = (n) => Math.hypot(n.w, n.h);\n    const corner = (n, cx, cy) => ({ x: Math.round(cx - n.w / 2), y: Math.round(cy - n.h / 2) });\n    const positions = { [center.id]: corner(center, 0, 0) };\n    let radius = 0;\n    let previous = diagonal(center);\n    for (const ring of rings2) {\n      if (ring.length === 0) continue;\n      const foot = ring.map((n) => diagonal(n) + gap);\n      const total = foot.reduce((a, b) => a + b, 0);\n      const angles = [];\n      let run = -foot[0] / 2;\n      for (const f of foot) {\n        angles.push(-Math.PI / 2 + 2 * Math.PI * (run + f / 2) / total);\n        run += f;\n      }\n      const widest = Math.max(...ring.map(diagonal));\n      let r = radius + previous / 2 + widest / 2 + gap;\n      for (let i = 0; i < ring.length; i++) {\n        for (let k = i + 1; k < ring.length; k++) {\n          const apart = Math.abs(angles[k] - angles[i]);\n          const shorter = Math.min(apart, 2 * Math.PI - apart);\n          r = Math.max(r, (foot[i] + foot[k]) / 2 / (2 * Math.sin(shorter / 2)));\n        }\n      }\n      ring.forEach((n, i) => {\n        positions[n.id] = corner(n, r * Math.cos(angles[i]), r * Math.sin(angles[i]));\n      });\n      radius = r;\n      previous = widest;\n    }\n    return positions;\n  }\n  function straightLink(a, b) {\n    const ca = [a.x + a.w / 2, a.y + a.h / 2];\n    const cb = [b.x + b.w / 2, b.y + b.h / 2];\n    const dx = cb[0] - ca[0];\n    const dy = cb[1] - ca[1];\n    const exit = (box) => Math.min(dx === 0 ? Infinity : box.w / 2 / Math.abs(dx), dy === 0 ? Infinity : box.h / 2 / Math.abs(dy));\n    const ta = exit(a);\n    const tb = exit(b);\n    return [\n      [ca[0] + dx * ta, ca[1] + dy * ta],\n      [cb[0] - dx * tb, cb[1] - dy * tb]\n    ];\n  }\n\n  // src/render/svg/viewer/index.js\n  var SVG_NS = "http://www.w3.org/2000/svg";\n  var HTML_NS = "http://www.w3.org/1999/xhtml";\n  var OVERVIEW = "overview";\n  var ALL_VIEW = "all";\n  var DOMAIN_PREFIX = "domain:";\n  var NEIGHBORHOOD = "neighborhood";\n  var TOOLBAR_HEIGHT = 44;\n  var PANEL_WIDTH = 300;\n  var PANEL_MARGIN = 12;\n  var FIT_PADDING = 24;\n  var MAX_FIT_SCALE = 1.5;\n  var MIN_SCALE = 0.03;\n  var MAX_SCALE = 4;\n  var DRAG_THRESHOLD = 4;\n  var FOCUS_MARGIN = 160;\n  var FOCUS_MAX_SCALE = 1.2;\n  var RING_GAP = 40;\n  var NEIGHBORHOOD_MARGIN = 60;\n  var SEARCH_LIMIT = 40;\n  var TIP_OFFSET = 14;\n  var svg = document.documentElement;\n  var data = JSON.parse(document.getElementById("open-erd-data").textContent);\n  function el(tag, attrs = {}, children = [], ns = HTML_NS) {\n    const e = document.createElementNS(ns, tag);\n    for (const [k, v] of Object.entries(attrs)) {\n      if (k === "text") e.textContent = v;\n      else if (k === "on") for (const [type, fn] of Object.entries(v)) e.addEventListener(type, fn);\n      else e.setAttribute(k, v);\n    }\n    for (const c of children) if (c) e.append(c);\n    return e;\n  }\n  var svgEl = (tag, attrs = {}, children = []) => el(tag, attrs, children, SVG_NS);\n  var short = (id) => data.nodes[id]?.kind === "poly" ? `\xAB${data.nodes[id].name}\xBB` : id.split(".").length === 3 ? id.split(".")[2] : id;\n  var clusterOf = (id) => data.nodes[id]?.cluster;\n  var domainView = (cluster) => DOMAIN_PREFIX + cluster;\n  var nodeIdOf = (g) => g.getAttribute("data-id") ?? g.getAttribute("data-domain");\n  function boxOf(g) {\n    const r = g.querySelector(":scope > .table-box, :scope > .db-frame") ?? g.querySelector(":scope > rect");\n    return { x: +r.getAttribute("x"), y: +r.getAttribute("y"), w: +r.getAttribute("width"), h: +r.getAttribute("height") };\n  }\n  var NODE_SELECTOR = ".table, .stub, .poly, .domain";\n  function indexView(view, offsets = /* @__PURE__ */ new Map()) {\n    const index = /* @__PURE__ */ new Map();\n    for (const g of view.querySelectorAll(NODE_SELECTOR)) {\n      const id = nodeIdOf(g);\n      const b = boxOf(g);\n      const o = offsets.get(id) ?? { dx: 0, dy: 0 };\n      index.set(id, { el: g, box: { x: b.x + o.dx, y: b.y + o.dy, w: b.w, h: b.h } });\n    }\n    return index;\n  }\n  var views = /* @__PURE__ */ new Map();\n  var indexes = /* @__PURE__ */ new Map();\n  for (const v of svg.querySelectorAll("g.view")) {\n    views.set(v.getAttribute("data-view"), v);\n    indexes.set(v.getAttribute("data-view"), indexView(v));\n  }\n  for (const t of svg.querySelectorAll(".nodes title")) t.remove();\n  function addHitPaths(root) {\n    for (const p of root.querySelectorAll(".relation-group > path.relation")) {\n      p.before(svgEl("path", { class: "relation-hit", d: p.getAttribute("d") }));\n    }\n  }\n  addHitPaths(svg);\n  var camera = svgEl("g", { class: "camera" });\n  views.values().next().value.before(camera);\n  for (const v of views.values()) camera.append(v);\n  svg.removeAttribute("viewBox");\n  svg.setAttribute("width", "100%");\n  svg.setAttribute("height", "100%");\n  svg.style.background = "#eef1f5";\n  function overlay(cls) {\n    const div = el("div", { class: `oe-ui ${cls}` });\n    const fo = svgEl("foreignObject", { x: 0, y: 0, width: 1, height: 1 }, [div]);\n    svg.append(fo);\n    return { fo, div };\n  }\n  var state = { view: OVERVIEW, hops: 1, center: null, history: [], cam: { x: 0, y: 0, s: 1 } };\n  var viewport = () => ({ w: window.innerWidth, h: window.innerHeight });\n  function applyCamera() {\n    const { x, y, s } = state.cam;\n    camera.setAttribute("transform", `translate(${x} ${y}) scale(${s})`);\n  }\n  function zoomToRect(r, maxScale) {\n    const { w, h } = viewport();\n    const panelOpen = panel.fo.style.display !== "none";\n    const area = { w: panelOpen ? w - PANEL_WIDTH - 2 * PANEL_MARGIN : w, h: h - TOOLBAR_HEIGHT };\n    const s = Math.min((area.w - 2 * FIT_PADDING) / r.w, (area.h - 2 * FIT_PADDING) / r.h, maxScale);\n    state.cam = { s, x: (area.w - r.w * s) / 2 - r.x * s, y: TOOLBAR_HEIGHT + (area.h - r.h * s) / 2 - r.y * s };\n    applyCamera();\n  }\n  function viewBounds(name) {\n    const [x, y, w, h] = views.get(name).getAttribute("data-bounds").split(" ").map(Number);\n    return { x, y, w, h };\n  }\n  function zoomAt(clientX, clientY, factor) {\n    const { x, y, s } = state.cam;\n    const next = Math.min(MAX_SCALE, Math.max(MIN_SCALE, s * factor));\n    const wx = (clientX - x) / s;\n    const wy = (clientY - y) / s;\n    state.cam = { s: next, x: clientX - wx * next, y: clientY - wy * next };\n    applyCamera();\n  }\n  var currentView = () => views.get(state.view);\n  var currentIndex = () => indexes.get(state.view);\n  function showView(name) {\n    clearSelection();\n    hideTip();\n    for (const [n, v] of views) v.style.display = n === name ? "" : "none";\n    state.view = name;\n    zoomToRect(viewBounds(name), MAX_FIT_SCALE);\n    renderToolbar();\n  }\n  function snapshot() {\n    return { view: state.view, center: state.center, hops: state.hops };\n  }\n  function navigate(name, { focus, column } = {}) {\n    if (name !== state.view) {\n      state.history.push(snapshot());\n      showView(name);\n    }\n    if (focus) focusNode(focus, column);\n  }\n  function back() {\n    const prev = state.history.pop();\n    if (!prev) return;\n    if (prev.view === NEIGHBORHOOD) buildNeighborhood(prev.center, prev.hops);\n    showView(prev.view);\n  }\n  function homeView(id) {\n    const cluster = clusterOf(id);\n    return cluster ? domainView(cluster) : null;\n  }\n  function goToNode(id, column) {\n    if (!data.nodes[id] && indexes.get(OVERVIEW).has(id)) navigate(domainView(id));\n    else if (currentIndex().has(id) && state.view !== OVERVIEW && !currentIndex().get(id).el.classList.contains("stub")) focusNode(id, column);\n    else if (homeView(id)) navigate(homeView(id), { focus: id, column });\n  }\n  function clearSelection() {\n    for (const v of views.values()) {\n      v.classList.remove("dimmed", "center-selected");\n      for (const e of v.querySelectorAll(".hl, .selected, .flow-target, .flowing, .hl-column")) {\n        e.classList.remove("hl", "selected", "flow-target", "flowing", "hl-column");\n      }\n      for (const e of v.querySelectorAll(".flow")) e.remove();\n      for (const e of v.querySelectorAll(".poly-routes")) e.style.display = "none";\n    }\n    hidePanel();\n  }\n  function relationGroups() {\n    return [...currentView().querySelectorAll(".relation-group")];\n  }\n  function selectNode(id) {\n    clearSelection();\n    const index = currentIndex();\n    const entry = index.get(id);\n    if (!entry) return;\n    const lit = /* @__PURE__ */ new Set([id]);\n    for (const g of relationGroups()) {\n      const [from, to] = [g.getAttribute("data-from"), g.getAttribute("data-to")];\n      if (from !== id && to !== id) continue;\n      g.classList.add("hl");\n      lit.add(from).add(to);\n    }\n    const poly = data.nodes[id]?.kind === "poly" ? data.nodes[id] : null;\n    if (poly) {\n      for (const routes of currentView().querySelectorAll(".poly-routes")) {\n        if (routes.getAttribute("data-poly") !== id) continue;\n        routes.style.display = "";\n        for (const p of routes.querySelectorAll(".poly-route")) lit.add(p.getAttribute("data-target"));\n      }\n    }\n    for (const n of lit) index.get(n)?.el.classList.add("hl");\n    entry.el.classList.add("selected");\n    currentView().classList.add("dimmed");\n    currentView().classList.toggle("center-selected", state.view === NEIGHBORHOOD && id === state.center);\n    showPanel(poly ? polyPanel(id, poly) : nodePanel(id));\n  }\n  function focusNode(id, column) {\n    const entry = currentIndex().get(id);\n    if (!entry) return;\n    selectNode(id);\n    if (column) {\n      for (const c of entry.el.querySelectorAll(".column")) if (c.getAttribute("data-column") === column) c.classList.add("hl-column");\n    }\n    const b = entry.box;\n    zoomToRect({ x: b.x - FOCUS_MARGIN, y: b.y - FOCUS_MARGIN, w: b.w + 2 * FOCUS_MARGIN, h: b.h + 2 * FOCUS_MARGIN }, FOCUS_MAX_SCALE);\n  }\n  function flowRelation(g) {\n    clearSelection();\n    const index = currentIndex();\n    const [from, to] = [g.getAttribute("data-from"), g.getAttribute("data-to")];\n    g.classList.add("hl", "flowing");\n    index.get(from)?.el.classList.add("hl");\n    index.get(to)?.el.classList.add("hl", "flow-target");\n    g.append(svgEl("path", { class: "flow", d: g.querySelector("path.relation").getAttribute("d") }));\n    currentView().classList.add("dimmed");\n    showPanel(relationPanel(g));\n  }\n  function adjacency() {\n    const adj = /* @__PURE__ */ new Map();\n    const link2 = (a, b) => {\n      if (a === b) return;\n      if (!adj.has(a)) adj.set(a, /* @__PURE__ */ new Set());\n      adj.get(a).add(b);\n    };\n    for (const l of data.links) {\n      link2(l.from, l.to);\n      link2(l.to, l.from);\n    }\n    return adj;\n  }\n  var ADJACENCY = adjacency();\n  var byId = (a, b) => a < b ? -1 : a > b ? 1 : 0;\n  function rings(center, hops) {\n    const seen = /* @__PURE__ */ new Set([center]);\n    const result = [];\n    let previous = [center];\n    for (let hop = 1; hop <= hops; hop++) {\n      const parent = /* @__PURE__ */ new Map();\n      previous.forEach((p, i) => {\n        for (const n of [...ADJACENCY.get(p) ?? []].sort(byId)) {\n          if (!seen.has(n) && !parent.has(n)) parent.set(n, i);\n        }\n      });\n      const ring = [...parent.keys()].sort((a, b) => parent.get(a) - parent.get(b) || byId(a, b));\n      for (const n of ring) seen.add(n);\n      result.push(ring);\n      previous = ring;\n    }\n    return result;\n  }\n  function buildNeighborhood(center, hops) {\n    views.get(NEIGHBORHOOD)?.remove();\n    const source = indexes.get(ALL_VIEW);\n    const ringIds = rings(center, hops).map((r) => r.filter((id) => source.has(id)));\n    const ids = [center, ...ringIds.flat()];\n    const outer = new Set(ringIds[1] ?? []);\n    const size = (id) => ({ id, w: source.get(id).box.w, h: source.get(id).box.h });\n    const pos = radialLayout(size(center), ringIds.map((r) => r.map(size)), RING_GAP);\n    const shown = new Set(ids);\n    const offsets = /* @__PURE__ */ new Map();\n    const nodes = svgEl("g", { class: "nodes" });\n    const boxes = /* @__PURE__ */ new Map();\n    for (const id of ids) {\n      const { el: g, box } = source.get(id);\n      const dx = pos[id].x - box.x;\n      const dy = pos[id].y - box.y;\n      offsets.set(id, { dx, dy });\n      boxes.set(id, { x: pos[id].x, y: pos[id].y, w: box.w, h: box.h });\n      const copy = g.cloneNode(true);\n      copy.classList.remove("hl", "selected", "flow-target");\n      if (outer.has(id)) copy.classList.add("hop-2");\n      nodes.append(svgEl("g", { transform: `translate(${dx} ${dy})` }, [copy]));\n    }\n    const relations = svgEl("g", { class: "relations" });\n    const line = (a, b) => {\n      const [[x12, y12], [x2, y2]] = straightLink(boxes.get(a), boxes.get(b));\n      return `M${x12} ${y12}L${x2} ${y2}`;\n    };\n    for (const l of data.links) {\n      if (l.from === l.to || !shown.has(l.from) || !shown.has(l.to)) continue;\n      const d = line(l.from, l.to);\n      relations.append(\n        svgEl("g", { class: `relation-group kind-${l.kind} review-${l.review}${outer.has(l.from) || outer.has(l.to) ? " hop-2" : ""}`, "data-id": l.id, "data-from": l.from, "data-to": l.to }, [\n          svgEl("path", { class: "relation-hit", d }),\n          svgEl("path", { class: "relation", d })\n        ])\n      );\n    }\n    for (const id of ids.filter((n) => data.nodes[n]?.kind === "poly")) {\n      const targets = data.nodes[id].targets.filter((t) => shown.has(t));\n      if (targets.length === 0) continue;\n      relations.append(\n        svgEl(\n          "g",\n          { class: "poly-routes", "data-poly": id, style: "display:none" },\n          targets.map((t) => svgEl("path", { class: "poly-route", "data-target": t, d: line(id, t) }))\n        )\n      );\n    }\n    const all = [...boxes.values()];\n    const x0 = Math.min(...all.map((b) => b.x)) - NEIGHBORHOOD_MARGIN;\n    const y0 = Math.min(...all.map((b) => b.y)) - NEIGHBORHOOD_MARGIN;\n    const x1 = Math.max(...all.map((b) => b.x + b.w)) + NEIGHBORHOOD_MARGIN;\n    const y1 = Math.max(...all.map((b) => b.y + b.h)) + NEIGHBORHOOD_MARGIN;\n    const view = svgEl(\n      "g",\n      { class: "view", "data-view": NEIGHBORHOOD, "data-bounds": `${x0} ${y0} ${x1 - x0} ${y1 - y0}`, style: "display:none" },\n      [svgEl("rect", { x: x0, y: y0, width: x1 - x0, height: y1 - y0, fill: "#ffffff" }), relations, nodes]\n    );\n    camera.append(view);\n    views.set(NEIGHBORHOOD, view);\n    indexes.set(NEIGHBORHOOD, indexView(view, offsets));\n    state.center = center;\n    state.hops = hops;\n  }\n  function openNeighborhood(id, hops = state.hops) {\n    if (!indexes.get(ALL_VIEW).has(id)) return;\n    if (state.view !== NEIGHBORHOOD) state.history.push(snapshot());\n    buildNeighborhood(id, hops);\n    showView(NEIGHBORHOOD);\n    selectNode(id);\n    zoomToRect(viewBounds(NEIGHBORHOOD), MAX_FIT_SCALE);\n  }\n  var toolbar = overlay("oe-toolbar");\n  var crumbs = el("div", { class: "oe-crumbs" });\n  var backButton = el("button", { class: "oe-btn", text: "\u2039 Back", title: "Previous view", on: { click: back } });\n  var hopButtons = [1, 2].map(\n    (n) => el("button", { class: "oe-btn", text: `${n} hop${n > 1 ? "s" : ""}`, on: { click: () => openNeighborhood(state.center, n) } })\n  );\n  var hopGroup = el("div", { class: "oe-seg" }, hopButtons);\n  var allButton = el("button", { class: "oe-btn", text: "All tables", on: { click: () => navigate(ALL_VIEW) } });\n  var searchInput = el("input", { type: "search", placeholder: "Search tables and columns", "aria-label": "Search tables and columns" });\n  var results = el("div", { class: "oe-results", style: "display:none" });\n  var modeButtons = ["Business", "Technical"].map(\n    (label) => el("button", { class: "oe-btn", text: label, on: { click: () => setBusiness(label === "Business") } })\n  );\n  toolbar.div.append(\n    backButton,\n    crumbs,\n    hopGroup,\n    allButton,\n    el("div", { class: "oe-search" }, [searchInput, results]),\n    el("div", { class: "oe-seg" }, modeButtons)\n  );\n  function setBusiness(on) {\n    svg.classList.toggle("business", on);\n    modeButtons[0].classList.toggle("on", on);\n    modeButtons[1].classList.toggle("on", !on);\n  }\n  function crumb(text, onClick) {\n    return onClick ? el("button", { class: "oe-link", text, on: { click: onClick } }) : el("span", { class: "here", text });\n  }\n  function renderToolbar() {\n    const parts = [crumb("Overview", state.view === OVERVIEW ? null : () => navigate(OVERVIEW))];\n    const cluster = state.view.startsWith(DOMAIN_PREFIX) ? state.view.slice(DOMAIN_PREFIX.length) : state.view === NEIGHBORHOOD ? clusterOf(state.center) : null;\n    if (state.view === ALL_VIEW) parts.push(crumb("All tables"));\n    if (cluster) {\n      const [db, ...domain] = cluster.split("/");\n      parts.push(crumb(db, () => showDatabase(db)));\n      parts.push(crumb(domain.join("/"), state.view === NEIGHBORHOOD ? () => navigate(domainView(cluster), { focus: state.center }) : null));\n    }\n    if (state.view === NEIGHBORHOOD) parts.push(crumb(`Neighborhood of ${short(state.center)}`));\n    crumbs.replaceChildren(...parts.flatMap((p, i) => i === 0 ? [p] : [el("span", { class: "sep", text: "\u203A" }), p]));\n    backButton.disabled = state.history.length === 0;\n    hopGroup.style.display = state.view === NEIGHBORHOOD ? "" : "none";\n    hopButtons.forEach((b, i) => b.classList.toggle("on", state.hops === i + 1));\n    allButton.classList.toggle("on", state.view === ALL_VIEW);\n    layoutOverlays();\n  }\n  function showDatabase(db) {\n    navigate(OVERVIEW);\n    for (const g of views.get(OVERVIEW).querySelectorAll(".database")) {\n      if (g.getAttribute("data-database") === db) zoomToRect(boxOf(g), MAX_FIT_SCALE);\n    }\n  }\n  function search(query) {\n    const q = query.trim().toLowerCase();\n    if (!q) return [];\n    const hits = [];\n    for (const [id, n] of Object.entries(data.nodes)) {\n      if (n.kind !== "table") continue;\n      const name = short(id).toLowerCase();\n      if (id.toLowerCase().includes(q)) hits.push({ id, rank: name.startsWith(q) ? 0 : 1 });\n      for (const c of n.columns) {\n        const cn = c.name.toLowerCase();\n        if (cn.includes(q)) hits.push({ id, column: c.name, rank: cn.startsWith(q) ? 2 : 3 });\n      }\n    }\n    return hits.sort((a, b) => a.rank - b.rank || byId(a.id, b.id) || byId(a.column ?? "", b.column ?? "")).slice(0, SEARCH_LIMIT);\n  }\n  var resultHits = [];\n  var resultItems = [];\n  var activeResult = 0;\n  function closeResults() {\n    results.style.display = "none";\n    resultHits = [];\n    resultItems = [];\n    layoutOverlays();\n  }\n  function pick(hit) {\n    closeResults();\n    searchInput.blur();\n    goToNode(hit.id, hit.column);\n  }\n  function renderResults() {\n    const hits = search(searchInput.value);\n    activeResult = 0;\n    if (!searchInput.value.trim()) return closeResults();\n    resultItems = hits.map(\n      (hit, i) => el("button", { class: `oe-result${i === 0 ? " active" : ""}`, on: { click: () => pick(hit) } }, [\n        el("div", { text: hit.column ? `${short(hit.id)}.${hit.column}` : short(hit.id) }),\n        el("div", { class: "where", text: `${hit.column ? "column" : "table"} \xB7 ${hit.id}` })\n      ])\n    );\n    results.replaceChildren(...resultItems.length > 0 ? resultItems : [el("div", { class: "oe-result", text: "No match" })]);\n    results.style.display = "";\n    resultHits = hits;\n    layoutOverlays();\n  }\n  searchInput.addEventListener("input", renderResults);\n  searchInput.addEventListener("keydown", (e) => {\n    if (e.key === "Enter" && resultHits[activeResult]) pick(resultHits[activeResult]);\n    else if ((e.key === "ArrowDown" || e.key === "ArrowUp") && resultItems.length > 0) {\n      e.preventDefault();\n      resultItems[activeResult].classList.remove("active");\n      activeResult = (activeResult + (e.key === "ArrowDown" ? 1 : resultItems.length - 1)) % resultItems.length;\n      resultItems[activeResult].classList.add("active");\n      resultItems[activeResult].scrollIntoView({ block: "nearest" });\n    } else return;\n    e.stopPropagation();\n  });\n  var panel = overlay("oe-panel");\n  panel.fo.style.display = "none";\n  function hidePanel() {\n    panel.fo.style.display = "none";\n  }\n  function showPanel(children) {\n    panel.div.replaceChildren(...children.filter(Boolean));\n    panel.fo.style.display = "";\n    layoutOverlays();\n  }\n  var link = (text, onClick) => el("button", { class: "oe-link", text, on: { click: onClick } });\n  var linkSummary = (l) => l.kind === "view_source" ? "view reads this table" : `${l.cardinality} \xB7 ${l.kind}`;\n  var evidenceList = (evidence) => evidence ? el("div", {}, [el("div", { class: "sub", text: "Evidence" }), el("ul", {}, evidence.map((e) => el("li", { text: e })))]) : null;\n  var noteLines = (n) => [\n    n.note ? el("p", { text: n.note }) : null,\n    n.internalNote ? el("p", { class: "muted", text: `Internal: ${n.internalNote}` }) : null,\n    n.noteSource ? el("p", { class: "muted", text: `Original: ${n.noteSource}` }) : null\n  ];\n  function nodePanel(id) {\n    const n = data.nodes[id];\n    if (!n) return [el("h3", { text: id })];\n    const lines = data.links.filter((l) => l.from === id || l.to === id);\n    return [\n      el("h3", { text: short(id) }),\n      el("div", { class: "sub", text: `${id} \xB7 ${n.cluster.split("/").slice(1).join("/")}${n.tableKind ? ` \xB7 ${n.tableKind.replace("_", " ")}` : ""}` }),\n      changeList("nodes", id),\n      ...noteLines(n),\n      n.facts ? el("ul", {}, n.facts.map((f) => el("li", { text: f }))) : null,\n      n.sources ? el("p", {}, [el("span", { text: "Reads from " }), ...n.sources.flatMap((t, i) => [i > 0 ? el("span", { text: ", " }) : null, link(short(t), () => goToNode(t))])]) : null,\n      el("div", { class: "row" }, [\n        el("span", { text: "Neighborhood" }),\n        ...[1, 2].map((h) => el("button", { class: "oe-btn", text: `${h} hop${h > 1 ? "s" : ""}`, on: { click: () => openNeighborhood(id, h) } }))\n      ]),\n      el("div", { class: "sub", text: `${lines.length} relation${lines.length === 1 ? "" : "s"}` }),\n      el(\n        "ul",\n        {},\n        lines.map((l) => {\n          const other = l.from === id ? l.to : l.from;\n          const arrow = l.from === id ? "\u2192" : "\u2190";\n          return el("li", {}, [el("span", { text: `${arrow} ` }), link(short(other), () => goToNode(other)), el("span", { class: "where", text: ` ${linkSummary(l)}` })]);\n        })\n      )\n    ];\n  }\n  function polyPanel(id, poly) {\n    return [\n      el("h3", { text: `\xAB${poly.name}\xBB` }),\n      el("div", { class: "sub", text: `${poly.table}.${poly.typeColumn} / ${poly.idColumn}` }),\n      changeList("nodes", id),\n      el("p", { text: `Polymorphic: each row points at one of ${poly.targets.length} tables. Lines show the targets in this view.` }),\n      evidenceList(poly.evidence),\n      el(\n        "ul",\n        {},\n        poly.targets.map((t) => el("li", {}, [link(t, () => navigate(homeView(t), { focus: t }))]))\n      )\n    ];\n  }\n  function relationPanel(g) {\n    const id = g.getAttribute("data-id");\n    const l = data.links.find((x) => x.id === id);\n    const [from, to] = [g.getAttribute("data-from"), g.getAttribute("data-to")];\n    return [\n      el("h3", { text: `${short(from)} \u2192 ${short(to)}` }),\n      el("div", { class: "sub", text: id }),\n      l ? el("p", { text: `${linkSummary(l)} \xB7 ${l.review}${l.via ? ` \xB7 via ${l.via}` : ""}` }) : null,\n      changeList("links", id),\n      evidenceList(l?.evidence),\n      el("div", { class: "row" }, [link(`Go to ${short(to)}`, () => goToNode(to))])\n    ];\n  }\n  function changeList(kind, id) {\n    const list = data.changes?.[kind][id];\n    if (!list) return null;\n    return el("div", { class: "oe-changes" }, [\n      el("div", { class: "sub", text: `Changes from ${data.changes.from} to ${data.changes.to}` }),\n      el("ul", {}, list.map((text) => el("li", { text })))\n    ]);\n  }\n  var tip = overlay("oe-tip-host");\n  tip.fo.style.display = "none";\n  tip.fo.style.pointerEvents = "none";\n  function tipLines(target) {\n    const columnEl = target.closest(".column");\n    const nodeEl = target.closest(NODE_SELECTOR);\n    if (!nodeEl) return null;\n    const id = nodeIdOf(nodeEl);\n    const n = data.nodes[id];\n    const badge = target.closest(".hub-badge");\n    if (badge) {\n      const columns = JSON.parse(badge.getAttribute("data-columns"));\n      return [el("div", {}, [el("b", { text: columns.join(", ") }), el("span", { text: ` \u2192 ${badge.getAttribute("data-target")}` })]), el("div", { class: "muted", text: "Hub reference, drawn as a badge instead of lines" })];\n    }\n    if (columnEl && n?.kind === "table") {\n      const c = n.columns.find((x) => x.name === columnEl.getAttribute("data-column"));\n      if (!c) return null;\n      const flags = [c.type, c.nullable === true ? "nullable" : c.nullable === false ? "NOT NULL" : null, c.pk ? "primary key" : null, c.unique ? "unique" : null].filter(Boolean);\n      return [\n        el("div", {}, [el("b", { text: c.name }), c.pii ? el("span", { class: "pii", text: "  PII" }) : null]),\n        el("div", { class: "muted", text: flags.join(" \xB7 ") }),\n        ...noteLines(c).map((e) => e && el("div", { class: e.className, text: e.textContent })),\n        ...c.enum ? Object.entries(c.enum).map(([v, meaning]) => el("div", {}, [el("b", { text: v }), el("span", { text: `: ${meaning}` })])) : []\n      ];\n    }\n    if (nodeEl.classList.contains("domain")) {\n      return [el("b", { text: id.split("/").slice(1).join("/") }), el("div", { class: "muted", text: `${id.split("/")[0]} \xB7 click to open the domain` })];\n    }\n    if (nodeEl.classList.contains("stub")) {\n      return [el("b", { text: id }), el("div", { class: "muted", text: "Outside this domain \xB7 click to open its domain" })];\n    }\n    if (n?.kind === "poly") {\n      return [el("b", { text: `\xAB${n.name}\xBB` }), el("div", { text: n.targets.join(", ") }), el("div", { class: "muted", text: "Click to show its targets" })];\n    }\n    return [\n      el("b", { text: id }),\n      n?.note ? el("div", { text: n.note }) : null,\n      ...(n?.facts ?? []).map((f) => el("div", { class: "muted", text: f })),\n      el("div", { class: "muted", text: "Click to highlight \xB7 double-click for its neighborhood" })\n    ];\n  }\n  function hideTip() {\n    tip.fo.style.display = "none";\n  }\n  function showTip(e) {\n    const lines = inUi(e) ? null : tipLines(e.target);\n    if (!lines) {\n      tip.fo.style.display = "none";\n      return;\n    }\n    tip.div.replaceChildren(el("div", { class: "oe-tip" }, lines.filter(Boolean)));\n    tip.fo.style.display = "";\n    const { w, h } = viewport();\n    tip.fo.setAttribute("width", 360);\n    tip.fo.setAttribute("height", h);\n    const r = tip.div.firstChild.getBoundingClientRect();\n    const x = e.clientX + TIP_OFFSET + r.width > w ? e.clientX - TIP_OFFSET - r.width : e.clientX + TIP_OFFSET;\n    const y = e.clientY + TIP_OFFSET + r.height > h ? e.clientY - TIP_OFFSET - r.height : e.clientY + TIP_OFFSET;\n    tip.fo.setAttribute("x", Math.max(0, x));\n    tip.fo.setAttribute("y", Math.max(TOOLBAR_HEIGHT, y));\n    tip.fo.setAttribute("width", Math.ceil(r.width) + 1);\n    tip.fo.setAttribute("height", Math.ceil(r.height) + 1);\n  }\n  function layoutOverlays() {\n    const { w, h } = viewport();\n    toolbar.fo.setAttribute("width", w);\n    toolbar.fo.setAttribute("height", h);\n    toolbar.fo.setAttribute("height", results.style.display === "none" ? TOOLBAR_HEIGHT : Math.ceil(TOOLBAR_HEIGHT + results.getBoundingClientRect().height + 8));\n    if (panel.fo.style.display !== "none") {\n      const room = h - TOOLBAR_HEIGHT - 2 * PANEL_MARGIN;\n      panel.fo.setAttribute("x", w - PANEL_WIDTH - PANEL_MARGIN);\n      panel.fo.setAttribute("y", TOOLBAR_HEIGHT + PANEL_MARGIN);\n      panel.fo.setAttribute("width", PANEL_WIDTH);\n      panel.div.style.maxHeight = `${room}px`;\n      panel.fo.setAttribute("height", room);\n      panel.fo.setAttribute("height", Math.ceil(panel.div.getBoundingClientRect().height) + 1);\n    }\n  }\n  var press = null;\n  var dragged = false;\n  var inUi = (e) => e.composedPath().some((n) => n.localName === "foreignObject");\n  svg.addEventListener("pointerdown", (e) => {\n    if (inUi(e) || e.button !== 0) return;\n    press = { x: e.clientX, y: e.clientY, cam: { ...state.cam }, id: e.pointerId };\n    dragged = false;\n  });\n  svg.addEventListener("pointermove", (e) => {\n    showTip(e);\n    if (!press) return;\n    const dx = e.clientX - press.x;\n    const dy = e.clientY - press.y;\n    if (!dragged && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;\n    if (!dragged) svg.setPointerCapture(press.id);\n    dragged = true;\n    state.cam = { ...press.cam, x: press.cam.x + dx, y: press.cam.y + dy };\n    applyCamera();\n  });\n  svg.addEventListener("pointerup", () => {\n    press = null;\n  });\n  svg.addEventListener("pointerleave", hideTip);\n  svg.addEventListener("click", (e) => {\n    if (inUi(e)) return;\n    if (dragged) {\n      dragged = false;\n      return;\n    }\n    closeResults();\n    const t = e.target;\n    const domain = t.closest(".domain");\n    if (domain) return navigate(domainView(domain.getAttribute("data-domain")));\n    const stub = t.closest(".stub");\n    if (stub) return navigate(homeView(stub.getAttribute("data-id")), { focus: stub.getAttribute("data-id") });\n    const node = t.closest(".table, .poly");\n    if (node) return selectNode(node.getAttribute("data-id"));\n    const relation = t.closest(".relation-group");\n    if (relation) return flowRelation(relation);\n    clearSelection();\n  });\n  svg.addEventListener("dblclick", (e) => {\n    if (inUi(e)) return;\n    const node = e.target.closest(".table, .poly");\n    if (node) openNeighborhood(node.getAttribute("data-id"));\n  });\n  svg.addEventListener(\n    "wheel",\n    (e) => {\n      if (inUi(e)) return;\n      e.preventDefault();\n      const delta = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;\n      zoomAt(e.clientX, e.clientY, Math.exp(-delta * 15e-4));\n    },\n    { passive: false }\n  );\n  document.addEventListener("keydown", (e) => {\n    if (e.key !== "Escape") return;\n    if (results.style.display !== "none") {\n      closeResults();\n      return;\n    }\n    clearSelection();\n  });\n  window.addEventListener("resize", () => {\n    layoutOverlays();\n    zoomToRect(viewBounds(state.view), MAX_FIT_SCALE);\n  });\n  svg.append(panel.fo, toolbar.fo, tip.fo);\n  setBusiness(false);\n  showView([...views].find(([, v]) => v.style.display !== "none")?.[0] ?? OVERVIEW);\n})();\n'
 };
 
 // src/render/svg/render.js
@@ -173302,6 +173823,14 @@ var CANVAS_MARGIN2 = 40;
 var CORNER = 6;
 var EDGE_LABEL_FONT = { size: 10, weight: 700 };
 var EDGE_LABEL_PAD = { x: 4, y: 3 };
+var BANNER_TITLE_FONT = { size: 15, weight: 700 };
+var BANNER_SUMMARY_FONT = { size: 13, weight: 400 };
+var BANNER_LEGEND_FONT = { size: 12, weight: 400 };
+var BANNER_PAD = 14;
+var BANNER_LINE = 22;
+var BANNER_GAP = 24;
+var SWATCH = 12;
+var LEGEND_GAP = 18;
 var VIEWER_STYLE = `.row-hit { fill: transparent; }
 .column:hover .row-hit { fill: #eef3fb; }
 .column.hl-column .row-hit { fill: #fff1b8; }
@@ -173352,10 +173881,39 @@ var VIEWER_STYLE = `.row-hit { fill: transparent; }
 .oe-panel li { margin: 3px 0; word-break: break-all; }
 .oe-panel p { margin: 6px 0; }
 .oe-panel .muted { color: #7a8597; }
+.oe-changes { background: #fff8eb; border: 1px solid #f3d9a4; border-radius: 6px; padding: 6px 10px; margin: 8px 0; }
+.oe-changes .sub { margin-bottom: 2px; color: #8a5a00; }
+.oe-changes li { word-break: normal; overflow-wrap: anywhere; }
 .oe-tip { background: #1f2a3d; color: #f4f6f9; border-radius: 6px; padding: 8px 10px; font-size: 12px; line-height: 1.45; max-width: 340px; display: inline-block; }
 .oe-tip b { color: #ffffff; }
 .oe-tip .muted { color: #aab4c4; }
 .oe-tip .pii { color: #ffb4a2; font-weight: 700; }`;
+var DIFF_COLORS = {
+  added: { stroke: "#2f9e44", fill: "#ebfbee" },
+  removed: { stroke: "#e03131", fill: "#fff5f5" },
+  changed: { stroke: "#f08c00", fill: "#fff4e6" },
+  renamed: { stroke: "#1c7ed6", fill: "#e7f5ff" }
+};
+var DIFF_STYLE = [
+  ...Object.entries(DIFF_COLORS).flatMap(([status, c]) => [
+    `.diff-${status} > rect:last-of-type { stroke: ${c.stroke}; stroke-width: 3; }`,
+    `.table.diff-${status} .table-box, .stub.diff-${status} .stub-box { fill: ${c.fill}; }`,
+    `.relation-group.diff-${status} .relation, .relation-group.diff-${status} .marker { stroke: ${c.stroke}; stroke-width: 2.2; }`,
+    `.column.col-${status} .row-hit { fill: ${c.fill}; }`,
+    `.col-mark.col-${status}, .legend-swatch.diff-${status} { fill: ${c.stroke}; }`
+  ]),
+  ".diff-removed > rect:last-of-type { stroke-dasharray: 6 4; }",
+  ".table.diff-removed, .stub.diff-removed, .poly.diff-removed, .domain.diff-removed { opacity: 0.7; }",
+  ".diff-removed :is(.table-title, .stub-title, .poly-title, .domain-title), .column.col-removed text { text-decoration: line-through; }",
+  ".column.col-removed .column-name { fill: #c92a2a; }",
+  ".relation-group.diff-removed .relation { stroke-dasharray: 6 4; }",
+  ".diff-mode .relation-group:not(.diff-added, .diff-removed, .diff-changed) :is(.relation, .marker) { stroke: #c3cad5; stroke-dasharray: none; }",
+  ".diff-mode .relation-group:not(.diff-added, .diff-removed, .diff-changed) .edge-label text { fill: #9aa4b5; }",
+  ".banner-box { fill: #ffffff; stroke: #94a0b2; stroke-width: 1.2; }",
+  `.banner-title { font-size: ${BANNER_TITLE_FONT.size}px; font-weight: ${BANNER_TITLE_FONT.weight}; fill: #172033; }`,
+  `.banner-summary { font-size: ${BANNER_SUMMARY_FONT.size}px; font-weight: ${BANNER_SUMMARY_FONT.weight}; fill: #2a3546; }`,
+  `.banner-legend { font-size: ${BANNER_LEGEND_FONT.size}px; font-weight: ${BANNER_LEGEND_FONT.weight}; fill: #56627a; }`
+].join("\n");
 var STYLE = `${fontFaceCss()}
 text { font-family: '${FONT_FAMILY}', sans-serif; ${TEXT_STYLE_CSS} }
 .cluster-label { font-size: ${LABEL_FONT.size}px; font-weight: ${LABEL_FONT.weight}; }
@@ -173399,11 +173957,38 @@ text { font-family: '${FONT_FAMILY}', sans-serif; ${TEXT_STYLE_CSS} }
 .fact-text { font-size: ${FACT_FONT.size}px; font-weight: ${FACT_FONT.weight}; fill: #5f6b7e; }
 .db-fact-pill { fill: #eef1f5; stroke: #c3cad5; stroke-width: 1; }
 .db-fact { font-size: ${DB_FACT_FONT.size}px; font-weight: ${DB_FACT_FONT.weight}; fill: #3d4a5e; }
+${DIFF_STYLE}
 ${VIEWER_STYLE}`;
 function escapeXml(text2) {
   return text2.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 }
 var camel = (name) => name.replace(/_(.)/g, (_2, c) => c.toUpperCase());
+var NO_MARKS = { nodes: /* @__PURE__ */ new Map(), columns: /* @__PURE__ */ new Map(), links: /* @__PURE__ */ new Map(), sentences: { nodes: /* @__PURE__ */ new Map(), links: /* @__PURE__ */ new Map() } };
+var diffClass = (marks, id) => marks.nodes.has(id) ? ` diff-${marks.nodes.get(id)}` : "";
+var linkDiffClass = (marks, id) => marks.links.has(id) ? ` diff-${marks.links.get(id)}` : "";
+var titleText = (marks, id, text2, kind = "nodes") => [text2, ...marks.sentences[kind].get(id) ?? []].join("\n");
+function diffBanner(bounds, diff) {
+  const title = `Changes from ${diff.from} to ${diff.to}`;
+  const legend = Object.keys(DIFF_COLORS).map((status) => {
+    const text2 = status[0].toUpperCase() + status.slice(1);
+    return { status, text: text2, w: SWATCH + 6 + measureText(text2, BANNER_LEGEND_FONT) };
+  });
+  const legendWidth = legend.reduce((n, l2) => n + l2.w, 0) + LEGEND_GAP * (legend.length - 1);
+  const w = Math.ceil(Math.max(measureText(title, BANNER_TITLE_FONT), measureText(diff.summary, BANNER_SUMMARY_FONT), legendWidth)) + 2 * BANNER_PAD;
+  const h = 3 * BANNER_LINE + 2 * BANNER_PAD - 8;
+  const x = bounds.x + CANVAS_MARGIN2;
+  const y = bounds.y + CANVAS_MARGIN2 - BANNER_GAP - h;
+  const line = (i) => y + BANNER_PAD + BANNER_LINE * i + BANNER_LINE / 2 - 4;
+  let lx = x + BANNER_PAD;
+  const items = legend.map((l2) => {
+    const item = `<rect class="legend-swatch diff-${l2.status}" x="${lx}" y="${line(2) - SWATCH / 2}" width="${SWATCH}" height="${SWATCH}" rx="2"/><text class="banner-legend" x="${lx + SWATCH + 6}" y="${line(2)}" dominant-baseline="central">${l2.text}</text>`;
+    lx += l2.w + LEGEND_GAP;
+    return item;
+  });
+  const svg = `<g class="diff-banner"><rect class="banner-box" x="${x}" y="${y}" width="${w}" height="${h}" rx="8"/><text class="banner-title" x="${x + BANNER_PAD}" y="${line(0)}" dominant-baseline="central">${escapeXml(title)}</text><text class="banner-summary" x="${x + BANNER_PAD}" y="${line(1)}" dominant-baseline="central">${escapeXml(diff.summary)}</text>${items.join("")}</g>`;
+  const top = y - CANVAS_MARGIN2;
+  return { svg, bounds: { x: bounds.x, y: top, w: Math.max(bounds.w, w + 2 * CANVAS_MARGIN2), h: bounds.y + bounds.h - top } };
+}
 var nodeRect = (n) => ({ id: n.id, x: n.x, y: n.y, w: n.w, h: n.h });
 function labelText(view, link2) {
   if (link2.kind === VIEW_SOURCE) return null;
@@ -173553,13 +174138,17 @@ var json = (value) => escapeXml(JSON.stringify(value));
 function headerPath(x, y, w, fill) {
   return `<path d="M${x} ${y + HEADER_HEIGHT}V${y + CORNER}Q${x} ${y} ${x + CORNER} ${y}H${x + w - CORNER}Q${x + w} ${y} ${x + w} ${y + CORNER}V${y + HEADER_HEIGHT}Z" fill="${fill}"/>`;
 }
-function tableSvg(n, colors, technical) {
+function tableSvg(n, colors, technical, marks) {
   const { x, y, w, h, box } = n;
+  const columnMarks = marks.columns.get(n.id);
   const rows = box.rows.map((r) => {
     const indent = EMBED_INSET * r.depth;
+    const status = columnMarks?.get(r.column);
+    const top = y + r.centerY - ROW_HEIGHT / 2;
     return [
-      `<g class="${technical.has(r.column) ? "column technical" : "column"}" data-column="${escapeXml(r.column)}">`,
-      `<rect class="row-hit" x="${x + indent}" y="${y + r.centerY - ROW_HEIGHT / 2}" width="${w - 2 * indent}" height="${ROW_HEIGHT}"/>`,
+      `<g class="${technical.has(r.column) ? "column technical" : "column"}${status ? ` col-${status}` : ""}" data-column="${escapeXml(r.column)}">`,
+      `<rect class="row-hit" x="${x + indent}" y="${top}" width="${w - 2 * indent}" height="${ROW_HEIGHT}"/>`,
+      status ? `<rect class="col-mark col-${status}" x="${x + indent + 1}" y="${top + 2}" width="3" height="${ROW_HEIGHT - 4}"/>` : "",
       textEl(r.pk ? "column-name pk" : "column-name", x + PADDING_X + indent, y + r.centerY, r.name),
       textEl("column-type", x + w - PADDING_X - indent, y + r.centerY, r.type, "end"),
       "</g>"
@@ -173580,7 +174169,7 @@ function tableSvg(n, colors, technical) {
   const copies = n.node.tenant ? [8, 4].map((d) => `<rect class="tenant-copy" x="${x + d}" y="${y + d}" width="${w}" height="${h}" rx="${CORNER}"/>`).join("") : "";
   const kind = n.node.table.kind ?? "table";
   return [
-    `<g class="table${kind === "table" ? "" : " is-view"}" data-id="${escapeXml(n.id)}"><title>${escapeXml(n.id)}</title>`,
+    `<g class="table${kind === "table" ? "" : " is-view"}${diffClass(marks, n.id)}" data-id="${escapeXml(n.id)}"><title>${escapeXml(titleText(marks, n.id, n.id))}</title>`,
     copies,
     `<rect class="table-box" x="${x}" y="${y}" width="${w}" height="${h}" rx="${CORNER}"/>`,
     headerPath(x, y, w, colors.header),
@@ -173596,12 +174185,12 @@ function tableSvg(n, colors, technical) {
     "</g>"
   ].join("");
 }
-function polySvg(n) {
+function polySvg(n, marks) {
   const { x, y, w, h, box } = n;
   const a = n.node.association;
   const data = ` data-id="${escapeXml(n.id)}" data-table="${escapeXml(a.table)}" data-name="${escapeXml(a.name)}" data-type-column="${escapeXml(a.type_column)}" data-id-column="${escapeXml(a.id_column)}" data-targets="${json(a.targets)}"`;
   return [
-    `<g class="poly"${data}><title>${escapeXml(`${a.table}.${a.type_column} / ${a.id_column} \u2192 ${a.targets.join(", ")}`)}</title>`,
+    `<g class="poly${diffClass(marks, n.id)}"${data}><title>${escapeXml(titleText(marks, n.id, `${a.table}.${a.type_column} / ${a.id_column} \u2192 ${a.targets.join(", ")}`))}</title>`,
     `<rect class="poly-box" x="${x}" y="${y}" width="${w}" height="${h}" rx="${CORNER}"/>`,
     `<path d="M${x} ${y + HEADER_HEIGHT}H${x + w}" stroke="#e2d6bb"/>`,
     textEl("poly-title", x + PADDING_X, y + box.title.centerY, box.title),
@@ -173609,13 +174198,13 @@ function polySvg(n) {
     "</g>"
   ].join("");
 }
-function stubSvg(n) {
+function stubSvg(n, marks) {
   const { x, y, w, h, box } = n;
-  return `<g class="stub" data-id="${escapeXml(n.id)}"><title>${escapeXml(n.id)}</title><rect class="stub-box" x="${x}" y="${y}" width="${w}" height="${h}" rx="${CORNER}"/>${textEl("stub-title", x + PADDING_X, y + box.title.centerY, box.title)}</g>`;
+  return `<g class="stub${diffClass(marks, n.id)}" data-id="${escapeXml(n.id)}"><title>${escapeXml(titleText(marks, n.id, n.id))}</title><rect class="stub-box" x="${x}" y="${y}" width="${w}" height="${h}" rx="${CORNER}"/>${textEl("stub-title", x + PADDING_X, y + box.title.centerY, box.title)}</g>`;
 }
-function domainSvg(n, colors) {
+function domainSvg(n, colors, marks) {
   const { x, y, w, h, box } = n;
-  return `<g class="domain" data-domain="${escapeXml(n.id)}"><title>${escapeXml(n.id)}</title><rect x="${x}" y="${y}" width="${w}" height="${h}" rx="10" fill="${colors.header}" stroke="${colors.stroke}"/><text class="domain-title" x="${x + PADDING_X}" y="${y + box.title.centerY}" dominant-baseline="central" fill="${colors.label}">${escapeXml(box.title.text)}</text>${textEl("domain-count", x + PADDING_X, y + box.count.centerY, box.count)}</g>`;
+  return `<g class="domain${diffClass(marks, n.id)}" data-domain="${escapeXml(n.id)}"><title>${escapeXml(n.id)}</title><rect x="${x}" y="${y}" width="${w}" height="${h}" rx="10" fill="${colors.header}" stroke="${colors.stroke}"/><text class="domain-title" x="${x + PADDING_X}" y="${y + box.title.centerY}" dominant-baseline="central" fill="${colors.label}">${escapeXml(box.title.text)}</text>${textEl("domain-count", x + PADDING_X, y + box.count.centerY, box.count)}</g>`;
 }
 function groupSvg(g, colorOf) {
   const f = g.frame;
@@ -173632,14 +174221,14 @@ function groupSvg(g, colorOf) {
   ).join("") + "</g>";
 }
 var pathData = (points) => points.map(([px, py], i) => `${i === 0 ? "M" : "L"}${px} ${py}`).join("");
-function relationSvg(r) {
+function relationSvg(r, marks) {
   const { link: link2 } = r;
   const d = pathData(r.points);
   const [first, last] = [r.points[0], r.points[r.points.length - 1]];
   const markers = r.markers.from === "none" ? "" : `<g class="marker">${markerSvg(r.markers.from, first[0], first[1], r.fromSide)}${markerSvg(r.markers.to, last[0], last[1], r.toSide)}</g>`;
   const label = r.label ? `<g class="edge-label"><rect x="${r.label.x}" y="${r.label.y}" width="${r.label.w}" height="${r.label.h}" rx="3"/><text x="${r.label.cx}" y="${r.label.cy}" dominant-baseline="central" text-anchor="middle">${escapeXml(r.label.text)}</text></g>` : "";
   const via = link2.via ? ` data-via="${escapeXml(link2.via)}"` : "";
-  return `<g class="relation-group kind-${link2.kind} review-${link2.review}" data-id="${escapeXml(link2.id)}" data-from="${escapeXml(link2.from.node)}" data-to="${escapeXml(link2.to.node)}" data-kind="${link2.kind}" data-review="${link2.review}"${via}><title>${escapeXml(link2.via ? `${link2.id} (n-n via ${link2.via})` : link2.id)}</title><path class="relation" d="${d}"/>${markers}${label}</g>`;
+  return `<g class="relation-group kind-${link2.kind} review-${link2.review}${linkDiffClass(marks, link2.id)}" data-id="${escapeXml(link2.id)}" data-from="${escapeXml(link2.from.node)}" data-to="${escapeXml(link2.to.node)}" data-kind="${link2.kind}" data-review="${link2.review}"${via}><title>${escapeXml(titleText(marks, link2.id, link2.via ? `${link2.id} (n-n via ${link2.via})` : link2.id, "links"))}</title><path class="relation" d="${d}"/>${markers}${label}</g>`;
 }
 function polyRoutesSvg(routes) {
   const byPoly = /* @__PURE__ */ new Map();
@@ -173651,28 +174240,29 @@ function polyRoutesSvg(routes) {
     ([poly, list]) => `<g class="poly-routes" data-poly="${escapeXml(poly)}" style="display:none">` + list.map((r) => `<path class="poly-route" data-target="${escapeXml(r.target)}" d="${pathData(r.points)}"/>`).join("") + "</g>"
   ).join("");
 }
-function viewSvg(scene, colorOf, visible, technical) {
+function viewSvg(scene, colorOf, visible, technical, marks, banner) {
   const { x, y, w, h } = scene.bounds;
   const nodes = scene.nodes.map((n) => {
-    if (n.kind === "table") return tableSvg(n, colorOf(n.node.cluster), technical.get(n.id));
-    if (n.kind === "poly") return polySvg(n);
-    if (n.kind === "stub") return stubSvg(n);
-    return domainSvg(n, colorOf(n.id));
+    if (n.kind === "table") return tableSvg(n, colorOf(n.node.cluster), technical.get(n.id), marks);
+    if (n.kind === "poly") return polySvg(n, marks);
+    if (n.kind === "stub") return stubSvg(n, marks);
+    return domainSvg(n, colorOf(n.id), marks);
   });
   const hidden = visible ? "" : ' style="display:none"';
   return [
     `<g class="view" data-view="${escapeXml(scene.name)}" data-bounds="${x} ${y} ${w} ${h}"${hidden}>`,
     `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="#ffffff"/>`,
     `<g class="groups">${scene.groups.map((g) => groupSvg(g, colorOf)).join("")}</g>`,
-    `<g class="relations">${scene.relations.map(relationSvg).join("")}${polyRoutesSvg(scene.polyRoutes)}</g>`,
+    `<g class="relations">${scene.relations.map((r) => relationSvg(r, marks)).join("")}${polyRoutesSvg(scene.polyRoutes)}</g>`,
     `<g class="nodes">${nodes.join("")}</g>`,
+    banner ?? "",
     "</g>"
   ].join("\n");
 }
 var VIEWER_SCRIPT = viewer_bundle_default.source;
 if (VIEWER_SCRIPT.includes("]]>")) throw new Error('viewer bundle contains "]]>" and cannot sit in a CDATA section');
 var scriptJson = (value) => JSON.stringify(value).replace(/[<>&]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
-function viewerData(model, diagram, technical = technicalColumns(model)) {
+function viewerData(model, diagram, technical = technicalColumns(model), diff = null) {
   const notes = (o) => Object.fromEntries(["note", "note_source", "internal_note"].filter((f) => o[f]).map((f) => [f === "note" ? f : camel(f), o[f]]));
   const evidenceOf = new Map([
     ...model.relations.map((r) => [relationId(r), r.evidence ?? []]),
@@ -173719,19 +174309,30 @@ function viewerData(model, diagram, technical = technicalColumns(model)) {
     ...l2.via ? { via: l2.via } : {},
     ...evidenceOf.get(l2.id)?.length > 0 ? { evidence: evidenceOf.get(l2.id) } : {}
   }));
-  return { nodes, links };
+  if (!diff) return { nodes, links };
+  const sorted = (map) => Object.fromEntries([...map].sort(([a], [b]) => compareStrings(a, b)));
+  const { sentences } = diff.marks;
+  return { nodes, links, changes: { from: diff.from, to: diff.to, summary: diff.summary, nodes: sorted(sentences.nodes), links: sorted(sentences.links) } };
 }
 function renderSvg(model, layout, options = {}) {
+  const { diff = null, ...sceneOptions } = options;
   const diagram = buildDiagram(model);
-  const scenes = viewNames(diagram).map((name) => buildScene(model, layout, name, diagram, options));
+  const marks = diff?.marks ?? NO_MARKS;
+  const visible = diff ? ALL_VIEW : OVERVIEW;
+  const scenes = viewNames(diagram).map((name) => {
+    const scene = buildScene(model, layout, name, diagram, sceneOptions);
+    if (!diff) return { scene };
+    const banner = diffBanner(scene.bounds, diff);
+    return { scene: { ...scene, bounds: banner.bounds }, banner: banner.svg };
+  });
   const colorOf = (key) => PALETTE[layout.colors[key] % PALETTE.length];
   const technical = technicalColumns(model);
-  const { x, y, w, h } = scenes.find((s) => s.name === OVERVIEW).bounds;
+  const { x, y, w, h } = scenes.find((s) => s.scene.name === visible).scene.bounds;
   return [
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="${x} ${y} ${w} ${h}">`,
+    `<svg xmlns="http://www.w3.org/2000/svg"${diff ? ' class="diff-mode"' : ""} width="${w}" height="${h}" viewBox="${x} ${y} ${w} ${h}">`,
     `<style>${STYLE}</style>`,
-    ...scenes.map((s) => viewSvg(s, colorOf, s.name === OVERVIEW, technical)),
-    `<script type="application/json" id="open-erd-data">${scriptJson(viewerData(model, diagram, technical))}</script>`,
+    ...scenes.map((s) => viewSvg(s.scene, colorOf, s.scene.name === visible, technical, marks, s.banner)),
+    `<script type="application/json" id="open-erd-data">${scriptJson(viewerData(model, diagram, technical, diff))}</script>`,
     `<script><![CDATA[
 ${VIEWER_SCRIPT}
 ]]></script>`,
@@ -173741,6 +174342,9 @@ ${VIEWER_SCRIPT}
 }
 
 // cli.js
+var WORKTREE = "WORKTREE";
+var SNAPSHOT_FILE = (path) => path === CONFIG_FILE || path === LAYOUT_FILE || /^model\/[^/]+\.yaml$/.test(path);
+var git = (workspace, ...args) => promisify(execFile)("git", ["-C", workspace, ...args], { maxBuffer: 256 * 1024 * 1024 }).then((r) => r.stdout);
 var COMMANDS = {
   validate: {
     usage: "validate --workspace <dir>",
@@ -173767,9 +174371,10 @@ var COMMANDS = {
     run: runRender
   },
   diff: {
-    usage: "diff --workspace <dir> --from <ref> --to <ref|WORKTREE>",
-    summary: "compare two snapshots, write out/diff.svg and the Changes sheet",
-    options: { workspace: { type: "string" }, from: { type: "string" }, to: { type: "string" } }
+    usage: `diff --workspace <dir> --from <ref> --to <ref|${WORKTREE}> [--profile <name>]`,
+    summary: `compare two snapshots of the workspace (git refs such as a tag or HEAD; ${WORKTREE} = the files on disk), print the changes, write out/diff.svg and out/diff.xlsx (the "to" side plus a Changes sheet; out/diff.<profile>.* with a sharing profile, applied to both sides as the "to" side declares it)`,
+    options: { workspace: { type: "string" }, from: { type: "string" }, to: { type: "string" }, profile: { type: "string" } },
+    run: runDiff
   }
 };
 function helpText() {
@@ -173847,11 +174452,11 @@ async function runLock({ workspace }) {
   return 0;
 }
 var NO_HISTORY_DATE = /* @__PURE__ */ new Date("1980-01-01T00:00:00Z");
-async function workspaceDate(workspace) {
-  const git = (...args) => promisify(execFile)("git", ["-C", workspace, ...args]).then((r) => r.stdout.trim());
+async function workspaceDate(workspace, ref = "HEAD") {
+  const run = async (...args) => (await git(workspace, ...args)).trim();
   try {
-    if (await git("rev-parse", "--show-toplevel") !== await realpath(workspace)) return NO_HISTORY_DATE;
-    return new Date(Number(await git("log", "-1", "--format=%ct")) * 1e3);
+    if (await run("rev-parse", "--show-toplevel") !== await realpath(workspace)) return NO_HISTORY_DATE;
+    return new Date(Number(await run("log", "-1", "--format=%ct", ref)) * 1e3);
   } catch {
     return NO_HISTORY_DATE;
   }
@@ -173886,6 +174491,71 @@ async function runRender({ workspace, profile }) {
   await mkdir(join(workspace, "out"), { recursive: true });
   await writeFile(`${base}.svg`, svg);
   await writeFile(`${base}.xlsx`, xlsx);
+  console.log(`wrote ${base}.svg and ${base}.xlsx${profile === void 0 ? "" : ` (profile ${profile})`}`);
+  return 0;
+}
+async function readSnapshot(workspace, ref) {
+  let files;
+  let layoutText;
+  if (ref === WORKTREE) {
+    files = await readWorkspaceFiles(workspace);
+    try {
+      layoutText = await readFile(join(workspace, LAYOUT_FILE), "utf8");
+    } catch (e) {
+      if (e.code !== "ENOENT") throw e;
+    }
+  } else {
+    let paths;
+    try {
+      paths = (await git(workspace, "ls-tree", "-r", "--name-only", ref, "--", ".")).split("\n").filter(SNAPSHOT_FILE);
+    } catch (e) {
+      throw new Error(`cannot read snapshot "${ref}" of ${workspace}: ${e.stderr?.trim() || e.message}`);
+    }
+    files = {};
+    for (const path of paths.sort(compareStrings)) {
+      const text2 = await git(workspace, "show", `${ref}:./${path}`);
+      if (path === LAYOUT_FILE) layoutText = text2;
+      else files[path] = text2;
+    }
+  }
+  const { model, errors } = parseWorkspace(files);
+  for (const e of errors) console.error(`${ref}: ${formatError(e)}`);
+  if (!model) return null;
+  return { model, layout: layoutText === void 0 ? void 0 : parseLayout(layoutText) };
+}
+async function runDiff({ workspace, from, to, profile }) {
+  if (!from || !to) {
+    console.error(`Missing --from or --to
+Usage: open-erd ${COMMANDS.diff.usage}`);
+    return 1;
+  }
+  if (from === WORKTREE) {
+    console.error(`--from must be a git ref; ${WORKTREE} is only allowed as --to`);
+    return 1;
+  }
+  if (to === "HEAD") {
+    const dirty = await git(workspace, "status", "--porcelain", "--", CONFIG_FILE, "model", LAYOUT_FILE).catch(() => "");
+    if (dirty.trim()) console.error(`warning: uncommitted changes in ${workspace} are not part of HEAD; use --to ${WORKTREE} to include them`);
+  }
+  const before = await readSnapshot(workspace, from);
+  const after = await readSnapshot(workspace, to);
+  if (!before || !after) return 1;
+  const filter = (side) => profile === void 0 ? side.model : applyProfile({ ...side.model, config: after.model.config }, profile);
+  const [fromModel, toModel] = [filter(before), filter(after)];
+  const result = diffModels(fromModel, toModel);
+  const summary = summaryLine(summarize(result.changes));
+  const union = unionModel(fromModel, toModel, result);
+  const { layout } = await computeLayout(union, mergeLayouts(before.layout, after.layout));
+  const svg = renderSvg(union, layout, { diff: { from, to, summary, marks: diffMarks(union, result.changes) } });
+  const workbook = buildWorkbook(toModel);
+  addChangesSheet(workbook, toModel, result.changes);
+  const xlsx = await serializeWorkbook(workbook, { date: await workspaceDate(workspace, to === WORKTREE ? "HEAD" : to) });
+  const base = join(workspace, "out", profile === void 0 ? "diff" : `diff.${profile}`);
+  await mkdir(join(workspace, "out"), { recursive: true });
+  await writeFile(`${base}.svg`, svg);
+  await writeFile(`${base}.xlsx`, xlsx);
+  console.log(`${from} \u2192 ${to}: ${summary}`);
+  for (const c of result.changes) console.log(`  ${c.table ?? c.database}: ${describeChange(c)}`);
   console.log(`wrote ${base}.svg and ${base}.xlsx${profile === void 0 ? "" : ` (profile ${profile})`}`);
   return 0;
 }
@@ -173924,10 +174594,6 @@ ${command.summary}`);
     console.error(`Missing --workspace
 Usage: open-erd ${command.usage}`);
     return 1;
-  }
-  if (!command.run) {
-    console.error(`open-erd ${name}: not implemented yet`);
-    return 2;
   }
   try {
     return await command.run(values);

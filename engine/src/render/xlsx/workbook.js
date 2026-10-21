@@ -3,7 +3,8 @@ import { columnEntries } from '../../model/columns.js';
 import { compareStrings } from '../../model/load.js';
 import { KIND_TRUST, REVIEW_TRUST, databaseFacts, tableFacts } from '../../layout/diagram.js';
 import { FULL_WIDTH } from '../../text/measure.js';
-import { withFixedEntryTimes } from './zip.js';
+import { changeLabel, describeChange, showValue } from '../../diff/changes.js';
+import { rebuildZip } from './zip.js';
 
 // The spreadsheet twin of the diagram: one row per fact, for readers who
 // filter and sort instead of looking at a picture, and the checklist a
@@ -21,8 +22,12 @@ const lines = (list) => (list ?? []).join('\n');
 const tableName = (id) => id.split('.')[2];
 const endText = (end) => `${end.table}.${end.columns.join(', ')}`;
 
-/** A cell that jumps to `row` of `sheet` when clicked. */
-const link = (text, sheet, row) => ({ text, hyperlink: `#'${sheet}'!A${row}` });
+/**
+ * A cell that jumps to `row` of `sheet` when clicked. exceljs writes every
+ * hyperlink as an external relationship; serializeWorkbook turns these
+ * (target starting with '#', text carried as tooltip) into in-workbook links.
+ */
+export const link = (text, sheet, row) => ({ text, hyperlink: `#'${sheet}'!A${row}`, tooltip: text });
 
 const cellText = (cell) => String(cell?.text ?? cell ?? '');
 
@@ -78,7 +83,11 @@ const SHEETS = {
   enums: 'Enums',
   polymorphic: 'Polymorphic',
   review: 'To review',
+  changes: 'Changes',
 };
+
+// Row of each table on the Tables sheet: one row per table, in model order.
+const tableRows = (model) => new Map(model.tables.map((t, i) => [t.id, i + 2]));
 
 function tenancyOf(model) {
   const byKey = new Map(model.databases.flatMap((db) => (db.tenant_schemas ?? []).map((t) => [`${db.database}.${t.schema}`, t])));
@@ -125,7 +134,7 @@ function describe(item) {
 export function buildWorkbook(model) {
   const workbook = new ExcelJS.Workbook();
   const tenancy = tenancyOf(model);
-  const tableRow = new Map(model.tables.map((t, i) => [t.id, i + 2]));
+  const tableRow = tableRows(model);
   const tableLink = (id) => link(id, SHEETS.tables, tableRow.get(id));
 
   // Overview: databases, their domains and tables as an indented list, with
@@ -232,6 +241,24 @@ export function buildWorkbook(model) {
 }
 
 /**
+ * Appends the Changes sheet of a diff to the workbook of the "to" side
+ * (`model`, as passed to buildWorkbook), one row per change in diff order,
+ * and opens the file on it. A table still present links to its Tables row;
+ * a removed table has no row to link to.
+ */
+export function addChangesSheet(workbook, model, changes) {
+  const tableRow = tableRows(model);
+  const tableCell = (id) => (id === null ? '' : tableRow.has(id) ? link(id, SHEETS.tables, tableRow.get(id)) : id);
+  addSheet(
+    workbook,
+    SHEETS.changes,
+    [{ header: 'Database' }, { header: 'Table' }, { header: 'Change' }, { header: 'Detail', wrap: true }, { header: 'Before', wrap: true }, { header: 'After', wrap: true }],
+    changes.map((c) => [c.database, tableCell(c.table), changeLabel(c.kind), describeChange(c), showValue(c.before), showValue(c.after)]),
+  );
+  workbook.views = [{ activeTab: workbook.worksheets.length - 1 }];
+}
+
+/**
  * The .xlsx bytes. `date` becomes the document's created/modified time; the
  * caller derives it from something stable (never the clock) so the same
  * workspace always gives the same bytes.
@@ -241,5 +268,50 @@ export async function serializeWorkbook(workbook, { date }) {
   workbook.lastModifiedBy = 'open-erd';
   workbook.created = date;
   workbook.modified = date;
-  return withFixedEntryTimes(Buffer.from(await workbook.xlsx.writeBuffer()));
+  return rebuildZip(Buffer.from(await workbook.xlsx.writeBuffer()), internalLinks);
+}
+
+const SHEET_PART = /^xl\/worksheets\/(sheet\d+\.xml)$/;
+const SHEET_RELS_PART = /^xl\/worksheets\/_rels\/(sheet\d+\.xml)\.rels$/;
+const RELATIONSHIP = /<Relationship ([^>]*?)\/>/g;
+const HYPERLINK = /<hyperlink ([^>]*?)\/>/g;
+const attributes = (text) => Object.fromEntries([...text.matchAll(/([\w:]+)="([^"]*)"/g)].map((m) => [m[1], m[2]]));
+const isInternal = (rel) => rel.TargetMode === 'External' && rel.Target.startsWith('#');
+
+// Internal hyperlinks of a sheet's relationships part, by relationship id.
+function internalTargets(relsXml) {
+  const targets = new Map();
+  for (const m of (relsXml ?? '').matchAll(RELATIONSHIP)) {
+    const rel = attributes(m[1]);
+    if (isInternal(rel)) targets.set(rel.Id, rel.Target.slice(1));
+  }
+  return targets;
+}
+
+/**
+ * zip rewrite turning exceljs's links to a cell of this workbook into the
+ * form OOXML defines for them: `<hyperlink ref location display/>` with no
+ * relationship. Excel follows exceljs's external "#Sheet!A1" form, but
+ * Numbers and LibreOffice treat it as a broken URL. A relationships part
+ * left without entries is dropped.
+ */
+function internalLinks(name, read) {
+  const sheet = SHEET_PART.exec(name);
+  if (sheet) {
+    const targets = internalTargets(read(`xl/worksheets/_rels/${sheet[1]}.rels`));
+    if (targets.size === 0) return undefined;
+    return read(name).replace(HYPERLINK, (whole, attrs) => {
+      const a = attributes(attrs);
+      const target = targets.get(a['r:id']);
+      if (target === undefined) return whole;
+      return `<hyperlink ref="${a.ref}" location="${target}"${a.tooltip === undefined ? '' : ` display="${a.tooltip}"`}/>`;
+    });
+  }
+  if (SHEET_RELS_PART.test(name)) {
+    const xml = read(name);
+    if (internalTargets(xml).size === 0) return undefined;
+    const kept = xml.replace(RELATIONSHIP, (whole, attrs) => (isInternal(attributes(attrs)) ? '' : whole));
+    return kept.includes('<Relationship ') ? kept : null;
+  }
+  return undefined;
 }

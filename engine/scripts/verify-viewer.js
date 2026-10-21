@@ -5,9 +5,11 @@
 // Usage: node scripts/verify-viewer.js <erd.svg> <out dir>   (CHROME_PATH overrides the binary)
 // The steps pick their targets from the drawing itself (the first domain
 // with tables, a table with lines, a stub, a polymorphic node, ...), so any
-// workspace with relations works.
+// workspace with relations works. A diff drawing (diff.svg) starts on the
+// view of all tables; it first gets a step clicking a changed table, whose
+// panel must list its changes, then goes through the same steps.
 import { spawn } from 'node:child_process';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -19,6 +21,9 @@ if (!input || !outDir) {
   console.error('Usage: node scripts/verify-viewer.js <erd.svg> <out dir>');
   process.exit(1);
 }
+
+// The view the file shows without script, which is also where the viewer starts.
+const startView = /<g class="view" data-view="([^"]+)" data-bounds="[^"]+">/.exec(await readFile(input, 'utf8'))[1];
 
 const profile = await mkdtemp(join(tmpdir(), 'open-erd-cdp-'));
 const chrome = spawn(CHROME, ['--headless=new', '--hide-scrollbars', '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank']);
@@ -81,9 +86,13 @@ async function evaluate(expression) {
 }
 const pause = (ms) => new Promise((done) => setTimeout(done, ms));
 
-// Centre of the element `find` (JS expression returning an element) on screen.
+// Centre of the element `find` (JS expression returning an element) on
+// screen; for a line, the middle of its length, since the centre of a bent
+// line's bounding box is usually off the line.
 async function centre(find, where = 'centre') {
-  const p = await evaluate(`(() => { const e = ${find}; if (!e) return null; const r = e.getBoundingClientRect();
+  const p = await evaluate(`(() => { const e = ${find}; if (!e) return null;
+    if (e.localName === 'path') { const m = e.getPointAtLength(e.getTotalLength() / 2).matrixTransform(e.getScreenCTM()); return { x: m.x, y: m.y }; }
+    const r = e.getBoundingClientRect();
     return { x: r.x + r.width / 2, y: ${where === 'top' ? 'r.y + 12' : 'r.y + r.height / 2'} }; })()`);
   if (!p) throw new Error(`no element for ${find}`);
   return p;
@@ -124,7 +133,18 @@ const inView = (sel) => `${visible}.querySelector(${JSON.stringify(sel)})`;
 const viewIs = (name) => `${visible}.getAttribute('data-view') === ${JSON.stringify(name)}`;
 
 await pause(300);
-await shot('overview', `${viewIs('overview')} && document.querySelector('.oe-toolbar') !== null`);
+await shot(startView.replace(/[:/]/g, '-'), `${viewIs(startView)} && document.querySelector('.oe-toolbar') !== null`);
+if (await evaluate(`JSON.parse(document.getElementById('open-erd-data').textContent).changes !== undefined`)) {
+  for (const status of ['changed', 'renamed', 'added', 'removed']) {
+    const changed = await evaluate(`${inView(`.table.diff-${status}`)}?.getAttribute('data-id') ?? null`);
+    if (!changed) continue;
+    await click(inView(`.table[data-id="${changed}"]`), { where: 'top' });
+    await shot(`diff-${status}-table`, `${inView('.table.selected')} !== null && document.querySelectorAll('.oe-panel .oe-changes li').length > 0`);
+  }
+  await key('Escape');
+  await click(`document.querySelector('.oe-crumbs .oe-link')`);
+  await shot('overview', viewIs('overview'));
+}
 
 // A domain whose view has a table with lines and a stub, preferring one
 // with an enum column so the tooltip step shows enum values.
@@ -230,11 +250,14 @@ await send('Page.reload', { ignoreCache: true });
 await reloaded;
 await pause(300);
 await send('Emulation.setScriptExecutionDisabled', { value: false });
-await shot('no-script', `document.querySelector('.oe-toolbar') === null && ${viewIs('overview')} && document.querySelectorAll('g.view:not([style])').length === 1`);
+await shot('no-script', `document.querySelector('.oe-toolbar') === null && ${viewIs(startView)} && document.querySelectorAll('g.view:not([style])').length === 1`);
 
 socket.close();
+// Chrome writes into its profile until it has exited.
+const exited = new Promise((done) => chrome.once('exit', done));
 chrome.kill();
-await rm(profile, { recursive: true, force: true }).catch(() => {});
+await exited;
+await rm(profile, { recursive: true, force: true });
 if (errors.length > 0) console.error(`console errors:\n  ${errors.join('\n  ')}`);
 if (failures.length > 0) console.error(`failed checks:\n  ${failures.join('\n  ')}`);
 console.log(errors.length === 0 && failures.length === 0 ? 'viewer OK' : 'viewer FAILED');

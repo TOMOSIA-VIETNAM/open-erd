@@ -161,3 +161,19 @@ test('CLI: layout writes layout.json, render reads it without writing it', async
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test('a previous layout with overlapping boxes is separated, not kept as is', async () => {
+  const model = await loadShop();
+  const { layout } = await computeLayout(model);
+  const sales = layout.views.all.clusters['shop/Sales'];
+  const [first, second] = Object.keys(sales);
+  // Both boxes keep their size, so the group looks unchanged except for the
+  // collision (what merging two snapshots can produce).
+  const overlapping = structuredClone(layout);
+  overlapping.views.all.clusters['shop/Sales'][second] = { ...sales[second], x: sales[first].x, y: sales[first].y };
+  const { layout: fixed } = await computeLayout(model, overlapping);
+  const boxes = Object.values(fixed.views.all.clusters).flatMap((members) => Object.values(members));
+  const hit = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+  assert.ok(boxes.every((a, i) => boxes.slice(i + 1).every((b) => !hit(a, b))));
+  assert.doesNotThrow(() => renderSvg(model, fixed));
+});
