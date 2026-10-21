@@ -28,6 +28,7 @@ Engine commands (`<ws>` = absolute workspace path):
 
 ```bash
 node <plugin root>/dist/open-erd.mjs validate --workspace <ws>
+node <plugin root>/dist/open-erd.mjs lock     --workspace <ws>
 node <plugin root>/dist/open-erd.mjs layout   --workspace <ws>
 node <plugin root>/dist/open-erd.mjs render   --workspace <ws> [--profile <name>]
 node <plugin root>/dist/open-erd.mjs diff     --workspace <ws> --from <ref> --to <ref|HEAD|WORKTREE>
@@ -38,7 +39,15 @@ the workspace (never in the engine), run again. Exit code 2 with
 `not implemented yet`, or an option the engine rejects: tell the user this
 engine build does not support it yet and stop that step. `render` never writes
 `layout.json`; a render error about missing or stale positions means run
-`layout` first.
+`layout` first. `render` writes `out/erd.svg` and `out/erd.xlsx`
+(`out/erd.<profile>.*` with `--profile`).
+
+`validate` also checks `tests/locked.yaml`: every reviewed fact listed there
+must still be in the model unchanged, or marked `review: stale`. A locked-fact
+error means restore the fact or set it `stale`; never edit the lock file to
+make it pass (only `/open-erd:review` removes an entry, after the user
+confirmed that change). `lock` rewrites the file from the reviewed facts and only
+`/open-erd:review` runs it; it refuses while a locked fact is broken.
 
 ## Finding the workspace
 

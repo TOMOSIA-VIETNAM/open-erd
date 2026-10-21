@@ -45,10 +45,14 @@ Chi tiết từng task: `plan.md`. Đánh dấu `[x]` khi task pass verify.
 
 ## Phase 3: Excel + diff + locked facts
 
-- [ ] 12. XLSX
+- [x] 12. XLSX
+  - Acceptance: `render` ghi `out/erd.xlsx` (`out/erd.<profile>.xlsx` từ model đã lọc); sheet Overview, Tables, Columns, Relations, Enums, Polymorphic, To review; hyperlink tên bảng → dòng Tables; header freeze + filter; created/modified = commit time HEAD của workspace (không có git riêng → 1980-01-01), mtime entry zip hằng số → byte-identical; xlsx public không chứa bảng/cột hidden, pii, evidence, internal_note, note_source
+  - Verify: `node --test test/xlsx.test.js test/profile.test.js`
 - [ ] 13. Diff engine
 - [ ] 14. Diff SVG + Changes sheet
-- [ ] 15. locked.yaml + stale
+- [x] 15. locked.yaml + stale
+  - Acceptance: `lock` ghi `tests/locked.yaml` từ relation/polymorphic `reviewed` (giữ entry của fact `stale`, từ chối khi lock đang bị vi phạm); `validate` fail khi fact bị khoá mất hoặc đổi (kể cả hạ về `pending`), pass khi `stale`; theo `renamed_from`; lỗi liệt kê từng fact
+  - Verify: `node --test test/lock.test.js test/cli.test.js`
 - [ ] Checkpoint C
 
 ## Phase 4: Plugin skills

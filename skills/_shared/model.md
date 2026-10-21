@@ -17,6 +17,7 @@ when this page and the engine disagree.
   extract/<source>.mjs  # extract script per source repo
   extract/facts/<source>.json         # script output, committed so sync can diff it
   extract/db-<db>.metadata.json       # cached database metadata, if the user allowed a read
+  tests/locked.yaml     # reviewed facts `validate` protects; written by `lock`, never by hand except to drop a confirmed change
   out/                  # engine output (erd.svg, erd.xlsx, diff.svg)
 ```
 

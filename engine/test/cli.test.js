@@ -20,7 +20,7 @@ async function run(...args) {
 test('--help lists every command', async () => {
   const { code, stdout } = await run('--help');
   assert.equal(code, 0);
-  for (const name of ['validate', 'layout', 'render', 'diff']) assert.match(stdout, new RegExp(`^  ${name} `, 'm'));
+  for (const name of ['validate', 'lock', 'layout', 'render', 'diff']) assert.match(stdout, new RegExp(`^  ${name} `, 'm'));
 });
 
 test('validate exits 0 on a valid workspace and 1 with file paths on errors', async () => {
