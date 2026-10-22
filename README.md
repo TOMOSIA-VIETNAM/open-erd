@@ -23,6 +23,8 @@ In Claude Code:
 
 Want a change? Just say it: *"orders.status: refunded means money returned"*.
 
+Every change is checked against the code by a second agent before it is committed (`verify` in `open-erd.yaml`; see [docs/USAGE.md](docs/USAGE.md#verification)).
+
 ## Output
 
 | File | Open with |

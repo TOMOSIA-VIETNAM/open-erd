@@ -29,6 +29,7 @@ Engine commands (`<ws>` = absolute workspace path):
 ```bash
 node <plugin root>/dist/open-erd.mjs validate --workspace <ws>
 node <plugin root>/dist/open-erd.mjs lock     --workspace <ws>
+node <plugin root>/dist/open-erd.mjs verify   --workspace <ws>
 node <plugin root>/dist/open-erd.mjs layout   --workspace <ws>
 node <plugin root>/dist/open-erd.mjs render   --workspace <ws> [--profile <name>]
 node <plugin root>/dist/open-erd.mjs diff     --workspace <ws> --from <ref> --to <ref|HEAD|WORKTREE> [--profile <name>]
@@ -47,8 +48,14 @@ and never writes `layout.json` either.
 must still be in the model unchanged, or marked `review: stale`. A locked-fact
 error means restore the fact or set it `stale`; never edit the lock file to
 make it pass (only `/open-erd:review` removes an entry, after the user
-confirmed that change). `lock` rewrites the file from the reviewed facts and only
+confirmed that change). `validate`, `verify` and `render` also reject an
+invalid `tests/verification.yaml` (see "Verification"): fix the file as the
+error says. `lock` rewrites the file from the reviewed facts and only
 `/open-erd:review` runs it; it refuses while a locked fact is broken.
+
+`verify` compares the model's tables, columns, indexes and constraint-backed
+relations with `extract/facts/*.json` and prints one `mismatch:` line per
+difference (exit 1); see "Verification".
 
 ## Finding the workspace
 
@@ -141,6 +148,96 @@ who did not write the model.
    `ignore_missing` in `open-erd.yaml` with the reason as a YAML comment.
 5. Run `validate` again. Tell the user how many relations were added from
    the review and which warnings remain.
+
+## Verification
+
+Every change written into the model is checked by a second reader before it
+is committed: in `init`, `sync`, `review`, and after any edit the user asks
+for in conversation ("invoices.user_id points to customers"). Run it once
+the model passes `validate` (after the missing-relation review when the
+command has one), before `layout` and the commit.
+
+`verify` in `open-erd.yaml` decides how much runs:
+
+| `verify` | Structure check (step 1) | Verifier agent (step 2) |
+|---|---|---|
+| `off` | skipped | skipped; leave this section |
+| `ai-only` (default) | runs | facts an AI wrote |
+| `full` | runs | every changed fact, also those copied from the facts (about 30-50% more tokens per run) |
+
+Scope: what changed since the last commit, `git -C <ws> diff HEAD -- model`
+plus untracked files from `git -C <ws> status --porcelain -- model`. In
+`init` (no commit yet) that is the whole model.
+
+1. **Structure (no AI).** The facts must be current: `sync` has just re-run
+   the extract scripts; elsewhere re-run them first (approval rule in
+   "Extract scripts: approval"). Then:
+
+   ```bash
+   node <plugin root>/dist/open-erd.mjs verify --workspace <ws>
+   ```
+
+   Each `mismatch:` line names one difference between the model and the
+   facts (a column type, nullable, default, index, a table or column missing
+   on one side, a relation that should or should not be `db_fk`). Fix the
+   model to match the facts, or fix the extract script when it is what is
+   wrong (show the change and ask, as for any script edit). A table the
+   model leaves out on purpose (a framework table): after the user agrees,
+   add its id to `not_in_model` in `open-erd.yaml` with the reason as a YAML
+   comment. A `review: reviewed` fact the facts contradict: set it `stale`,
+   never change it; `verify` does not report what a stale fact uses. Run
+   again until it exits 0. Exit 1 with "no facts files" means the extract
+   scripts never ran: run them, do not skip the check.
+
+2. **AI-written facts (verifier agent).** From the scope, list each changed
+   fact an AI wrote, one line each, named by its model path:
+   - notes: `<table id>.note`, `<table id>.<column>.note`, `<db>.domains.<domain>.note`,
+     `polymorphic <table id> «<name>».note`;
+   - enum meanings: `<table id>.<column>.enum.<value>`;
+   - relations of kind `declared`, `inferred` or `cross_db` (target,
+     `cardinality`, `optional`): `relation <from table>.<columns> -> <to table>.<columns>`;
+   - polymorphic entries (targets, `optional`): `polymorphic <table id> «<name>»`.
+
+   With `verify: full` also list the other changed facts (columns, indexes,
+   `db_fk` relations). Give each line its evidence (the fact's `evidence`, or
+   the code you read for a note). Nothing listed: skip to step 4 with an
+   empty record.
+
+   Start one verifier subagent with a fresh context (Claude Code `Agent`
+   tool, general-purpose; not a fork of this conversation) whose prompt is
+   `<plugin root>/skills/_shared/verifier.md` followed by: the source names
+   and paths from `open-erd.local.yaml`, the workspace path, the absolute
+   `<plugin root>`, and the fact list (each line: model path, what the model
+   now says, evidence). Give it nothing else: not your reasoning, not the
+   diff.
+
+3. **Apply the verdicts.** The verifier never edits the model; you do.
+   - `confirmed`: keep.
+   - `wrong`: open the code it cites; when it holds, apply the fix (a
+     `reviewed` fact is set `stale` instead, and the user told). Then start a
+     new verifier with only the fixed facts. At most two rounds per fact: a
+     fact still `wrong` after the second stays as the code best supports,
+     with `review: pending` on a relation or polymorphic entry, and is named
+     to the user.
+   - `unverifiable`: a relation or polymorphic entry gets `review: pending`,
+     never `reviewed`; a note stays as written. Both are recorded.
+
+4. **Record.** Write `<ws>/tests/verification.yaml` with this run's verdicts
+   only (it replaces the previous run's):
+
+   ```yaml
+   schema_version: 1
+   facts:
+     - fact: billing.public.invoices.note
+       result: fixed            # confirmed | fixed (wrong, corrected, then confirmed) | wrong | unverifiable
+       reason: Said one invoice per order; InvoiceJob creates one per billing cycle.
+   ```
+
+   Then run `verify` again: it checks the file, rewrites it sorted and prints
+   the commit line `verify: confirmed N, fixed M, unverifiable K`. Put that
+   line in the commit message body. The record is team-internal: `render`
+   adds it as the Verification sheet of `out/erd.xlsx`, never to a sharing
+   profile that drops evidence or internal notes.
 
 ## Last line of init, sync, review, render, diff
 

@@ -5,12 +5,14 @@ import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseArgs, promisify } from 'node:util';
 import pkg from './package.json' with { type: 'json' };
-import { CONFIG_FILE, LOCKED_FILE, OUTPUT_DEFAULTS } from './src/model/schema.js';
+import { CONFIG_FILE, LOCKED_FILE, OUTPUT_DEFAULTS, VERIFICATION_FILE, VERIFY_DEFAULT } from './src/model/schema.js';
 import { compareStrings, formatError, parseWorkspace } from './src/model/load.js';
 import { checkLocked, lockFacts, parseLocked, serializeLocked } from './src/model/lock.js';
-import { applyProfile } from './src/model/profile.js';
+import { applyProfile, resolveProfile } from './src/model/profile.js';
+import { compareFacts, describeDelta, readFacts } from './src/model/facts.js';
+import { parseVerification, serializeVerification, verificationSummary } from './src/model/verification.js';
 import { formatWarning, missingRelations, warningsFor } from './src/model/missing.js';
-import { addChangesSheet, buildWorkbook, serializeWorkbook } from './src/render/xlsx/workbook.js';
+import { addChangesSheet, addVerificationSheet, buildWorkbook, serializeWorkbook } from './src/render/xlsx/workbook.js';
 import { describeChange, diffModels, summarize, summaryLine } from './src/diff/changes.js';
 import { diffMarks, mergeLayouts, unionModel } from './src/diff/union.js';
 import { EVERY_VIEW, checkLayout, computeLayout, formatReport } from './src/layout/index.js';
@@ -38,6 +40,14 @@ const COMMANDS = {
     summary: `rewrite ${LOCKED_FILE} from the reviewed facts (keeps entries of stale facts); refuses while the model breaks the current file`,
     options: { workspace: { type: 'string' } },
     run: runLock,
+  },
+  verify: {
+    usage: 'verify --workspace <dir> [--facts <dir>]',
+    summary:
+      'compare tables, columns, indexes and constraint-backed relations of the model with the extract facts (<workspace>/extract/facts/*.json, or --facts), ' +
+      `print each mismatch and exit 1 on any; skipped when open-erd.yaml says verify: off. Also checks ${VERIFICATION_FILE}, rewrites it sorted and prints its commit line`,
+    options: { workspace: { type: 'string' }, facts: { type: 'string' } },
+    run: runVerify,
   },
   layout: {
     usage: `layout --workspace <dir> [--relayout <view>]... [--relayout '${EVERY_VIEW}']`,
@@ -122,10 +132,25 @@ async function readLocked(workspace) {
   return locked;
 }
 
+// Returns the parsed verification record, `null` when it is invalid (errors
+// printed), or undefined when the workspace has none.
+async function readVerification(workspace) {
+  let text;
+  try {
+    text = await readFile(join(workspace, VERIFICATION_FILE), 'utf8');
+  } catch (e) {
+    if (e.code === 'ENOENT') return undefined;
+    throw e;
+  }
+  const { verification, errors } = parseVerification(text);
+  for (const e of errors) console.error(formatError(e));
+  return verification;
+}
+
 async function runValidate({ workspace }) {
   const model = await loadModel(workspace);
   const locked = await readLocked(workspace);
-  if (!model || locked === null) return 1;
+  if (!model || locked === null || (await readVerification(workspace)) === null) return 1;
   const broken = checkLocked(model, locked);
   for (const e of broken) console.error(formatError(e));
   if (broken.length > 0) {
@@ -148,6 +173,64 @@ async function runLock({ workspace }) {
   await mkdir(dirname(file), { recursive: true });
   await writeFile(file, serializeLocked(locked));
   console.log(`wrote ${file}: ${locked.relations.length} relation(s), ${locked.polymorphic.length} polymorphic association(s)`);
+  return 0;
+}
+
+/**
+ * Facts files of `dir` as `[{ file, data }]`, by file name; null after
+ * printing why (no directory, no file, a file that is not JSON).
+ */
+async function readFactsFiles(dir) {
+  let names;
+  try {
+    names = (await readdir(dir)).filter((n) => n.endsWith('.json')).sort(compareStrings);
+  } catch (e) {
+    if (e.code !== 'ENOENT') throw e;
+    names = [];
+  }
+  if (names.length === 0) {
+    console.error(`no facts files (*.json) in ${dir}: run the extract scripts first`);
+    return null;
+  }
+  const files = [];
+  for (const file of names) {
+    try {
+      files.push({ file, data: JSON.parse(await readFile(join(dir, file), 'utf8')) });
+    } catch (e) {
+      console.error(`${file}: not valid JSON: ${e.message}`);
+      return null;
+    }
+  }
+  return files;
+}
+
+// A check that passes on nothing would hide exactly what it exists to
+// catch, so a workspace without facts files fails rather than passes.
+async function runVerify({ workspace, facts: factsDir }) {
+  const model = await loadModel(workspace);
+  const verification = await readVerification(workspace);
+  if (!model || verification === null) return 1;
+  if (verification) {
+    await writeFile(join(workspace, VERIFICATION_FILE), serializeVerification(verification));
+    console.log(`${VERIFICATION_FILE}: ${verificationSummary(verification)}`);
+  }
+  const mode = model.config.verify ?? VERIFY_DEFAULT;
+  if (mode === 'off') {
+    console.log(`verify: off in ${CONFIG_FILE}; structure not compared with the extract facts`);
+    return 0;
+  }
+  const files = await readFactsFiles(factsDir ?? join(workspace, 'extract', 'facts'));
+  if (!files) return 1;
+  const facts = readFacts(files);
+  for (const e of facts.errors) console.error(formatError(e));
+  if (facts.errors.length > 0) return 1;
+  const deltas = compareFacts(model, facts);
+  for (const d of deltas) console.error(`mismatch: ${describeDelta(d)}`);
+  if (deltas.length > 0) {
+    console.error(`${deltas.length} mismatch(es) between the model and the extract facts: fix the model (or the extract script), or list a table left out on purpose in not_in_model of ${CONFIG_FILE}`);
+    return 1;
+  }
+  console.log(`${workspace}: model matches the extract facts (${files.length} file(s), ${facts.tables.length} table(s))`);
   return 0;
 }
 
@@ -223,7 +306,14 @@ async function runRender({ workspace, profile }) {
     svg = renderSvg(shown, layout, { fitStored: true, warnings });
   }
   if (openingView(shown).fallback) console.error(`warning: default_view "${shown.config.default_view}" is not in this render; it opens on the overview`);
-  const xlsx = await serializeWorkbook(buildWorkbook(shown, { warnings }), { date: await workspaceDate(workspace) });
+  const workbook = buildWorkbook(shown, { warnings });
+  // The verifier's reasons are team-internal, like evidence and internal
+  // notes: a profile that drops either does not get the sheet.
+  const verification = await readVerification(workspace);
+  if (verification === null) return 1;
+  const sharing = profile === undefined ? null : resolveProfile(model.config, profile);
+  if (verification && (!sharing || (!sharing.drop_evidence && !sharing.drop_notes.includes('internal_note')))) addVerificationSheet(workbook, verification);
+  const xlsx = await serializeWorkbook(workbook, { date: await workspaceDate(workspace) });
   const name = profile === undefined ? 'erd' : `erd.${profile}`;
   const base = join(workspace, 'out', name);
   await mkdir(join(workspace, 'out'), { recursive: true });

@@ -44,3 +44,25 @@ npm run eval          # runs Claude headless on every fixture and scores it (cos
 `fixtures/` holds small sample apps per stack with hand-written expected
 models; `evals/` scores Claude's extraction against them.
 
+## Verification internals
+
+- `engine/src/model/facts.js`: `readFacts` reads the fields of the facts
+  files listed in `skills/_shared/model.md` ("Extract facts file") and
+  ignores the rest; `compareFacts(model, facts)` is pure and returns sorted
+  deltas `{ change: added | removed | changed | error, scope: table |
+  column | index | relation, table, path, field?, before?, after?,
+  evidence? }`, named by model ids and carrying the model-form entry, so a
+  command can apply them to the model later. A field no column of a facts
+  file carries is not compared (older scripts), and deltas about a `stale`
+  fact or what it uses are dropped.
+- `verify: full | ai-only | off` and `not_in_model` live in
+  `engine/src/model/schema.js`; the record `tests/verification.yaml` has its
+  schema there too and its parse/serialize in
+  `engine/src/model/verification.js`. `validate`, `verify` and `render` read
+  the record; `verify` rewrites it sorted.
+- `render` appends the Verification sheet only without a profile, or with a
+  profile that keeps both evidence and `internal_note`.
+- `evals/verify.test.mjs` slips wrong facts into every fixture's expected
+  model and checks which ones the comparison reports; `node evals/run.mjs
+  --task verify` runs the agent side (costs API usage).
+

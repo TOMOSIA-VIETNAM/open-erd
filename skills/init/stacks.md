@@ -51,6 +51,11 @@ Script rules:
 - Deterministic: sort tables by name, columns in file order, everything else by
   a stable key; `JSON.stringify(facts, null, 2)`.
 - Paths in evidence are relative to the source root with `/` separators.
+- `verify` compares the model with the fields listed under "Read by the
+  engine" in `../_shared/model.md` ("Extract facts file"): write those
+  exactly in that shape (`database` on each table or on the file,
+  `constraint: true` on an association the DDL backs with a foreign key, no
+  `default` when the source sets none).
 - Skip `node_modules`, `vendor`, `.git`, build output, test fixtures.
 - Print to stderr a one-line count per kind of fact, and every file it could
   not parse, so gaps are visible.

@@ -5,6 +5,7 @@ import { missingRelations } from '../../model/missing.js';
 import { KIND_TRUST, REVIEW_TRUST, databaseFacts, factText, tableFacts } from '../../layout/diagram.js';
 import { FULL_WIDTH } from '../../text/measure.js';
 import { changeLabel, describeChange, showValue } from '../../diff/changes.js';
+import { sortedFacts } from '../../model/verification.js';
 import { rebuildZip } from './zip.js';
 
 // The spreadsheet twin of the diagram, laid out like a database client:
@@ -87,6 +88,7 @@ const SHEETS = {
   indexes: 'Indexes',
   review: 'To review',
   changes: 'Changes',
+  verification: 'Verification',
 };
 
 // Excel's sheet name rules: at most 31 characters, none of : \ / ? * [ ],
@@ -367,6 +369,19 @@ export function addChangesSheet(workbook, model, changes) {
     changes.map((c) => [c.database, c.table === null ? '' : tableLink(c.table), changeLabel(c.kind), describeChange(c), showValue(c.before), showValue(c.after)]),
   );
   workbook.views = [{ activeTab: workbook.worksheets.length - 1 }];
+}
+
+/**
+ * Appends the Verification sheet: the last check of the facts an AI wrote
+ * (tests/verification.yaml), one row per fact, wrong and unverifiable first.
+ */
+export function addVerificationSheet(workbook, verification) {
+  addSheet(
+    workbook,
+    SHEETS.verification,
+    [{ header: 'Fact', wrap: true }, { header: 'Result' }, { header: 'Reason', wrap: true }],
+    sortedFacts(verification).map((f) => [f.fact, f.result, f.reason ?? '']),
+  );
 }
 
 /**

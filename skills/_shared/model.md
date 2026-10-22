@@ -18,6 +18,7 @@ when this page and the engine disagree.
   extract/facts/<source>.json         # script output, committed so sync can diff it
   extract/db-<db>.metadata.json       # cached database metadata, if the user allowed a read
   tests/locked.yaml     # reviewed facts `validate` protects; written by `lock`, never by hand except to drop a confirmed change
+  tests/verification.yaml   # verdicts of the last verification (rules.md, "Verification"); `verify` keeps it sorted
   out/                  # engine output (erd.svg, erd.xlsx, diff.svg)
 ```
 
@@ -42,6 +43,9 @@ ignore_missing:              # possibly missing relations `validate` stops repor
   tables:
     - billing.public.settings                    # standalone key/value store
 default_view: all            # all (default) | overview | connections | domain:<db>/<domain>; the view the SVG opens on
+verify: ai-only              # ai-only (default) | full | off; checking before each commit, see rules.md "Verification"
+not_in_model:                # tables the extract facts list that the model leaves out on purpose; `verify` skips them
+  - billing.public.schema_migrations   # framework table
 profiles:                    # render --profile <name> writes out/erd.<name>.svg
   partner:                   # name: letters, digits, - and _
     drop_evidence: false     # default true
@@ -66,6 +70,11 @@ static file) or a table stands alone on purpose, add it to
 `ignore_missing` with the reason as a YAML comment on the same line.
 `ignore_missing.columns` silences column warnings only,
 `ignore_missing.tables` only the "nothing connects this table" warning.
+
+`not_in_model` takes table ids as the table would have in the model
+(`<db>.<schema>.<table>`, `_` as schema where the engine has none); an id
+that is also in the model is an error. Add one only after the user agreed
+the table stays out, with the reason as a YAML comment.
 
 Left out, `default_view` is `all`; a schema over 300 tables has no view of
 all tables and opens on the overview. A configured `default_view` the render
@@ -309,12 +318,15 @@ polymorphic entry may also carry `note` and `internal_note`.
 ## Extract facts file (`extract/facts/<source>.json`)
 
 Deterministic output of one extract script: sorted arrays, sorted keys, no
-timestamps, no absolute paths. Shape:
+timestamps, no absolute paths. The engine's `verify` command reads the
+fields below and compares them with the model; every other key (`stack`,
+`polymorphic`, `enums`, `hints`, `sti`, `macros`, `via_classes`,
+`on_delete`, ...) is free-form, for whoever writes the model.
 
 ```json
 {
   "source": "billing-api",
-  "stack": ["rails"],
+  "database": "billing",
   "tables": [
     { "name": "invoices", "schema": null, "database": "billing", "evidence": "db/schema.rb#invoices",
       "columns": [ { "name": "id", "type": "bigint", "pk": true, "nullable": false, "unique": false, "auto_increment": true },
@@ -322,8 +334,9 @@ timestamps, no absolute paths. Shape:
       "indexes": [ { "name": "index_invoices_on_status", "columns": ["status"], "unique": false } ] }
   ],
   "associations": [
-    { "from": { "table": "invoices", "columns": ["payer_id"] }, "to": { "table": "parties", "columns": ["id"] },
-      "macro": "belongs_to", "constraint": false, "evidence": "app/models/invoice.rb#Invoice" }
+    { "from": { "database": "billing", "table": "invoices", "columns": ["payer_id"] },
+      "to": { "database": "billing", "table": "parties", "columns": ["id"] },
+      "constraint": false, "evidence": ["app/models/invoice.rb#Invoice"] }
   ],
   "polymorphic": [
     { "table": "attachments", "name": "attachable", "type_column": "attachable_type", "id_column": "attachable_id",
@@ -337,6 +350,32 @@ timestamps, no absolute paths. Shape:
   ]
 }
 ```
+
+Read by the engine:
+
+- `source`: the source name; prefixed to evidence (`<source>:<path>`).
+- `database` (file level, optional): the database of every table that does
+  not name its own.
+- `tables[]`: `name` and `columns` required. `database`: the logical
+  database of the model (`model/<db>.yaml`); needed on the table or the
+  file unless the workspace has one database. `schema`: the schema segment
+  of the table id, or `null` when the source does not say (the table then
+  matches the model table of that name in its database; when no model
+  table has the name, the schema every table of that database shares).
+  `evidence`: a string or a list of strings. `indexes[]`: `columns`
+  (required), `name`, `unique`, `where`, `using`, as in the model; the older
+  `unique: [[a, b]]` on a table is read as unique indexes.
+- `columns[]`: `name` and `type` required; `nullable`, `pk`, `unique`,
+  `auto_increment` (booleans, absent = false), `default` (as the schema
+  source writes it; absent or `null` when the source sets none: a Ruby
+  `nil`, a Python `None` is no default). A field no column of the file has
+  is not compared, so a script that does not extract it reports no
+  difference for it; one that does must write it wherever it applies.
+- `associations[]`: `from` and `to` with `table` and `columns` (and
+  `database` when it differs from the table's), `constraint: true` when DDL
+  creates a foreign key (the model's `kind: db_fk`), and `evidence`. An
+  association without a constraint only tells `verify` that the relation
+  still exists in code.
 
 Evidence in facts omits the `<source>:` prefix; add it when copying into the
 model. The script records what files say; meaning, domain, notes, `pii`,
