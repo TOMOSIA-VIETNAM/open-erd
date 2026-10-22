@@ -120,7 +120,7 @@ const VIEWER_STYLE = `.row-hit { fill: transparent; }
 .oe-keys td { padding: 5px 6px; border-bottom: 1px solid #f0f2f6; vertical-align: top; }
 .oe-keys kbd { font: inherit; font-size: 12px; color: #1f2a3d; background: #f1f4f8; border: 1px solid #dfe4ec; border-radius: 4px; padding: 1px 6px; white-space: nowrap; }
 .oe-view-tabs .oe-btn { height: 30px; font-size: 12.5px; padding: 0 10px; display: inline-flex; align-items: center; gap: 6px; }
-@media (max-width: 1320px) { .oe-view-tabs .label { display: none; } .oe-view-tabs .oe-btn { padding: 0 8px; } }
+@media (max-width: 1320px) { .oe-view-tabs .label, .oe-tour-btn .label { display: none; } .oe-view-tabs .oe-btn { padding: 0 8px; } .oe-tour-btn { width: 30px; padding: 0; justify-content: center; } }
 .oe-spotlight-empty { padding: 14px 16px; color: #7a8597; }
 .oe-spotlight-hint { padding: 6px 16px; font-size: 11px; color: #9aa4b5; border-top: 1px solid #eef1f5; }
 .oe-chip-group { margin: 8px 0 4px; }
@@ -213,6 +213,13 @@ const VIEWER_STYLE = `.row-hit { fill: transparent; }
 .oe-chevron { color: #7a8597; }
 .oe-back-pill { font: inherit; font-size: 12px; padding: 4px 12px 4px 10px; border: 1px solid #c3cad5; border-radius: 14px; background: #ffffff; color: #1d4ed8; box-shadow: 0 2px 8px rgba(20, 30, 50, 0.12); cursor: pointer; white-space: nowrap; max-width: 360px; overflow: hidden; text-overflow: ellipsis; }
 .oe-back-pill:hover { background: #eef3fb; }
+.oe-tour { display: flex; align-items: center; gap: 12px; background: #ffffff; border: 1px solid #c3cad5; border-radius: 8px; padding: 10px 10px 10px 14px; box-shadow: 0 6px 18px rgba(20, 30, 50, 0.12); }
+.oe-tour-text { flex: 1; min-width: 0; }
+.oe-tour-head { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.oe-tour-head b { font-size: 14px; overflow-wrap: anywhere; }
+.oe-tour-count { flex: none; font-size: 11px; line-height: 18px; padding: 0 7px; border-radius: 9px; background: #eef1f5; color: #56627a; white-space: nowrap; }
+.oe-tour-note { margin-top: 4px; color: #3d4a5e; line-height: 1.45; overflow-wrap: anywhere; }
+.oe-tour-controls { flex: none; display: flex; gap: 4px; }
 /* Pills float over the drawing: a drag that starts on one selects no text. */
 .oe-toolbar, .oe-back-pill, .oe-legend-pill { -webkit-user-select: none; user-select: none; }
 .oe-panel .sub { color: #7a8597; font-size: 12px; margin-bottom: 8px; overflow-wrap: anywhere; }

@@ -947,7 +947,7 @@ if (await evaluate(`document.querySelector('g.view[data-view="all"]') !== null`)
   await shot('cmd-a-all-tables', `${viewIs('all')} && document.querySelector('.oe-view-tabs [data-view="all"]').classList.contains('on')`);
 }
 await choose('more', 'Keyboard shortcuts');
-await shot('keyboard-shortcuts', `document.querySelectorAll('.oe-panel .oe-keys tr').length === 8 && /J/.test(document.querySelector('.oe-panel .oe-keys').textContent) && document.querySelector('.oe-panel .oe-keys').textContent.includes('Alt+←')`);
+await shot('keyboard-shortcuts', `document.querySelectorAll('.oe-panel .oe-keys tr').length === 9 && /J/.test(document.querySelector('.oe-panel .oe-keys').textContent) && document.querySelector('.oe-panel .oe-keys').textContent.includes('Alt+←')`);
 // A short panel leaves the minimap in its corner; a tall one pushes it left.
 {
   const mm = `(() => { const f = document.querySelector('.oe-minimap')?.closest('foreignObject'); return f && f.style.display !== 'none' ? document.querySelector('.oe-minimap').getBoundingClientRect() : null; })()`;
@@ -1083,6 +1083,75 @@ await shot(
   'scroll-pans',
   `${afterScroll.s === afterPinch.s && Math.abs(afterScroll.x - (afterPinch.x - 40)) < 0.01 && Math.abs(afterScroll.y - (afterPinch.y - 120)) < 0.01} || ${JSON.stringify({ afterPinch, afterScroll })}`,
 );
+
+// Tour: T walks the domains in the overview's order (the matrix rows),
+// each in its view with a caption (its note when it has one; name and table
+// count always) at the bottom, clear of the toolbar and of its central
+// table, legend and minimap set aside. It moves on by itself; ← → step and
+// wrap round; Space pauses; a download holds none of it; Esc goes back to
+// the view and camera it started from. One domain makes no tour.
+{
+  const order = await evaluate(`[...document.querySelectorAll('g.view[data-view="connections"] .mx-rows .mx-head')].map((g) => g.getAttribute('data-domain'))`);
+  if (order.length < 2) {
+    await shot('tour-hidden', `getComputedStyle(document.querySelector('.oe-tour-btn')).display === 'none'`);
+  } else {
+    const startedOn = await evaluate(`${visible}.getAttribute('data-view')`);
+    const startCam = await camera();
+    const caption = (i) => `(() => { const d = ${data}; const k = ${JSON.stringify(order)}[${i}]; const t = document.querySelector('.oe-tour');
+      const want = d.domainNotes[k] ?? null; const note = t.querySelector('.oe-tour-note')?.textContent ?? null; const head = t.querySelector('.oe-tour-head b').textContent;
+      const count = t.querySelector('.oe-tour-count').textContent;
+      return ${visible}.getAttribute('data-view') === 'domain:' + k && note === want && head.startsWith(k.split('/').slice(1).join('/') + ' · ') && count === '${i + 1} / ${order.length}' || { view: ${visible}.getAttribute('data-view'), note, want, head, count }; })()`;
+    const tourClear = `(() => { const d = ${data}; const card = document.querySelector('.oe-tour').getBoundingClientRect();
+      const k = ${visible}.getAttribute('data-view').slice(7); const id = Object.keys(d.nodes).find((n) => d.nodes[n].cluster === k && d.nodes[n].central);
+      const c = id && ${visible}.querySelector('.table[data-id="' + CSS.escape(id) + '"]').getBoundingClientRect();
+      const hit = Boolean(c) && c.bottom > card.top && c.top < card.bottom && c.right > card.left && c.left < card.right;
+      const off = card.top < 44 || card.bottom > innerHeight || card.left < 0 || card.right > innerWidth;
+      const aside = ['.oe-legend-host', '.oe-minimap-host', '.oe-back-host'].every((s) => document.querySelector(s).closest('foreignObject').style.display === 'none');
+      return (!hit && !off && aside && document.querySelector('.oe-tour-btn').classList.contains('on')) || { hit, off, aside }; })()`;
+    await key('t', 'KeyT');
+    await shot('tour-start', `${caption(0)} === true && ${tourClear}`);
+    await pause(6400);
+    await shot('tour-auto-next', caption(1));
+    await key('ArrowLeft');
+    await shot('tour-prev', `${caption(0)} === true && ${tourClear}`);
+    await key('ArrowLeft');
+    await shot('tour-wraps-to-last', caption(order.length - 1));
+    await key(' ', 'Space');
+    await pause(6400);
+    await shot('tour-paused', `${caption(order.length - 1)} === true && document.querySelector('.oe-tour-controls button[title^="Resume"]') !== null`);
+    await click(`document.querySelector('.oe-tour-controls button[title^="Next"]')`);
+    await shot('tour-next-wraps-to-first', caption(0));
+    // A narrow window: the caption fits and the view is fitted above it.
+    await send('Emulation.setDeviceMetricsOverride', { width: 760, height: 640, deviceScaleFactor: 1, mobile: false });
+    await evaluate(`window.dispatchEvent(new Event('resize'))`);
+    await pause(200);
+    await shot('tour-narrow', tourClear);
+    await send('Emulation.setDeviceMetricsOverride', { ...VIEWPORT, deviceScaleFactor: 1, mobile: false });
+    await evaluate(`window.dispatchEvent(new Event('resize'))`);
+    await pause(200);
+    const downloads = join(resolve(outDir), 'downloads', 'tour');
+    await mkdir(downloads, { recursive: true });
+    await send('Page.setDownloadBehavior', { behavior: 'allow', downloadPath: downloads });
+    // A fresh step: its central table is still pulsing when the file is drawn.
+    await key('ArrowRight');
+    await choose('download', 'This view as SVG');
+    let file = null;
+    for (let i = 0; i < 100 && !file; i++) {
+      file = (await readdir(downloads)).find((f) => f.endsWith('.svg'));
+      await pause(100);
+    }
+    await pause(200);
+    const plain = file ? (await readFile(join(downloads, file))).toString() : '';
+    if (!file || /foreignObject|class="[^"]*\b(oe-tour|arrive)\b/.test(plain)) failures.push(`download during the tour: ${file} ${(/foreignObject|class="[^"]*\b(oe-tour|arrive)\b/.exec(plain) ?? [])[0]}`);
+    await closeMenu('download');
+    await key('Escape');
+    const endCam = await camera();
+    await shot(
+      'tour-esc-restores',
+      `${viewIs(startedOn)} && ${JSON.stringify(endCam)}.s === ${startCam.s} && ${Math.abs(endCam.x - startCam.x) < 0.01 && Math.abs(endCam.y - startCam.y) < 0.01} && document.querySelector('.oe-tour').closest('foreignObject').style.display === 'none' && !document.querySelector('.oe-tour-btn').classList.contains('on')`,
+    );
+  }
+}
 
 // Deep links: erd.svg#table=<id> opens on that table, selected, with its
 // panel; #column=<id>.<column> unfolds that column; selecting a table writes
