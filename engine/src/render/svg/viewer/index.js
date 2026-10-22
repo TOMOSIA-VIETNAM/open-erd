@@ -56,6 +56,8 @@ const READABLE_TEXT = 11;
 // Hovering off a card waits this long before its connectors go, so the
 // pointer can travel to a connector across the gap.
 const UNFOCUS_DELAY = 250;
+// Height the Back pill takes under the toolbar, left free when fitting a view.
+const BACK_PILL_ROOM = 36;
 // Column tooltips list this many enum values; a click on the column shows all.
 const TIP_ENUM_ROWS = 8;
 // A collapsed domain frame keeps only its header bar.
@@ -210,9 +212,11 @@ function scheduleCamera() {
 function zoomToRect(r, maxScale) {
   const { w, h } = viewport();
   const panelOpen = panel.fo.style.display !== 'none';
-  const area = { w: panelOpen ? w - PANEL_WIDTH - 2 * PANEL_MARGIN : w, h: h - TOOLBAR_HEIGHT };
+  // The Back pill floats under the toolbar in a navigated view: keep clear of it.
+  const top = TOOLBAR_HEIGHT + (state.history.length > 0 && NAVIGATED(state.view) ? BACK_PILL_ROOM : 0);
+  const area = { w: panelOpen ? w - PANEL_WIDTH - 2 * PANEL_MARGIN : w, h: h - top };
   const s = Math.min((area.w - 2 * FIT_PADDING) / r.w, (area.h - 2 * FIT_PADDING) / r.h, maxScale);
-  state.cam = { s, x: (area.w - r.w * s) / 2 - r.x * s, y: TOOLBAR_HEIGHT + (area.h - r.h * s) / 2 - r.y * s };
+  state.cam = { s, x: (area.w - r.w * s) / 2 - r.x * s, y: top + (area.h - r.h * s) / 2 - r.y * s };
   applyCamera();
 }
 
