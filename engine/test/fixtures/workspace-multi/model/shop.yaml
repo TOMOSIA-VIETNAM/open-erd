@@ -106,6 +106,8 @@ polymorphic:
     id_column: commentable_id
     optional: false
     targets: [shop._.posts, shop._.products, shop._.orders]
+    note: Customers discuss a post, product or order; support staff answer in the same thread.
+    internal_note: CommentsController#create sets the type from the route.
     evidence: ["shop-api:app/models/comment.rb#Comment"]
     review: reviewed
   - name: attachable

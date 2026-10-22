@@ -69,7 +69,7 @@ const ENGINE_NAMES = { postgresql: 'PostgreSQL', mysql: 'MySQL', mariadb: 'Maria
 const DB_ICON = { w: 14, h: 16 };
 
 /** Engine name as printed on the database frame; unknown engines as written. */
-function engineName(engine) {
+export function engineName(engine) {
   return ENGINE_NAMES[engine] ?? engine;
 }
 

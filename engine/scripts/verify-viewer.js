@@ -107,6 +107,63 @@ if (await evaluate(`JSON.parse(document.getElementById('open-erd-data').textCont
   await shot('overview', viewIs('overview'));
 }
 
+// Overview lines say which way their relations point and list them: an
+// arrow at the referenced domain, an "N relations" label, a tooltip, and a
+// panel whose every entry leads to the referencing table's domain view.
+const data = `JSON.parse(document.getElementById('open-erd-data').textContent)`;
+await key('Escape');
+await click(`document.querySelector('.oe-crumbs .oe-link') ?? document.querySelector('.oe-crumbs .here')`);
+const overviewLine = await evaluate(`(() => { const d = ${data}; const lines = [...document.querySelectorAll('g.view[data-view="overview"] .relation-group')];
+  lines.sort((a, b) => d.domainLinks[b.getAttribute('data-id')].length - d.domainLinks[a.getAttribute('data-id')].length);
+  return lines[0]?.getAttribute('data-id') ?? null; })()`);
+if (overviewLine) {
+  const lineSel = inView(`.relation-group[data-id="${overviewLine}"] path.relation-hit`);
+  await mouse('mouseMoved', await centre(lineSel));
+  await pause(150);
+  await shot(
+    'overview-line-tooltip',
+    `${viewIs('overview')} && [...document.querySelectorAll('.oe-tip')].some((t) => /relations? ?:/.test(t.textContent)) && ${inView('.relation-group .marker .head')} !== null && [...${visible}.querySelectorAll('.edge-label text')].every((t) => /^\\d+ relations?( · cross-DB → \\S+)?$/.test(t.textContent))`,
+  );
+  await click(lineSel);
+  await shot(
+    'overview-line-panel',
+    `(() => { const n = ${data}.domainLinks[${JSON.stringify(overviewLine)}].length; return document.querySelector('.oe-panel h3')?.textContent.includes('→') && document.querySelectorAll('.oe-panel li').length === n || { n, li: document.querySelectorAll('.oe-panel li').length }; })()`,
+  );
+  const target = await evaluate(`${data}.domainLinks[${JSON.stringify(overviewLine)}][0].from`);
+  await click(`document.querySelector('.oe-panel li .oe-link')`);
+  await shot('overview-line-entry-jump', `${visible}.getAttribute('data-view').startsWith('domain:') && ${inView(`.table.selected[data-id="${target}"]`)} !== null`);
+  await key('Escape');
+  await click(`document.querySelector('.oe-crumbs .oe-link')`);
+}
+
+// The column with the most enum values: its tooltip stays compact (chips,
+// note, at most 8 values, never past the window) and a click on it lists
+// every value in the panel. Rows with a note or enum carry a mark.
+const longEnum = await evaluate(`(() => { const d = ${data}; let best = null;
+  for (const [id, n] of Object.entries(d.nodes)) for (const c of n.columns ?? []) { const k = Object.keys(c.enum ?? {}).length; if (k > 0 && (!best || k > best[2])) best = [id, c.name, k, n.cluster]; }
+  return best; })()`);
+if (longEnum) {
+  const [enumTable, enumColumn, enumCount, enumDomain] = longEnum;
+  await click(`document.querySelector('.domain[data-domain=${JSON.stringify(enumDomain)}]')`);
+  await click(inView(`.table[data-id="${enumTable}"]`), { where: 'top' });
+  await key('Escape');
+  const row = inView(`.table[data-id="${enumTable}"] .column[data-column="${enumColumn}"]`);
+  await mouse('mouseMoved', await centre(row));
+  await pause(150);
+  await shot(
+    'long-enum-tooltip',
+    `(() => { const t = [...document.querySelectorAll('.oe-tip')].find((x) => x.closest('foreignObject').style.display !== 'none'); if (!t) return 'no tip';
+      const r = t.getBoundingClientRect(); const rows = t.querySelectorAll('.oe-enum tr').length;
+      return rows === Math.min(${enumCount}, 8) && t.querySelector('.oe-chips') !== null && r.width <= 362 && r.left >= 0 && r.right <= innerWidth && r.bottom <= innerHeight
+        && (${enumCount} <= 8 || t.textContent.includes('+${enumCount - 8} more')) && ${row}.querySelector('.hint-enum') !== null || { rows, w: r.width, bottom: r.bottom }; })()`,
+  );
+  await click(row);
+  // The panel holds the column grid with this column's values unfolded.
+  await shot('long-enum-panel', `document.querySelectorAll('.oe-panel .oe-grid details[open] .oe-enum tr').length === ${enumCount} && document.querySelector('.oe-panel .oe-grid tr.open').getAttribute('data-column') === ${JSON.stringify(enumColumn)} && ${row}.classList.contains('hl-column')`);
+  await key('Escape');
+  await click(`document.querySelector('.oe-crumbs .oe-link')`);
+}
+
 // A domain whose view has a table with lines and a stub, preferring one
 // with an enum column so the tooltip step shows enum values.
 const domain = await evaluate(`(() => {
@@ -116,7 +173,12 @@ const domain = await evaluate(`(() => {
   return (withEnum ?? usable[0]).getAttribute('data-view').slice(7);
 })()`);
 await click(`document.querySelector('.domain[data-domain=${JSON.stringify(domain)}]')`);
-await shot('domain-view', viewIs(`domain:${domain}`));
+// The breadcrumb names the domain with its table count.
+await shot(
+  'domain-view',
+  `${viewIs(`domain:${domain}`)} && (() => { const n = Object.values(${data}.nodes).filter((x) => x.kind === 'table' && x.cluster === ${JSON.stringify(domain)}).length;
+    return document.querySelector('.oe-crumbs .here').textContent.endsWith(' · ' + n + ' table' + (n === 1 ? '' : 's')) || document.querySelector('.oe-crumbs .here').textContent; })()`,
+);
 
 // The database crumb centres that database's whole frame on the overview. Small
 // frames hit the zoom cap, so "centred and fully visible" is the check, not size.
@@ -132,7 +194,11 @@ await click(`document.querySelector('.domain[data-domain=${JSON.stringify(domain
 
 const table = await evaluate(`(() => { const g = ${visible}.querySelector('.relation-group'); return ${visible}.querySelector('.table[data-id="' + g.getAttribute('data-from') + '"]') ? g.getAttribute('data-from') : g.getAttribute('data-to'); })()`);
 await click(inView(`.table[data-id="${table}"]`), { where: 'top' });
-await shot('table-highlight', `${visible}.classList.contains('dimmed') && ${inView('.table.selected')} !== null && ${inView('.relation-group.hl')} !== null`);
+// The panel carries the table's column grid, one row per column.
+await shot(
+  'table-highlight',
+  `${visible}.classList.contains('dimmed') && ${inView('.table.selected')} !== null && ${inView('.relation-group.hl')} !== null && document.querySelectorAll('.oe-panel .oe-grid tr[data-column]').length === ${data}.nodes[${JSON.stringify(table)}].columns.length`,
+);
 
 // Hover a column with an enum when there is one, else the first column.
 const column = await evaluate(`(() => { const d = JSON.parse(document.getElementById('open-erd-data').textContent);
@@ -161,7 +227,12 @@ if (polyView) {
   await click(`document.querySelector('.domain[data-domain=${JSON.stringify(polyView)}]')`);
   const poly = await evaluate(`${inView('.poly-routes')}.getAttribute('data-poly')`);
   await click(inView(`.poly[data-id="${poly}"]`), { where: 'top' });
-  await shot('polymorphic-targets', `[...${visible}.querySelectorAll('.poly-routes')].some((g) => g.style.display !== 'none') && document.querySelectorAll('.oe-panel li').length > 0`);
+  // Its panel: the business note when there is one, never a generic sentence,
+  // and the evidence folded.
+  await shot(
+    'polymorphic-targets',
+    `[...${visible}.querySelectorAll('.poly-routes')].some((g) => g.style.display !== 'none') && document.querySelectorAll('.oe-panel li').length > 0 && !document.querySelector('.oe-panel').textContent.includes('each row points at') && document.querySelectorAll('.oe-panel details[open]').length === 0 && [...document.querySelectorAll('.oe-panel details summary')].every((x) => /^Evidence \\(\\d+\\)$/.test(x.textContent))`,
+  );
   await click(`document.querySelector('.oe-panel li .oe-link')`);
   await shot('polymorphic-target-jump', `${inView('.table.selected')} !== null`);
 }
@@ -182,16 +253,37 @@ await click(`[...document.querySelectorAll('.oe-btn')].find((b) => b.textContent
 // full view, or from its domain view in a schema too large for a full view.
 if (await evaluate(`document.querySelector('g.view[data-view="all"]') !== null`)) {
   await click(`[...document.querySelectorAll('.oe-btn')].find((b) => b.textContent === 'All tables')`);
-  await shot('all-tables', viewIs('all'));
+  await shot('all-tables', `${viewIs('all')} && document.querySelector('.oe-crumbs .here').textContent === 'All tables · ' + Object.values(${data}.nodes).filter((x) => x.kind === 'table').length + ' tables'`);
+  // The legend is open here, drawn with the diagram's own line and marker classes.
+  await shot(
+    'legend',
+    `(() => { const f = [...document.querySelectorAll('foreignObject')].find((x) => x.querySelector('.oe-legend')); const r = f.querySelector('.oe-legend').getBoundingClientRect();
+      return f.style.display !== 'none' && f.querySelectorAll('.oe-legend .item').length >= 15 && f.querySelectorAll('.oe-legend .marker path').length >= 4 && f.querySelector('.oe-legend .review-pending .relation') !== null && r.bottom <= innerHeight && r.left >= 0; })()`,
+  );
+  // A cross-DB line names the database it reaches; its panel names both with their engines.
+  const cross = await evaluate(`${inView('.relation-group.kind-cross_db')}?.getAttribute('data-id') ?? null`);
+  if (cross) {
+    await click(inView(`.relation-group[data-id="${cross}"] path.relation-hit`));
+    await shot(
+      'cross-db-line',
+      `/^cross-DB → \\S+$/.test(${inView(`.relation-group[data-id="${cross}"] .edge-label text`)}.textContent) && /Cross-DB: \\S+ \\(.+\\) → \\S+ \\(.+\\)/.test(document.querySelector('.oe-panel').textContent)`,
+    );
+    await key('Escape');
+  }
+  await click(`[...document.querySelectorAll('.oe-btn')].find((b) => b.textContent === 'Legend')`);
 } else {
   await click(`document.querySelector('.oe-crumbs .oe-link')`);
   await click(`document.querySelector('.domain[data-domain=${JSON.stringify(domain)}]')`);
   await shot('no-all-tables', `${viewIs(`domain:${domain}`)} && [...document.querySelectorAll('.oe-btn')].find((b) => b.textContent === 'All tables').style.display === 'none'`);
 }
 await click(inView(`.table[data-id="${table}"]`), { where: 'top', count: 2 });
-await shot('neighborhood-1-hop', `${viewIs('neighborhood')} && ${visible}.querySelectorAll('.table, .poly').length > 1`);
+// Its lines carry crow's feet like the drawn views.
+await shot(
+  'neighborhood-1-hop',
+  `${viewIs('neighborhood')} && ${visible}.querySelectorAll('.table, .poly').length > 1 && [...${visible}.querySelectorAll('.relation-group')].filter((g) => g.getAttribute('class').includes('kind-view_source') === false).every((g) => g.querySelector('.marker path, .marker circle'))`,
+);
 const oneHop = await evaluate(`${visible}.querySelectorAll('.table, .poly').length`);
-await click(`[...document.querySelectorAll('.oe-btn')].find((b) => b.textContent === '2 hops')`);
+await click(`[...document.querySelectorAll('.oe-toolbar .oe-btn')].find((b) => b.textContent === 'Direct + next level')`);
 await shot('neighborhood-2-hops', `${viewIs('neighborhood')} && ${visible}.querySelectorAll('.table, .poly').length >= ${oneHop}`);
 // The second ring stays fully readable while the centre is selected, and the
 // fitted drawing ends left of the open panel.
@@ -208,6 +300,96 @@ await key('Escape');
 await shot('escape-clears', `!${visible}.classList.contains('dimmed')`);
 await click(`[...document.querySelectorAll('.oe-btn')].find((b) => b.textContent === '‹ Back')`);
 await shot('back', `!(${viewIs('neighborhood')})`);
+
+// A hub table: selecting it draws the hub lines pointing at it in this view,
+// its panel lists every table referencing it, and its neighborhood holds
+// them. Picks the hub with the most lines in the first view that has any.
+const hub = await evaluate(`(() => { for (const v of document.querySelectorAll('g.view')) {
+  const groups = [...v.querySelectorAll('.hub-routes')].sort((a, b) => b.children.length - a.children.length);
+  if (groups.length > 0) return [v.getAttribute('data-view'), groups[0].getAttribute('data-hub')]; } return null; })()`);
+if (hub) {
+  const [hubView, hubTable] = hub;
+  if (hubView === 'all') await click(`[...document.querySelectorAll('.oe-btn')].find((b) => b.textContent === 'All tables')`);
+  else {
+    await click(`document.querySelector('.oe-crumbs .oe-link')`);
+    await click(`document.querySelector('.domain[data-domain=${JSON.stringify(hubView.slice(7))}]')`);
+  }
+  await click(inView(`.table[data-id="${hubTable}"]`), { where: 'top' });
+  const referrers = await evaluate(`new Set(${data}.hubLinks.filter((l) => l.to === ${JSON.stringify(hubTable)} && l.from !== l.to).map((l) => l.from)).size`);
+  await shot(
+    'hub-table-selected',
+    `[...${visible}.querySelectorAll('.hub-routes')].some((g) => g.getAttribute('data-hub') === ${JSON.stringify(hubTable)} && g.style.display !== 'none') && document.querySelector('.oe-panel').textContent.includes('Referenced by ${referrers} table')`,
+  );
+  // The panel's own neighborhood button: on a wide schema the open panel may
+  // cover the table, so a double-click there would land on the panel.
+  await click(`[...document.querySelectorAll('.oe-panel .oe-btn')].find((b) => b.textContent === 'Direct')`);
+  await shot('hub-neighborhood', `${viewIs('neighborhood')} && ${visible}.querySelectorAll('.table').length >= ${referrers} + 1`);
+  await key('Escape');
+  await click(`[...document.querySelectorAll('.oe-btn')].find((b) => b.textContent === '‹ Back')`);
+}
+
+// Folding domains: a click on a domain's header folds it (tables and their
+// lines hidden, the header counts them), nothing else moves; Expand all
+// restores it.
+{
+  if (await evaluate(`document.querySelector('g.view[data-view="all"]') !== null`)) await click(`[...document.querySelectorAll('.oe-btn')].find((b) => b.textContent === 'All tables')`);
+  else {
+    await click(`document.querySelector('.oe-crumbs .oe-link')`);
+    await click(`document.querySelector('.domain[data-domain=${JSON.stringify(domain)}]')`);
+  }
+  const fold = await evaluate(`(() => { const d = ${data}; const v = ${visible};
+    const withLines = [...v.querySelectorAll('.cluster')].map((c) => c.getAttribute('data-cluster')).find((k) => [...v.querySelectorAll('.relation-group')].some((g) => d.nodes[g.getAttribute('data-from')]?.cluster === k || d.nodes[g.getAttribute('data-to')]?.cluster === k));
+    return withLines ?? null; })()`);
+  const others = `[...${visible}.querySelectorAll('.nodes .table')].filter((g) => ${data}.nodes[g.getAttribute('data-id')].cluster !== ${JSON.stringify(fold)}).map((g) => g.getBoundingClientRect().x).join()`;
+  const before = await evaluate(others);
+  await click(inView(`.cluster[data-cluster="${fold}"] .cluster-label`));
+  await shot(
+    'domain-collapsed',
+    `(() => { const c = ${inView(`.cluster[data-cluster="${fold}"]`)}; const tables = [...${visible}.querySelectorAll('.nodes .table')].filter((g) => ${data}.nodes[g.getAttribute('data-id')].cluster === ${JSON.stringify(fold)});
+      return c.querySelector('.cluster-label').textContent.endsWith('(collapsed)') && tables.every((g) => getComputedStyle(g).display === 'none') && /\\d+ links? hidden/.test(c.querySelector('.fold-badge')?.textContent ?? '') && ${others} === ${JSON.stringify(before)}; })()`,
+  );
+  await click(`[...document.querySelectorAll('.oe-btn')].find((b) => b.textContent === 'Expand all')`);
+  await shot('domains-expanded', `${visible}.querySelectorAll('.oe-hidden').length === 0 && ${visible}.querySelector('.fold-badge') === null`);
+  await click(`[...document.querySelectorAll('.oe-btn')].find((b) => b.textContent === 'Collapse all')`);
+  await shot('domains-all-collapsed', `${visible}.querySelectorAll('.nodes .table:not(.oe-hidden)').length === ${visible}.querySelectorAll('.nodes .table').length - ${visible}.querySelectorAll('.nodes .table.oe-hidden').length && ${visible}.querySelectorAll('.cluster.folded').length === ${visible}.querySelectorAll('.cluster').length`);
+  await click(`[...document.querySelectorAll('.oe-btn')].find((b) => b.textContent === 'Expand all')`);
+}
+
+// A table whose only links are hub badges still counts them in its panel.
+const badgeOnly = await evaluate(`(() => { const d = ${data}; const drawn = new Set(d.links.flatMap((l) => [l.from, l.to]));
+  return d.hubLinks.map((l) => l.from).find((id) => !drawn.has(id)) ?? null; })()`);
+if (badgeOnly) {
+  await click(`document.querySelector('.oe-crumbs .oe-link')`);
+  await click(`document.querySelector('.domain[data-domain=${JSON.stringify(badgeOnly.split('.')[0])}]') ?? document.querySelector('.domain')`);
+  const clearSearch = `(() => { const i = document.querySelector('.oe-search input'); i.value = ''; i.dispatchEvent(new Event('input')); })()`;
+  await evaluate(clearSearch);
+  await click(`document.querySelector('.oe-search input')`);
+  await send('Input.insertText', { text: badgeOnly.split('.')[2] });
+  await pause(200);
+  await key('Enter');
+  await shot('badge-only-table', `/0 relations · \\d+ shared links? \\(badges\\)/.test(document.querySelector('.oe-panel').textContent)`);
+  await key('Escape');
+  await evaluate(clearSearch);
+}
+
+// A polymorphic node, double-clicked: a neighborhood centred on it with its
+// owning table and every target, each line with its markers.
+const polyHome = await evaluate(`(() => { for (const v of document.querySelectorAll('g.view')) { const n = v.getAttribute('data-view'); if (n.startsWith('domain:') && v.querySelector('.poly')) return n.slice(7); } return null; })()`);
+if (polyHome) {
+  await click(`document.querySelector('.oe-crumbs .oe-link')`);
+  await click(`document.querySelector('.domain[data-domain=${JSON.stringify(polyHome)}]')`);
+  const poly = await evaluate(`${inView('.poly')}.getAttribute('data-id')`);
+  await click(inView(`.poly[data-id="${poly}"]`), { where: 'top', count: 2 });
+  await shot(
+    'polymorphic-neighborhood',
+    `(() => { const p = ${data}.nodes[${JSON.stringify(poly)}]; const shown = new Set([...${visible}.querySelectorAll('.table, .poly')].map((g) => g.getAttribute('data-id')));
+      const lines = [...${visible}.querySelectorAll('.relation-group')].filter((g) => g.getAttribute('data-from') === ${JSON.stringify(poly)} || g.getAttribute('data-to') === ${JSON.stringify(poly)});
+      return ${viewIs('neighborhood')} && [p.table, ...p.targets].every((t) => shown.has(t)) && lines.length === p.targets.length + 1 && lines.every((g) => g.querySelector('.marker path'))
+        && document.querySelector('.oe-crumbs .here').textContent.includes('«') || { shown: [...shown], lines: lines.length }; })()`,
+  );
+  await key('Escape');
+  await click(`[...document.querySelectorAll('.oe-btn')].find((b) => b.textContent === '‹ Back')`);
+}
 
 // Camera as { x, y, s } from the transform the viewer writes.
 const camera = () =>

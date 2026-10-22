@@ -8,9 +8,10 @@ import { SELF_STUB } from '../src/layout/router.js';
 import { POLY_VISIBLE_TARGETS } from '../src/layout/table-box.js';
 import { ALL_VIEW, ALL_VIEW_MAX_TABLES, STUB_SLOT, viewNames } from '../src/layout/views.js';
 import { normalizeModel } from '../src/model/load.js';
-import { buildScene, renderSvg } from '../src/render/svg/render.js';
+import { endMarkers } from '../src/render/svg/markers.js';
+import { HUB_ROUTE_LIMIT, buildScene, renderSvg } from '../src/render/svg/render.js';
 import { pathLength } from './helpers/geometry.js';
-import { loadMulti, loadWorkspace, table } from './helpers/shop.js';
+import { fk, loadMulti, loadWorkspace, table } from './helpers/shop.js';
 
 async function multi(change = (m) => m) {
   const model = change(await loadMulti());
@@ -35,8 +36,8 @@ test('relation kinds and review states carry their own classes and styles', asyn
   assert.match(svg, /\.kind-inferred\.review-pending \.relation, \.kind-inferred\.review-stale \.relation \{ stroke-dasharray: 6 4; \}/);
   assert.doesNotMatch(svg, /\.kind-inferred \.relation/);
   assert.match(svg, /\.kind-cross_db \.relation \{ stroke-dasharray: 10 3 2 3 2 3; \}/);
-  // Every cross-DB line, and only those, is labelled in the full view.
-  for (const r of scene('all').relations) assert.equal(r.label?.text ?? null, r.link.kind === 'cross_db' ? 'cross-DB' : null, r.id);
+  // Every cross-DB line, and only those, is labelled in the full view with the database it reaches.
+  for (const r of scene('all').relations) assert.equal(r.label?.text ?? null, r.link.kind === 'cross_db' ? `cross-DB → ${r.link.to.node.split('.')[0]}` : null, r.id);
 });
 
 test('hub relations are badges, not lines', async () => {
@@ -70,29 +71,88 @@ test('a polymorphic association is one virtual node and one line; targets are da
   assert.ok(attachable.x >= contentFrame.x && attachable.x + attachable.w <= contentFrame.x + contentFrame.w);
 });
 
-test('overview aggregates relations per pair of domains', async () => {
+test('overview aggregates relations per direction between domains, with the relations behind each line', async () => {
   const { scene } = await multi();
   const overview = scene('overview');
   const counts = Object.fromEntries(overview.relations.map((r) => [r.id, [r.link.count, r.link.kind, r.label.text]]));
   assert.deepEqual(counts, {
     // memberships.role_id -> roles; memberships.user_id is a hub badge.
-    'auth/Identity<->auth/Organizations': [1, 'domain', '1'],
-    'activity/Audit<->auth/Organizations': [1, 'cross_db', '1 · cross-DB'],
-    'activity/Events<->shop/Catalog': [1, 'cross_db', '1 · cross-DB'],
-    'activity/Events<->shop/Orders': [1, 'cross_db', '1 · cross-DB'],
-    'auth/Organizations<->shop/Orders': [1, 'cross_db', '1 · cross-DB'],
-    'shop/Catalog<->shop/Orders': [1, 'domain', '1'],
+    'auth/Organizations->auth/Identity': [1, 'domain', '1 relation'],
+    'activity/Audit->auth/Organizations': [1, 'cross_db', '1 relation · cross-DB → auth'],
+    'activity/Events->shop/Catalog': [1, 'cross_db', '1 relation · cross-DB → shop'],
+    'activity/Events->shop/Orders': [1, 'cross_db', '1 relation · cross-DB → shop'],
+    'shop/Orders->auth/Organizations': [1, 'cross_db', '1 relation · cross-DB → auth'],
+    'shop/Orders->shop/Catalog': [1, 'domain', '1 relation'],
     // commentable -> products, attachable -> products
-    'shop/Catalog<->shop/Content': [2, 'domain', '2'],
+    'shop/Content->shop/Catalog': [2, 'domain', '2 relations'],
     // commentable -> orders, attachable -> orders, refunds
-    'shop/Content<->shop/Orders': [3, 'domain', '3'],
+    'shop/Content->shop/Orders': [3, 'domain', '3 relations'],
   });
+  // Only the referenced end carries a marker: an arrow at the domain holding the keys.
+  for (const r of overview.relations) assert.deepEqual(r.markers, { from: 'none', to: 'arrow' });
+  const content = overview.relations.find((r) => r.id === 'shop/Content->shop/Orders').link.relations;
+  assert.deepEqual(
+    content.map((r) => [r.from.table, r.from.column, r.to, r.cardinality, r.association]),
+    [
+      ['shop._.attachments', 'attachable_id', 'shop._.orders', 'n-1', 'attachable'],
+      ['shop._.attachments', 'attachable_id', 'shop._.refunds', 'n-1', 'attachable'],
+      ['shop._.comments', 'commentable_id', 'shop._.orders', 'n-1', 'commentable'],
+    ],
+  );
   assert.deepEqual(
     overview.groups.map((g) => [g.kind, g.group.database, g.group.engine]),
     [['db', 'activity', 'mongodb'], ['db', 'auth', 'postgresql'], ['db', 'shop', 'mysql']],
   );
   const catalog = overview.nodes.find((n) => n.id === 'shop/Catalog');
   assert.equal(catalog.box.count.text, '4 tables');
+});
+
+test('references both ways between two domains are two overview lines', async () => {
+  const back = { from: { table: 'auth.public.roles', columns: ['id'] }, to: { table: 'auth.public.organizations', columns: ['id'] }, cardinality: '1-1', optional: false, kind: 'declared', evidence: ['db'], review: 'pending' };
+  const { scene } = await multi((m) => normalizeModel({ ...m, relations: [...m.relations, back] }));
+  const lines = scene('overview').relations.filter((r) => ['auth/Identity->auth/Organizations', 'auth/Organizations->auth/Identity'].includes(r.id));
+  assert.deepEqual(
+    lines.map((r) => [r.id, r.link.count, r.link.review, r.link.relations.map((x) => x.from.table)]),
+    [
+      ['auth/Identity->auth/Organizations', 1, 'pending', ['auth.public.roles']],
+      ['auth/Organizations->auth/Identity', 1, 'pending', ['auth.public.memberships']],
+    ],
+  );
+});
+
+test('hub relations into a hub table are routed per view, hidden until it is selected', async () => {
+  const { scene, diagram, svg } = await multi();
+  const all = scene('all');
+  const users = 'auth.public.users';
+  assert.ok(diagram.hubLinks.length > 0);
+  // Every hub relation of the full view is routed once, ending at the hub table.
+  assert.deepEqual(all.hubRoutes.map((r) => r.link.id), diagram.hubLinks.filter((l) => l.from.node !== l.to.node).map((l) => l.id));
+  const byId = new Map(all.nodes.map((n) => [n.id, n]));
+  for (const r of all.hubRoutes) {
+    const [from, to] = [byId.get(r.link.from.node), byId.get(r.link.to.node)];
+    const [first, last] = [r.points[0], r.points.at(-1)];
+    assert.ok(first[0] === from.x || first[0] === from.x + from.w, `${r.link.id}: starts on its table's side`);
+    assert.ok(last[0] === to.x || last[0] === to.x + to.w, `${r.link.id}: ends on the hub's side`);
+    assert.deepEqual(r.markers, endMarkers(r.link));
+  }
+  assert.match(svg, /<g class="hub-routes" data-hub="auth\.public\.users" style="display:none"><g class="hub-route kind-/);
+  // Not relation lines: the drawn views stay as they were.
+  assert.ok(!all.relations.some((r) => r.link.to.node === users && diagram.hubLinks.some((l) => l.id === r.id)));
+  // A domain view routes only the hub relations whose two ends it draws.
+  const identity = scene('domain:auth/Identity');
+  const drawn = new Set(identity.nodes.map((n) => n.id));
+  assert.ok(identity.hubRoutes.length > 0);
+  for (const r of identity.hubRoutes) assert.ok(drawn.has(r.link.from.node) && r.link.to.node === users, r.link.id);
+  assert.deepEqual(scene('overview').hubRoutes, []);
+});
+
+test('a hub fanned out to more than HUB_ROUTE_LIMIT tables in a view gets no lines there', async () => {
+  const extra = Array.from({ length: HUB_ROUTE_LIMIT }, (_, i) => table(`shop._.extra_${String(i).padStart(2, '0')}`, 'Extra', [['created_by', 'bigint']]));
+  const refs = extra.map((t) => fk(t.id, 'created_by', 'auth.public.users'));
+  const { scene, diagram } = await multi((m) => normalizeModel({ ...m, tables: [...m.tables, ...extra], relations: [...m.relations, ...refs] }));
+  const into = diagram.hubLinks.filter((l) => l.to.node === 'auth.public.users' && l.from.node !== l.to.node).length;
+  assert.ok(into > HUB_ROUTE_LIMIT);
+  assert.deepEqual(scene('all').hubRoutes.filter((r) => r.link.to.node === 'auth.public.users'), []);
 });
 
 // A stub sits outside its domain's frame, beside the half holding the node it

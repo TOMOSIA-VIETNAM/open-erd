@@ -187,6 +187,10 @@ const polymorphic = {
     optional: { type: 'boolean', required: true },
     // Referenced by their primary key.
     targets: { type: 'array', items: tableId, minItems: 1, required: true },
+    // What the association means for the business (which records get one,
+    // what it is used for), shown when the virtual node is selected.
+    note: text,
+    internal_note: text,
     evidence,
     review,
   },

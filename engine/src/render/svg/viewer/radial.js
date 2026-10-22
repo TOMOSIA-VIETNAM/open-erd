@@ -69,3 +69,16 @@ export function straightLink(a, b) {
     [cb[0] - dx * tb, cb[1] - dy * tb],
   ];
 }
+
+const round2 = (v) => Math.round(v * 100) / 100;
+
+/**
+ * Transforms placing an end marker drawn for a line leaving its box to the
+ * right (markerSvg(kind, 0, 0, 1)) at each end of the straight line
+ * [[x1, y1], [x2, y2]]: at the first point turned towards the second, at the
+ * second turned towards the first. Returns [from, to] transform strings.
+ */
+export function endTransforms([[x1, y1], [x2, y2]]) {
+  const angle = round2((Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI);
+  return [`translate(${round2(x1)} ${round2(y1)}) rotate(${angle})`, `translate(${round2(x2)} ${round2(y2)}) rotate(${round2(angle + 180)})`];
+}

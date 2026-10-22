@@ -31,6 +31,12 @@ export const PADDING_X = 12;
 const NAME_TYPE_GAP = 16;
 const MIN_WIDTH = 140;
 const MAX_WIDTH = 360;
+// A column with something to read beyond its name gets a small mark right
+// after the name: a dot for a note, a square for enum values (which come with
+// meanings, so they win when a column has both). It sits inside the
+// NAME_TYPE_GAP the row keeps anyway, so no box grows for it.
+export const HINT_OFFSET = 7;
+export const HINT_SIZE = 5;
 // A long type (e.g. `timestamp with time zone`) is cut before the name is.
 const TYPE_SHARE = 0.4;
 
@@ -97,7 +103,8 @@ export function tableBox(table, badges = [], facts = []) {
     const nameFont = c.pk ? PK_FONT : COLUMN_FONT;
     const type = fit(c.type, Math.min(measureText(c.type, TYPE_FONT), Math.max(room * TYPE_SHARE, room - NAME_TYPE_GAP - measureText(c.name, nameFont))), TYPE_FONT);
     const name = fit(c.name, room - NAME_TYPE_GAP - type.width, nameFont);
-    return { column: path, pk: c.pk === true, depth, name, type, centerY: centerOf() };
+    const hint = c.enum && Object.keys(c.enum).length > 0 ? 'enum' : c.note ? 'note' : null;
+    return { column: path, pk: c.pk === true, depth, name, type, hint, hintX: hint ? name.width + HINT_OFFSET : null, centerY: centerOf() };
   };
   const rows = table.columns.map((c) => columnRow(c, c.name, 0));
   const insets = embedded.map((e) => {

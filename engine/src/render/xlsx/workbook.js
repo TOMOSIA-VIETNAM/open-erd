@@ -1,5 +1,5 @@
 import ExcelJS from 'exceljs';
-import { columnEntries } from '../../model/columns.js';
+import { columnEntries, enumMeaning } from '../../model/columns.js';
 import { compareStrings } from '../../model/load.js';
 import { KIND_TRUST, REVIEW_TRUST, databaseFacts, tableFacts } from '../../layout/diagram.js';
 import { FULL_WIDTH } from '../../text/measure.js';
@@ -157,7 +157,7 @@ function tableFlags(t, tenancy) {
 function columnComment(c) {
   return [
     c.note,
-    ...Object.entries(c.enum ?? {}).map(([value, meaning]) => `${value}: ${meaning}`),
+    ...Object.entries(c.enum ?? {}).map(([value, meaning]) => (enumMeaning(value, meaning) ? `${value}: ${meaning}` : value)),
     c.note_source && `Original note: ${c.note_source}`,
     c.internal_note && `Internal note: ${c.internal_note}`,
     c.renamed_from && `Renamed from ${c.renamed_from}`,
@@ -292,8 +292,18 @@ export function buildWorkbook(model) {
   addSheet(
     workbook,
     SHEETS.polymorphic,
-    [{ header: 'Table' }, { header: 'Association' }, { header: 'Type column' }, { header: 'Id column' }, { header: 'Optional' }, { header: 'Targets', wrap: true }, { header: 'Review' }, { header: 'Evidence', wrap: true }],
-    model.polymorphic.map((a) => [tableLink(a.table), a.name, a.type_column, a.id_column, yesNo(a.optional), lines(a.targets), a.review, lines(a.evidence)]),
+    [{ header: 'Table' }, { header: 'Association' }, { header: 'Type column' }, { header: 'Id column' }, { header: 'Optional' }, { header: 'Targets', wrap: true }, { header: 'Note', wrap: true }, { header: 'Review' }, { header: 'Evidence', wrap: true }],
+    model.polymorphic.map((a) => [
+      tableLink(a.table),
+      a.name,
+      a.type_column,
+      a.id_column,
+      yesNo(a.optional),
+      lines(a.targets),
+      lines([a.note, a.internal_note && `Internal note: ${a.internal_note}`].filter(Boolean)),
+      a.review,
+      lines(a.evidence),
+    ]),
   );
 
   addSheet(

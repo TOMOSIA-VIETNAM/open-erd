@@ -27,9 +27,9 @@ when this page and the engine disagree.
 schema_version: 1
 sources:                     # logical names, used in evidence; no paths here
   - name: billing-api
-hub:                         # drawn as badges instead of lines
+hub:                         # cross-cutting references, drawn as badges instead of lines
+  columns: [created_by, updated_by, tenant_id]
   tables: [billing.public.users]
-  columns: [created_by, tenant_id]
 collapse_join_tables: false  # true draws a pure join table as one n-n line
 hidden:                      # left out of every profile render
   tables: [billing.public.audit_logs]
@@ -45,9 +45,19 @@ profiles:                    # render --profile <name> writes out/erd.<name>.svg
 Only `schema_version` is required. Profile `public` exists without being
 declared (all defaults). A profile render filters the model first, then draws
 it at the positions of the full layout: hidden tables leave gaps, nothing
-moves. Run `layout` before a profile render as for a normal one. Hub candidates: tables referenced by most
-relations (users, accounts, tenants) and audit columns. Propose them, do not
-decide alone.
+moves. Run `layout` before a profile render as for a normal one.
+
+A hub is only for references that cut across every domain: audit columns
+(`created_by`, `updated_by`), tenant or company scoping (`tenant_id`,
+`company_id`), and the tables such columns point at (`users`, `tenants`).
+Never make a core business table a hub (one a domain is built around, such
+as `orders` or `campaigns`), however many tables reference it: its lines are
+the structure of its domain, and as a hub it turns into badges everywhere.
+Prefer `hub.columns` over `hub.tables`: a column hub hides only those
+cross-cutting references, a table hub hides every reference to the table.
+Propose each hub with the reason it is cross-cutting; do not decide alone.
+The ERD still lists every hub relation in the hub table's panel and draws
+them while that table is selected.
 
 ## `open-erd.local.yaml` (never committed, never credentials)
 
@@ -88,6 +98,7 @@ tables:
         enum:                          # stored value -> meaning
           draft: Created, not yet sent to the customer (Invoice::STATUSES)
           paid: Payment confirmed by the gateway (Invoice::STATUSES)
+          void: ""                     # code shows no meaning beyond the value
 relations:
   - from: { table: billing.public.invoices, columns: [user_id] }
     to:   { table: billing.public.users, columns: [id] }
@@ -103,6 +114,7 @@ polymorphic:
     id_column: commentable_id
     optional: false
     targets: [billing.public.invoices, billing.public.payments]
+    note: Staff discuss an invoice or a payment with the customer; one thread per record.
     evidence: ["billing-api:app/models/comment.rb#Comment"]
     review: pending
 ```
@@ -115,7 +127,8 @@ Every table and column named by a relation, polymorphic entry, `hub` or
 Identifier segments never contain `.`; keep names exactly as in the database
 (including case). Column fields: `name`, `type` required; `nullable`, `pk`,
 `unique`, `enum`, `note`, `note_source`, `internal_note`, `pii`,
-`renamed_from`, `default`, `auto_increment`, `generated` optional.
+`renamed_from`, `default`, `auto_increment`, `generated` optional. A
+polymorphic entry may also carry `note` and `internal_note`.
 
 - `default`: the default value as the schema source writes it, as a string.
   A literal when the code gives one (`draft`, `"0"`, `"false"`), else the
@@ -199,18 +212,32 @@ Identifier segments never contain `.`; keep names exactly as in the database
   target. Values that only follow
   from the targets (plain class names) get no `enum`.
 - **enum**: keys are the stored values (`"0"`, `"1"` for integer-backed
-  enums, the mapped value when an ORM maps names). The meaning is a short
-  English phrase plus the code symbol it came from.
+  enums, the mapped value when an ORM maps names). Write a meaning only when
+  the code reveals what the value means for the business (a branch, a label,
+  a comment: `paid: Payment confirmed by the gateway (Invoice::STATUSES)`);
+  otherwise leave it empty (`smartsite_standard_one: ""`). Never restate the
+  value in words or with the class or attribute it came from
+  (`Smartsite standard one (Template.code)`): the ERD hides such meanings.
 - **note** on a table: English, one or two sentences on what a row means for
-  the business. Translate non-English comments and keep the original in
-  `note_source`.
+  the business. Learn it from how the code uses the table: the services,
+  controllers, jobs and operations that create, change or read its rows,
+  not from its name. `A promotion a company runs for a period; entries and
+  rewards hang off it.` says something; `Stores campaigns.` only restates the
+  name and is not a note. Translate non-English comments and keep the
+  original in `note_source`.
 - **note** on a column: every column gets one, so the Excel column grid
   never has an empty Comment. English, at most about 15 words, saying what the
   value means or is used for (`Customer billed by this invoice.`, `Set when
-  the gateway confirms payment.`, `Surrogate key.`). Write only what code,
+  the gateway confirms payment.`, `Surrogate key.`), learned from the code
+  that sets or reads it; never just the column name in words. Write only what code,
   schema comments or names show; when nothing does, write `Unclear from
   code.` rather than guess. Enum value meanings stay in `enum`, not in the
   note.
+- **note** on a polymorphic entry: what the association means for the
+  business, from the code that creates its rows: which records get one and
+  what for (`Staff discuss an invoice or a payment with the customer.`).
+  Write one for every polymorphic entry; the ERD shows it when the
+  polymorphic node is selected.
 - **pii**: names, emails, phones, addresses, birth dates, government ids,
   free-text written by end users, IPs.
 - **Special patterns** (STI, view, partition, tenant schemas, embedded

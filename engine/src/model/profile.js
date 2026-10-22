@@ -77,7 +77,7 @@ export function applyProfile(model, name) {
     const owner = kept.get(a.table);
     const targets = a.targets.filter((id) => kept.has(id));
     if (!owner || !owner.paths.has(a.type_column) || !owner.paths.has(a.id_column) || targets.length === 0) continue;
-    polymorphic.push(evidence({ ...a, targets }));
+    polymorphic.push(evidence(strip({ ...a, targets })));
   }
   const hub = model.config.hub
     ? { ...model.config.hub, ...(model.config.hub.tables ? { tables: model.config.hub.tables.filter((id) => kept.has(id)) } : {}) }
