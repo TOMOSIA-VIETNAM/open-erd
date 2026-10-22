@@ -43,7 +43,7 @@ const COMMANDS = {
     usage: `layout --workspace <dir> [--relayout <view>]... [--relayout '${EVERY_VIEW}']`,
     summary:
       'write coordinates for new nodes into layout.json, report moved nodes; --relayout (repeatable) places the named view ' +
-      `(overview, all = the view of all tables, domain:<db>/<domain>; '${EVERY_VIEW}' = every view) from scratch, dropping their kept positions`,
+      `(overview = the domain cards, all = the view of all tables, domain:<db>/<domain>; '${EVERY_VIEW}' = every view) from scratch, dropping their kept positions`,
     options: { workspace: { type: 'string' }, relayout: { type: 'string', multiple: true } },
     run: runLayout,
   },

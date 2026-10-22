@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
-import { segmentCrosses } from '../../src/layout/overview-router.js';
 import { MARGIN, STUB } from '../../src/layout/router.js';
 import {
   BADGE_ARROW_WIDTH,
   BADGE_FONT,
+  CARD,
+  CARD_DB_FONT,
+  CARD_TEXT_FONT,
+  CARD_TITLE_FONT,
   COLUMN_FONT,
-  DOMAIN_COUNT_FONT,
-  DOMAIN_TITLE_FONT,
   EMBED_INSET,
   FACT_FONT,
   MUTED_TITLE_FONT,
@@ -22,10 +23,29 @@ export function segments(points) {
   return points.slice(1).map((p, i) => [points[i], p]);
 }
 
-// True when the segment (axis-aligned, or a diagonal overview line) passes
-// through the open interior of `box`.
-export function hits([a, b], box) {
-  return segmentCrosses(a, b, box);
+// True when segment p-q passes through the open interior of rectangle r
+// (Liang-Barsky clipping).
+export function hits([[px, py], [qx, qy]], r) {
+  const dx = qx - px;
+  const dy = qy - py;
+  let t0 = 0;
+  let t1 = 1;
+  for (const [p, q] of [
+    [-dx, px - r.x],
+    [dx, r.x + r.w - px],
+    [-dy, py - r.y],
+    [dy, r.y + r.h - py],
+  ]) {
+    if (p === 0) {
+      if (q <= 0) return false;
+      continue;
+    }
+    const t = q / p;
+    if (p < 0) t0 = Math.max(t0, t);
+    else t1 = Math.min(t1, t);
+    if (t0 >= t1) return false;
+  }
+  return true;
 }
 
 export function inflate(b, by) {
@@ -38,15 +58,10 @@ export function pathLength(points) {
   return segments(points).reduce((sum, [[ax, ay], [bx, by]]) => sum + Math.abs(bx - ax) + Math.abs(by - ay), 0);
 }
 
-const onBorder = ([x, y], b) => ((x === b.x || x === b.x + b.w) && y >= b.y && y <= b.y + b.h) || ((y === b.y || y === b.y + b.h) && x >= b.x && x <= b.x + b.w);
-
 // Every line keeps the router margin from every box it does not attach to,
 // never crosses a group label, and leaves its own boxes horizontally with a
-// straight stub at least STUB long. Overview lines may meet any side of a
-// domain box (and run diagonally), so they only have to start and end on
-// their boxes' borders; their count badges cover no box and no label.
+// straight stub at least STUB long.
 export function assertLinesClear(scene) {
-  const overview = scene.name === 'overview';
   for (const r of scene.relations) {
     const segs = segments(r.points);
     const ends = new Set([r.link.from.node, r.link.to.node]);
@@ -57,13 +72,6 @@ export function assertLinesClear(scene) {
       for (const s of checked) assert.ok(!hits(s, inflate(n, MARGIN - 1)), `${scene.name}: ${r.id} crosses ${n.id}: ${JSON.stringify(s)}`);
     }
     for (const label of scene.labels) for (const s of segs) assert.ok(!hits(s, label), `${scene.name}: ${r.id} crosses ${label.id}`);
-    if (overview) {
-      const byId = new Map(scene.nodes.map((n) => [n.id, n]));
-      assert.ok(onBorder(r.points[0], byId.get(r.link.from.node)), `${scene.name}: ${r.id} does not start on its box`);
-      assert.ok(onBorder(r.points.at(-1), byId.get(r.link.to.node)), `${scene.name}: ${r.id} does not end on its box`);
-      for (const b of [...scene.nodes, ...scene.labels]) assert.ok(!overlaps(r.badge, b), `${scene.name}: badge of ${r.id} covers ${b.id}`);
-      continue;
-    }
     for (const [seg, side] of [
       [segs[0], r.fromSide],
       [[...segs.at(-1)].reverse(), r.toSide],
@@ -114,8 +122,18 @@ export function assertTextFits(scene) {
     } else if (box.kind === 'stub') {
       fits(id, box.title.text, MUTED_TITLE_FONT, inner);
     } else {
-      fits(id, box.title.text, DOMAIN_TITLE_FONT, inner);
-      fits(id, box.count.text, DOMAIN_COUNT_FONT, inner);
+      // An overview card: name and count share the first line; every
+      // related row keeps clear of the strength bar.
+      const cardInner = box.w - 2 * CARD.padX;
+      assert.ok(measureText(box.title.text, CARD_TITLE_FONT) + measureText(box.count.text, CARD_TEXT_FONT) + 12 <= cardInner, `${scene.name}: ${id}: title and count wider than ${cardInner}`);
+      for (const l of box.note?.lines ?? []) fits(id, l.text, CARD_TEXT_FONT, cardInner);
+      if (box.central) fits(id, box.central.text, CARD_TEXT_FONT, cardInner);
+      const bar = 5 * CARD.segment.w + 4 * CARD.segment.gap;
+      for (const r of box.related) {
+        const tag = r.db ? measureText(r.db, CARD_DB_FONT) + 8 + CARD.dbGap : 0;
+        assert.ok(CARD.swatch + measureText(r.name.text, CARD_TEXT_FONT) + tag + CARD.barGap + bar <= cardInner + 1, `${scene.name}: ${id}: related ${r.key} runs into its bar`);
+      }
+      assert.ok(box.related.length <= CARD.relatedY.length && CARD.relatedY.at(-1) + 10 <= box.h, `${scene.name}: ${id}: related rows overflow`);
     }
   }
   for (const l of scene.labels) {

@@ -141,3 +141,14 @@ test('CLI: render --profile writes out/erd.<profile>.svg and .xlsx next to erd.s
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test('domain notes: kept by default, dropped with drop_notes note; a domain left without tables loses its entry', async () => {
+  const model = await loadWorkspace(fileURLToPath(new URL('./fixtures/workspace-multi', import.meta.url)));
+  const shop = (m) => m.databases.find((d) => d.database === 'shop').domains;
+  assert.equal(shop(applyProfile(model, 'public')).Orders.note, 'What a customer bought, how it was paid and what was refunded.');
+  const quiet = { ...model, config: { ...model.config, profiles: { quiet: { drop_notes: ['note'] } } } };
+  assert.deepEqual(shop(applyProfile(quiet, 'quiet')).Orders, {});
+  const content = model.tables.filter((t) => t.id.startsWith('shop.') && t.domain === 'Content').map((t) => t.id);
+  const hidden = { ...model, config: { ...model.config, hidden: { tables: content } } };
+  assert.deepEqual(Object.keys(shop(applyProfile(hidden, 'public'))), ['Catalog', 'Orders']);
+});

@@ -1,6 +1,9 @@
 schema_version: 1
 database: auth
 engine: postgresql
+domains:
+  Identity:
+    note: People who sign in and the profiles and sessions that belong to them.
 tables:
   - id: auth.public.users
     domain: Identity

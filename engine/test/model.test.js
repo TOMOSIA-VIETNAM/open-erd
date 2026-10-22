@@ -319,3 +319,21 @@ test('columns carry default, auto_increment and generated, typed', () => {
     'model/shop.yaml: tables[0].columns[2].defaults: unknown field',
   ]);
 });
+
+test('domains: a note per domain of the file; an unknown domain or field is an error', () => {
+  const files = (domains) => ({ 'open-erd.yaml': CONFIG, 'model/shop.yaml': modelFile(`${domains}tables:${ORDERS}`) });
+  const { model, errors } = parseWorkspace(files('domains:\n  Sales:\n    note: What customers ordered.\n'));
+  assert.deepEqual(errors, []);
+  assert.deepEqual(model.databases[0].domains, { Sales: { note: 'What customers ordered.' } });
+  assert.deepEqual(messages(files('domains:\n  Billing:\n    note: Invoices.\n')), ['model/shop.yaml: domains.Billing: no table of shop is in domain "Billing"']);
+  assert.deepEqual(messages(files('domains:\n  "Sales & Ops":\n    note: x\n')), ['model/shop.yaml: domains["Sales & Ops"]: no table of shop is in domain "Sales & Ops"']);
+  assert.match(messages(files('domains:\n  Sales:\n    summary: x\n'))[0], /^model\/shop\.yaml: domains\.Sales\.summary: unknown field/);
+  // Keys sorted on load, so the order they are written in does not matter.
+  const two = `tables:${ORDERS}  - id: shop._.users\n    domain: Accounts\n    columns:\n      - { name: id, type: bigint, pk: true }\n`;
+  const loaded = (domains) => parseWorkspace({ 'open-erd.yaml': CONFIG, 'model/shop.yaml': modelFile(`${domains}${two}`) }).model.databases[0].domains;
+  assert.deepEqual(Object.keys(loaded('domains:\n  Sales: { note: a }\n  Accounts: { note: b }\n')), ['Accounts', 'Sales']);
+});
+
+test('the overview setting of earlier versions is gone: an unknown field', () => {
+  assert.match(messages({ 'open-erd.yaml': `${CONFIG}overview: { min_relations: 2 }\n`, 'model/shop.yaml': modelFile(`tables:${ORDERS}`) })[0], /^open-erd\.yaml: overview: unknown field/);
+});

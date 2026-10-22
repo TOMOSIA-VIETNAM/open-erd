@@ -58,14 +58,14 @@ test('central tables: clearly above the median and the strict top of their domai
   assert.deepEqual([...again.central], [...result.central]);
 });
 
-test('a central table is drawn with a stronger header and a star; its domain box names it on the overview', async () => {
+test('a central table is drawn with a stronger header and a star; its domain card names it on the overview', async () => {
   const model = star(6);
   const { layout } = await computeLayout(model);
   const svg = renderSvg(model, layout);
   assert.match(svg, /<g class="table central" data-id="db\._\.hub">/);
   assert.match(svg, /<g class="table central"[^>]*>.*?<path class="icon-central"/s);
   assert.doesNotMatch(svg, /<g class="table central" data-id="db\._\.leaf/);
-  assert.match(svg, /<text class="domain-central"[^>]*>central: hub<\/text>/);
+  assert.match(svg, /<text class="card-central"[^>]*>Central: <tspan class="fact-code">hub<\/tspan><\/text>/);
   const diagram = buildDiagram(model);
   assert.equal(diagram.centralOf.get('db/Core'), 'db._.hub');
 });

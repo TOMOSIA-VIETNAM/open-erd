@@ -1,6 +1,13 @@
 schema_version: 1
 database: shop
 engine: mysql
+domains:
+  Catalog:
+    note: Products the shop sells, grouped into categories and brands, with their prices.
+  Content:
+    note: Posts and comments customers and staff write about products and orders.
+  Orders:
+    note: What a customer bought, how it was paid and what was refunded.
 tables:
   - id: shop._.categories
     domain: Catalog

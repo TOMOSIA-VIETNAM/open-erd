@@ -2,7 +2,7 @@ import { compareStrings } from '../model/load.js';
 import { PALETTE } from '../palette.js';
 import { boundingBox, padFrame } from './clusters.js';
 import { buildDiagram } from './diagram.js';
-import { gridPlace, layoutGroups, layoutTables } from './elk-layout.js';
+import { layoutGroups, layoutTables } from './elk-layout.js';
 import { LAYOUT_FILE, LAYOUT_SCHEMA_VERSION } from './layout-file.js';
 import { carryRenames } from './renames.js';
 import { insertNextTo, settle } from './stability.js';
@@ -108,10 +108,22 @@ function stackAround(list, gap) {
   return blocks;
 }
 
+// Overview cards from scratch: equal boxes in reading order (the order of
+// the group's children), as many per row as brings the grid closest to the
+// group's aspect.
+function cardGrid(children, group) {
+  const { w, h } = children[0];
+  const n = children.length;
+  const off = (cols) => Math.abs(Math.log((cols * (w + group.gap)) / (Math.ceil(n / cols) * (h + group.gap)) / group.aspect));
+  let cols = 1;
+  for (let c = 2; c <= n; c++) if (off(c) < off(cols) - 1e-9) cols = c;
+  return new Map(children.map((c, i) => [c.id, { x: (i % cols) * (w + group.gap), y: Math.floor(i / cols) * (h + group.gap) }]));
+}
+
 const FRESH = {
   layered: (children, pairs, group) => layoutTables(children, pairs, new Set(group.children.filter((c) => c.node?.central).map((c) => c.id))),
   pack: (children, pairs, group) => layoutGroups(children, pairs, group.gap, group.aspect),
-  grid: (children, pairs, group) => gridPlace(children, pairs, group.gap, group.aspect),
+  cards: (children, pairs, group) => cardGrid(children, group),
   around: (children, pairs, group, links, boxes) => placeAround(children, links, group, boxes),
 };
 

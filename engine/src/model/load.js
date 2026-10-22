@@ -69,6 +69,7 @@ export function parseWorkspace(files) {
         file,
         ...(data.tenant_schemas ? { tenant_schemas: data.tenant_schemas } : {}),
         ...(data.topology ? { topology: data.topology } : {}),
+        ...(data.domains ? { domains: data.domains } : {}),
       });
       data.tables.forEach((table, i) => tables.push({ table, file, path: joinPath('tables', i), database: data.database }));
     }
@@ -138,6 +139,11 @@ export function parseWorkspace(files) {
   }
 
   for (const db of databases) {
+    for (const name of Object.keys(db.domains ?? {}).sort(compareStrings)) {
+      if (!tables.some((x) => x.database === db.database && x.table.domain === name)) {
+        errors.push({ file: db.file, path: joinPath('domains', name), message: `no table of ${db.database} is in domain ${JSON.stringify(name)}` });
+      }
+    }
     (db.tenant_schemas ?? []).forEach((t, i) => {
       if (!tables.some((x) => x.database === db.database && x.table.id.split('.')[1] === t.schema)) {
         errors.push({ file: db.file, path: `tenant_schemas[${i}].schema`, message: `no table of ${db.database} is in schema ${JSON.stringify(t.schema)}` });
@@ -266,7 +272,11 @@ export function normalizeModel(model) {
   return {
     config,
     databases: [...model.databases]
-      .map((db) => (db.tenant_schemas ? { ...db, tenant_schemas: [...db.tenant_schemas].sort((a, b) => compareStrings(a.schema, b.schema)) } : db))
+      .map((db) => ({
+        ...db,
+        ...(db.tenant_schemas ? { tenant_schemas: [...db.tenant_schemas].sort((a, b) => compareStrings(a.schema, b.schema)) } : {}),
+        ...(db.domains ? { domains: Object.fromEntries(Object.keys(db.domains).sort(compareStrings).map((k) => [k, db.domains[k]])) } : {}),
+      }))
       .sort((a, b) => compareStrings(a.database, b.database)),
     // STI subclasses, partition and index columns keep authored order:
     // it is the class hierarchy and the index column order.

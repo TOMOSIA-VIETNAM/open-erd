@@ -109,15 +109,21 @@ test('polymorphic target lines are routed per view and hidden until clicked', as
   assert.match(svg, new RegExp(`<g class="poly-routes" data-poly="${escaped}" style="display:none">`));
 });
 
-test('viewer data: overview line relations, hub relations, link optionality, polymorphic notes', async () => {
+test('viewer data: relations by pair of domains, domain notes, central table, hub relations, link optionality, polymorphic notes', async () => {
   const { model, diagram, svg } = await multi();
   const data = JSON.parse(dataBlock(svg));
-  // Each overview line lists the relations it stands for, keyed by its id.
+  // Each pair of domains lists the relations it stands for, keyed by its id;
+  // a domain with itself too (the matrix diagonal).
   assert.deepEqual(data.domainLinks['shop/Catalog<->shop/Content'], [
-    { from: 'shop._.attachments', column: 'attachable_id', to: 'shop._.products', cardinality: 'n-1', kind: 'polymorphic', association: 'attachable' },
-    { from: 'shop._.comments', column: 'commentable_id', to: 'shop._.products', cardinality: 'n-1', kind: 'polymorphic', association: 'commentable' },
+    { from: 'shop._.attachments', column: 'attachable_id', to: 'shop._.products', cardinality: 'n-1', kind: 'polymorphic', review: 'pending', association: 'attachable' },
+    { from: 'shop._.comments', column: 'commentable_id', to: 'shop._.products', cardinality: 'n-1', kind: 'polymorphic', review: 'reviewed', association: 'commentable' },
   ]);
+  assert.equal(data.domainLinks['shop/Catalog<->shop/Catalog'].length, 4);
   assert.deepEqual(Object.keys(data.domainLinks).sort(), Object.keys(data.domainLinks));
+  assert.equal(data.domainNotes['auth/Identity'], 'People who sign in and the profiles and sessions that belong to them.');
+  assert.equal(data.domainNotes['activity/Events'], undefined);
+  assert.equal(data.mostCentral, diagram.mostCentral);
+  assert.equal(data.overviewMinRelations, undefined);
   // Hub relations are listed with their referencing column; drawn links carry optional for the markers.
   assert.deepEqual(data.hubLinks.map((l) => l.id), diagram.hubLinks.map((l) => l.id));
   const created = data.hubLinks.find((l) => l.id === 'shop._.products(created_by)->auth.public.users(id)');

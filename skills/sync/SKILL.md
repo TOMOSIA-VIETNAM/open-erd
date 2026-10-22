@@ -55,6 +55,10 @@ it and mark those facts `stale`.
 
 New tables need a domain: propose one (existing domains first) and ask, in one
 message for all new tables.
+A new domain gets a one-sentence business description under `domains:` in
+its database's model file (`model.md`, "note on a domain"); so does any
+domain still without one. Drop the entry of a domain that no table uses any
+more (`validate` rejects it).
 
 Every new table, column and polymorphic entry gets a `note` (rules in
 `model.md`, "Writing facts": business meaning learned from how the code uses

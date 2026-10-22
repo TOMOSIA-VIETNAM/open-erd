@@ -2,8 +2,8 @@ import { clusterLabel, engineName } from '../../layout/clusters.js';
 import { VIEW_SOURCE, buildDiagram } from '../../layout/diagram.js';
 import { COLUMN_FONT, HEADER_HEIGHT, PADDING_X, PK_FONT, ROW_HEIGHT, TYPE_FONT } from '../../layout/table-box.js';
 import { ALL_VIEW, DOMAIN_VIEW_PREFIX, OVERVIEW, hasAllView, viewNames } from '../../layout/views.js';
-import { minRelations } from '../../model/schema.js';
-import { UNCONFIRMED_DASH, isConfirmed, overviewStrokeWidth } from '../svg/markers.js';
+import { STRENGTH_SEGMENTS } from '../../layout/domains.js';
+import { UNCONFIRMED_DASH, isConfirmed } from '../svg/markers.js';
 import { dbDisplayName } from '../../display-name.js';
 import { columnEntries, enumMeaning } from '../../model/columns.js';
 import { PALETTE } from '../../palette.js';
@@ -42,7 +42,6 @@ const COLORS = PALETTE.map((p) => Object.fromEntries(Object.entries(p).map(([k, 
 const LINE_COLOR = '#6b778a';
 const LABEL_COLOR = '#4f5b6e';
 const VIEW_SOURCE_COLOR = '#a9b2c0';
-const OVERVIEW_COLOR = '#8a96a8';
 function dashPattern(link) {
   if (link.kind === VIEW_SOURCE) return '5 4';
   return isConfirmed(link.kind, link.review) ? null : UNCONFIRMED_DASH;
@@ -296,17 +295,36 @@ function nodeCells(n, parent, x, y, colorOf) {
     ];
     return { cells, h: n.h };
   }
-  // Overview domain box: name over table count, then its central table.
+  // Overview card, as in the SVG: name and table count, note, central
+  // table, then the most related domains with a strength bar of filled and
+  // empty squares; an accent bar in the domain's colour on its left edge.
   const c = colorOf(n.id);
-  const central = n.box.central ? `<br><span style="color:#4c4f9e">${escapeHtml(n.box.central.full)}</span>` : '';
-  const value = `<b style="font-size:14px;color:${c.label}">${escapeHtml(n.box.title.full)}</b><br><span style="color:#5f6b7e">${escapeHtml(n.box.count.full)}</span>${central}`;
+  const b = n.box;
+  const bar = (filled) => `<span style="color:#5d7fb8">${'■'.repeat(filled)}</span><span style="color:#d5dbe4">${'■'.repeat(STRENGTH_SEGMENTS - filled)}</span>`;
+  const related = b.related.map((r) => {
+    const label = colorOf(r.key).label;
+    return `<span style="color:${label}">${escapeHtml(r.name.full)}</span>${r.db ? ` <span style="font-size:9px;color:#56627a">${escapeHtml(r.db)}</span>` : ''} ${bar(r.segments)}`;
+  });
+  const lines = [
+    `<b style="font-size:15px;color:${c.label}">${escapeHtml(b.title.full)}</b> <span style="color:#7a8597">· ${escapeHtml(b.count.full)}</span>`,
+    b.note ? `<span style="color:#3d4a5e">${escapeHtml(b.note.full)}</span>` : null,
+    b.central ? `<span style="color:#56627a">${escapeHtml(b.central.full)}</span>` : null,
+    `<span style="font-size:11px;color:#8a94a6"><b>Related domains</b></span>`,
+    ...(related.length > 0 ? related : ['<span style="color:#9aa4b5">No relations with other domains</span>']),
+  ].filter(Boolean);
   const cells = [
     cell({
       id: nodeId(n.id),
-      value,
+      value: lines.join('<br>'),
       parent,
       geometry: box(x, y, n.w, n.h),
-      styles: { ...shapeCommon, html: 1, arcSize: 20, fillColor: c.header, strokeColor: c.stroke, fontSize: 12 },
+      styles: { ...shapeCommon, html: 1, whiteSpace: 'wrap', verticalAlign: 'top', spacingTop: 8, spacingLeft: 16, arcSize: 20, fillColor: '#ffffff', strokeColor: '#cfd6e0', fontSize: 12 },
+    }),
+    cell({
+      id: `${nodeId(n.id)}|accent`,
+      parent: nodeId(n.id),
+      geometry: box(4, 12, 4, n.h - 24),
+      styles: { rounded: 1, arcSize: 50, fillColor: c.label, strokeColor: 'none', movable: 0, resizable: 0, editable: 0 },
     }),
   ];
   return { cells, h: n.h };
@@ -423,52 +441,6 @@ function edgeCell(r, byId, heights, origin, { id = edgeId(r.link), parent = '1',
   });
 }
 
-// An overview line, as in the SVG: as thick as its relation count is high,
-// the count as a small boxed label at its middle, no arrowheads, dashed
-// between databases. Straight segments through the waypoints (no edge
-// style), so a diagonal line stays diagonal.
-function overviewEdgeCell(r, byId, heights, origin) {
-  const { link, points } = r;
-  const badge = { cx: r.badge.cx, cy: r.badge.cy };
-  const source = endpoint(link, 'from', points[0], byId, heights);
-  const target = endpoint(link, 'to', points.at(-1), byId, heights);
-  const cross = link.kind === 'cross_db';
-  return cell({
-    id: edgeId(link),
-    value: String(link.count),
-    parent: '1',
-    vertex: false,
-    source: source.id,
-    target: target.id,
-    // The count sits where the SVG put its badge (clear of other badges).
-    geometry: `<mxGeometry${labelGeometry(points, badge)} relative="1" as="geometry"><Array as="points">${waypointsOf(points, origin)}</Array>${labelOffset(points, badge)}</mxGeometry>`,
-    styles: {
-      edgeStyle: 'none',
-      rounded: 0,
-      html: 0,
-      strokeColor: OVERVIEW_COLOR,
-      strokeWidth: overviewStrokeWidth(link.count),
-      fontSize: 10,
-      fontStyle: 1,
-      fontColor: '#3d4a5e',
-      labelBackgroundColor: '#ffffff',
-      labelBorderColor: OVERVIEW_COLOR,
-      spacing: 2,
-      dashed: cross ? 1 : 0,
-      dashPattern: cross ? '8 6' : null,
-      fixDash: cross ? 1 : null,
-      startArrow: 'none',
-      endArrow: 'none',
-      exitX: source.x,
-      exitY: source.y,
-      exitPerimeter: 0,
-      entryX: target.x,
-      entryY: target.y,
-      entryPerimeter: 0,
-    },
-  });
-}
-
 // Lines the SVG draws only on demand (a click on a hub table or on a
 // polymorphic node). draw.io has no click, so each kind goes on its own
 // layer, hidden until the reader turns it on in the Layers panel.
@@ -519,24 +491,8 @@ function pageXml(model, scene, colorOf) {
     cells.push(...drawn.cells);
   }
   const byId = new Map(scene.nodes.map((n) => [n.id, n]));
-  for (const r of scene.relations) {
-    if (r.weak) continue;
-    cells.push(scene.name === OVERVIEW ? overviewEdgeCell(r, byId, heights, origin) : edgeCell(r, byId, heights, origin));
-  }
-  // draw.io cannot hide a line until asked, so the overview leaves weak
-  // links out (as the SVG does at first) and says how many.
-  const weak = scene.relations.filter((r) => r.weak).length;
-  if (weak > 0) {
-    cells.push(
-      cell({
-        id: 'weak-links',
-        value: `${weak} weak link${weak === 1 ? '' : 's'} hidden (fewer than ${minRelations(model.config)} relations)`,
-        parent: '1',
-        geometry: box(10, 10, 360, 20),
-        styles: { text: 1, html: 0, align: 'left', verticalAlign: 'middle', fontSize: 11, fontColor: '#7a8597', strokeColor: 'none', fillColor: 'none' },
-      }),
-    );
-  }
+  // The overview has no lines (its scene draws cards only).
+  for (const r of scene.relations) cells.push(edgeCell(r, byId, heights, origin));
   const layers = hiddenLayers(scene, byId, heights, origin);
   const { w, h } = scene.bounds;
   return [
