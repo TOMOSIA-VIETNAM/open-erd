@@ -43,3 +43,11 @@ test('--version prints the engine version from package.json', async () => {
     assert.equal(stdout, `${version}\n`);
   }
 });
+
+test('layout --relayout rejects an unknown view before writing anything', async () => {
+  const { code, stderr } = await run('layout', '--workspace', fixture('workspace-valid'), '--relayout', 'domain:nope/Nope');
+  assert.equal(code, 1);
+  assert.match(stderr, /--relayout: unknown view "domain:nope\/Nope" \(views: overview, all, domain:/);
+  const { stdout } = await run('layout', '--help');
+  assert.match(stdout, /--relayout <view>/);
+});

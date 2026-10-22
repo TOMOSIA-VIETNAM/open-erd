@@ -7,7 +7,7 @@ import { LAYOUT_FILE, LAYOUT_SCHEMA_VERSION } from './layout-file.js';
 import { carryRenames } from './renames.js';
 import { insertNextTo, settle } from './stability.js';
 import { attachOffset, ceilToGrid } from './table-box.js';
-import { leavesOf, viewNames, viewTree } from './views.js';
+import { OVERVIEW, STUB_SLOT, leavesOf, viewNames, viewTree } from './views.js';
 
 const sameSize = (a, b) => a.w === b.w && a.h === b.h;
 
@@ -109,7 +109,7 @@ function stackAround(list, gap) {
 }
 
 const FRESH = {
-  layered: (children, pairs) => layoutTables(children, pairs),
+  layered: (children, pairs, group) => layoutTables(children, pairs, new Set(group.children.filter((c) => c.node?.central).map((c) => c.id))),
   pack: (children, pairs, group) => layoutGroups(children, pairs, group.gap, group.aspect),
   grid: (children, pairs, group) => gridPlace(children, pairs, group.gap, group.aspect),
   around: (children, pairs, group, links, boxes) => placeAround(children, links, group, boxes),
@@ -217,21 +217,55 @@ function assignColors(previous, keys) {
   return colors;
 }
 
+// Value of `relayout` that lays out every view from scratch.
+export const EVERY_VIEW = '*';
+
+/**
+ * Central tables of `clusters` (layout.json groups of one view) that sit
+ * outside the middle third of their group, horizontally or vertically: a
+ * fresh layout puts them in the middle, kept positions may not.
+ */
+function offCentre(clusters, diagram) {
+  const off = [];
+  for (const [key, members] of Object.entries(clusters)) {
+    if (key === STUB_SLOT) continue;
+    const boxes = Object.values(members);
+    if (boxes.length < 3) continue;
+    const frame = boundingBox(boxes);
+    for (const [id, b] of Object.entries(members)) {
+      if (!diagram.nodes.get(id)?.central) continue;
+      const [cx, cy] = [b.x + b.w / 2 - frame.x, b.y + b.h / 2 - frame.y];
+      const middle = (v, size) => v >= size / 3 && v <= (2 * size) / 3;
+      if (!middle(cx, frame.w) || (frame.h > 2 * b.h && !middle(cy, frame.h))) off.push(`${id} in ${key}`);
+    }
+  }
+  return off.sort(compareStrings);
+}
+
 /**
  * Computes layout.json for `model`: every view (overview, all, one per
  * domain) is placed by the same rules from its own previous positions, so
  * each view stays stable on its own. Views of domains that no longer exist
  * are dropped. Renamed tables keep their positions (see carryRenames).
- * Returns { layout, report } with one report per view.
+ * `relayout` lists views placed from scratch, ignoring their previous
+ * positions (EVERY_VIEW for all of them); colours are kept either way.
+ * Returns { layout, report, offCentre } with one report per view;
+ * `offCentre` names the views whose kept positions leave a central table
+ * away from the middle of its domain, with those tables.
  */
-export async function computeLayout(model, previousLayout) {
+export async function computeLayout(model, previousLayout, { relayout = [] } = {}) {
   const diagram = buildDiagram(model);
   const { layout: previous, renamed } = carryRenames(model, diagram, previousLayout);
+  const names = viewNames(diagram);
+  const unknown = relayout.filter((v) => v !== EVERY_VIEW && !names.includes(v));
+  if (unknown.length > 0) throw new Error(`--relayout: unknown view ${unknown.map((v) => JSON.stringify(v)).join(', ')} (views: ${names.join(', ')}, or ${EVERY_VIEW} for every view)`);
+  const fresh = (name) => relayout.includes(EVERY_VIEW) || relayout.includes(name);
   const views = {};
   const report = {};
-  for (const name of viewNames(diagram).sort(compareStrings)) {
+  const offCentreViews = {};
+  for (const name of [...names].sort(compareStrings)) {
     const { root, links } = viewTree(model, diagram, name);
-    const old = previous?.views?.[name]?.clusters ?? {};
+    const old = fresh(name) ? {} : (previous?.views?.[name]?.clusters ?? {});
     const boxes = new Map(leavesOf(root).map((l) => [l.id, l.box]));
     const { leaves } = await arrange(root, old, links, boxes);
     const clusters = {};
@@ -240,6 +274,18 @@ export async function computeLayout(model, previousLayout) {
       clusters[slot][id] = { x, y, w, h };
     }
     views[name] = { clusters };
+    if (Object.keys(old).length > 0 && name !== OVERVIEW) {
+      // Worth a hint only where a fresh layout would actually centre them.
+      let off = offCentre(clusters, diagram);
+      if (off.length > 0) {
+        const { leaves: freshLeaves } = await arrange(root, {}, links, boxes);
+        const freshClusters = {};
+        for (const [id, { slot, ...b }] of freshLeaves) (freshClusters[slot] ??= {})[id] = b;
+        const stillOff = new Set(offCentre(freshClusters, diagram));
+        off = off.filter((entry) => !stillOff.has(entry));
+      }
+      if (off.length > 0) offCentreViews[name] = off;
+    }
     const placed = new Set(Object.values(clusters).flatMap((members) => Object.keys(members)));
     report[name] = { ...diffLayouts(old, clusters), renamed: renamed.filter(([, now]) => placed.has(now)) };
   }
@@ -248,7 +294,7 @@ export async function computeLayout(model, previousLayout) {
     colors: assignColors(previous?.colors ?? {}, [...diagram.clusters.keys()]),
     views,
   };
-  return { layout, report };
+  return { layout, report, offCentre: offCentreViews };
 }
 
 function flatten(clusters) {

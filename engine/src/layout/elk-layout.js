@@ -150,16 +150,39 @@ async function pack(boxes, pairs, spacing, aspectRatio) {
 }
 
 /**
- * Places the boxes of one cluster from scratch.
- * `boxes`: [{ id, w, h }]; `links`: [{ from, to }] box ids, from referencing to.
- * Returns Map id -> { x, y } on the grid.
+ * Edges for the layered layout, [source, target]: from the referenced box to
+ * the referencing one, so referenced tables sit left of those pointing at
+ * them. A central table (most connected, see centrality.js) would then end
+ * up at the left edge of its domain with everything fanning out to the
+ * right; instead its neighbours are dealt to both sides, every other one
+ * (in id order) with its edge reversed, so ELK puts the central table in a
+ * middle layer with related tables around it.
  */
-export async function layoutTables(boxes, links) {
+export function layeredEdges(ids, links, central = new Set()) {
+  const edges = links.filter((l) => l.from !== l.to && ids.has(l.from) && ids.has(l.to)).map((l) => [l.to, l.from]);
+  for (const c of [...central].filter((id) => ids.has(id)).sort(compareStrings)) {
+    const around = [...new Set(edges.filter(([a, b]) => a === c || b === c).map(([a, b]) => (a === c ? b : a)))].sort(compareStrings);
+    const left = new Set(around.filter((_, i) => i % 2 === 1));
+    for (const e of edges) {
+      const other = e[0] === c ? e[1] : e[1] === c ? e[0] : null;
+      if (other === null || central.has(other)) continue;
+      // Left neighbours point at the central table, right ones away from it.
+      if (left.has(other)) [e[0], e[1]] = [other, c];
+      else [e[0], e[1]] = [c, other];
+    }
+  }
+  return edges.sort(([a, b], [c, d]) => compareStrings(a, c) || compareStrings(b, d));
+}
+
+/**
+ * Places the boxes of one cluster from scratch.
+ * `boxes`: [{ id, w, h }]; `links`: [{ from, to }] box ids, from referencing
+ * to; `central`: ids of central tables, placed in the middle (see
+ * layeredEdges). Returns Map id -> { x, y } on the grid.
+ */
+export async function layoutTables(boxes, links, central = new Set()) {
   const ids = new Set(boxes.map((b) => b.id));
-  const edges = links
-    .filter((l) => l.from !== l.to && ids.has(l.from) && ids.has(l.to))
-    .map((l) => [l.to, l.from])
-    .sort(([a, b], [c, d]) => compareStrings(a, c) || compareStrings(b, d));
+  const edges = layeredEdges(ids, links, central);
   const graph = {
     id: 'root',
     layoutOptions: layeredOptions(TABLE_GAP + 20),

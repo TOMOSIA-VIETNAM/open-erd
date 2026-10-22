@@ -1,3 +1,4 @@
+import { dbDisplayName } from '../display-name.js';
 import { measureText } from '../text/measure.js';
 
 // Frame padding is deliberately not a multiple of GRID: frame borders then sit
@@ -86,7 +87,7 @@ export function dbLabel(frame, database, engine, facts = []) {
   const cy = frame.y + 32;
   const icon = { x: frame.x + 18, y: cy - DB_ICON.h / 2, ...DB_ICON };
   const nameX = icon.x + icon.w + 9;
-  const nameW = Math.ceil(measureText(database, DB_LABEL_FONT));
+  const nameW = Math.ceil(measureText(dbDisplayName(database), DB_LABEL_FONT));
   const engineText = engineName(engine);
   const pill = { x: nameX + nameW + 10, y: cy - 9, w: Math.ceil(measureText(engineText, ENGINE_FONT)) + 14, h: 18 };
   const factPills = [];
@@ -100,7 +101,7 @@ export function dbLabel(frame, database, engine, facts = []) {
   return {
     cy,
     icon,
-    name: { x: nameX, text: database },
+    name: { x: nameX, text: dbDisplayName(database) },
     engine: { text: engineText, x: pill.x + pill.w / 2 },
     pill,
     facts: factPills,

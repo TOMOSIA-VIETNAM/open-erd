@@ -108,7 +108,11 @@ tables:
     internal_note: Totals recomputed by InvoiceJob.   # team-only; profiles drop it
     renamed_from: billing.public.bills  # only after the user confirmed a rename
     # optional pattern fields, see "Special patterns"
-    # kind, sources, sti, partition, unique, generated_by, embedded
+    # kind, sources, sti, partition, generated_by, embedded
+    indexes:                           # as the schema source declares them
+      - { name: index_invoices_on_user_id_and_status, columns: [user_id, status] }
+      - { name: index_invoices_on_number, columns: [number], unique: true }
+      - { columns: [due_on], where: "status = 'open'", using: btree }
     columns:                           # at least one
       - { name: id, type: bigint, pk: true, auto_increment: true, note: Surrogate key. }
       - { name: user_id, type: bigint, nullable: false, note: Customer billed by this invoice. }
@@ -183,7 +187,7 @@ polymorphic entry may also carry `note` and `internal_note`.
   - id: billing.tenant.usage_events          # partitions merged into one table
     partition: { method: range, columns: [occurred_at], interval: month }   # range | list | hash
   - id: billing.public.price_rules          # unique key over several columns
-    unique: [[plan_id, region_code]]
+    indexes: [{ columns: [plan_id, region_code], unique: true }]
   - id: billing.public._InvoiceToLabel       # created by a framework, declared in no file
     generated_by: Prisma implicit many-to-many
   - id: media._.playlists                    # NoSQL embedded documents
@@ -200,6 +204,23 @@ polymorphic entry may also carry `note` and `internal_note`.
   it in `tenant_schemas`; each of its tables shows "× N tenants" (or "one
   copy per tenant" without `count`).
 - Replica/shard: one model file per logical database, `topology` on it.
+- **indexes**: one entry per index statement the schema source declares
+  (`add_index` / `t.index`, `$table->index()` / `$table->unique([...])`,
+  Django `Meta.indexes` / `unique_together` / `UniqueConstraint` /
+  `db_index=True`, Prisma `@@index` / `@@unique`, TypeORM `@Index`, Sequelize
+  `indexes` / `addIndex`, Mongoose `index: true` / `schema.index()`, SQL
+  `CREATE [UNIQUE] INDEX`), or that database metadata shows. Fields: `columns`
+  (required, in index order; embedded fields as `<entity>.<column>`), `name`
+  (as declared; leave it out when the source names none), `unique: true`,
+  `where` (the predicate of a partial index, as written), `using` (the
+  access method: `btree`, `gin`, `hash`, ...). A single-column unique
+  constraint written on the column itself (`->unique()`, `@unique`,
+  `unique: true`) stays `unique: true` on that column, not an index.
+  Primary keys are not listed. A unique index over several columns is drawn
+  as a "unique (...)" line on the table's box.
+- `unique: [[a, b]]` on a table is the older form of a unique index; the
+  engine still reads it (as `indexes: [{ columns: [a, b], unique: true }]`),
+  but write `indexes`.
 
 ## Writing facts
 
@@ -265,7 +286,7 @@ polymorphic entry may also carry `note` and `internal_note`.
 - **pii**: names, emails, phones, addresses, birth dates, government ids,
   free-text written by end users, IPs.
 - **Special patterns** (STI, view, partition, tenant schemas, embedded
-  documents, multi-column unique, framework tables, replica/shard): use the
+  documents, indexes, framework tables, replica/shard): use the
   fields in "Special patterns" above, not prose in `note`.
 - **internal_note** vs **note**: `note` is what a customer may read;
   anything only the team should see (code pointers, doubts) goes in
@@ -287,7 +308,8 @@ timestamps, no absolute paths. Shape:
   "tables": [
     { "name": "invoices", "schema": null, "database": "billing", "evidence": "db/schema.rb#invoices",
       "columns": [ { "name": "id", "type": "bigint", "pk": true, "nullable": false, "unique": false, "auto_increment": true },
-                   { "name": "status", "type": "string", "nullable": false, "unique": false, "default": "draft" } ] }
+                   { "name": "status", "type": "string", "nullable": false, "unique": false, "default": "draft" } ],
+      "indexes": [ { "name": "index_invoices_on_status", "columns": ["status"], "unique": false } ] }
   ],
   "associations": [
     { "from": { "table": "invoices", "columns": ["payer_id"] }, "to": { "table": "parties", "columns": ["id"] },

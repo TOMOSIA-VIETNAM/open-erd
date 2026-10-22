@@ -4,6 +4,7 @@ import { COLUMN_FONT, HEADER_HEIGHT, PADDING_X, PK_FONT, ROW_HEIGHT, TYPE_FONT }
 import { ALL_VIEW, DOMAIN_VIEW_PREFIX, OVERVIEW, hasAllView, viewNames } from '../../layout/views.js';
 import { minRelations } from '../../model/schema.js';
 import { UNCONFIRMED_DASH, isConfirmed, overviewStrokeWidth } from '../svg/markers.js';
+import { dbDisplayName } from '../../display-name.js';
 import { columnEntries, enumMeaning } from '../../model/columns.js';
 import { PALETTE } from '../../palette.js';
 import { measureText, truncate } from '../../text/measure.js';
@@ -261,7 +262,8 @@ function tableNode(n, parent, x, y, colors) {
   const kind = t.kind ?? 'table';
   const tag = b.tag ? ` ${b.tag.text}` : '';
   return tableCells(
-    { id: nodeId(n.id), parent, x, y, w: n.w, title: b.title.text + tag, header: colors.header, stroke: '#b8c2d0', dashed: kind === 'table' ? null : '5 3', titleColor: '#172033' },
+    // A central table keeps its stronger header; draw.io gets no icons.
+    { id: nodeId(n.id), parent, x, y, w: n.w, title: b.title.text + tag, header: b.central ? colors.central : colors.header, stroke: b.central ? colors.centralStroke : '#b8c2d0', dashed: kind === 'table' ? null : '5 3', titleColor: '#172033' },
     rows,
     typeWidth,
   );
@@ -294,9 +296,10 @@ function nodeCells(n, parent, x, y, colorOf) {
     ];
     return { cells, h: n.h };
   }
-  // Overview domain box: name over table count.
+  // Overview domain box: name over table count, then its central table.
   const c = colorOf(n.id);
-  const value = `<b style="font-size:14px;color:${c.label}">${escapeHtml(n.box.title.full)}</b><br><span style="color:#5f6b7e">${escapeHtml(n.box.count.full)}</span>`;
+  const central = n.box.central ? `<br><span style="color:#4c4f9e">${escapeHtml(n.box.central.full)}</span>` : '';
+  const value = `<b style="font-size:14px;color:${c.label}">${escapeHtml(n.box.title.full)}</b><br><span style="color:#5f6b7e">${escapeHtml(n.box.count.full)}</span>${central}`;
   const cells = [
     cell({
       id: nodeId(n.id),
@@ -325,7 +328,7 @@ function groupCell(g, parent, x, y, colorOf) {
   const { database, engine, facts } = g.group;
   return cell({
     id: groupId(g.group),
-    value: [`${database} · ${engineName(engine)}`, ...facts].join('  ·  '),
+    value: [`${dbDisplayName(database)} · ${engineName(engine)}`, ...facts].join('  ·  '),
     parent,
     geometry: box(x, y, w, h),
     styles: { ...frame, arcSize: 32, spacingTop: 20, fontSize: 15, fillColor: '#fbfcfd', strokeColor: '#94a0b2', fontColor: '#1f2a3d' },

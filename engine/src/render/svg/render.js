@@ -1,18 +1,18 @@
 import { DB_FACT_FONT, DB_LABEL_FONT, ENGINE_FONT, LABEL_FONT, LABEL_OFFSET, clusterLabel, dbLabel, engineName, labelBox } from '../../layout/clusters.js';
-import { VIEW_SOURCE, buildDiagram, domainLinks, plural, polyLinkId, relationId } from '../../layout/diagram.js';
+import { VIEW_SOURCE, buildDiagram, domainLinks, plural, relationId } from '../../layout/diagram.js';
 import { resolveView } from '../../layout/index.js';
 import { routeOverview } from '../../layout/overview-router.js';
 import { STUB, routeEdges } from '../../layout/router.js';
-import { GRID, BADGE_ARROW_WIDTH, BADGE_FONT, DOMAIN_COUNT_FONT, DOMAIN_TITLE_FONT, EMBED_INSET, FACT_FONT, HEADER_HEIGHT, PADDING_X, ROW_HEIGHT, TAG_FONT, attachOffset } from '../../layout/table-box.js';
+import { GRID, BADGE_ARROW_WIDTH, BADGE_FONT, DOMAIN_COUNT_FONT, DOMAIN_TITLE_FONT, EMBED_INSET, FACT_FONT, HEADER_HEIGHT, ICON_GUTTER, PADDING_X, ROW_HEIGHT, TAG_FONT, attachOffset } from '../../layout/table-box.js';
 import { ALL_VIEW, OVERVIEW, hasAllView, viewNames } from '../../layout/views.js';
-import { columnEntries, enumMeaning, technicalColumns } from '../../model/columns.js';
+import { columnEntries, enumMeaning } from '../../model/columns.js';
 import { compareStrings } from '../../model/load.js';
 import { minRelations } from '../../model/schema.js';
 import { missingRelations } from '../../model/missing.js';
 import { measureText } from '../../text/measure.js';
 import { FONT_FAMILY, TEXT_STYLE_CSS, fontFaceCss } from '../../text/font.js';
 import { PALETTE } from '../../palette.js';
-import { UNCONFIRMED_DASH, endMarkers, enumIconSvg, isConfirmed, markerSvg, overviewStrokeWidth } from './markers.js';
+import { UNCONFIRMED_DASH, endMarkers, enumIconSvg, indexIconSvg, isConfirmed, keyIconSvg, linkIconSvg, markerSvg, overviewStrokeWidth, starIconSvg, tableIconSvg } from './markers.js';
 import viewerBundle from './viewer-bundle.json' with { type: 'json' };
 
 const CANVAS_MARGIN = 40;
@@ -63,14 +63,69 @@ const VIEWER_STYLE = `.row-hit { fill: transparent; }
 .hub-route { cursor: pointer; }
 @keyframes oe-flow { to { stroke-dashoffset: -16; } }
 @keyframes oe-pulse { to { stroke-width: 6; } }
-.business .column-type { display: none; }
-.business .column.technical { opacity: 0.18; }
 .oe-ui { font-family: '${FONT_FAMILY}', sans-serif; font-size: 13px; color: #1f2a3d; box-sizing: border-box; }
 .oe-ui * { box-sizing: border-box; }
-.oe-toolbar { display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 12px; background: #ffffff; border-bottom: 1px solid #d5dbe4; position: relative; }
-.oe-crumbs { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; }
-.oe-crumbs .sep { color: #9aa4b5; }
+.oe-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; height: 44px; padding: 0 10px; background: #ffffff; border-bottom: 1px solid #e1e6ee; position: relative; }
+.oe-left { display: flex; align-items: center; gap: 6px; flex: 1 1 auto; min-width: 0; }
+.oe-right { display: flex; align-items: center; gap: 6px; flex: none; }
+.oe-crumbs { display: flex; align-items: center; gap: 6px; min-width: 0; white-space: nowrap; overflow: hidden; }
+.oe-crumbs > * { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.oe-crumbs > .here { flex: 0 0 auto; max-width: 100%; }
+.oe-crumbs .sep { color: #9aa4b5; flex: none; }
 .oe-crumbs .here { font-weight: 700; }
+.oe-tool { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px; border-color: #dfe4ec; color: #3d4a5e; }
+.oe-tool.icon-only { width: 30px; padding: 0; justify-content: center; }
+.oe-icon { flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.icon-more path { stroke-width: 2.6; }
+.oe-tool kbd { font: inherit; font-size: 11px; color: #7a8597; background: #f1f4f8; border: 1px solid #dfe4ec; border-radius: 4px; padding: 0 5px; line-height: 16px; }
+.oe-search-trigger { color: #7a8597; min-width: 150px; }
+.oe-search-trigger .label { flex: 1; text-align: left; }
+.oe-drop { position: relative; }
+.oe-menu { position: absolute; top: 36px; right: 0; width: 300px; background: #ffffff; border: 1px solid #d5dbe4; border-radius: 8px; box-shadow: 0 8px 24px rgba(20, 30, 50, 0.16); padding: 4px 0; white-space: normal; z-index: 1; }
+.oe-item { display: flex; align-items: flex-start; gap: 6px; width: 100%; text-align: left; padding: 6px 10px 6px 6px; border: 0; background: none; font: inherit; color: #1f2a3d; cursor: pointer; }
+.oe-item:hover:not(:disabled) { background: #eef3fb; }
+.oe-item:disabled { color: #a7b0bf; cursor: default; }
+.oe-item .mark { flex: none; width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; color: #2563eb; }
+.oe-item .text { display: flex; flex-direction: column; min-width: 0; }
+.oe-item .detail { color: #7a8597; font-size: 11px; line-height: 1.35; margin-top: 1px; }
+.oe-menu-sub { color: #7a8597; font-size: 11px; padding: 6px 10px 2px 28px; border-top: 1px solid #eef1f5; margin-top: 4px; }
+.oe-menu-sep { border-top: 1px solid #eef1f5; margin: 4px 0; }
+.oe-more-menu { width: 340px; }
+.oe-spotlight-host { position: relative; width: 100%; height: 100%; }
+.oe-spotlight-backdrop { position: absolute; inset: 0; background: rgba(20, 30, 50, 0.28); }
+.oe-spotlight { position: absolute; left: 50%; top: 12%; transform: translateX(-50%); width: min(640px, calc(100vw - 32px)); background: #ffffff; border-radius: 12px; box-shadow: 0 18px 48px rgba(20, 30, 50, 0.3); overflow: hidden; }
+.oe-spotlight-field { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid #eef1f5; color: #7a8597; }
+.oe-spotlight-input { flex: 1; font: inherit; font-size: 18px; border: 0; outline: none; color: #1f2a3d; background: none; }
+.oe-spotlight-list { max-height: 420px; overflow: auto; padding: 4px 0; }
+.oe-spotlight-list .oe-result { display: flex; align-items: baseline; gap: 10px; width: 100%; text-align: left; padding: 7px 16px; border: 0; background: none; font: inherit; cursor: pointer; }
+.oe-spotlight-list .oe-result.active { background: #eef3fb; }
+.oe-result .kind { flex: none; width: 38px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; color: #7a8597; }
+.oe-result .kind.is-table { color: #2f6fd6; }
+.oe-result .name { font-weight: 700; color: #1f2a3d; overflow-wrap: anywhere; }
+.oe-result .where { color: #7a8597; font-size: 12px; margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%; }
+.oe-spotlight-empty { padding: 14px 16px; color: #7a8597; }
+.oe-spotlight-hint { padding: 6px 16px; font-size: 11px; color: #9aa4b5; border-top: 1px solid #eef1f5; }
+.oe-chip-group { margin: 8px 0 4px; }
+.oe-chipbox { display: flex; flex-wrap: wrap; gap: 4px; }
+.oe-chip { display: inline-flex; align-items: baseline; gap: 4px; font: inherit; font-size: 12px; line-height: 18px; padding: 0 7px; border: 1px solid #d5dbe4; border-radius: 9px; background: #f6f8fb; color: #1d4ed8; cursor: pointer; }
+.oe-chip:hover { background: #eef3fb; border-color: #9fb5e0; }
+.oe-chip.unconfirmed { border-style: dashed; border-color: #a7b0bf; background: #ffffff; }
+.oe-chip .db { font-size: 9px; color: #7a8597; text-transform: uppercase; letter-spacing: 0.03em; }
+.oe-more { font-size: 12px; margin-top: 4px; }
+.oe-review { display: inline-flex; vertical-align: middle; }
+.oe-review svg { overflow: visible; }
+.oe-line-facts { display: flex; align-items: center; gap: 6px; }
+.oe-review-chip { display: inline-flex; align-items: center; gap: 6px; background: #fff4e0; color: #8a5a00; border: 1px solid #f0c987; border-radius: 14px; padding: 3px 4px 3px 10px; font-size: 12px; box-shadow: 0 2px 6px rgba(20, 30, 50, 0.1); white-space: nowrap; }
+.oe-chip-close { font: inherit; font-size: 14px; line-height: 16px; width: 20px; height: 20px; border: 0; border-radius: 10px; background: none; color: #8a5a00; cursor: pointer; }
+.oe-chip-close:hover { background: #fde3b4; }
+.oe-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.92em; color: #4c4f9e; background: #f1f1fa; border-radius: 3px; padding: 0 3px; overflow-wrap: anywhere; }
+.oe-tip .oe-code { color: #c8caff; background: #2c3650; }
+.oe-facts { list-style: none; padding-left: 0; }
+.oe-star { color: #d99a00; }
+.oe-copy-menu { position: static; width: max-content; max-width: 100%; margin-top: 4px; box-shadow: none; }
+.oe-panel .oe-drop { position: static; }
+.oe-grid .chip.idx { background: #dff3f0; color: #136e63; }
+.legend-central { fill: #fde7a8; stroke: #a87a00; }
 .oe-link { color: #1d4ed8; cursor: pointer; background: none; border: 0; padding: 0; font: inherit; }
 .oe-link:hover { text-decoration: underline; }
 .oe-btn { font: inherit; padding: 4px 10px; border: 1px solid #c3cad5; border-radius: 6px; background: #ffffff; color: #1f2a3d; cursor: pointer; }
@@ -81,12 +136,9 @@ const VIEWER_STYLE = `.row-hit { fill: transparent; }
 .oe-seg .oe-btn { border-radius: 0; }
 .oe-seg .oe-btn:first-child { border-radius: 6px 0 0 6px; }
 .oe-seg .oe-btn:last-child { border-radius: 0 6px 6px 0; margin-left: -1px; }
-.oe-search { position: relative; }
-.oe-search input { font: inherit; width: 220px; padding: 5px 9px; border: 1px solid #c3cad5; border-radius: 6px; }
-.oe-results { position: absolute; top: 34px; right: 0; width: 360px; max-height: 360px; overflow: auto; background: #ffffff; border: 1px solid #c3cad5; border-radius: 6px; box-shadow: 0 6px 18px rgba(20, 30, 50, 0.15); }
-.oe-result { display: block; width: 100%; text-align: left; padding: 6px 10px; border: 0; background: none; font: inherit; cursor: pointer; }
-.oe-result:hover, .oe-result.active { background: #eef3fb; }
-.oe-result .where { color: #7a8597; font-size: 11px; }
+.oe-join-picks .oe-result { display: block; width: 100%; text-align: left; border: 0; background: none; font: inherit; cursor: pointer; }
+.oe-join-picks .oe-result:hover { background: #eef3fb; }
+.oe-join-picks .oe-result .where { color: #7a8597; font-size: 11px; margin: 0; max-width: none; }
 .oe-panel { background: #ffffff; border: 1px solid #c3cad5; border-radius: 8px; padding: 12px 14px; box-shadow: 0 6px 18px rgba(20, 30, 50, 0.12); overflow: auto; }
 .oe-panel h3 { margin: 0 0 4px; font-size: 14px; overflow-wrap: anywhere; }
 .oe-panel .sub { color: #7a8597; font-size: 12px; margin-bottom: 8px; overflow-wrap: anywhere; }
@@ -131,7 +183,6 @@ const VIEWER_STYLE = `.row-hit { fill: transparent; }
 .oe-grid td.name { font-weight: 700; overflow-wrap: anywhere; }
 .oe-grid td.type { color: #56627a; white-space: nowrap; }
 .oe-grid .comment { color: #56627a; overflow-wrap: anywhere; }
-.oe-grid tr.technical td.name { font-weight: 400; color: #56627a; }
 .oe-grid tr.open > td { background: #fff1b8; }
 .oe-grid tr[data-column] > td { border-bottom: 0; }
 .oe-grid tr.more > td { padding-top: 0; }
@@ -148,8 +199,6 @@ const VIEWER_STYLE = `.row-hit { fill: transparent; }
 .oe-minimap .seen { fill: rgba(37, 99, 235, 0.08); stroke: #2563eb; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
 .fold-badge rect { fill: #ffffff; stroke: #c3cad5; }
 .fold-badge-text { font-size: 11px; font-weight: 400; fill: #56627a; }
-.oe-download { position: relative; }
-.oe-menu { position: absolute; top: 34px; right: 0; width: 300px; background: #ffffff; border: 1px solid #c3cad5; border-radius: 6px; box-shadow: 0 6px 18px rgba(20, 30, 50, 0.15); padding: 4px 0; white-space: normal; }
 .oe-check { display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-top: 1px solid #eef1f5; margin-top: 4px; color: #3d4a5e; cursor: pointer; }
 .oe-status:not(:empty) { padding: 6px 10px; color: #56627a; font-size: 12px; border-top: 1px solid #eef1f5; overflow-wrap: anywhere; }
 .oe-panel .label-inline { color: #7a8597; font-size: 12px; min-width: 36px; }
@@ -216,6 +265,17 @@ text { font-family: '${FONT_FAMILY}', sans-serif; ${TEXT_STYLE_CSS} }
 .column-name.pk { font-weight: 700; }
 .column-type { font-size: 12px; font-weight: 400; fill: #7a8597; }
 .hint-enum { fill: none; stroke: #7c5cc4; stroke-width: 1.3; stroke-linecap: round; }
+.icon-pk { fill: none; stroke: #c98a04; stroke-width: 1.4; stroke-linecap: round; }
+.icon-fk { fill: none; stroke: #2f6fd6; stroke-width: 1.3; stroke-linecap: round; }
+.icon-index { fill: #1f9d8f; stroke: none; }
+.icon-table { fill: none; stroke: #5f6b7e; stroke-width: 1.1; }
+.icon-central { fill: #f2b705; stroke: #a87a00; stroke-width: 0.8; stroke-linejoin: round; }
+.review-icon { fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.review-icon-reviewed { stroke: #2f9e44; }
+.review-icon-pending { stroke: #c27c0e; }
+.review-icon-stale { stroke: #c53030; }
+.table.central .table-title { font-size: 13px; }
+.table.central > rect:last-of-type { stroke-width: 2.2; }
 .col-warn { fill: #e8a317; stroke: #ffffff; stroke-width: 0.8; stroke-linejoin: round; }
 .badge-text { font-size: ${BADGE_FONT.size}px; font-weight: ${BADGE_FONT.weight}; fill: #56627a; }
 .badge-arrow { fill: none; stroke: #56627a; stroke-width: 1.2; }
@@ -249,6 +309,10 @@ text { font-family: '${FONT_FAMILY}', sans-serif; ${TEXT_STYLE_CSS} }
 .inset-box { fill: #f6f8fb; stroke: #d5dbe4; stroke-width: 1; }
 .inset-title { font-size: 12px; font-weight: 700; fill: #56627a; }
 .fact-text { font-size: ${FACT_FONT.size}px; font-weight: ${FACT_FONT.weight}; fill: #5f6b7e; }
+/* Identifiers and values inside a fact line, set apart from its words by
+   colour only: same font and weight, so measured widths still hold. */
+.fact-code { fill: #4c4f9e; }
+.domain-central { font-size: ${DOMAIN_COUNT_FONT.size}px; font-weight: ${DOMAIN_COUNT_FONT.weight}; fill: #4c4f9e; }
 .db-fact-pill { fill: #eef1f5; stroke: #c3cad5; stroke-width: 1; }
 .db-fact { font-size: ${DB_FACT_FONT.size}px; font-weight: ${DB_FACT_FONT.weight}; fill: #3d4a5e; }
 ${DIFF_STYLE}
@@ -540,8 +604,27 @@ function headerPath(x, y, w, fill) {
   );
 }
 
-// The mark after a column name saying it has enum values to read.
-const hintSvg = (r, nameX, cy) => (r.hint ? enumIconSvg(nameX + r.hintX, cy) : '');
+// Marks after a column name: enum values to read, a column in an index.
+const HINT_ICONS = { enum: enumIconSvg, index: indexIconSvg };
+const hintsSvg = (r, nameX, cy) => r.hints.map((h) => HINT_ICONS[h.kind](nameX + h.x, cy)).join('');
+// Icon in a row's left gutter: primary key or reference to another table.
+const KEY_ICONS = { pk: keyIconSvg, fk: linkIconSvg };
+const keySvg = (r, left, cy) => (r.key ? KEY_ICONS[r.key](left + ICON_GUTTER / 2 - 1, cy) : '');
+
+// A fact line with its identifiers and values in tspans of their own. The
+// line was cut to fit as one string; the parts are cut at the same length.
+function factSvg(f, x, y) {
+  const tip = f.text.truncated ? `<title>${escapeXml(f.text.full)}</title>` : '';
+  let left = f.text.truncated ? f.text.text.length - 1 : f.text.text.length;
+  const spans = [];
+  for (const part of f.parts) {
+    if (left <= 0) break;
+    const text = part.text.slice(0, left);
+    left -= text.length;
+    spans.push(part.code ? `<tspan class="fact-code">${escapeXml(text)}</tspan>` : escapeXml(text));
+  }
+  return `<text class="fact-text" x="${x}" y="${y}" dominant-baseline="central">${spans.join('')}${f.text.truncated ? '…' : ''}${tip}</text>`;
+}
 
 // A possibly missing relation: a small amber triangle in the row's left
 // padding, so no box grows and no stored layout goes stale. Its title is the
@@ -553,10 +636,10 @@ function warnSvg(left, cy, text) {
 }
 
 // Each row is a group so the viewer can show the column's details on hover
-// (the transparent rect makes the whole row hoverable) and fade technical
-// columns in Business mode. Embedded columns are indented inside their
-// entity's inset box.
-function tableSvg(n, colors, technical, marks, warnings) {
+// (the transparent rect makes the whole row hoverable). Embedded columns are
+// indented inside their entity's inset box. A central table (see
+// centrality.js) gets a stronger header, a star and a thicker border.
+function tableSvg(n, colors, marks, warnings) {
   const { x, y, w, h, box } = n;
   const columnMarks = marks.columns.get(n.id);
   const rows = box.rows.map((r) => {
@@ -564,12 +647,13 @@ function tableSvg(n, colors, technical, marks, warnings) {
     const status = columnMarks?.get(r.column);
     const top = y + r.centerY - ROW_HEIGHT / 2;
     return [
-      `<g class="${technical.has(r.column) ? 'column technical' : 'column'}${status ? ` col-${status}` : ''}" data-column="${escapeXml(r.column)}">`,
+      `<g class="column${status ? ` col-${status}` : ''}" data-column="${escapeXml(r.column)}">`,
       `<rect class="row-hit" x="${x + indent}" y="${top}" width="${w - 2 * indent}" height="${ROW_HEIGHT}"/>`,
       status ? `<rect class="col-mark col-${status}" x="${x + indent + 1}" y="${top + 2}" width="3" height="${ROW_HEIGHT - 4}"/>` : '',
       warnings?.has(r.column) ? warnSvg(x + indent, y + r.centerY, warnings.get(r.column)) : '',
-      textEl(r.pk ? 'column-name pk' : 'column-name', x + PADDING_X + indent, y + r.centerY, r.name),
-      hintSvg(r, x + PADDING_X + indent, y + r.centerY),
+      keySvg(r, x + PADDING_X + indent, y + r.centerY),
+      textEl(r.pk ? 'column-name pk' : 'column-name', x + PADDING_X + indent + ICON_GUTTER, y + r.centerY, r.name),
+      hintsSvg(r, x + PADDING_X + indent + ICON_GUTTER, y + r.centerY),
       textEl('column-type', x + w - PADDING_X - indent, y + r.centerY, r.type, 'end'),
       '</g>',
     ].join('');
@@ -580,7 +664,7 @@ function tableSvg(n, colors, technical, marks, warnings) {
       `<rect class="inset-box" x="${x + EMBED_INSET}" y="${y + e.top + 1}" width="${w - 2 * EMBED_INSET}" height="${e.h - 2}" rx="4"/>` +
       `${textEl('inset-title', x + PADDING_X + EMBED_INSET, y + e.title.centerY, e.title)}</g>`,
   );
-  const facts = box.facts.map((f) => textEl('fact-text', x + PADDING_X, y + f.centerY, f.text));
+  const facts = box.facts.map((f) => factSvg(f, x + PADDING_X, y + f.centerY));
   const badges = box.badges.map((b) => {
     const cy = y + b.centerY;
     const ax = x + PADDING_X;
@@ -599,20 +683,23 @@ function tableSvg(n, colors, technical, marks, warnings) {
     ? [8, 4].map((d) => `<rect class="tenant-copy" x="${x + d}" y="${y + d}" width="${w}" height="${h}" rx="${CORNER}"/>`).join('')
     : '';
   const kind = n.node.table.kind ?? 'table';
+  const central = box.central;
+  const headerIcon = (central ? starIconSvg : tableIconSvg)(x + PADDING_X + ICON_GUTTER / 2 - 1, y + box.title.centerY);
   return [
-    `<g class="table${kind === 'table' ? '' : ' is-view'}${diffClass(marks, n.id)}" data-id="${escapeXml(n.id)}"><title>${escapeXml(titleText(marks, n.id, n.id))}</title>`,
+    `<g class="table${kind === 'table' ? '' : ' is-view'}${central ? ' central' : ''}${diffClass(marks, n.id)}" data-id="${escapeXml(n.id)}"><title>${escapeXml(titleText(marks, n.id, central ? `${n.id} (central table: most connected)` : n.id))}</title>`,
     copies,
     `<rect class="table-box" x="${x}" y="${y}" width="${w}" height="${h}" rx="${CORNER}"/>`,
-    headerPath(x, y, w, colors.header),
-    `<path d="M${x} ${y + HEADER_HEIGHT}H${x + w}" stroke="${colors.stroke}"/>`,
-    textEl('table-title', x + PADDING_X, y + box.title.centerY, box.title),
+    headerPath(x, y, w, central ? colors.central : colors.header),
+    `<path d="M${x} ${y + HEADER_HEIGHT}H${x + w}" stroke="${central ? colors.centralStroke : colors.stroke}"/>`,
+    headerIcon,
+    textEl('table-title', x + PADDING_X + ICON_GUTTER, y + box.title.centerY, box.title),
     tag,
     ...insets,
     ...rows,
     separator,
     ...facts,
     ...badges,
-    `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${CORNER}" fill="none" stroke="#b8c2d0"/>`,
+    `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${CORNER}" fill="none" stroke="${central ? colors.centralStroke : '#b8c2d0'}"/>`,
     '</g>',
   ].join('');
 }
@@ -650,7 +737,8 @@ function domainSvg(n, colors, marks) {
     `<g class="domain${diffClass(marks, n.id)}" data-domain="${escapeXml(n.id)}"><title>${escapeXml(n.id)}</title>` +
     `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="10" fill="${colors.header}" stroke="${colors.stroke}"/>` +
     `<text class="domain-title" x="${x + PADDING_X}" y="${y + box.title.centerY}" dominant-baseline="central" fill="${colors.label}">${escapeXml(box.title.text)}</text>` +
-    `${textEl('domain-count', x + PADDING_X, y + box.count.centerY, box.count)}</g>`
+    `${textEl('domain-count', x + PADDING_X, y + box.count.centerY, box.count)}` +
+    `${box.central ? textEl('domain-central', x + PADDING_X, y + box.central.centerY, box.central) : ''}</g>`
   );
 }
 
@@ -778,10 +866,10 @@ function hubRoutesSvg(routes) {
     .join('');
 }
 
-function viewSvg(scene, colorOf, visible, technical, marks, banner, warnings) {
+function viewSvg(scene, colorOf, visible, marks, banner, warnings) {
   const { x, y, w, h } = scene.bounds;
   const nodes = scene.nodes.map((n) => {
-    if (n.kind === 'table') return tableSvg(n, colorOf(n.node.cluster), technical.get(n.id), marks, warnings.get(n.id));
+    if (n.kind === 'table') return tableSvg(n, colorOf(n.node.cluster), marks, warnings.get(n.id));
     if (n.kind === 'poly') return polySvg(n, marks);
     if (n.kind === 'stub') return stubSvg(n, marks);
     return domainSvg(n, colorOf(n.id), marks);
@@ -835,15 +923,11 @@ function warningsByTable(warnings) {
  * neighborhood view, which spans domains). Keys are written in a fixed
  * order and lists come from the sorted model, so the text is deterministic.
  */
-export function viewerData(model, diagram, technical = technicalColumns(model), diff = null, warnings = missingRelations(model)) {
+export function viewerData(model, diagram, diff = null, warnings = missingRelations(model)) {
   const warned = warningsByTable(warnings);
   // Note fields in a fixed order; a sharing profile has already removed the
   // ones it drops.
   const notes = (o) => Object.fromEntries(['note', 'note_source', 'internal_note'].filter((f) => o[f]).map((f) => [f === 'note' ? f : camel(f), o[f]]));
-  const evidenceOf = new Map([
-    ...model.relations.map((r) => [relationId(r), r.evidence ?? []]),
-    ...model.polymorphic.map((a) => [polyLinkId(a), a.evidence ?? []]),
-  ]);
   // Key columns of every relation, in key order, for the join path finder.
   // A collapsed join table's line keeps its two relations (both from the
   // join table, in model order like buildDiagram's) so a path can walk
@@ -865,7 +949,6 @@ export function viewerData(model, diagram, technical = technicalColumns(model), 
     review: l.review,
     ...(l.via ? { via: l.via } : {}),
     ...columnsOf(l),
-    ...(evidenceOf.get(l.id)?.length > 0 ? { evidence: evidenceOf.get(l.id) } : {}),
   });
   const nodes = {};
   for (const id of [...diagram.nodes.keys()].sort(compareStrings)) {
@@ -873,7 +956,6 @@ export function viewerData(model, diagram, technical = technicalColumns(model), 
     if (n.kind === 'poly') {
       const a = n.association;
       nodes[id] = { kind: 'poly', cluster: n.cluster, table: a.table, name: a.name, typeColumn: a.type_column, idColumn: a.id_column, optional: a.optional, review: a.review, targets: a.targets, ...notes(a) };
-      if (a.evidence?.length > 0) nodes[id].evidence = a.evidence;
       continue;
     }
     const t = n.table;
@@ -881,8 +963,10 @@ export function viewerData(model, diagram, technical = technicalColumns(model), 
       kind: 'table',
       cluster: n.cluster,
       ...(t.kind && t.kind !== 'table' ? { tableKind: t.kind } : {}),
+      ...(n.central ? { central: true } : {}),
       ...notes(t),
       ...(n.facts.length > 0 ? { facts: n.facts } : {}),
+      ...(t.indexes ? { indexes: t.indexes.map((i) => ({ ...(i.name ? { name: i.name } : {}), columns: i.columns, unique: i.unique === true, ...(i.where ? { where: i.where } : {}), ...(i.using ? { using: i.using } : {}) })) } : {}),
       ...(warned.tables.has(id) ? { warning: warned.tables.get(id) } : {}),
       ...(t.sources ? { sources: t.sources } : {}),
       columns: columnEntries(t).map(({ path, column: c, entity }) => ({
@@ -896,7 +980,7 @@ export function viewerData(model, diagram, technical = technicalColumns(model), 
         ...(c.default === undefined ? {} : { default: c.default }),
         ...(c.generated === undefined ? {} : { generated: c.generated }),
         ...(c.pii ? { pii: true } : {}),
-        ...(technical.get(id).has(path) ? { technical: true } : {}),
+        ...(n.box.rows.find((r) => r.column === path)?.key === 'fk' ? { fk: true } : {}),
         ...(warned.columns.get(id)?.has(path) ? { warning: warned.columns.get(id).get(path) } : {}),
         ...(c.enum ? { enum: Object.fromEntries(Object.entries(c.enum).map(([v, meaning]) => [v, enumMeaning(v, meaning)])) } : {}),
         ...notes(c),
@@ -922,13 +1006,17 @@ export function viewerData(model, diagram, technical = technicalColumns(model), 
       })),
     ]),
   );
-  // Database name -> engine as printed on its frame, for cross-DB panels.
-  const databases = Object.fromEntries(model.databases.map((db) => [db.database, engineName(db.engine)]));
+  // Database name -> its engine as written in the model (`engine`, for the
+  // schema copy) and as printed on its frame (`label`, for cross-DB panels).
+  const databases = Object.fromEntries(model.databases.map((db) => [db.database, { engine: db.engine, label: engineName(db.engine) }]));
+  // Facts waiting for a reviewer, for the review mode menu entry.
+  const facts = [...model.relations, ...model.polymorphic];
+  const review = { pending: facts.filter((f) => f.review === 'pending').length, stale: facts.filter((f) => f.review === 'stale').length };
   // Downloads are named after the one database, else the project (its one
   // source), else plainly `erd`.
   const sources = model.config.sources ?? [];
   const project = model.databases.length === 1 ? model.databases[0].database : sources.length === 1 ? sources[0].name : 'erd';
-  const base = { project, nodes, links, hubLinks, domainLinks: domains, databases, overviewMinRelations: minRelations(model.config) };
+  const base = { project, nodes, links, hubLinks, domainLinks: domains, databases, review, overviewMinRelations: minRelations(model.config) };
   if (!diff) return base;
   const sorted = (map) => Object.fromEntries([...map].sort(([a], [b]) => compareStrings(a, b)));
   const { sentences } = diff.marks;
@@ -979,14 +1067,13 @@ export function renderSvg(model, layout, options = {}) {
   });
   // Indices past the palette cycle, which only happens once every tint is taken.
   const colorOf = (key) => PALETTE[layout.colors[key] % PALETTE.length];
-  const technical = technicalColumns(model);
   const columnWarnings = warningsByTable(warnings).columns;
   const { x, y, w, h } = scenes.find((s) => s.scene.name === visible).scene.bounds;
   return [
     `<svg xmlns="http://www.w3.org/2000/svg"${diff ? ' class="diff-mode"' : ''} width="${w}" height="${h}" viewBox="${x} ${y} ${w} ${h}">`,
     `<style>${STYLE}</style>`,
-    ...scenes.map((s) => viewSvg(s.scene, colorOf, s.scene.name === visible, technical, marks, s.banner, columnWarnings)),
-    `<script type="application/json" id="open-erd-data">${scriptJson(viewerData(model, diagram, technical, diff, warnings))}</script>`,
+    ...scenes.map((s) => viewSvg(s.scene, colorOf, s.scene.name === visible, marks, s.banner, columnWarnings)),
+    `<script type="application/json" id="open-erd-data">${scriptJson(viewerData(model, diagram, diff, warnings))}</script>`,
     `<script><![CDATA[\n${VIEWER_SCRIPT}\n]]></script>`,
     '</svg>',
     '',

@@ -134,6 +134,7 @@ export function parseWorkspace(files) {
     }
     if (table.partition) checkColumns(file, `${path}.partition.columns`, table.id, table.partition.columns);
     (table.unique ?? []).forEach((key, i) => checkColumns(file, `${path}.unique[${i}]`, table.id, key));
+    (table.indexes ?? []).forEach((index, i) => checkColumns(file, `${path}.indexes[${i}].columns`, table.id, index.columns));
   }
 
   for (const db of databases) {
@@ -225,6 +226,21 @@ export function parseWorkspace(files) {
   };
 }
 
+/**
+ * `table` with its deprecated `unique` keys turned into unique indexes, so
+ * everything after load reads one field (`indexes`). A key already declared
+ * as a unique index is not added twice.
+ */
+export function withIndexes(table) {
+  if (!table.unique) return table;
+  const { unique, ...rest } = table;
+  const declared = new Set((table.indexes ?? []).filter((i) => i.unique).map((i) => i.columns.join('\u0000')));
+  const converted = unique.filter((key) => !declared.has(key.join('\u0000'))).map((columns) => ({ columns, unique: true }));
+  return { ...rest, indexes: [...(table.indexes ?? []), ...converted] };
+}
+
+const indexKey = (i) => [i.columns.join(','), i.name ?? '', i.unique ? '1' : '0', i.where ?? '', i.using ?? ''].join('\u0000');
+
 // Sort every set-like collection so identical models always yield identical
 // output. Column and enum order are kept as authored: they mirror DDL order and
 // value lifecycles, which readers expect to see unchanged.
@@ -247,19 +263,19 @@ export function normalizeModel(model) {
     );
   }
   if (config.sources) config.sources = [...config.sources].sort((a, b) => compareStrings(a.name, b.name));
-  const byKey = (list) => [...list].sort((a, b) => compareStrings(a.join('\u0000'), b.join('\u0000')));
   return {
     config,
     databases: [...model.databases]
       .map((db) => (db.tenant_schemas ? { ...db, tenant_schemas: [...db.tenant_schemas].sort((a, b) => compareStrings(a.schema, b.schema)) } : db))
       .sort((a, b) => compareStrings(a.database, b.database)),
-    // STI subclasses, partition and unique key columns keep authored order:
+    // STI subclasses, partition and index columns keep authored order:
     // it is the class hierarchy and the index column order.
     tables: [...model.tables]
+      .map(withIndexes)
       .map((t) => ({
         ...t,
         ...(t.sources ? { sources: sortedList(t.sources) } : {}),
-        ...(t.unique ? { unique: byKey(t.unique) } : {}),
+        ...(t.indexes ? { indexes: [...t.indexes].sort((a, b) => compareStrings(indexKey(a), indexKey(b))) } : {}),
       }))
       .sort((a, b) => compareStrings(a.id, b.id)),
     relations: model.relations

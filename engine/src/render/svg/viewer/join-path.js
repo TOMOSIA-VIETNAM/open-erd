@@ -180,7 +180,9 @@ const dbOf = (id) => id.split('.')[0];
 /**
  * One hop walked from table `at`: { from, to, pairs: [[from column, to
  * column], ...] in key order, edge, flags }. Flags:
- *   { type: 'trust', text: 'inferred' | 'pending review' | 'stale' }
+ *   { type: 'trust', text: 'inferred' | 'pending review' | 'stale', review? }
+ *     `review` (pending | stale) when the flag is about the review state,
+ *     which the viewer shows as an icon
  *   { type: 'cross_db' }  the two tables are in different databases
  *   { type: 'polymorphic', column }  rows of `column`'s table point at
  *     several tables: filter on that type column
@@ -195,8 +197,8 @@ export function describeHop(edge, at, graph) {
   const flags = [];
   // A reviewed inference is a confirmed fact.
   if (edge.kind === 'inferred' && edge.review !== 'reviewed') flags.push({ type: 'trust', text: 'inferred' });
-  else if (edge.review === 'pending') flags.push({ type: 'trust', text: 'pending review' });
-  if (edge.review === 'stale') flags.push({ type: 'trust', text: 'stale' });
+  else if (edge.review === 'pending') flags.push({ type: 'trust', text: 'pending review', review: 'pending' });
+  if (edge.review === 'stale') flags.push({ type: 'trust', text: 'stale', review: 'stale' });
   if (dbOf(from) !== dbOf(to)) flags.push({ type: 'cross_db' });
   if (edge.typeColumn) flags.push({ type: 'polymorphic', table: edge.a, column: edge.typeColumn });
   // cardinality is "<a side>-<b side>": walking to the side marked n repeats rows.
@@ -219,21 +221,6 @@ export function pathNames(nodes) {
 /** `a.x = b.y AND a.z = b.w` for one hop; `name` from pathNames. */
 export function hopCondition(hop, name) {
   return hop.pairs.map(([f, t]) => `${name(hop.from)}.${f} = ${name(hop.to)}.${t}`).join(' AND ');
-}
-
-/**
- * The conditions of a path as plain text, one hop per line, for the Copy
- * button. A polymorphic hop says which type column to filter on, without a
- * value: the stored value depends on the application. Never SQL.
- */
-export function conditionsText(path) {
-  const name = pathNames(path.nodes);
-  return path.hops
-    .map((h) => {
-      const poly = h.flags.find((f) => f.type === 'polymorphic');
-      return `${hopCondition(h, name)}${poly ? ` (filter by ${name(poly.table)}.${poly.column})` : ''}`;
-    })
-    .join('\n');
 }
 
 /**

@@ -2,7 +2,7 @@ import ExcelJS from 'exceljs';
 import { columnEntries, enumMeaning } from '../../model/columns.js';
 import { compareStrings } from '../../model/load.js';
 import { missingRelations } from '../../model/missing.js';
-import { KIND_TRUST, REVIEW_TRUST, databaseFacts, tableFacts } from '../../layout/diagram.js';
+import { KIND_TRUST, REVIEW_TRUST, databaseFacts, factText, tableFacts } from '../../layout/diagram.js';
 import { FULL_WIDTH } from '../../text/measure.js';
 import { changeLabel, describeChange, showValue } from '../../diff/changes.js';
 import { rebuildZip } from './zip.js';
@@ -84,6 +84,7 @@ const SHEETS = {
   overview: 'Overview',
   relations: 'Relations',
   polymorphic: 'Polymorphic',
+  indexes: 'Indexes',
   review: 'To review',
   changes: 'Changes',
 };
@@ -148,7 +149,7 @@ function tenancyOf(model) {
 function tableFlags(t, tenancy) {
   return [
     ...(t.sources ? [`reads ${t.sources.join(', ')}`] : []),
-    ...tableFacts(t, tenancy),
+    ...tableFacts(t, tenancy).map(factText),
     ...(t.embedded ?? []).map((e) => `embedded ${e.name}${e.array ? '[]' : ''}`),
     ...(t.renamed_from ? [`renamed from ${t.renamed_from}`] : []),
   ];
@@ -182,8 +183,18 @@ const GRID = [
   { header: 'Expression', wrap: true },
   { header: 'Primary Key' },
   { header: 'Auto Inc' },
+  { header: 'Index', wrap: true },
   { header: 'Comment', wrap: true },
 ];
+
+// Name of an index as the sheets print it: its own name, else its columns.
+const indexLabel = (i) => i.name ?? `(${i.columns.join(', ')})`;
+// The indexes a column is part of, one per line, unique ones marked.
+const columnIndexes = (t, path) =>
+  (t.indexes ?? [])
+    .filter((i) => i.columns.includes(path))
+    .map((i) => `${indexLabel(i)}${i.unique ? ' (unique)' : ''}`)
+    .join('\n');
 
 const gridRows = (t) =>
   columnEntries(t).map(({ path, column: c }, i) => [
@@ -196,6 +207,7 @@ const gridRows = (t) =>
     c.generated ?? '',
     flag(c.pk),
     flag(c.auto_increment),
+    columnIndexes(t, path),
     columnComment(c),
   ]);
 
@@ -229,7 +241,7 @@ const tableLinker = (names) => (id) => (names.has(id) ? link(id, names.get(id), 
 /**
  * Workbook of `model` (already filtered by a sharing profile, if any), with
  * sheets in reading order: Overview, one sheet per table, Relations,
- * Polymorphic, To review. More sheets can be appended with addSheet before
+ * Polymorphic, Indexes, To review. More sheets can be appended with addSheet before
  * serializeWorkbook. `warnings` are the possibly missing relations listed at
  * the end of To review (missingRelations of `model` when left out; see
  * renderSvg for what a profile or a diff passes).
@@ -311,6 +323,15 @@ export function buildWorkbook(model, { warnings = missingRelations(model) } = {}
       a.review,
       lines(a.evidence),
     ]),
+  );
+
+  // Every index, one row each, in table order then as declared (sorted by
+  // the loader), linked to its table's sheet.
+  addSheet(
+    workbook,
+    SHEETS.indexes,
+    [{ header: 'Table' }, { header: 'Index' }, { header: 'Columns' }, { header: 'Unique' }, { header: 'Where', wrap: true }, { header: 'Using' }],
+    tables.flatMap((t) => (t.indexes ?? []).map((i) => [tableLink(t.id), i.name ?? '', i.columns.join(', '), yesNo(i.unique === true), i.where ?? '', i.using ?? ''])),
   );
 
   addSheet(

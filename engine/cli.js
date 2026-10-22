@@ -13,7 +13,7 @@ import { formatWarning, missingRelations, warningsFor } from './src/model/missin
 import { addChangesSheet, buildWorkbook, serializeWorkbook } from './src/render/xlsx/workbook.js';
 import { describeChange, diffModels, summarize, summaryLine } from './src/diff/changes.js';
 import { diffMarks, mergeLayouts, unionModel } from './src/diff/union.js';
-import { checkLayout, computeLayout, formatReport } from './src/layout/index.js';
+import { EVERY_VIEW, checkLayout, computeLayout, formatReport } from './src/layout/index.js';
 import { LAYOUT_FILE, parseLayout, serializeLayout } from './src/layout/layout-file.js';
 import { openingView, renderSvg } from './src/render/svg/render.js';
 import { renderDrawio } from './src/render/drawio/render.js';
@@ -40,9 +40,11 @@ const COMMANDS = {
     run: runLock,
   },
   layout: {
-    usage: 'layout --workspace <dir>',
-    summary: 'write coordinates for new nodes into layout.json, report moved nodes',
-    options: { workspace: { type: 'string' } },
+    usage: `layout --workspace <dir> [--relayout <view>]... [--relayout '${EVERY_VIEW}']`,
+    summary:
+      'write coordinates for new nodes into layout.json, report moved nodes; --relayout (repeatable) places the named view ' +
+      `(overview, all = the view of all tables, domain:<db>/<domain>; '${EVERY_VIEW}' = every view) from scratch, dropping their kept positions`,
+    options: { workspace: { type: 'string' }, relayout: { type: 'string', multiple: true } },
     run: runLayout,
   },
   render: {
@@ -170,12 +172,22 @@ async function workspaceDate(workspace, ref = 'HEAD') {
   }
 }
 
-async function runLayout({ workspace }) {
+async function runLayout({ workspace, relayout = [] }) {
   const model = await loadModel(workspace);
   if (!model) return 1;
-  const { layout, report } = await computeLayout(model, await readLayout(workspace));
+  // Repeatable: a domain name may itself contain a comma.
+  const relayoutViews = relayout.map((v) => v.trim()).filter(Boolean);
+  const { layout, report, offCentre } = await computeLayout(model, await readLayout(workspace), { relayout: relayoutViews });
   await writeFile(join(workspace, LAYOUT_FILE), serializeLayout(layout));
   console.log(formatReport(report));
+  // Kept positions win over centring (stability rules); say how to opt in.
+  const views = Object.keys(offCentre).sort(compareStrings);
+  if (views.length > 0) {
+    console.log(
+      `hint: central tables sit away from the middle of their domain in ${views.length} view(s): ${views.join(', ')}.\n` +
+        `  Kept positions win; to re-center, run layout with --relayout '<view>' (or --relayout '${EVERY_VIEW}' for every view): that view is placed from scratch.`,
+    );
+  }
   return 0;
 }
 

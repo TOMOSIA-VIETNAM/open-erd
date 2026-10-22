@@ -40,7 +40,8 @@ tables:
     domain: Staff
     note: Auto-created join table of StaffProfile.teams.
     generated_by: Django ManyToManyField
-    unique: [[staffprofile_id, team_id]]
+    indexes:
+      - { columns: [staffprofile_id, team_id], unique: true }
     columns:
       - { name: id, type: bigint, pk: true, auto_increment: true }
       - { name: staffprofile_id, type: bigint, nullable: false }
@@ -99,7 +100,8 @@ tables:
   - id: clinic.public.clinic_appointmentprocedure
     domain: Care
     note: Through table of Appointment.procedures with the quantity performed.
-    unique: [[appointment_id, procedure_id]]
+    indexes:
+      - { columns: [appointment_id, procedure_id], unique: true }
     columns:
       - { name: id, type: bigint, pk: true, auto_increment: true }
       - { name: appointment_id, type: bigint, nullable: false }

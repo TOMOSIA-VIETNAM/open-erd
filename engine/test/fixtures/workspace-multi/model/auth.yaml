@@ -9,6 +9,9 @@ tables:
       - { name: email, type: varchar(255), unique: true, pii: true }
       - { name: status, type: varchar(16), default: active }
       - { name: created_at, type: timestamp with time zone, default: now() }
+    indexes:
+      - { name: index_users_on_email, columns: [email], unique: true }
+      - { name: index_users_on_status, columns: [status], using: btree }
   - id: auth.public.user_profiles
     domain: Identity
     columns:

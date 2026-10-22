@@ -61,10 +61,13 @@ Every new table, column and polymorphic entry gets a `note` (rules in
 it, not the name restated); also write one for any column or polymorphic
 entry still without a note. A new enum value gets a meaning only when the
 code reveals one, else `""`. Copy
-`default`, `auto_increment` and `generated` from the facts, and update them
-like any other attribute when the facts change. An extract script written
+`default`, `auto_increment`, `generated` and each table's `indexes` from the
+facts, and update them like any other attribute when the facts change (an
+index added, dropped or changed in a migration). An extract script written
 before these fields existed does not emit them: extend it (`stacks.md`),
-show the change and ask as for any script edit.
+show the change and ask as for any script edit. A table still carrying the
+older `unique: [[a, b]]` gets it rewritten as `indexes: [{ columns: [a, b],
+unique: true }]` (same meaning, `model.md`).
 
 ## 4. Renames
 
