@@ -5,10 +5,10 @@ tables:
   - id: auth.public.users
     domain: Identity
     columns:
-      - { name: id, type: bigint, pk: true }
+      - { name: id, type: bigint, pk: true, auto_increment: true }
       - { name: email, type: varchar(255), unique: true, pii: true }
-      - { name: status, type: varchar(16) }
-      - { name: created_at, type: timestamp with time zone }
+      - { name: status, type: varchar(16), default: active }
+      - { name: created_at, type: timestamp with time zone, default: now() }
   - id: auth.public.user_profiles
     domain: Identity
     columns:

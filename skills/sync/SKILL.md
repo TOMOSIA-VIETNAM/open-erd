@@ -56,6 +56,13 @@ it and mark those facts `stale`.
 New tables need a domain: propose one (existing domains first) and ask, in one
 message for all new tables.
 
+Every new table and column gets a `note` (rules in `model.md`, "Writing
+facts"); also write one for any column still without a note. Copy
+`default`, `auto_increment` and `generated` from the facts, and update them
+like any other attribute when the facts change. An extract script written
+before these fields existed does not emit them: extend it (`stacks.md`),
+show the change and ask as for any script edit.
+
 ## 4. Renames
 
 A removal plus an addition that look like the same thing (table with mostly

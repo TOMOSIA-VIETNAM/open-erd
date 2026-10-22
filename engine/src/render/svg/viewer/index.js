@@ -20,6 +20,14 @@ const MIN_SCALE = 0.03;
 const MAX_SCALE = 4;
 // A press that moves less than this is a click, more is a pan.
 const DRAG_THRESHOLD = 4;
+// Wheel zoom: scale changes by exp(-deltaY * ZOOM_PER_PIXEL). A trackpad
+// pinch sends many small deltas (about 5 px each), so ten of them double the
+// scale; a mouse wheel notch sends 100 px or more, so one event is capped at
+// ZOOM_MAX_PIXELS (about 1.6x) to keep a notch from jumping.
+const ZOOM_PER_PIXEL = 0.015;
+const ZOOM_MAX_PIXELS = 30;
+// Pixels per wheel line (deltaMode 1); a page (deltaMode 2) is the viewport height.
+const LINE_PIXELS = 16;
 const FOCUS_MARGIN = 160;
 const FOCUS_MAX_SCALE = 1.2;
 const RING_GAP = 40;
@@ -121,9 +129,17 @@ const state = { view: OVERVIEW, hops: 1, center: null, history: [], cam: { x: 0,
 
 const viewport = () => ({ w: window.innerWidth, h: window.innerHeight });
 
+let cameraFrame = 0;
 function applyCamera() {
+  if (cameraFrame) cancelAnimationFrame(cameraFrame);
+  cameraFrame = 0;
   const { x, y, s } = state.cam;
   camera.setAttribute('transform', `translate(${x} ${y}) scale(${s})`);
+}
+// Pan and zoom gestures fire many events per frame: write the transform once
+// per frame, with the latest camera.
+function scheduleCamera() {
+  if (!cameraFrame) cameraFrame = requestAnimationFrame(applyCamera);
 }
 
 // The panel covers the right edge of the screen; fitting leaves that strip free.
@@ -147,7 +163,12 @@ function zoomAt(clientX, clientY, factor) {
   const wx = (clientX - x) / s;
   const wy = (clientY - y) / s;
   state.cam = { s: next, x: clientX - wx * next, y: clientY - wy * next };
-  applyCamera();
+  scheduleCamera();
+}
+
+function panBy(dx, dy) {
+  state.cam = { ...state.cam, x: state.cam.x + dx, y: state.cam.y + dy };
+  scheduleCamera();
 }
 
 // ---------------------------------------------------------------- views
@@ -643,10 +664,18 @@ function tipLines(target) {
   if (columnEl && n?.kind === 'table') {
     const c = n.columns.find((x) => x.name === columnEl.getAttribute('data-column'));
     if (!c) return null;
-    const flags = [c.type, c.nullable === true ? 'nullable' : c.nullable === false ? 'NOT NULL' : null, c.pk ? 'primary key' : null, c.unique ? 'unique' : null].filter(Boolean);
+    const flags = [
+      c.type,
+      c.nullable === true ? 'nullable' : c.nullable === false ? 'NOT NULL' : null,
+      c.pk ? 'primary key' : null,
+      c.unique ? 'unique' : null,
+      c.autoIncrement ? 'auto increment' : null,
+    ].filter(Boolean);
     return [
       el('div', {}, [el('b', { text: c.name }), c.pii ? el('span', { class: 'pii', text: '  PII' }) : null]),
       el('div', { class: 'muted', text: flags.join(' · ') }),
+      c.default === undefined ? null : el('div', { class: 'muted', text: `default ${c.default}` }),
+      c.generated === undefined ? null : el('div', { class: 'muted', text: `generated as ${c.generated}` }),
       ...noteLines(c).map((e) => e && el('div', { class: e.className, text: e.textContent })),
       ...(c.enum ? Object.entries(c.enum).map(([v, meaning]) => el('div', {}, [el('b', { text: v }), el('span', { text: `: ${meaning}` })])) : []),
     ];
@@ -722,19 +751,29 @@ const inUi = (e) => e.composedPath().some((n) => n.localName === 'foreignObject'
 
 svg.addEventListener('pointerdown', (e) => {
   if (inUi(e) || e.button !== 0) return;
+  // A press on the drawing starts a pan, never a text selection; the search
+  // field loses focus as it would on any other click outside it.
+  e.preventDefault();
+  window.getSelection()?.removeAllRanges();
+  if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
   press = { x: e.clientX, y: e.clientY, cam: { ...state.cam }, id: e.pointerId };
   dragged = false;
 });
 svg.addEventListener('pointermove', (e) => {
-  showTip(e);
-  if (!press) return;
+  if (!press) {
+    showTip(e);
+    return;
+  }
   const dx = e.clientX - press.x;
   const dy = e.clientY - press.y;
   if (!dragged && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
-  if (!dragged) svg.setPointerCapture(press.id);
+  if (!dragged) {
+    svg.setPointerCapture(press.id);
+    hideTip();
+  }
   dragged = true;
   state.cam = { ...press.cam, x: press.cam.x + dx, y: press.cam.y + dy };
-  applyCamera();
+  scheduleCamera();
 });
 svg.addEventListener('pointerup', () => {
   press = null;
@@ -771,12 +810,33 @@ svg.addEventListener(
   (e) => {
     if (inUi(e)) return;
     e.preventDefault();
-    // Pixel deltas from trackpads and line deltas from mouse wheels.
-    const delta = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
-    zoomAt(e.clientX, e.clientY, Math.exp(-delta * 0.0015));
+    hideTip();
+    const unit = e.deltaMode === 1 ? LINE_PIXELS : e.deltaMode === 2 ? viewport().h : 1;
+    // A trackpad pinch arrives as a wheel event with ctrlKey set; ctrl or
+    // cmd with a mouse wheel zooms too. Anything else scrolls the drawing,
+    // as two-finger scrolling does everywhere on a Mac.
+    if (e.ctrlKey || e.metaKey) {
+      const delta = Math.max(-ZOOM_MAX_PIXELS, Math.min(ZOOM_MAX_PIXELS, e.deltaY * unit));
+      zoomAt(e.clientX, e.clientY, Math.exp(-delta * ZOOM_PER_PIXEL));
+    } else {
+      panBy(-e.deltaX * unit, -e.deltaY * unit);
+    }
   },
   { passive: false },
 );
+
+// Safari reports a trackpad pinch as gesture events with a cumulative scale
+// instead of ctrl+wheel.
+let gestureScale = 1;
+svg.addEventListener('gesturestart', (e) => {
+  e.preventDefault();
+  gestureScale = 1;
+});
+svg.addEventListener('gesturechange', (e) => {
+  e.preventDefault();
+  zoomAt(e.clientX, e.clientY, e.scale / gestureScale);
+  gestureScale = e.scale;
+});
 
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;

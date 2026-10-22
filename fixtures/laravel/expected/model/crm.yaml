@@ -6,12 +6,13 @@ tables:
     domain: Identity
     note: Application users (sales staff); soft-deleted via deleted_at.
     columns:
-      - { name: id, type: bigint unsigned, pk: true }
+      - { name: id, type: bigint unsigned, pk: true, auto_increment: true }
       - { name: name, type: varchar(255), pii: true }
       - { name: email, type: varchar(255), unique: true, pii: true }
       - { name: password, type: varchar(255), note: Password hash }
       - name: role
         type: varchar(32)
+        default: sales_rep
         enum:
           admin: UserRole::Admin
           sales_manager: UserRole::SalesManager
@@ -25,10 +26,10 @@ tables:
     domain: Identity
     note: One profile per user.
     columns:
-      - { name: id, type: bigint unsigned, pk: true }
+      - { name: id, type: bigint unsigned, pk: true, auto_increment: true }
       - { name: user_id, type: bigint unsigned, nullable: false, unique: true }
       - { name: phone, type: varchar(32), nullable: true, pii: true }
-      - { name: timezone, type: varchar(64) }
+      - { name: timezone, type: varchar(64), default: UTC }
       - { name: avatar_url, type: varchar(255), nullable: true }
       - { name: created_at, type: timestamp, nullable: true }
       - { name: updated_at, type: timestamp, nullable: true }
@@ -36,7 +37,7 @@ tables:
     domain: Identity
     note: Sales teams.
     columns:
-      - { name: id, type: bigint unsigned, pk: true }
+      - { name: id, type: bigint unsigned, pk: true, auto_increment: true }
       - { name: name, type: varchar(120) }
       - { name: owner_id, type: bigint unsigned, nullable: false }
       - { name: created_at, type: timestamp, nullable: true }
@@ -49,6 +50,7 @@ tables:
       - { name: user_id, type: bigint unsigned, pk: true, nullable: false }
       - name: role
         type: enum('member','lead')
+        default: member
         enum:
           member: Regular team member
           lead: Team lead
@@ -58,7 +60,7 @@ tables:
     domain: Accounts
     note: Customer and prospect organisations.
     columns:
-      - { name: id, type: bigint unsigned, pk: true }
+      - { name: id, type: bigint unsigned, pk: true, auto_increment: true }
       - { name: name, type: varchar(255) }
       - { name: domain, type: varchar(255), nullable: true, unique: true }
       - { name: industry, type: varchar(64), nullable: true }
@@ -69,7 +71,7 @@ tables:
     domain: Accounts
     note: People at companies the sales team talks to.
     columns:
-      - { name: id, type: bigint unsigned, pk: true }
+      - { name: id, type: bigint unsigned, pk: true, auto_increment: true }
       - { name: company_id, type: bigint unsigned, nullable: true }
       - { name: first_name, type: varchar(80), pii: true }
       - { name: last_name, type: varchar(80), pii: true }
@@ -77,6 +79,7 @@ tables:
       - { name: phone, type: varchar(32), nullable: true, pii: true }
       - name: lifecycle_stage
         type: varchar(20)
+        default: lead
         enum:
           lead: ContactStatus::Lead
           qualified: ContactStatus::Qualified
@@ -88,32 +91,33 @@ tables:
     domain: Sales
     note: Sales pipelines.
     columns:
-      - { name: id, type: bigint unsigned, pk: true }
+      - { name: id, type: bigint unsigned, pk: true, auto_increment: true }
       - { name: name, type: varchar(120) }
-      - { name: is_default, type: boolean }
+      - { name: is_default, type: boolean, default: "false" }
   - id: crm._.pipeline_stages
     domain: Sales
     note: Ordered stages of a pipeline.
     columns:
-      - { name: id, type: bigint unsigned, pk: true }
+      - { name: id, type: bigint unsigned, pk: true, auto_increment: true }
       - { name: pipeline_id, type: bigint unsigned, nullable: false }
       - { name: name, type: varchar(80) }
       - { name: position, type: smallint unsigned }
-      - { name: win_probability, type: tinyint unsigned }
+      - { name: win_probability, type: tinyint unsigned, default: "0" }
   - id: crm._.deals
     domain: Sales
     note: Sales opportunities moving through pipeline stages.
     columns:
-      - { name: id, type: bigint unsigned, pk: true }
+      - { name: id, type: bigint unsigned, pk: true, auto_increment: true }
       - { name: company_id, type: bigint unsigned, nullable: false }
       - { name: contact_id, type: bigint unsigned, nullable: true }
       - { name: owner_id, type: bigint unsigned, nullable: false }
       - { name: pipeline_stage_id, type: bigint unsigned, nullable: false }
       - { name: title, type: varchar(255) }
-      - { name: amount, type: "decimal(12,2)" }
-      - { name: currency, type: char(3) }
+      - { name: amount, type: "decimal(12,2)", default: "0" }
+      - { name: currency, type: char(3), default: USD }
       - name: status
         type: varchar(10)
+        default: open
         enum:
           open: DealStatus::Open
           won: DealStatus::Won
@@ -125,7 +129,7 @@ tables:
     domain: Engagement
     note: Logged calls, emails and meetings on a company, contact or deal.
     columns:
-      - { name: id, type: bigint unsigned, pk: true }
+      - { name: id, type: bigint unsigned, pk: true, auto_increment: true }
       - name: subject_type
         type: varchar(255)
         enum:
@@ -148,7 +152,7 @@ tables:
     domain: Engagement
     note: Free-text notes attached to a contact or deal.
     columns:
-      - { name: id, type: bigint unsigned, pk: true }
+      - { name: id, type: bigint unsigned, pk: true, auto_increment: true }
       - name: noteable_type
         type: varchar(255)
         nullable: true
@@ -164,7 +168,7 @@ tables:
     domain: Engagement
     note: Labels applied to contacts and deals.
     columns:
-      - { name: id, type: bigint unsigned, pk: true }
+      - { name: id, type: bigint unsigned, pk: true, auto_increment: true }
       - { name: name, type: varchar(60), unique: true }
       - { name: color, type: varchar(7), nullable: true }
   - id: crm._.taggables
@@ -183,7 +187,7 @@ tables:
     domain: Marketing
     note: Bulk email campaigns.
     columns:
-      - { name: id, type: bigint unsigned, pk: true }
+      - { name: id, type: bigint unsigned, pk: true, auto_increment: true }
       - { name: name, type: varchar(255) }
       - { name: subject, type: varchar(255) }
       - { name: created_by, type: bigint unsigned, nullable: false }
@@ -194,7 +198,7 @@ tables:
     domain: Marketing
     note: One row per contact a campaign is sent to.
     columns:
-      - { name: id, type: bigint unsigned, pk: true }
+      - { name: id, type: bigint unsigned, pk: true, auto_increment: true }
       - { name: campaign_id, type: bigint unsigned, nullable: false }
       - { name: contact_id, type: bigint unsigned, nullable: false }
       - { name: sent_at, type: timestamp, nullable: true }

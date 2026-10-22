@@ -7,7 +7,7 @@ tables:
     note: Every row is a Customer or a Vendor, chosen by the type column (base class Account).
     sti: { column: type, subclasses: [Customer, Vendor] }
     columns:
-      - { name: id, type: bigint, pk: true }
+      - { name: id, type: bigint, pk: true, auto_increment: true }
       - name: type
         type: varchar
         nullable: false
@@ -24,7 +24,7 @@ tables:
   - id: shop.public.addresses
     domain: Accounts
     columns:
-      - { name: id, type: bigint, pk: true }
+      - { name: id, type: bigint, pk: true, auto_increment: true }
       - { name: account_id, type: bigint, nullable: false }
       - { name: line1, type: varchar, nullable: false, pii: true }
       - { name: city, type: varchar, nullable: false }
@@ -36,14 +36,14 @@ tables:
     domain: Catalog
     note: Category tree; parent_id points to the parent category.
     columns:
-      - { name: id, type: bigint, pk: true }
+      - { name: id, type: bigint, pk: true, auto_increment: true }
       - { name: name, type: varchar, nullable: false }
       - { name: parent_id, type: bigint, nullable: true }
-      - { name: position, type: integer, nullable: false }
+      - { name: position, type: integer, nullable: false, default: "0" }
   - id: shop.public.products
     domain: Catalog
     columns:
-      - { name: id, type: bigint, pk: true }
+      - { name: id, type: bigint, pk: true, auto_increment: true }
       - { name: vendor_id, type: bigint, nullable: false }
       - { name: category_id, type: bigint, nullable: true }
       - { name: name, type: varchar, nullable: false }
@@ -51,6 +51,7 @@ tables:
       - name: visibility
         type: integer
         nullable: false
+        default: "0"
         enum:
           "0": draft — not shown in the shop (Product.visibilities)
           "1": listed — visible to customers (Product.visibilities)
@@ -60,7 +61,7 @@ tables:
   - id: shop.public.tags
     domain: Catalog
     columns:
-      - { name: id, type: bigint, pk: true }
+      - { name: id, type: bigint, pk: true, auto_increment: true }
       - { name: label, type: varchar, nullable: false, unique: true }
   - id: shop.public.products_tags
     domain: Catalog
@@ -72,33 +73,34 @@ tables:
   - id: shop.public.warehouses
     domain: Inventory
     columns:
-      - { name: id, type: bigint, pk: true }
+      - { name: id, type: bigint, pk: true, auto_increment: true }
       - { name: code, type: varchar, nullable: false }
       - { name: city, type: varchar, nullable: false }
   - id: shop.public.stock_levels
     domain: Inventory
     columns:
-      - { name: id, type: bigint, pk: true }
+      - { name: id, type: bigint, pk: true, auto_increment: true }
       - { name: product_id, type: bigint, nullable: false }
       - { name: warehouse_id, type: bigint, nullable: false }
-      - { name: quantity, type: integer, nullable: false }
+      - { name: quantity, type: integer, nullable: false, default: "0" }
   - id: shop.public.coupons
     domain: Orders
     columns:
-      - { name: id, type: bigint, pk: true }
+      - { name: id, type: bigint, pk: true, auto_increment: true }
       - { name: code, type: varchar, nullable: false }
       - { name: percent_off, type: integer, nullable: false }
       - { name: expires_on, type: date, nullable: true }
   - id: shop.public.orders
     domain: Orders
     columns:
-      - { name: id, type: bigint, pk: true }
+      - { name: id, type: bigint, pk: true, auto_increment: true }
       - { name: customer_id, type: bigint, nullable: false }
       - { name: shipping_address_id, type: bigint, nullable: true }
       - { name: coupon_id, type: bigint, nullable: true }
       - name: status
         type: integer
         nullable: false
+        default: "0"
         enum:
           "0": pending — created, not paid yet (Order.statuses)
           "1": paid — payment captured (Order.statuses)
@@ -111,7 +113,7 @@ tables:
   - id: shop.public.order_items
     domain: Orders
     columns:
-      - { name: id, type: bigint, pk: true }
+      - { name: id, type: bigint, pk: true, auto_increment: true }
       - { name: order_id, type: bigint, nullable: false }
       - { name: product_id, type: bigint, nullable: false }
       - { name: quantity, type: integer, nullable: false }
@@ -119,11 +121,12 @@ tables:
   - id: shop.public.payments
     domain: Orders
     columns:
-      - { name: id, type: bigint, pk: true }
+      - { name: id, type: bigint, pk: true, auto_increment: true }
       - { name: order_id, type: bigint, nullable: false }
       - name: state
         type: integer
         nullable: false
+        default: "0"
         enum:
           "0": authorized — amount reserved at the gateway (Payment.states)
           "1": captured — money taken (Payment.states)
@@ -136,7 +139,7 @@ tables:
   - id: shop.public.shipments
     domain: Orders
     columns:
-      - { name: id, type: bigint, pk: true }
+      - { name: id, type: bigint, pk: true, auto_increment: true }
       - { name: order_id, type: bigint, nullable: false, unique: true }
       - { name: warehouse_id, type: bigint, nullable: true }
       - { name: tracking_number, type: varchar, nullable: true }
@@ -144,7 +147,7 @@ tables:
   - id: shop.public.reviews
     domain: Community
     columns:
-      - { name: id, type: bigint, pk: true }
+      - { name: id, type: bigint, pk: true, auto_increment: true }
       - { name: product_id, type: bigint, nullable: false }
       - { name: account_id, type: bigint, nullable: false, note: "Author, always a Customer" }
       - { name: rating, type: integer, nullable: false }
@@ -153,7 +156,7 @@ tables:
   - id: shop.public.comments
     domain: Community
     columns:
-      - { name: id, type: bigint, pk: true }
+      - { name: id, type: bigint, pk: true, auto_increment: true }
       - { name: commentable_type, type: varchar, nullable: false }
       - { name: commentable_id, type: bigint, nullable: false }
       - { name: account_id, type: bigint, nullable: false }

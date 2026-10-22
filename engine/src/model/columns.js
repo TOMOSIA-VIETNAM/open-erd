@@ -25,8 +25,8 @@ export function columnEntries(table) {
  *   - timestamp-typed (created_at, updated_at, ...).
  * Keys are how tables connect, and the diagram already shows that as lines;
  * bookkeeping timestamps say nothing about the business. A column with an
- * enum or a note is never technical: somebody documented what it means, so
- * an author keeps a meaningful timestamp (paid_at) visible by giving it a note.
+ * enum is never technical: its values carry business meaning. A note does
+ * not count, since every column gets one.
  */
 export function technicalColumns(model) {
   const keys = new Map(model.tables.map((t) => [t.id, new Set()]));
@@ -43,7 +43,7 @@ export function technicalColumns(model) {
       t.id,
       new Set(
         columnEntries(t)
-          .filter(({ path, column: c }) => !c.enum && !c.note && (c.pk || keys.get(t.id).has(path) || TIMESTAMP_TYPE.test(c.type)))
+          .filter(({ path, column: c }) => !c.enum && (c.pk || keys.get(t.id).has(path) || TIMESTAMP_TYPE.test(c.type)))
           .map(({ path }) => path),
       ),
     ]),

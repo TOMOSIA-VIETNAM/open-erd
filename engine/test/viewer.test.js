@@ -68,6 +68,9 @@ test('technical columns: keys and timestamps, unless documented', async () => {
   assert.deepEqual([...technical.get('shop._.products')], ['id', 'category_id', 'brand_id', 'created_by', 'updated_by']);
   assert.deepEqual([...technical.get('shop._.comments')].sort(), ['commentable_id', 'commentable_type', 'created_by', 'id']);
   assert.match(svg, /<g class="column technical" data-column="placed_at">/);
+  // Every column has a note, so a note does not make a key or timestamp a business column.
+  const noted = { ...model, tables: model.tables.map((t) => ({ ...t, columns: t.columns.map((c) => ({ ...c, note: 'Documented.' })) })) };
+  assert.deepEqual([...technicalColumns(noted).get('shop._.orders')], ['id', 'user_id', 'organization_id', 'placed_at']);
   assert.match(svg, /<g class="column" data-column="status">/);
 });
 

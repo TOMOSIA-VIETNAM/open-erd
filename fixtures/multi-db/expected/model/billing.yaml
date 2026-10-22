@@ -8,7 +8,7 @@ tables:
     domain: Plans
     note: Shared price plans offered to every tenant.
     columns:
-      - { name: id, type: serial, pk: true }
+      - { name: id, type: serial, pk: true, auto_increment: true }
       - { name: code, type: varchar(40), nullable: false, unique: true }
       - { name: name, type: varchar(120), nullable: false }
       - { name: price_cents, type: integer, nullable: false }
@@ -22,22 +22,23 @@ tables:
     domain: Tenancy
     note: One row per tenant; slug names the tenant's own schema tenant_<slug>.
     columns:
-      - { name: id, type: uuid, pk: true }
+      - { name: id, type: uuid, pk: true, default: gen_random_uuid() }
       - { name: slug, type: varchar(63), nullable: false, unique: true }
       - { name: name, type: varchar(200), nullable: false }
       - name: status
         type: tenants_status_enum
         nullable: false
+        default: trial
         enum:
           trial: Tenant is evaluating the product (TenantStatus.Trial)
           active: Paying tenant (TenantStatus.Active)
           suspended: Access blocked (TenantStatus.Suspended)
-      - { name: created_at, type: timestamptz, nullable: false }
+      - { name: created_at, type: timestamptz, nullable: false, default: now() }
   - id: billing.tenant.customers
     domain: Billing
     note: Customer company billed inside one tenant.
     columns:
-      - { name: id, type: uuid, pk: true }
+      - { name: id, type: uuid, pk: true, default: gen_random_uuid() }
       - { name: email, type: varchar(255), nullable: false, pii: true }
       - { name: company_name, type: varchar(200), nullable: true }
       - { name: tax_id, type: varchar(40), nullable: true, pii: true }
@@ -45,12 +46,13 @@ tables:
     domain: Billing
     note: A customer's subscription to a shared plan.
     columns:
-      - { name: id, type: uuid, pk: true }
+      - { name: id, type: uuid, pk: true, default: gen_random_uuid() }
       - { name: customer_id, type: uuid, nullable: false }
       - { name: plan_id, type: integer, nullable: false }
       - name: state
         type: subscriptions_state_enum
         nullable: false
+        default: trialing
         enum:
           trialing: In free trial (SubscriptionState.Trialing)
           active: Paid and current (SubscriptionState.Active)
@@ -61,12 +63,13 @@ tables:
     domain: Billing
     note: One-off invoices have no subscription.
     columns:
-      - { name: id, type: uuid, pk: true }
+      - { name: id, type: uuid, pk: true, default: gen_random_uuid() }
       - { name: customer_id, type: uuid, nullable: false }
       - { name: subscription_id, type: uuid, nullable: true }
       - name: status
         type: invoices_status_enum
         nullable: false
+        default: draft
         enum:
           draft: Being prepared, not sent (InvoiceStatus.Draft)
           open: Sent, awaiting payment (InvoiceStatus.Open)
@@ -78,7 +81,7 @@ tables:
     domain: Billing
     note: product_id is a catalog-service product id.
     columns:
-      - { name: id, type: uuid, pk: true }
+      - { name: id, type: uuid, pk: true, default: gen_random_uuid() }
       - { name: invoice_id, type: uuid, nullable: false }
       - { name: product_id, type: bigint, nullable: true }
       - { name: description, type: varchar(255), nullable: false }
@@ -88,7 +91,7 @@ tables:
     domain: Billing
     note: Payment received for an invoice.
     columns:
-      - { name: id, type: uuid, pk: true }
+      - { name: id, type: uuid, pk: true, default: gen_random_uuid() }
       - { name: invoice_id, type: uuid, nullable: false }
       - name: method
         type: payments_method_enum
@@ -99,7 +102,7 @@ tables:
           credit: Account credit applied (PaymentMethod.Credit)
       - { name: amount_cents, type: bigint, nullable: false }
       - { name: gateway_ref, type: varchar(80), nullable: true }
-      - { name: created_at, type: timestamptz, nullable: false }
+      - { name: created_at, type: timestamptz, nullable: false, default: now() }
   - id: billing.tenant.usage_events
     domain: Metering
     note: Metered usage of a subscription; monthly partitions usage_events_YYYY_MM are merged into this table.

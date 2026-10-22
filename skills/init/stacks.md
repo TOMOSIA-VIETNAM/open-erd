@@ -4,6 +4,43 @@ One script per source repo: `<ws>/extract/<source>.mjs`. It reads static files
 under the source path given as its only argument and prints the facts JSON
 (format in `../_shared/model.md`) to stdout.
 
+## Finding every model root first
+
+Models and schemas often live outside `app/models` or `db/`. Before writing a
+script, list every folder that declares tables, documents or migrations, and
+show the list to the user. Look for:
+
+- Ruby: `Gemfile` / `Gemfile.lock` gems with `path:` or `git:` (an internal
+  gem shipping models), `engines/*/`, `components/*/`, `packs/*/`, `gems/*/`,
+  `shared/`, `lib/**/models`, `config.autoload_paths` / `eager_load_paths`
+  additions, Mongoid documents (`include Mongoid::Document`) next to Active
+  Record models, several `db/*schema.rb` / `db/*structure.sql` (multiple
+  databases in `config/database.yml`).
+- Git submodules (`.gitmodules`) and vendored copies of another repo.
+- JavaScript / TypeScript: `pnpm-workspace.yaml`, `workspaces` in
+  `package.json`, `nx.json` / `turbo.json` projects, `packages/*/`, `apps/*/`,
+  `libs/*/`; every `*.prisma`, every TypeORM data source `entities` glob,
+  every Sequelize `models/` and `migrations/` folder.
+- Python: every installed-in-place package (`pyproject.toml` / `setup.py` in
+  subfolders), every app in `INSTALLED_APPS`, `models/` packages split into
+  several files.
+- PHP: `composer.json` `autoload` paths and path repositories, Laravel
+  modules (`Modules/*/`, `app/Domain/*/`), extra migration paths
+  (`loadMigrationsFrom`).
+- Any source file referencing a model class, table or collection that none
+  of the roots found so far declares.
+
+A root inside the source repo is read by that source's script. A root
+outside it (a `path:` gem in a sibling folder, a submodule that is not
+checked out, a package installed elsewhere) cannot be reached: the script
+reads only under its source path. Ask the user to add it as its own source
+(name + path), or to check it out.
+
+If an expected root is missing (a `path:` gem folder that does not exist, an
+empty submodule, models referenced but declared nowhere), stop and tell the
+user what is missing and where it was referenced. Do not write the model
+from the part you could read: a partial ERD looks complete and misleads.
+
 Script rules:
 
 - Node 20+, ESM, imports only `node:fs` and `node:path`. No npm packages (the
@@ -17,6 +54,11 @@ Script rules:
 - Skip `node_modules`, `vendor`, `.git`, build output, test fixtures.
 - Print to stderr a one-line count per kind of fact, and every file it could
   not parse, so gaps are visible.
+- For every column record, when the source shows them, `default` (as written:
+  a literal or an expression, as a string), `auto_increment: true`, and
+  `generated` (the expression of a generated/computed column). They fill the
+  Default, Auto Inc, Generated and Expression columns of the Excel table
+  sheets. Per-stack idioms below; never guess one the file does not show.
 
 ## Detecting the stack
 
@@ -48,7 +90,12 @@ classes inheriting another model, not `ApplicationRecord`; a subclass's
 associations land on the base table. `polymorphic: true` + `as: :name` give
 polymorphic targets. `enum status: { a: 0 }` / `enum :status, {...}` are
 integer- or string-backed: keys are the stored values. HABTM join table
-(`posts_tags`) has no model and often no `id`.
+(`posts_tags`) has no model and often no `id`. Defaults: `default:` on a
+column (`default: -> { "now()" }` is the expression `now()`); the implicit
+`id` of `create_table` is `auto_increment` (unless `id: false` or
+`id: :uuid`, whose default is shown as `default: -> { "gen_random_uuid()" }`);
+`t.virtual "x", as: "expr"` is `generated`. Mongoid documents: `field :x,
+default:`.
 
 **Laravel** — tables from `database/migrations/*.php` in filename order,
 applying `Schema::table` alterations and drops. `foreignId('x')->constrained()`
@@ -60,7 +107,9 @@ names the target; bare `unsignedBigInteger` linked only by `belongsTo` is
 `morphedByMany` are polymorphic; `*_type` stores aliases from
 `Relation::morphMap`/`enforceMorphMap` (usually in `AppServiceProvider`).
 Enums: PHP backed enums in `$casts` (read the enum file for values) and DB
-`enum(...)` columns.
+`enum(...)` columns. Defaults: `->default(...)`, `->useCurrent()` (`CURRENT_TIMESTAMP`);
+`$table->id()`, `increments`/`bigIncrements` and `->autoIncrement()` are
+`auto_increment`; `->storedAs('expr')` / `->virtualAs('expr')` are `generated`.
 
 **Django** — `*/models.py`. Table = `<app_label>_<model lowercased>` unless
 `Meta.db_table`. `ForeignKey` → column `<field>_id` unless `db_column`;
@@ -70,7 +119,12 @@ resolves through `settings.py`. `db_constraint=False` is `declared`, otherwise
 `<app>_<model>_<field>` that exists in no file; with `through=` the join table
 is that model. `GenericForeignKey` targets come from `GenericRelation` fields
 on other models. `TextChoices`/`IntegerChoices`/`choices=` are enums keyed by
-the stored value. `null=True` is nullable; `blank` is not.
+the stored value. `null=True` is nullable; `blank` is not. Defaults:
+`default=` (resolve a choices constant to its stored value), `db_default=`;
+the implicit `id` (`DEFAULT_AUTO_FIELD`, `AutoField`, `BigAutoField`) is
+`auto_increment`; `GeneratedField(expression=...)` is `generated`.
+`auto_now`/`auto_now_add` are set by Django, not by the database: say so in
+the column note, not in `default`.
 
 **Prisma** — `schema.prisma`. `@@map` renames tables, `@map` renames columns
 (a field without `@map` keeps its own name, camelCase included). `@relation
@@ -80,7 +134,10 @@ included; two relations to the same model are told apart by the relation name.
 sides, no `fields:`) creates `_<A>To<B>(A, B)` with models sorted
 alphabetically, A = first. Enum values with `@map` are stored as the mapped
 string. `relationMode = "prisma"` means `declared`, otherwise `db_fk`.
-`?` is nullable.
+`?` is nullable. `@default(x)` is `default` (`now()`, `uuid()`, `cuid()`, a
+literal, an enum value as stored); `@default(autoincrement())` is
+`auto_increment`; `@default(dbgenerated("expr"))` is `default: expr`.
+`@updatedAt` is set by Prisma: say so in the column note.
 
 **TypeORM** — `@Entity('name')`/`@Entity({ name, schema })`, `@Column`,
 `@PrimaryGeneratedColumn`, `@PrimaryColumn`, `@ManyToOne` + `@JoinColumn
@@ -88,13 +145,18 @@ string. `relationMode = "prisma"` means `declared`, otherwise `db_fk`.
 Column names follow the naming strategy (check for `SnakeNamingStrategy` in the
 data source). `type: 'enum', enum: X` reads values from TS enum `X`.
 Entity with no schema may resolve through `search_path` (schema per tenant):
-look for code setting it.
+look for code setting it. `@Column({ default })` is `default`;
+`@PrimaryGeneratedColumn()` / `('increment')` / `('identity')` and
+`@Generated('increment')` are `auto_increment`, `('uuid')` is a uuid default
+(take the expression from the migration when there is one);
+`generatedType` + `asExpression` is `generated`.
 
 **Sequelize** — migrations `queryInterface.createTable` with `references:
 { model, key }` (constraint) and `addConstraint`; models `sequelize.define` or
 `Model.init` with `tableName`, `belongsTo`/`hasMany`/`belongsToMany({ through })`.
 `belongsTo` without `references` is `declared`. `DataTypes.ENUM(...)` values.
-`allowNull: false`.
+`allowNull: false`. `defaultValue` (`Sequelize.NOW`/`fn('now')` is `now()`) is
+`default`; `autoIncrement: true` is `auto_increment`.
 
 **Mongoose** — `new Schema({...})` / `mongoose.Schema`, `mongoose.model
 ('Name', schema, 'collection')`. Collection = third argument, else
@@ -105,13 +167,18 @@ Mongoose's rules (`Child` → `children`, `LogEntry` → `logentries`). Every `r
 Nested objects and subschemas (single or in arrays) are `embedded` entities,
 not columns; a `ref` inside one is a relation from the embedded path
 (`../_shared/model.md`, "Special patterns"). `enum: [...]` on paths. Schema is `_`.
-`unique: true` on a ref makes it `1-1`.
+`unique: true` on a ref makes it `1-1`. `default:` on a path is `default`
+(a function as written, e.g. `Date.now`).
 
 **Raw SQL** — `CREATE TABLE`, `ALTER TABLE ... ADD CONSTRAINT ... FOREIGN KEY`,
 inline `REFERENCES`, `CREATE TYPE ... AS ENUM`, `CHECK (col IN (...))`,
 `COMMENT ON`, `PARTITION BY` / `PARTITION OF` (partitions are not tables),
 `CREATE VIEW` / `MATERIALIZED VIEW` (one table with a note). Apply migrations
-in version order; later `DROP`/`RENAME` win.
+in version order; later `DROP`/`RENAME` win. `DEFAULT <expr>` is `default`;
+`SERIAL`/`BIGSERIAL`, `GENERATED ... AS IDENTITY`, `AUTO_INCREMENT`,
+`AUTOINCREMENT` and `IDENTITY(1,1)` are `auto_increment`; `GENERATED ALWAYS
+AS (<expr>) [STORED]` and `AS (<expr>)` computed columns are `generated`.
+`ALTER COLUMN ... SET DEFAULT` / `DROP DEFAULT` update it.
 
 ## Traps to check in every repo
 

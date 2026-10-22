@@ -68,6 +68,14 @@ const column = {
     internal_note: text,
     pii: { type: 'boolean' },
     renamed_from: identifier,
+    // Default value exactly as the schema source writes it: a literal
+    // ("0", "draft") or an expression ("now()", "nextval('users_id_seq')").
+    default: text,
+    // The database assigns the next number on insert (SERIAL, IDENTITY,
+    // AUTO_INCREMENT, an ORM's implicit integer id).
+    auto_increment: { type: 'boolean' },
+    // Expression of a generated / computed column (GENERATED ALWAYS AS ...).
+    generated: text,
   },
 };
 

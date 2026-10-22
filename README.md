@@ -16,7 +16,7 @@ files.
 | File | What it is |
 |---|---|
 | `out/erd.svg` | One self-contained file. Overview (database → domain), domain views, neighborhood of a table. Click a table to highlight its links, click a line to animate it, search tables/columns, hover a column for type/enum meanings/notes, Business/Technical mode. Without JavaScript it still shows the static overview. |
-| `out/erd.xlsx` | Overview sheet first, then Tables, Columns, Relations, Enums, Polymorphic and a "To review" checklist, cross-linked. |
+| `out/erd.xlsx` | Overview sheet first (one row per table), then one sheet per table with its column grid (`# · Name · Type · Nullable · Default · Generated · Expression · Primary Key · Auto Inc · Comment`), then Relations, Polymorphic and a "To review" checklist, cross-linked. |
 | `out/diff.svg`, `out/diff.xlsx` | What changed between two snapshots, colored on the diagram and written as plain sentences, plus a Changes sheet. |
 
 ![Diff panel for a changed table](docs/images/diff.png)
