@@ -82,7 +82,9 @@ Chi tiết từng task: `plan.md`. Đánh dấu `[x]` khi task pass verify.
 ## Sau UAT
 
 - [x] 23. Sửa feedback UAT vòng 2 (overview edge rõ nghĩa, nhãn neighborhood, hub hiện quan hệ khi focus, marker trong neighborhood, neighborhood của node đa hình, panel không lộ evidence mặc định, đếm số bảng)
-- [ ] 24. Phát hiện quan hệ bị sót: cảnh báo cơ học trong `validate` + agent reviewer trong init/sync
-- [ ] 25. Tìm đường join trong viewer (không sinh SQL)
-- [ ] 26. Viewer: Download view hiện tại (SVG tĩnh / PNG / JPEG); `default_view` trong open-erd.yaml cho view mặc định khi app không chạy JS
-- [ ] 27. Export `.drawio` (mỗi view 1 page, bảng = shape table, quan hệ = connector ER), bật/tắt bằng `outputs.drawio` trong open-erd.yaml, mặc định bật
+- [x] 24. Phát hiện quan hệ bị sót: cảnh báo cơ học trong `validate` + agent reviewer trong init/sync
+- [x] 25. Tìm đường join trong viewer (không sinh SQL)
+- [x] 26. Viewer: Download view hiện tại (SVG tĩnh / PNG / JPEG); `default_view` trong open-erd.yaml cho view mặc định khi app không chạy JS
+- [x] 27. Export `.drawio` (mỗi view 1 page, bảng = shape table, quan hệ = connector ER), bật/tắt bằng `outputs.drawio` trong open-erd.yaml, mặc định bật
+  - Acceptance: `render` ghi `out/erd.drawio` (`out/erd.<profile>.drawio` với `--profile`) khi `outputs.drawio` (mặc định true); page Overview → từng domain → All tables; bảng = `shape=table` + `tableRow`, connector gắn vào row cột, waypoint lấy từ router, đầu ER theo `endMarkers`; tooltip note/enum; byte-identical giữa 2 lần render
+  - Verify: `node --test test/drawio.test.js` + mở bằng viewer.diagrams.net (`#R` + deflateRaw) chụp màn hình Overview / domain / All tables

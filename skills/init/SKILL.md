@@ -113,7 +113,9 @@ node <plugin root>/dist/open-erd.mjs layout   --workspace <ws>
 node <plugin root>/dist/open-erd.mjs render   --workspace <ws>
 ```
 
-Fix validation errors in the model and rerun until it passes.
+Fix validation errors in the model and rerun until it passes. Then, before
+`layout`, run the missing-relation review (rules.md, "Missing-relation
+review").
 
 ## 7. Commit and report
 

@@ -6,6 +6,7 @@ import { GRID, BADGE_ARROW_WIDTH, BADGE_FONT, DOMAIN_COUNT_FONT, DOMAIN_TITLE_FO
 import { ALL_VIEW, OVERVIEW, hasAllView, viewNames } from '../../layout/views.js';
 import { columnEntries, enumMeaning, technicalColumns } from '../../model/columns.js';
 import { compareStrings } from '../../model/load.js';
+import { missingRelations } from '../../model/missing.js';
 import { measureText } from '../../text/measure.js';
 import { FONT_FAMILY, TEXT_STYLE_CSS, fontFaceCss } from '../../text/font.js';
 import { PALETTE } from '../../palette.js';
@@ -13,6 +14,9 @@ import { endMarkers, markerSvg } from './markers.js';
 import viewerBundle from './viewer-bundle.json' with { type: 'json' };
 
 const CANVAS_MARGIN = 40;
+// Warning triangle of a column, inside the row's left padding (PADDING_X).
+const WARN_SIZE = 8;
+const WARN_INSET = 2;
 const CORNER = 6;
 const EDGE_LABEL_FONT = { size: 10, weight: 700 };
 const EDGE_LABEL_PAD = { x: 4, y: 3 };
@@ -128,6 +132,23 @@ const VIEWER_STYLE = `.row-hit { fill: transparent; }
 .cluster-label { cursor: pointer; }
 .fold-badge rect { fill: #ffffff; stroke: #c3cad5; }
 .fold-badge-text { font-size: 11px; font-weight: 400; fill: #56627a; }
+.oe-download { position: relative; }
+.oe-menu { position: absolute; top: 34px; right: 0; width: 300px; background: #ffffff; border: 1px solid #c3cad5; border-radius: 6px; box-shadow: 0 6px 18px rgba(20, 30, 50, 0.15); padding: 4px 0; white-space: normal; }
+.oe-check { display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-top: 1px solid #eef1f5; margin-top: 4px; color: #3d4a5e; cursor: pointer; }
+.oe-status:not(:empty) { padding: 6px 10px; color: #56627a; font-size: 12px; border-top: 1px solid #eef1f5; overflow-wrap: anywhere; }
+.oe-panel .label-inline { color: #7a8597; font-size: 12px; min-width: 36px; }
+.oe-join-field input { font: inherit; flex: 1; padding: 4px 8px; border: 1px solid #c3cad5; border-radius: 6px; }
+.oe-join-picks .oe-result { padding: 4px 10px 4px 42px; }
+.oe-paths { margin: 10px 0 6px; flex-wrap: wrap; }
+.oe-hops { padding-left: 20px; }
+.oe-hops li { margin: 6px 0; }
+.oe-hops code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; background: #f3f5f8; border-radius: 4px; padding: 1px 4px; overflow-wrap: anywhere; }
+.oe-chips .chip.flag-trust { background: #fff1d6; color: #8a5a00; }
+.oe-chips .chip.flag-cross_db { background: #e7f0ff; color: #1d4ed8; }
+.oe-chips .chip.flag-polymorphic { background: #f6efdf; color: #6b5428; }
+.oe-chips .chip.flag-multiplies { background: #fde8e8; color: #a61f1f; }
+.oe-warn { color: #9a6208; font-size: 12px; margin: 4px 0; }
+.oe-tip .oe-warn { color: #ffd27a; }
 .oe-tip b { color: #ffffff; }
 .oe-tip .muted { color: #aab4c4; }
 .oe-tip .pii { color: #ffb4a2; font-weight: 700; }`;
@@ -180,6 +201,7 @@ text { font-family: '${FONT_FAMILY}', sans-serif; ${TEXT_STYLE_CSS} }
 .column-type { font-size: 12px; font-weight: 400; fill: #7a8597; }
 .hint-note { fill: #a9b2c0; }
 .hint-enum { fill: #7c5cc4; }
+.col-warn { fill: #e8a317; stroke: #ffffff; stroke-width: 0.8; stroke-linejoin: round; }
 .badge-text { font-size: ${BADGE_FONT.size}px; font-weight: ${BADGE_FONT.weight}; fill: #56627a; }
 .badge-arrow { fill: none; stroke: #56627a; stroke-width: 1.2; }
 .poly-box { fill: #fffdf7; stroke: #a08a5c; stroke-width: 1; stroke-dasharray: 4 3; }
@@ -523,11 +545,20 @@ function hintSvg(r, nameX, cy) {
   return `<rect class="hint-enum" x="${cx - HINT_SIZE / 2}" y="${cy - HINT_SIZE / 2}" width="${HINT_SIZE}" height="${HINT_SIZE}" rx="1"/>`;
 }
 
+// A possibly missing relation: a small amber triangle in the row's left
+// padding, so no box grows and no stored layout goes stale. Its title is the
+// tooltip without script.
+function warnSvg(left, cy, text) {
+  const x0 = left + WARN_INSET;
+  const half = WARN_SIZE / 2;
+  return `<path class="col-warn" d="M${x0} ${cy + half}L${x0 + half} ${cy - half}L${x0 + WARN_SIZE} ${cy + half}Z"><title>${escapeXml(`Possibly missing relation: ${text}`)}</title></path>`;
+}
+
 // Each row is a group so the viewer can show the column's details on hover
 // (the transparent rect makes the whole row hoverable) and fade technical
 // columns in Business mode. Embedded columns are indented inside their
 // entity's inset box.
-function tableSvg(n, colors, technical, marks) {
+function tableSvg(n, colors, technical, marks, warnings) {
   const { x, y, w, h, box } = n;
   const columnMarks = marks.columns.get(n.id);
   const rows = box.rows.map((r) => {
@@ -538,6 +569,7 @@ function tableSvg(n, colors, technical, marks) {
       `<g class="${technical.has(r.column) ? 'column technical' : 'column'}${status ? ` col-${status}` : ''}" data-column="${escapeXml(r.column)}">`,
       `<rect class="row-hit" x="${x + indent}" y="${top}" width="${w - 2 * indent}" height="${ROW_HEIGHT}"/>`,
       status ? `<rect class="col-mark col-${status}" x="${x + indent + 1}" y="${top + 2}" width="3" height="${ROW_HEIGHT - 4}"/>` : '',
+      warnings?.has(r.column) ? warnSvg(x + indent, y + r.centerY, warnings.get(r.column)) : '',
       textEl(r.pk ? 'column-name pk' : 'column-name', x + PADDING_X + indent, y + r.centerY, r.name),
       hintSvg(r, x + PADDING_X + indent, y + r.centerY),
       textEl('column-type', x + w - PADDING_X - indent, y + r.centerY, r.type, 'end'),
@@ -726,10 +758,10 @@ function hubRoutesSvg(routes) {
     .join('');
 }
 
-function viewSvg(scene, colorOf, visible, technical, marks, banner) {
+function viewSvg(scene, colorOf, visible, technical, marks, banner, warnings) {
   const { x, y, w, h } = scene.bounds;
   const nodes = scene.nodes.map((n) => {
-    if (n.kind === 'table') return tableSvg(n, colorOf(n.node.cluster), technical.get(n.id), marks);
+    if (n.kind === 'table') return tableSvg(n, colorOf(n.node.cluster), technical.get(n.id), marks, warnings.get(n.id));
     if (n.kind === 'poly') return polySvg(n, marks);
     if (n.kind === 'stub') return stubSvg(n, marks);
     return domainSvg(n, colorOf(n.id), marks);
@@ -758,12 +790,33 @@ if (VIEWER_SCRIPT.includes(']]>')) throw new Error('viewer bundle contains "]]>"
 const scriptJson = (value) => JSON.stringify(value).replace(/[<>&]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
 
 /**
+ * Possibly missing relations (see missingRelations) by table: `columns` maps
+ * a table id to its warned column paths and their message (both columns of
+ * a pair that looks polymorphic), `tables` a table id to the message of a
+ * table nothing connects to.
+ */
+function warningsByTable(warnings) {
+  const columns = new Map();
+  const tables = new Map();
+  for (const w of warnings) {
+    if (!w.column) {
+      tables.set(w.table, w.message);
+      continue;
+    }
+    if (!columns.has(w.table)) columns.set(w.table, new Map());
+    for (const c of [w.column, w.typeColumn].filter(Boolean)) columns.get(w.table).set(c, w.message);
+  }
+  return { columns, tables };
+}
+
+/**
  * What the viewer needs beyond the drawing: every node's details (for
  * tooltips, search and panels) and every drawn relation (for the
  * neighborhood view, which spans domains). Keys are written in a fixed
  * order and lists come from the sorted model, so the text is deterministic.
  */
-export function viewerData(model, diagram, technical = technicalColumns(model), diff = null) {
+export function viewerData(model, diagram, technical = technicalColumns(model), diff = null, warnings = missingRelations(model)) {
+  const warned = warningsByTable(warnings);
   // Note fields in a fixed order; a sharing profile has already removed the
   // ones it drops.
   const notes = (o) => Object.fromEntries(['note', 'note_source', 'internal_note'].filter((f) => o[f]).map((f) => [f === 'note' ? f : camel(f), o[f]]));
@@ -771,6 +824,17 @@ export function viewerData(model, diagram, technical = technicalColumns(model), 
     ...model.relations.map((r) => [relationId(r), r.evidence ?? []]),
     ...model.polymorphic.map((a) => [polyLinkId(a), a.evidence ?? []]),
   ]);
+  // Key columns of every relation, in key order, for the join path finder.
+  // A collapsed join table's line keeps its two relations (both from the
+  // join table, in model order like buildDiagram's) so a path can walk
+  // through the join table hop by hop.
+  const relationById = new Map(model.relations.map((r) => [relationId(r), r]));
+  const keyHop = (r) => ({ fromColumns: r.from.columns, toColumns: r.to.columns, cardinality: r.cardinality, kind: r.kind, review: r.review });
+  const columnsOf = (l) => {
+    if (l.via) return { viaHops: model.relations.filter((r) => r.from.table === l.via).map(keyHop) };
+    const r = relationById.get(l.id);
+    return r ? { fromColumns: r.from.columns, toColumns: r.to.columns } : {};
+  };
   const linkData = (l) => ({
     id: l.id,
     from: l.from.node,
@@ -780,6 +844,7 @@ export function viewerData(model, diagram, technical = technicalColumns(model), 
     kind: l.kind,
     review: l.review,
     ...(l.via ? { via: l.via } : {}),
+    ...columnsOf(l),
     ...(evidenceOf.get(l.id)?.length > 0 ? { evidence: evidenceOf.get(l.id) } : {}),
   });
   const nodes = {};
@@ -798,6 +863,7 @@ export function viewerData(model, diagram, technical = technicalColumns(model), 
       ...(t.kind && t.kind !== 'table' ? { tableKind: t.kind } : {}),
       ...notes(t),
       ...(n.facts.length > 0 ? { facts: n.facts } : {}),
+      ...(warned.tables.has(id) ? { warning: warned.tables.get(id) } : {}),
       ...(t.sources ? { sources: t.sources } : {}),
       columns: columnEntries(t).map(({ path, column: c, entity }) => ({
         name: path,
@@ -811,6 +877,7 @@ export function viewerData(model, diagram, technical = technicalColumns(model), 
         ...(c.generated === undefined ? {} : { generated: c.generated }),
         ...(c.pii ? { pii: true } : {}),
         ...(technical.get(id).has(path) ? { technical: true } : {}),
+        ...(warned.columns.get(id)?.has(path) ? { warning: warned.columns.get(id).get(path) } : {}),
         ...(c.enum ? { enum: Object.fromEntries(Object.entries(c.enum).map(([v, meaning]) => [v, enumMeaning(v, meaning)])) } : {}),
         ...notes(c),
       })),
@@ -837,7 +904,11 @@ export function viewerData(model, diagram, technical = technicalColumns(model), 
   );
   // Database name -> engine as printed on its frame, for cross-DB panels.
   const databases = Object.fromEntries(model.databases.map((db) => [db.database, engineName(db.engine)]));
-  const base = { nodes, links, hubLinks, domainLinks: domains, databases };
+  // Downloads are named after the one database, else the project (its one
+  // source), else plainly `erd`.
+  const sources = model.config.sources ?? [];
+  const project = model.databases.length === 1 ? model.databases[0].database : sources.length === 1 ? sources[0].name : 'erd';
+  const base = { project, nodes, links, hubLinks, domainLinks: domains, databases };
   if (!diff) return base;
   const sorted = (map) => Object.fromEntries([...map].sort(([a], [b]) => compareStrings(a, b)));
   const { sentences } = diff.marks;
@@ -845,7 +916,20 @@ export function viewerData(model, diagram, technical = technicalColumns(model), 
 }
 
 /**
- * Static SVG holding every view; the overview is the one visible. Pass
+ * The view a plain render opens on and draws without script: the
+ * configured `default_view` when this diagram has it, else the overview.
+ * `fallback` is true when a configured view was missing (the view of all
+ * tables of a very large schema, a domain a profile hid).
+ */
+export function openingView(model, diagram = buildDiagram(model)) {
+  const wanted = model.config.default_view;
+  if (!wanted || wanted === OVERVIEW) return { view: OVERVIEW, fallback: false };
+  return viewNames(diagram).includes(wanted) ? { view: wanted, fallback: false } : { view: OVERVIEW, fallback: true };
+}
+
+/**
+ * Static SVG holding every view; the opening view (see openingView) is the
+ * one visible. Pass
  * `{ fitStored: true }` for a model filtered by a sharing profile (see
  * resolveView).
  *
@@ -855,14 +939,18 @@ export function viewerData(model, diagram, technical = technicalColumns(model), 
  * change sentences, and the view of all tables (the overview when the
  * diagram has none) is the one visible, since that is where changes can be
  * seen without script.
+ *
+ * `{ warnings }`: the possibly missing relations to mark (missingRelations
+ * of `model` when left out); a profile render passes the ones found on the
+ * full model (see warningsFor), a diff passes none.
  */
 export function renderSvg(model, layout, options = {}) {
-  const { diff = null, ...sceneOptions } = options;
+  const { diff = null, warnings = missingRelations(model), ...sceneOptions } = options;
   const diagram = buildDiagram(model);
   const marks = diff?.marks ?? NO_MARKS;
   // A diagram too large for the view of all tables opens a diff on the
   // overview, where the banner still tells what changed.
-  const visible = diff && hasAllView(diagram) ? ALL_VIEW : OVERVIEW;
+  const visible = diff ? (hasAllView(diagram) ? ALL_VIEW : OVERVIEW) : openingView(model, diagram).view;
   const scenes = viewNames(diagram).map((name) => {
     const scene = buildScene(model, layout, name, diagram, sceneOptions);
     if (!diff) return { scene };
@@ -872,12 +960,13 @@ export function renderSvg(model, layout, options = {}) {
   // Indices past the palette cycle, which only happens once every tint is taken.
   const colorOf = (key) => PALETTE[layout.colors[key] % PALETTE.length];
   const technical = technicalColumns(model);
+  const columnWarnings = warningsByTable(warnings).columns;
   const { x, y, w, h } = scenes.find((s) => s.scene.name === visible).scene.bounds;
   return [
     `<svg xmlns="http://www.w3.org/2000/svg"${diff ? ' class="diff-mode"' : ''} width="${w}" height="${h}" viewBox="${x} ${y} ${w} ${h}">`,
     `<style>${STYLE}</style>`,
-    ...scenes.map((s) => viewSvg(s.scene, colorOf, s.scene.name === visible, technical, marks, s.banner)),
-    `<script type="application/json" id="open-erd-data">${scriptJson(viewerData(model, diagram, technical, diff))}</script>`,
+    ...scenes.map((s) => viewSvg(s.scene, colorOf, s.scene.name === visible, technical, marks, s.banner, columnWarnings)),
+    `<script type="application/json" id="open-erd-data">${scriptJson(viewerData(model, diagram, technical, diff, warnings))}</script>`,
     `<script><![CDATA[\n${VIEWER_SCRIPT}\n]]></script>`,
     '</svg>',
     '',

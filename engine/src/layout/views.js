@@ -1,4 +1,5 @@
 import { compareStrings } from '../model/load.js';
+import { DOMAIN_VIEW_PREFIX } from '../model/schema.js';
 import { CLUSTER_GAP, CLUSTER_PAD, DB_GAP, DB_PAD, STUB_GAP, TABLE_GAP, clusterLabel } from './clusters.js';
 import { databaseFacts, domainLinks } from './diagram.js';
 import { domainBox, stubBox } from './table-box.js';
@@ -17,7 +18,7 @@ import { domainBox, stubBox } from './table-box.js';
 
 export const ALL_VIEW = 'all';
 export const OVERVIEW = 'overview';
-export const DOMAIN_VIEW_PREFIX = 'domain:';
+export { DOMAIN_VIEW_PREFIX } from '../model/schema.js';
 // Layout slot of the stubs in a domain view. Cluster keys always contain a
 // '/', so this key can never collide with one.
 export const STUB_SLOT = 'related';

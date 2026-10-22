@@ -1,6 +1,7 @@
 import ExcelJS from 'exceljs';
 import { columnEntries, enumMeaning } from '../../model/columns.js';
 import { compareStrings } from '../../model/load.js';
+import { missingRelations } from '../../model/missing.js';
 import { KIND_TRUST, REVIEW_TRUST, databaseFacts, tableFacts } from '../../layout/diagram.js';
 import { FULL_WIDTH } from '../../text/measure.js';
 import { changeLabel, describeChange, showValue } from '../../diff/changes.js';
@@ -75,6 +76,9 @@ export function addSheet(workbook, name, columns, rows, { title } = {}) {
   if (rows.length > 0) sheet.autoFilter = { from: { row: headerRow, column: 1 }, to: { row: headerRow, column: columns.length } };
   return sheet;
 }
+
+// Kind of the To review rows listing possibly missing relations.
+const MISSING_LABEL = 'Possibly missing relation';
 
 const SHEETS = {
   overview: 'Overview',
@@ -226,9 +230,11 @@ const tableLinker = (names) => (id) => (names.has(id) ? link(id, names.get(id), 
  * Workbook of `model` (already filtered by a sharing profile, if any), with
  * sheets in reading order: Overview, one sheet per table, Relations,
  * Polymorphic, To review. More sheets can be appended with addSheet before
- * serializeWorkbook.
+ * serializeWorkbook. `warnings` are the possibly missing relations listed at
+ * the end of To review (missingRelations of `model` when left out; see
+ * renderSvg for what a profile or a diff passes).
  */
-export function buildWorkbook(model) {
+export function buildWorkbook(model, { warnings = missingRelations(model) } = {}) {
   const workbook = new ExcelJS.Workbook();
   const tenancy = tenancyOf(model);
   const tables = browseOrder(model.tables);
@@ -249,6 +255,7 @@ export function buildWorkbook(model) {
     ['Polymorphic associations', model.polymorphic.length],
     ['Pending review', count('pending')],
     ['Stale (code changed)', count('stale')],
+    [MISSING_LABEL + 's', warnings.length],
     ...model.databases.map((db) => [`Database ${db.database}`, [db.engine, ...databaseFacts(db)].join(' · ')]),
   ];
   const sheet = addSheet(
@@ -310,7 +317,16 @@ export function buildWorkbook(model) {
     workbook,
     SHEETS.review,
     [{ header: 'Review' }, { header: 'Kind' }, { header: 'Fact' }, { header: 'Evidence', wrap: true }],
-    queue.map((item) => [item.fact.review, item.kind, link(describe(item), item.sheet, item.row), lines(item.fact.evidence)]),
+    [
+      ...queue.map((item) => [item.fact.review, item.kind, link(describe(item), item.sheet, item.row), lines(item.fact.evidence)]),
+      // After the facts: what may be missing, linked to the column's row in
+      // its table sheet (title line, header, then one row per column).
+      ...warnings.map((w) => {
+        const t = model.tables.find((x) => x.id === w.table);
+        const row = w.column ? columnEntries(t).findIndex((e) => e.path === w.column) + 3 : 1;
+        return ['warning', MISSING_LABEL, link(`${w.column ? `${w.table}.${w.column}` : w.table}: ${w.message}`, names.get(w.table), row), ''];
+      }),
+    ],
   );
   return workbook;
 }

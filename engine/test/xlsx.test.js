@@ -10,6 +10,7 @@ import { promisify } from 'node:util';
 import ExcelJS from 'exceljs';
 import { buildWorkbook, serializeWorkbook, tableSheetNames } from '../src/render/xlsx/workbook.js';
 import { zipEntries } from '../src/render/xlsx/zip.js';
+import { missingRelations } from '../src/model/missing.js';
 import { loadMulti, loadWorkspace } from './helpers/shop.js';
 import { xlsxLinks, xlsxParts } from './helpers/xlsx.js';
 
@@ -171,6 +172,8 @@ test('To review lists pending and stale facts, stale first, each linked to its r
   const states = [];
   for (let r = 2; r <= review.rowCount; r++) {
     const [state, kind] = rowValues(review, r);
+    // Possibly missing relations come after the facts (their own test).
+    if (state === 'warning') break;
     states.push(state);
     const { location } = links['To review'].get(`C${r}`);
     assert.match(location, kind === 'polymorphic' ? /^'Polymorphic'!A\d+$/ : /^'Relations'!A\d+$/);
@@ -179,6 +182,34 @@ test('To review lists pending and stale facts, stale first, each linked to its r
   assert.equal(states.length, open.length);
   assert.deepEqual(states, ['stale', ...Array(open.length - 1).fill('pending')]);
   assert.equal(links['To review'].get('C2').location, `'Relations'!A${model.relations.length + 1}`);
+});
+
+test('To review ends with the possibly missing relations, each linked to its column row', async () => {
+  const loaded = await loadWorkspace(PATTERNS);
+  // Two reference columns nothing covers, in the first table.
+  const first = loaded.tables[0];
+  const model = { ...loaded, tables: [{ ...first, columns: [...first.columns, { name: 'supplier_id', type: 'bigint' }, { name: 'vendorId', type: 'bigint' }] }, ...loaded.tables.slice(1)] };
+  const warnings = missingRelations(model);
+  assert.equal(warnings.length, 2);
+  const { workbook, links } = await loadBack(model);
+  const review = workbook.getWorksheet('To review');
+  const start = review.rowCount - warnings.length + 1;
+  const names = tableSheetNames(model.tables);
+  warnings.forEach((w, i) => {
+    const r = start + i;
+    const [state, kind, fact] = rowValues(review, r);
+    assert.deepEqual([state, kind], ['warning', 'Possibly missing relation']);
+    assert.ok(String(fact.text ?? fact).startsWith(`${w.table}.${w.column}: `), String(fact.text ?? fact));
+    const row = model.tables.find((t) => t.id === w.table).columns.findIndex((c) => c.name === w.column) + 3;
+    assert.equal(links['To review'].get(`C${r}`).location, `'${names.get(w.table)}'!A${row}`);
+  });
+  const overview = workbook.getWorksheet('Overview');
+  const summary = [];
+  overview.getColumn(9).eachCell((cell, r) => summary.push([cell.value, overview.getCell(`J${r}`).value]));
+  assert.ok(summary.some(([label, n]) => label === 'Possibly missing relations' && n === warnings.length));
+  // Rendering with no warnings (a profile that drops them all) lists none.
+  const none = buildWorkbook(model, { warnings: [] }).getWorksheet('To review');
+  assert.equal(none.rowCount, review.rowCount - warnings.length);
 });
 
 test('serialization is byte-identical: fixed document dates and zip entry times', async () => {

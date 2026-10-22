@@ -5,16 +5,18 @@ import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseArgs, promisify } from 'node:util';
 import pkg from './package.json' with { type: 'json' };
-import { CONFIG_FILE, LOCKED_FILE } from './src/model/schema.js';
+import { CONFIG_FILE, LOCKED_FILE, OUTPUT_DEFAULTS } from './src/model/schema.js';
 import { compareStrings, formatError, parseWorkspace } from './src/model/load.js';
 import { checkLocked, lockFacts, parseLocked, serializeLocked } from './src/model/lock.js';
 import { applyProfile } from './src/model/profile.js';
+import { formatWarning, missingRelations, warningsFor } from './src/model/missing.js';
 import { addChangesSheet, buildWorkbook, serializeWorkbook } from './src/render/xlsx/workbook.js';
 import { describeChange, diffModels, summarize, summaryLine } from './src/diff/changes.js';
 import { diffMarks, mergeLayouts, unionModel } from './src/diff/union.js';
 import { checkLayout, computeLayout, formatReport } from './src/layout/index.js';
 import { LAYOUT_FILE, parseLayout, serializeLayout } from './src/layout/layout-file.js';
-import { renderSvg } from './src/render/svg/render.js';
+import { openingView, renderSvg } from './src/render/svg/render.js';
+import { renderDrawio } from './src/render/drawio/render.js';
 
 // `--to` value meaning the workspace files on disk, committed or not.
 const WORKTREE = 'WORKTREE';
@@ -45,7 +47,7 @@ const COMMANDS = {
   },
   render: {
     usage: 'render --workspace <dir> [--profile <name>]',
-    summary: 'write out/erd.svg and out/erd.xlsx (out/erd.<profile>.svg and .xlsx with a sharing profile) from the model and layout.json; never writes layout.json',
+    summary: 'write out/erd.svg, out/erd.xlsx and out/erd.drawio unless outputs.drawio is false (out/erd.<profile>.* with a sharing profile) from the model and layout.json; never writes layout.json',
     options: { workspace: { type: 'string' }, profile: { type: 'string' } },
     run: runRender,
   },
@@ -128,7 +130,10 @@ async function runValidate({ workspace }) {
     console.error(`${broken.length} locked fact(s) changed or missing`);
     return 1;
   }
-  console.log(`${workspace}: valid${locked ? `, ${locked.relations?.length ?? 0} locked relation(s) and ${locked.polymorphic?.length ?? 0} polymorphic association(s) intact` : ''}`);
+  // Possibly missing relations are for a reviewer to look at, not errors.
+  const warnings = missingRelations(model);
+  for (const w of warnings) console.error(formatWarning(w));
+  console.log(`${workspace}: valid${locked ? `, ${locked.relations?.length ?? 0} locked relation(s) and ${locked.polymorphic?.length ?? 0} polymorphic association(s) intact` : ''}${warnings.length > 0 ? `; ${warnings.length} possibly missing relation(s), see the warnings (silence a known one with ignore_missing in ${CONFIG_FILE})` : ''}`);
   return 0;
 }
 
@@ -186,21 +191,30 @@ async function runRender({ workspace, profile }) {
   }
   let svg;
   let shown = model;
+  // Found on the full model, narrowed to what the profile still shows.
+  let warnings = missingRelations(model);
   if (profile === undefined) {
-    svg = renderSvg(model, layout);
+    svg = renderSvg(model, layout, { warnings });
   } else {
     // Positions come from the layout of the full model, so check that one;
     // the filtered model is drawn at those positions (see resolveView).
     checkLayout(model, layout);
     shown = applyProfile(model, profile);
-    svg = renderSvg(shown, layout, { fitStored: true });
+    warnings = warningsFor(warnings, shown);
+    svg = renderSvg(shown, layout, { fitStored: true, warnings });
   }
-  const xlsx = await serializeWorkbook(buildWorkbook(shown), { date: await workspaceDate(workspace) });
+  if (openingView(shown).fallback) console.error(`warning: default_view "${shown.config.default_view}" is not in this render; it opens on the overview`);
+  const xlsx = await serializeWorkbook(buildWorkbook(shown, { warnings }), { date: await workspaceDate(workspace) });
   const base = join(workspace, 'out', profile === undefined ? 'erd' : `erd.${profile}`);
   await mkdir(join(workspace, 'out'), { recursive: true });
   await writeFile(`${base}.svg`, svg);
   await writeFile(`${base}.xlsx`, xlsx);
-  console.log(`wrote ${base}.svg and ${base}.xlsx${profile === undefined ? '' : ` (profile ${profile})`}`);
+  const written = [`${base}.svg`, `${base}.xlsx`];
+  if ({ ...OUTPUT_DEFAULTS, ...shown.config.outputs }.drawio) {
+    await writeFile(`${base}.drawio`, renderDrawio(shown, layout, profile === undefined ? {} : { fitStored: true }));
+    written.push(`${base}.drawio`);
+  }
+  console.log(`wrote ${written.join(', ')}${profile === undefined ? '' : ` (profile ${profile})`}`);
   return 0;
 }
 
@@ -267,8 +281,10 @@ async function runDiff({ workspace, from, to, profile }) {
   const summary = summaryLine(summarize(result.changes));
   const union = unionModel(fromModel, toModel, result);
   const { layout } = await computeLayout(union, mergeLayouts(before.layout, after.layout));
-  const svg = renderSvg(union, layout, { diff: { from, to, summary, marks: diffMarks(union, result.changes) } });
-  const workbook = buildWorkbook(toModel);
+  // Change colours only on the drawing; the workbook is the "to" side's,
+  // with its To review checklist.
+  const svg = renderSvg(union, layout, { diff: { from, to, summary, marks: diffMarks(union, result.changes) }, warnings: [] });
+  const workbook = buildWorkbook(toModel, { warnings: warningsFor(missingRelations(after.model), toModel) });
   addChangesSheet(workbook, toModel, result.changes);
   const xlsx = await serializeWorkbook(workbook, { date: await workspaceDate(workspace, to === WORKTREE ? 'HEAD' : to) });
 

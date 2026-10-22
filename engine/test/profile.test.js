@@ -131,8 +131,8 @@ test('CLI: render --profile writes out/erd.<profile>.svg and .xlsx next to erd.s
     await run('layout', '--workspace', dir);
     await run('render', '--workspace', dir);
     const { stdout } = await run('render', '--workspace', dir, '--profile', 'public');
-    assert.match(stdout, /erd\.public\.xlsx \(profile public\)/);
-    assert.deepEqual((await readdir(join(dir, 'out'))).sort(), ['erd.public.svg', 'erd.public.xlsx', 'erd.svg', 'erd.xlsx']);
+    assert.match(stdout, /erd\.public\.xlsx, .*erd\.public\.drawio \(profile public\)/);
+    assert.deepEqual((await readdir(join(dir, 'out'))).sort(), ['erd.drawio', 'erd.public.drawio', 'erd.public.svg', 'erd.public.xlsx', 'erd.svg', 'erd.xlsx']);
     assert.ok(!(await readFile(join(dir, 'out', 'erd.public.svg'), 'utf8')).includes('audit_secrets'));
     await assert.rejects(run('render', '--workspace', dir, '--profile', 'nope'), (e) => e.code === 1 && /unknown profile "nope"/.test(e.stderr));
   } finally {

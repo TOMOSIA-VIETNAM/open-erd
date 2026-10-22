@@ -8,7 +8,7 @@
 // workspace with relations works. A diff drawing (diff.svg) starts on the
 // view of all tables; it first gets a step clicking a changed table, whose
 // panel must list its changes, then goes through the same steps.
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { launchChrome } from './cdp.js';
@@ -164,6 +164,27 @@ if (longEnum) {
   await click(`document.querySelector('.oe-crumbs .oe-link')`);
 }
 
+// A column validate warns about (a reference nothing uses): its row carries
+// the warning mark, and its tooltip and the table's panel say why.
+const warned = await evaluate(`(() => { const d = ${data};
+  for (const [id, n] of Object.entries(d.nodes)) for (const c of n.columns ?? []) if (c.warning) return [id, c.name, n.cluster];
+  return null; })()`);
+if (warned) {
+  const [warnTable, warnColumn, warnDomain] = warned;
+  await click(`document.querySelector('.domain[data-domain=${JSON.stringify(warnDomain)}]')`);
+  const row = inView(`.table[data-id="${warnTable}"] .column[data-column="${warnColumn}"]`);
+  await mouse('mouseMoved', await centre(row));
+  await pause(150);
+  await shot(
+    'missing-relation-mark',
+    `${row}.querySelector('.col-warn') !== null && [...document.querySelectorAll('.oe-tip .oe-warn')].some((t) => t.textContent.startsWith('Possibly missing relation: '))`,
+  );
+  await click(row);
+  await shot('missing-relation-panel', `document.querySelector('.oe-panel .oe-grid .oe-warn') !== null`);
+  await key('Escape');
+  await click(`document.querySelector('.oe-crumbs .oe-link')`);
+}
+
 // A domain whose view has a table with lines and a stub, preferring one
 // with an enum column so the tooltip step shows enum values.
 const domain = await evaluate(`(() => {
@@ -214,6 +235,57 @@ await shot('line-flow', `${inView('.flow')} !== null && ${inView('.flow-target')
 const offsets = await evaluate(`new Promise((done) => { const f = ${inView('.flow')}; const a = getComputedStyle(f).strokeDashoffset; setTimeout(() => done([a, getComputedStyle(f).strokeDashoffset]), 250); })`);
 if (offsets[0] === offsets[1]) failures.push(`flow does not move: ${offsets}`);
 
+// Download menu, with the flow still running: the SVG holds this view only,
+// without script; "keep highlight" keeps the flow; PNG is twice the view's
+// size (or downscaled, and the menu says so); JPEG is a JPEG.
+{
+  // One folder per download, so a repeated name is not renamed by Chrome.
+  let downloads;
+  let count = 0;
+  const pick = async (label) => {
+    count += 1;
+    downloads = join(resolve(outDir), 'downloads', String(count));
+    await mkdir(downloads, { recursive: true });
+    await send('Page.setDownloadBehavior', { behavior: 'allow', downloadPath: downloads });
+    await click(`[...document.querySelectorAll('.oe-menu .oe-result')].find((b) => b.textContent === ${JSON.stringify(label)})`);
+  };
+  const saved = async (name) => {
+    for (let i = 0; i < 100; i++) {
+      if ((await readdir(downloads)).includes(name)) {
+        await pause(200);
+        return readFile(join(downloads, name));
+      }
+      await pause(100);
+    }
+    throw new Error(`download ${name} never arrived`);
+  };
+  const bounds = await evaluate(`${visible}.getAttribute('data-bounds').split(' ').map(Number)`);
+  const base = `${domain.split('/')[0]}-${domain.split('/').slice(1).join('/')}`.toLowerCase().replace(/[^\p{L}\p{N}_]+/gu, '-').replace(/^-+|-+$/g, '');
+  await click(`[...document.querySelectorAll('.oe-btn')].find((b) => b.textContent.startsWith('Download'))`);
+  await shot('download-menu', `document.querySelectorAll('.oe-menu .oe-result').length === 3 && ${inView('.flow')} !== null`);
+  await pick('This view as SVG');
+  const plain = (await saved(`${base}.svg`)).toString();
+  const views = (plain.match(/<g class="view"/g) ?? []).length;
+  if (views !== 1 || plain.includes('<script') || plain.includes('foreignObject') || /class="[^"]*\b(dimmed|flowing)\b/.test(plain) || !plain.includes('@font-face')) {
+    failures.push(`download svg: ${JSON.stringify({ views, script: plain.includes('<script'), highlight: /\b(dimmed|flowing)\b/.test(plain) })}`);
+  }
+  await click(`document.querySelector('.oe-menu .oe-check input')`);
+  await pick('This view as SVG');
+  const kept = (await saved(`${base}.svg`)).toString();
+  if (!/class="[^"]*\bflowing\b/.test(kept) || !/class="view[^"]*\bdimmed\b/.test(kept)) failures.push('download svg with highlight lost the highlight');
+  await click(`document.querySelector('.oe-menu .oe-check input')`);
+  await pick('This view as PNG');
+  const png = await saved(`${base}.png`);
+  const [pw, ph] = [png.readUInt32BE(16), png.readUInt32BE(20)];
+  const status = await evaluate(`document.querySelector('.oe-status').textContent`);
+  const full = pw === Math.floor(bounds[2] * 2) && ph === Math.floor(bounds[3] * 2);
+  if (!(full ? !status.includes('downscaled') : status.includes('downscaled'))) failures.push(`download png ${pw}x${ph} for ${bounds}: ${status}`);
+  await pick('This view as JPEG');
+  const jpg = await saved(`${base}.jpg`);
+  await shot('download-saved', `${jpg[0] === 0xff && jpg[1] === 0xd8} && document.querySelector('.oe-status').textContent.startsWith('Saved ${base}.jpg')`);
+  await key('Escape');
+}
+
 await click(`${visible}.querySelector(':scope > rect')`, { where: 'top' });
 await shot('cleared', `!${visible}.classList.contains('dimmed') && ${inView('.flow')} === null`);
 
@@ -258,7 +330,7 @@ if (await evaluate(`document.querySelector('g.view[data-view="all"]') !== null`)
   await shot(
     'legend',
     `(() => { const f = [...document.querySelectorAll('foreignObject')].find((x) => x.querySelector('.oe-legend')); const r = f.querySelector('.oe-legend').getBoundingClientRect();
-      return f.style.display !== 'none' && f.querySelectorAll('.oe-legend .item').length >= 15 && f.querySelectorAll('.oe-legend .marker path').length >= 4 && f.querySelector('.oe-legend .review-pending .relation') !== null && r.bottom <= innerHeight && r.left >= 0; })()`,
+      return f.style.display !== 'none' && f.querySelectorAll('.oe-legend .item').length >= 16 && f.querySelector('.oe-legend .col-warn') !== null && f.querySelectorAll('.oe-legend .marker path').length >= 4 && f.querySelector('.oe-legend .review-pending .relation') !== null && r.bottom <= innerHeight && r.left >= 0; })()`,
   );
   // A cross-DB line names the database it reaches; its panel names both with their engines.
   const cross = await evaluate(`${inView('.relation-group.kind-cross_db')}?.getAttribute('data-id') ?? null`);
@@ -389,6 +461,53 @@ if (polyHome) {
   );
   await key('Escape');
   await click(`[...document.querySelectorAll('.oe-btn')].find((b) => b.textContent === '‹ Back')`);
+}
+
+// Join path: two tables two hops apart, picked from the panel's fields; the
+// path is lit hop after hop, the panel lists one condition per hop, and the
+// copy button copies them. Then the table panel's own button and a click on
+// the diagram fill the fields.
+const joinPair = await evaluate(`(() => { const d = ${data}; const plain = d.links.filter((l) => l.kind !== 'view_source' && l.kind !== 'polymorphic' && !l.via && l.from !== l.to);
+  for (const a of plain) for (const b of plain) { const mid = [a.from, a.to].find((x) => x === b.from || x === b.to); if (!mid || a === b) continue;
+    const ends = [a.from === mid ? a.to : a.from, b.from === mid ? b.to : b.from]; if (ends[0] !== ends[1] && d.nodes[ends[0]].kind === 'table' && d.nodes[ends[1]].kind === 'table') return ends; }
+  return null; })()`);
+if (joinPair) {
+  const pickJoin = async (id) => {
+    await click(`document.querySelector('.oe-join-field input')`);
+    await send('Input.insertText', { text: id.split('.')[2] });
+    await pause(150);
+    await click(`[...document.querySelectorAll('.oe-join-picks .oe-result')].find((b) => b.querySelector('.where').textContent === ${JSON.stringify(id)})`);
+  };
+  await click(`[...document.querySelectorAll('.oe-btn')].find((b) => b.textContent === 'Join path')`);
+  await pickJoin(joinPair[0]);
+  await pickJoin(joinPair[1]);
+  const flowsAt = (ms) => evaluate(`new Promise((done) => setTimeout(() => done(${visible}.querySelectorAll('.flow').length), ${ms}))`);
+  const early = await flowsAt(0);
+  const late = await flowsAt(1500);
+  await shot(
+    'join-path',
+    `(() => { const hops = document.querySelectorAll('.oe-panel .oe-hops li'); const lit = ${visible}.querySelectorAll('.relation-group.hl, .hub-route.hl').length;
+      return hops.length >= 2 && [...hops].every((li) => / = /.test(li.querySelector('code').textContent)) && lit >= 1 && ${early} < ${late} && ${visible}.querySelectorAll(':is(.table, .stub).selected').length === 2
+        || { hops: hops.length, lit, early: ${early}, late: ${late} }; })()`,
+  );
+  await click(`[...document.querySelectorAll('.oe-panel .oe-btn')].find((b) => b.textContent === 'Copy conditions')`);
+  await shot('join-path-copied', `/^Copied \\d+ conditions?$/.test(document.querySelector('.oe-panel .row .muted').textContent)`);
+  await key('Escape');
+  await click(`document.querySelector('.oe-crumbs .oe-link')`);
+  await evaluate(`(() => { const i = document.querySelector('.oe-search input'); i.value = ''; i.dispatchEvent(new Event('input')); })()`);
+  await click(`document.querySelector('.oe-search input')`);
+  await send('Input.insertText', { text: joinPair[0].split('.')[2] });
+  await pause(200);
+  await key('Enter');
+  await click(`[...document.querySelectorAll('.oe-panel .oe-btn')].find((b) => b.textContent === 'Find join path from here')`);
+  await shot('join-path-from-table', `document.querySelector('.oe-panel .oe-join-end b')?.getAttribute('title') === ${JSON.stringify(joinPair[0])} && document.querySelector('.oe-join-field input') !== null`);
+  const other = await evaluate(`[...${visible}.querySelectorAll('.table')].map((g) => g.getAttribute('data-id')).find((id) => id !== ${JSON.stringify(joinPair[0])}) ?? null`);
+  if (other) {
+    await click(inView(`.table[data-id="${other}"]`), { where: 'top' });
+    await shot('join-path-pick-on-diagram', `[...document.querySelectorAll('.oe-panel .oe-join-end b')].map((b) => b.getAttribute('title')).join() === ${JSON.stringify(`${joinPair[0]},${other}`)}`);
+  }
+  await key('Escape');
+  await evaluate(`(() => { const i = document.querySelector('.oe-search input'); i.value = ''; i.dispatchEvent(new Event('input')); })()`);
 }
 
 // Camera as { x, y, s } from the transform the viewer writes.
