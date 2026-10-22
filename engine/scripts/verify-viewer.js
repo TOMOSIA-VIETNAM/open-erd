@@ -70,6 +70,14 @@ async function click(find, { where, count = 1 } = {}) {
   }
   await pause(150);
 }
+// Pans so the centre of element `find` is in the middle of the canvas, left
+// of the side panel: overlays (panel, minimap, legend, Back pill) may cover
+// a box where a fitted view put it.
+async function bringIntoView(find) {
+  const p = await centre(find);
+  await send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: 400, y: 400, deltaX: Math.round(p.x - 460), deltaY: Math.round(p.y - 470) });
+  await pause(200);
+}
 async function key(k, code = k) {
   await send('Input.dispatchKeyEvent', { type: 'keyDown', key: k, code, windowsVirtualKeyCode: k === 'Escape' ? 27 : k === 'Enter' ? 13 : 0 });
   await send('Input.dispatchKeyEvent', { type: 'keyUp', key: k, code });
@@ -399,6 +407,7 @@ await shot('copy-schema-markdown', `window.__copied.startsWith('### ${table.spli
 const column = await evaluate(`(() => { const d = JSON.parse(document.getElementById('open-erd-data').textContent);
   for (const g of ${visible}.querySelectorAll('.table')) { const n = d.nodes[g.getAttribute('data-id')]; const c = n.columns.find((x) => x.enum); if (c) return [g.getAttribute('data-id'), c.name]; }
   const g = ${visible}.querySelector('.table'); return [g.getAttribute('data-id'), d.nodes[g.getAttribute('data-id')].columns[0].name]; })()`);
+await bringIntoView(inView(`.table[data-id="${column[0]}"] .column[data-column="${column[1]}"]`));
 await mouse('mouseMoved', await centre(inView(`.table[data-id="${column[0]}"] .column[data-column="${column[1]}"]`)));
 await pause(150);
 await shot('column-tooltip', `[...document.querySelectorAll('foreignObject')].some((f) => f.style.display !== 'none' && f.querySelector('.oe-tip'))`);
@@ -470,6 +479,7 @@ await click(`${visible}.querySelector(':scope > rect')`, { where: 'top' });
 await shot('cleared', `!${visible}.classList.contains('dimmed') && ${inView('.flow')} === null`);
 
 const stub = await evaluate(`${inView('.stub:not(.group-stub)')}.getAttribute('data-id')`);
+await bringIntoView(inView(`.stub[data-id="${stub}"]`));
 await click(inView(`.stub[data-id="${stub}"]`));
 await shot('stub-jump', `${visible}.getAttribute('data-view') !== ${JSON.stringify(`domain:${domain}`)} && ${inView(`.table.selected[data-id="${stub}"]`)} !== null`);
 
@@ -793,6 +803,7 @@ if (polyHome) {
   await click(`document.querySelector('.oe-crumbs .oe-link')`);
   await click(`document.querySelector('.domain[data-domain=${JSON.stringify(polyHome)}]')`);
   const poly = await evaluate(`${inView('.poly')}.getAttribute('data-id')`);
+  await bringIntoView(inView(`.poly[data-id="${poly}"]`));
   await click(inView(`.poly[data-id="${poly}"]`), { where: 'top', count: 2 });
   await shot(
     'polymorphic-neighborhood',
@@ -870,7 +881,14 @@ async function wheel(deltaY, { modifiers = 0, deltaX = 0 } = {}) {
 
 // A click followed by a press-and-drag on a label (a double press, which
 // selects a word in a plain document) pans and leaves nothing selected.
-const label = await centre(`[...${visible}.querySelectorAll('text')].find((t) => !t.closest('.table, .poly, .stub, .domain, .relation-group'))`);
+// A label on the drawing, not under an overlay (toolbar, Back pill, legend),
+// with the whole view fitted on screen again.
+await key('Escape');
+await evaluate(`window.dispatchEvent(new Event('resize'))`);
+await pause(100);
+const label = await centre(`[...${visible}.querySelectorAll('text')].find((t) => { if (t.closest('.table, .poly, .stub, .domain, .relation-group')) return false;
+  const r = t.getBoundingClientRect(); const hit = r.width > 0 && document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+  return hit && !hit.closest('foreignObject') && hit.closest('g.view') !== null && r.y > 44; })`);
 const press2 = (type, p, clickCount) => send('Input.dispatchMouseEvent', { type, ...p, button: 'left', buttons: type === 'mousePressed' ? 1 : 0, clickCount });
 await mouse('mouseMoved', label);
 await press2('mousePressed', label, 1);

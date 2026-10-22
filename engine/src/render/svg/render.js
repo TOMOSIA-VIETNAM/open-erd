@@ -192,6 +192,8 @@ const VIEWER_STYLE = `.row-hit { fill: transparent; }
 .oe-legend-pill:hover { background: #f1f4f8; }
 .oe-back-pill { font: inherit; font-size: 12px; padding: 4px 12px 4px 10px; border: 1px solid #c3cad5; border-radius: 14px; background: #ffffff; color: #1d4ed8; box-shadow: 0 2px 8px rgba(20, 30, 50, 0.12); cursor: pointer; white-space: nowrap; max-width: 360px; overflow: hidden; text-overflow: ellipsis; }
 .oe-back-pill:hover { background: #eef3fb; }
+/* Pills float over the drawing: a drag that starts on one selects no text. */
+.oe-toolbar, .oe-back-pill, .oe-legend-pill { -webkit-user-select: none; user-select: none; }
 .oe-panel .sub { color: #7a8597; font-size: 12px; margin-bottom: 8px; overflow-wrap: anywhere; }
 .oe-panel .row { display: flex; gap: 6px; align-items: center; margin: 8px 0; }
 .oe-panel ul { margin: 4px 0 0; padding-left: 16px; }
