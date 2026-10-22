@@ -6,32 +6,33 @@ tables:
     domain: Staff
     note: Login account for every staff member (AUTH_USER_MODEL).
     columns:
-      - { name: id, type: bigint, pk: true }
+      - { name: id, type: bigint, pk: true, auto_increment: true }
       - { name: password, type: varchar(128) }
       - { name: last_login, type: timestamp with time zone, nullable: true }
       - { name: email, type: varchar(254), unique: true, pii: true }
       - { name: full_name, type: varchar(120), pii: true }
       - name: role
         type: varchar(16)
+        default: reception
         enum:
           admin: User.Role.ADMIN, administrator
           doctor: User.Role.DOCTOR, doctor
           nurse: User.Role.NURSE, nurse
           reception: User.Role.RECEPTION, front desk
-      - { name: is_active, type: boolean }
+      - { name: is_active, type: boolean, default: "True" }
       - { name: date_joined, type: timestamp with time zone }
   - id: clinic.public.accounts_team
     domain: Staff
     note: Department; departments nest through parent_id.
     columns:
-      - { name: id, type: bigint, pk: true }
+      - { name: id, type: bigint, pk: true, auto_increment: true }
       - { name: name, type: varchar(80) }
       - { name: parent_id, type: bigint, nullable: true }
   - id: clinic.public.accounts_staffprofile
     domain: Staff
     note: Clinical details of a staff member, one per user.
     columns:
-      - { name: id, type: bigint, pk: true }
+      - { name: id, type: bigint, pk: true, auto_increment: true }
       - { name: user_id, type: bigint, nullable: false, unique: true }
       - { name: license_number, type: varchar(32), unique: true }
       - { name: phone, type: varchar(20), pii: true }
@@ -41,18 +42,19 @@ tables:
     generated_by: Django ManyToManyField
     unique: [[staffprofile_id, team_id]]
     columns:
-      - { name: id, type: bigint, pk: true }
+      - { name: id, type: bigint, pk: true, auto_increment: true }
       - { name: staffprofile_id, type: bigint, nullable: false }
       - { name: team_id, type: bigint, nullable: false }
   - id: clinic.public.patients
     domain: Care
     note: Patient record (Patient model, custom db_table).
     columns:
-      - { name: id, type: bigint, pk: true }
+      - { name: id, type: bigint, pk: true, auto_increment: true }
       - { name: full_name, type: varchar(120), pii: true }
       - { name: birth_date, type: date, pii: true }
       - name: sex
         type: varchar(1)
+        default: U
         enum:
           F: Patient.Sex.FEMALE, female
           M: Patient.Sex.MALE, male
@@ -61,7 +63,7 @@ tables:
   - id: clinic.public.clinic_room
     domain: Care
     columns:
-      - { name: id, type: bigint, pk: true }
+      - { name: id, type: bigint, pk: true, auto_increment: true }
       - { name: code, type: varchar(10), unique: true }
       - name: kind
         type: smallint
@@ -73,7 +75,7 @@ tables:
     domain: Care
     note: Price list of medical procedures.
     columns:
-      - { name: id, type: bigint, pk: true }
+      - { name: id, type: bigint, pk: true, auto_increment: true }
       - { name: code, type: varchar(16), unique: true }
       - { name: name, type: varchar(200) }
       - { name: price, type: "numeric(10,2)" }
@@ -81,13 +83,14 @@ tables:
     domain: Care
     note: One patient visit with one doctor.
     columns:
-      - { name: id, type: bigint, pk: true }
+      - { name: id, type: bigint, pk: true, auto_increment: true }
       - { name: patient_id, type: bigint, nullable: false }
       - { name: doctor_id, type: bigint, nullable: false }
       - { name: room_id, type: bigint, nullable: true }
       - { name: scheduled_at, type: timestamp with time zone }
       - name: status
         type: varchar(16)
+        default: booked
         enum:
           booked: Appointment.Status.BOOKED, slot reserved
           checked_in: Appointment.Status.CHECKED_IN, patient arrived
@@ -98,15 +101,15 @@ tables:
     note: Through table of Appointment.procedures with the quantity performed.
     unique: [[appointment_id, procedure_id]]
     columns:
-      - { name: id, type: bigint, pk: true }
+      - { name: id, type: bigint, pk: true, auto_increment: true }
       - { name: appointment_id, type: bigint, nullable: false }
       - { name: procedure_id, type: bigint, nullable: false }
-      - { name: quantity, type: integer }
+      - { name: quantity, type: integer, default: "1" }
   - id: clinic.public.clinic_note
     domain: Care
     note: Free-text note attached to a patient, an appointment or an invoice.
     columns:
-      - { name: id, type: bigint, pk: true }
+      - { name: id, type: bigint, pk: true, auto_increment: true }
       - { name: content_type_id, type: integer, nullable: false, note: "Points to django_content_type (framework table, not modelled)." }
       - { name: object_id, type: bigint, nullable: false }
       - { name: author_id, type: bigint, nullable: false }
@@ -116,13 +119,13 @@ tables:
     domain: Care
     note: Medication catalogue synced nightly from the pharmacy.
     columns:
-      - { name: id, type: bigint, pk: true }
+      - { name: id, type: bigint, pk: true, auto_increment: true }
       - { name: name, type: varchar(200) }
       - { name: atc_code, type: varchar(8) }
   - id: clinic.public.clinic_prescription
     domain: Care
     columns:
-      - { name: id, type: bigint, pk: true }
+      - { name: id, type: bigint, pk: true, auto_increment: true }
       - { name: appointment_id, type: bigint, nullable: false }
       - { name: medication_id, type: bigint, nullable: false }
       - { name: dosage, type: varchar(120) }
@@ -130,30 +133,31 @@ tables:
   - id: clinic.public.billing_insurer
     domain: Billing
     columns:
-      - { name: id, type: bigint, pk: true }
+      - { name: id, type: bigint, pk: true, auto_increment: true }
       - { name: name, type: varchar(120) }
       - { name: claim_endpoint, type: varchar(200) }
   - id: clinic.public.billing_invoice
     domain: Billing
     note: One invoice per appointment.
     columns:
-      - { name: id, type: bigint, pk: true }
+      - { name: id, type: bigint, pk: true, auto_increment: true }
       - { name: appointment_id, type: bigint, nullable: false, unique: true }
       - { name: patient_id, type: bigint, nullable: false }
       - { name: insurer_id, type: integer, nullable: true }
       - name: status
         type: varchar(8)
+        default: draft
         enum:
           draft: Invoice.Status.DRAFT, being prepared
           issued: Invoice.Status.ISSUED, sent to patient
           paid: Invoice.Status.PAID, fully paid
           void: Invoice.Status.VOID, cancelled
-      - { name: total, type: "numeric(12,2)" }
+      - { name: total, type: "numeric(12,2)", default: "0" }
       - { name: issued_at, type: timestamp with time zone, nullable: true }
   - id: clinic.public.billing_invoiceline
     domain: Billing
     columns:
-      - { name: id, type: bigint, pk: true }
+      - { name: id, type: bigint, pk: true, auto_increment: true }
       - { name: invoice_id, type: bigint, nullable: false }
       - { name: procedure_id, type: bigint, nullable: true }
       - { name: description, type: varchar(200) }
@@ -161,7 +165,7 @@ tables:
   - id: clinic.public.billing_payment
     domain: Billing
     columns:
-      - { name: id, type: bigint, pk: true }
+      - { name: id, type: bigint, pk: true, auto_increment: true }
       - { name: invoice_id, type: bigint, nullable: false }
       - name: method
         type: smallint

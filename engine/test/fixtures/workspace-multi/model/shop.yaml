@@ -36,11 +36,12 @@ tables:
     domain: Orders
     note: One order per checkout; the basket becomes order items.
     columns:
-      - { name: id, type: bigint, pk: true }
+      - { name: id, type: bigint, pk: true, auto_increment: true }
       - { name: user_id, type: bigint, nullable: false }
       - { name: organization_id, type: bigint, nullable: true }
       - name: status
         type: varchar(16)
+        default: pending
         note: Lifecycle of the order; only paid orders are shipped.
         enum:
           pending: Created, waiting for payment
@@ -60,6 +61,7 @@ tables:
       - { name: id, type: bigint, pk: true }
       - { name: order_id, type: bigint, nullable: false }
       - { name: amount_cents, type: int }
+      - { name: amount, type: "numeric(12,2)", generated: amount_cents / 100.0, note: "Amount in currency units, computed by the database." }
   - id: shop._.refunds
     domain: Orders
     columns:

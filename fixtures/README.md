@@ -45,6 +45,8 @@ an open-erd model. Each case has:
   `n-n` line; `collapse_join_tables: true` draws it as one line. An array of
   ids stored on one side (MongoDB) has no join table and is one `n-n` relation.
 - `optional` mirrors the referencing column's `nullable`.
+- Column `default`, `auto_increment` and `generated` are set exactly where the
+  source shows them, following the rules in `skills/_shared/model.md`.
 - Enum keys are the values stored in the column (`0`, `1` for integer-backed
   enums), and the meaning names the code symbol.
 - Special patterns use their model fields (`engine/src/model/schema.js`):

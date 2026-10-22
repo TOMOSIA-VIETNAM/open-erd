@@ -269,3 +269,28 @@ relations:
   };
   assert.deepEqual(parseWorkspace(files).errors.map((e) => `${e.path}: ${e.message}`), ['relations[1].from.columns[0]: unknown column "items.seller" in d._.orders']);
 });
+
+test('columns carry default, auto_increment and generated, typed', () => {
+  const body = (columns) => modelFile(`tables:\n  - id: shop._.orders\n    domain: Sales\n    columns:\n${columns}`);
+  const ok = body(
+    [
+      '      - { name: id, type: bigint, pk: true, auto_increment: true }',
+      '      - { name: status, type: varchar, default: pending }',
+      '      - { name: total, type: numeric, generated: "price * qty" }',
+    ].join('\n'),
+  );
+  assert.deepEqual(messages({ 'open-erd.yaml': CONFIG, 'model/shop.yaml': ok }), []);
+  const bad = body(
+    [
+      '      - { name: id, type: bigint, auto_increment: "yes" }',
+      '      - { name: qty, type: int, default: 0 }',
+      '      - { name: total, type: numeric, generated: true, defaults: "0" }',
+    ].join('\n'),
+  );
+  assert.deepEqual(messages({ 'open-erd.yaml': CONFIG, 'model/shop.yaml': bad }), [
+    'model/shop.yaml: tables[0].columns[0].auto_increment: must be boolean, got string',
+    'model/shop.yaml: tables[0].columns[1].default: must be string, got number',
+    'model/shop.yaml: tables[0].columns[2].generated: must be string, got boolean',
+    'model/shop.yaml: tables[0].columns[2].defaults: unknown field',
+  ]);
+});

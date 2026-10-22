@@ -6,7 +6,7 @@ tables:
     domain: Catalog
     note: Suppliers that list products.
     columns:
-      - { name: id, type: bigint, pk: true }
+      - { name: id, type: bigint, pk: true, auto_increment: true }
       - { name: name, type: varchar(160), nullable: false }
       - { name: contact_email, type: varchar(255), nullable: true, pii: true }
       - { name: created_at, type: datetime, nullable: false }
@@ -14,7 +14,7 @@ tables:
     domain: Catalog
     note: Category tree; parent_id points to the parent category.
     columns:
-      - { name: id, type: bigint, pk: true }
+      - { name: id, type: bigint, pk: true, auto_increment: true }
       - { name: parent_id, type: bigint, nullable: true }
       - { name: name, type: varchar(120), nullable: false }
       - { name: slug, type: varchar(120), nullable: false, unique: true }
@@ -22,13 +22,14 @@ tables:
     domain: Catalog
     note: Sellable product; billing invoice lines reference it by id.
     columns:
-      - { name: id, type: bigint, pk: true }
+      - { name: id, type: bigint, pk: true, auto_increment: true }
       - { name: category_id, type: bigint, nullable: false }
       - { name: vendor_id, type: bigint, nullable: true }
       - { name: name, type: varchar(255), nullable: false }
       - name: status
         type: enum
         nullable: false
+        default: draft
         enum:
           draft: Not visible to buyers yet
           active: Listed and sellable
@@ -38,7 +39,7 @@ tables:
     domain: Catalog
     note: Purchasable option of a product (size, color), identified by SKU.
     columns:
-      - { name: id, type: bigint, pk: true }
+      - { name: id, type: bigint, pk: true, auto_increment: true }
       - { name: product_id, type: bigint, nullable: false }
       - { name: sku, type: varchar(64), nullable: false, unique: true }
       - { name: option_label, type: varchar(120), nullable: true }
@@ -46,7 +47,7 @@ tables:
     domain: Pricing
     note: Price of a variant in one currency from a given date.
     columns:
-      - { name: id, type: bigint, pk: true }
+      - { name: id, type: bigint, pk: true, auto_increment: true }
       - { name: variant_id, type: bigint, nullable: false }
       - { name: currency, type: char(3), nullable: false }
       - { name: amount_cents, type: int, nullable: false }
@@ -55,21 +56,22 @@ tables:
     domain: Catalog
     note: Product gallery images, ordered by position.
     columns:
-      - { name: id, type: bigint, pk: true }
+      - { name: id, type: bigint, pk: true, auto_increment: true }
       - { name: product_id, type: bigint, nullable: false }
       - { name: url, type: varchar(500), nullable: false }
-      - { name: position, type: int, nullable: false }
+      - { name: position, type: int, nullable: false, default: "0" }
   - id: catalog._.stock_reservations
     domain: Inventory
     note: Stock held for a billing invoice until it is paid or expires.
     columns:
-      - { name: id, type: bigint, pk: true }
+      - { name: id, type: bigint, pk: true, auto_increment: true }
       - { name: variant_id, type: bigint, nullable: false }
       - { name: invoice_id, type: char(36), nullable: true }
       - { name: quantity, type: int, nullable: false }
       - name: status
         type: enum
         nullable: false
+        default: held
         enum:
           held: Stock set aside, invoice not yet paid
           committed: Invoice paid, stock consumed

@@ -76,12 +76,14 @@ tables:
     # optional pattern fields, see "Special patterns"
     # kind, sources, sti, partition, unique, generated_by, embedded
     columns:                           # at least one
-      - { name: id, type: bigint, pk: true }
-      - { name: user_id, type: bigint, nullable: false }
-      - { name: email, type: varchar, nullable: false, unique: true, pii: true }
+      - { name: id, type: bigint, pk: true, auto_increment: true, note: Surrogate key. }
+      - { name: user_id, type: bigint, nullable: false, note: Customer billed by this invoice. }
+      - { name: email, type: varchar, nullable: false, unique: true, pii: true, note: Address the invoice is sent to. }
+      - { name: total, type: numeric, generated: "subtotal + tax", note: "Amount due, computed by the database." }
       - name: status
         type: varchar
         nullable: false
+        default: draft
         note: Lifecycle state.
         enum:                          # stored value -> meaning
           draft: Created, not yet sent to the customer (Invoice::STATUSES)
@@ -113,7 +115,25 @@ Every table and column named by a relation, polymorphic entry, `hub` or
 Identifier segments never contain `.`; keep names exactly as in the database
 (including case). Column fields: `name`, `type` required; `nullable`, `pk`,
 `unique`, `enum`, `note`, `note_source`, `internal_note`, `pii`,
-`renamed_from` optional.
+`renamed_from`, `default`, `auto_increment`, `generated` optional.
+
+- `default`: the default value as the schema source writes it, as a string.
+  A literal when the code gives one (`draft`, `"0"`, `"false"`), else the
+  expression as written (`now()`, `gen_random_uuid()`, `nextval('users_id_seq')`,
+  `Date.now`, `cuid()`). Always a YAML string: quote numbers, booleans and
+  `null` (`default: "0"`). An ORM constant resolves to its stored value
+  (`Status.DRAFT` -> `draft`). Only when a file shows it; never guess.
+- `auto_increment: true`: the database numbers new rows itself: `SERIAL`,
+  `IDENTITY`, `AUTO_INCREMENT`, Prisma `@default(autoincrement())`,
+  Sequelize `autoIncrement: true`, TypeORM `@PrimaryGeneratedColumn()`
+  (`'increment'`; the `'uuid'` strategy is a `default` instead), and the
+  implicit integer id of Rails `create_table`, Laravel `$table->id()` /
+  `increments()`, Django `AutoField`/`BigAutoField`. Do not also set
+  `default` for a plain auto-increment (`nextval(...)` of a `serial` is
+  implied).
+- `generated`: the expression of a generated / computed column (`GENERATED
+  ALWAYS AS (...)`, Rails `t.virtual ... as:`, Prisma `@default(dbgenerated(...))`
+  on a computed column, Laravel `storedAs`/`virtualAs`).
 
 ## Special patterns
 
@@ -181,9 +201,16 @@ Identifier segments never contain `.`; keep names exactly as in the database
 - **enum**: keys are the stored values (`"0"`, `"1"` for integer-backed
   enums, the mapped value when an ORM maps names). The meaning is a short
   English phrase plus the code symbol it came from.
-- **note**: English, one or two sentences on what a row means for the
-  business, for tables a newcomer would not guess. Translate non-English
-  comments and keep the original in `note_source`.
+- **note** on a table: English, one or two sentences on what a row means for
+  the business. Translate non-English comments and keep the original in
+  `note_source`.
+- **note** on a column: every column gets one, so the Excel column grid
+  never has an empty Comment. English, at most about 15 words, saying what the
+  value means or is used for (`Customer billed by this invoice.`, `Set when
+  the gateway confirms payment.`, `Surrogate key.`). Write only what code,
+  schema comments or names show; when nothing does, write `Unclear from
+  code.` rather than guess. Enum value meanings stay in `enum`, not in the
+  note.
 - **pii**: names, emails, phones, addresses, birth dates, government ids,
   free-text written by end users, IPs.
 - **Special patterns** (STI, view, partition, tenant schemas, embedded
@@ -208,7 +235,8 @@ timestamps, no absolute paths. Shape:
   "stack": ["rails"],
   "tables": [
     { "name": "invoices", "schema": null, "database": "billing", "evidence": "db/schema.rb#invoices",
-      "columns": [ { "name": "id", "type": "bigint", "pk": true, "nullable": false, "unique": false } ] }
+      "columns": [ { "name": "id", "type": "bigint", "pk": true, "nullable": false, "unique": false, "auto_increment": true },
+                   { "name": "status", "type": "string", "nullable": false, "unique": false, "default": "draft" } ] }
   ],
   "associations": [
     { "from": { "table": "invoices", "columns": ["payer_id"] }, "to": { "table": "parties", "columns": ["id"] },

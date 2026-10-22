@@ -20,7 +20,7 @@ import { NOTE_FIELDS } from '../model/schema.js';
 export const POSSIBLE_RENAME_SIMILARITY = 0.6;
 
 const TABLE_FIELDS = ['domain', 'kind', ...NOTE_FIELDS, 'sources', 'sti', 'partition', 'unique', 'generated_by'];
-const COLUMN_FIELDS = ['type', 'nullable', 'pk', 'unique', 'pii', ...NOTE_FIELDS];
+const COLUMN_FIELDS = ['type', 'nullable', 'pk', 'unique', 'pii', 'default', 'auto_increment', 'generated', ...NOTE_FIELDS];
 const ENTITY_FIELDS = ['array', 'note', 'internal_note'];
 const DATABASE_FIELDS = ['engine', 'tenant_schemas', 'topology'];
 const RELATION_FIELDS = ['cardinality', 'optional', 'kind', 'review'];
@@ -264,6 +264,9 @@ const FIELD_WORDS = {
   nullable: 'nullable',
   pk: 'primary key',
   pii: 'personal data (PII)',
+  default: 'default',
+  auto_increment: 'auto-increment',
+  generated: 'generated expression',
   array: 'list of documents',
   engine: 'engine',
   tenant_schemas: 'tenant schemas',
@@ -279,7 +282,7 @@ const quoted = (value) => `“${showValue(value)}”`;
 // A column's `unique` is one flag, a table's is its list of unique keys.
 const fieldWord = (c) => (c.field === 'unique' && c.kind === 'column_changed' ? 'unique' : FIELD_WORDS[c.field]);
 // Flags read as a state ("now unique"), an absent flag being false.
-const FLAGS = new Set(['pk', 'unique', 'pii', 'array', 'optional']);
+const FLAGS = new Set(['pk', 'unique', 'pii', 'auto_increment', 'array', 'optional']);
 const fromTo = (c) => {
   const word = fieldWord(c);
   if (FLAGS.has(c.field) && (c.kind !== 'table_changed' || c.field !== 'unique')) return c.after ? `now ${word}` : `no longer ${word}`;

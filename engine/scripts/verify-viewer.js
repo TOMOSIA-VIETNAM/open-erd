@@ -209,14 +209,51 @@ await shot('escape-clears', `!${visible}.classList.contains('dimmed')`);
 await click(`[...document.querySelectorAll('.oe-btn')].find((b) => b.textContent === '‹ Back')`);
 await shot('back', `!(${viewIs('neighborhood')})`);
 
-// Wheel zoom and drag pan move the camera.
-const before = await evaluate(`document.querySelector('.camera').getAttribute('transform')`);
-await send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: 700, y: 500, deltaX: 0, deltaY: -300 });
+// Camera as { x, y, s } from the transform the viewer writes.
+const camera = () =>
+  evaluate(`(() => { const m = /translate\\(([-\\d.e]+) ([-\\d.e]+)\\) scale\\(([-\\d.e]+)\\)/.exec(document.querySelector('.camera').getAttribute('transform'));
+    return { x: Number(m[1]), y: Number(m[2]), s: Number(m[3]) }; })()`);
+// CDP modifier bits: Alt 1, Ctrl 2, Meta 4, Shift 8.
+const CTRL = 2;
+async function wheel(deltaY, { modifiers = 0, deltaX = 0 } = {}) {
+  await send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: 700, y: 500, deltaX, deltaY, modifiers });
+}
+
+// A click followed by a press-and-drag on a label (a double press, which
+// selects a word in a plain document) pans and leaves nothing selected.
+const label = await centre(`[...${visible}.querySelectorAll('text')].find((t) => !t.closest('.table, .poly, .stub, .domain, .relation-group'))`);
+const press2 = (type, p, clickCount) => send('Input.dispatchMouseEvent', { type, ...p, button: 'left', buttons: type === 'mousePressed' ? 1 : 0, clickCount });
+await mouse('mouseMoved', label);
+await press2('mousePressed', label, 1);
+await press2('mouseReleased', label, 1);
+const beforeDrag = await camera();
+await press2('mousePressed', label, 2);
+for (let i = 1; i <= 8; i++) await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: label.x + i * 15, y: label.y + i * 10, button: 'left', buttons: 1 });
+await press2('mouseReleased', { x: label.x + 120, y: label.y + 80 }, 2);
 await pause(100);
-await mouse('mousePressed', { x: 700, y: 500 });
-await mouse('mouseMoved', { x: 780, y: 560 });
-await mouse('mouseReleased', { x: 780, y: 560 });
-await shot('zoom-pan', `document.querySelector('.camera').getAttribute('transform') !== ${JSON.stringify(before)}`);
+const afterDrag = await camera();
+const panned = Math.abs(afterDrag.x - beforeDrag.x - 120) < 1 && Math.abs(afterDrag.y - beforeDrag.y - 80) < 1;
+await shot('drag-pan-no-selection', `window.getSelection().toString() === '' && ${panned} || { selection: window.getSelection().toString().slice(0, 80), panned: ${panned} }`);
+
+// A trackpad pinch: Chrome sends wheel events with ctrlKey and small deltas.
+// Ten of them must at least nearly double the scale. Zoom out first so the
+// scale cap cannot stop it.
+for (let i = 0; i < 10 && (await camera()).s > 1; i++) await wheel(100, { modifiers: CTRL });
+await pause(100);
+const beforePinch = await camera();
+for (let i = 0; i < 10; i++) await wheel(-5, { modifiers: CTRL });
+await pause(100);
+const afterPinch = await camera();
+await shot('pinch-zoom', `${afterPinch.s / beforePinch.s} >= 1.8 || ${JSON.stringify({ before: beforePinch.s, after: afterPinch.s })}`);
+
+// Two-finger scroll without ctrl pans and keeps the scale.
+await wheel(120, { deltaX: 40 });
+await pause(100);
+const afterScroll = await camera();
+await shot(
+  'scroll-pans',
+  `${afterScroll.s === afterPinch.s && Math.abs(afterScroll.x - (afterPinch.x - 40)) < 0.01 && Math.abs(afterScroll.y - (afterPinch.y - 120)) < 0.01} || ${JSON.stringify({ afterPinch, afterScroll })}`,
+);
 
 // Without script the file must still show the static overview.
 await send('Emulation.setScriptExecutionDisabled', { value: true });

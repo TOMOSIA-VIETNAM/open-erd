@@ -6,21 +6,22 @@ tables:
     domain: Identity
     note: Platform account; role decides student, instructor or admin rights.
     columns:
-      - { name: id, type: text, pk: true }
+      - { name: id, type: text, pk: true, default: cuid() }
       - { name: email, type: text, unique: true, pii: true }
       - { name: display_name, type: text, pii: true }
       - name: role
         type: Role
+        default: STUDENT
         enum:
           STUDENT: Learner who enrolls in courses
           INSTRUCTOR: Can author courses
           ADMIN: Platform operator, can review courses
-      - { name: created_at, type: timestamp(3) }
+      - { name: created_at, type: timestamp(3), default: now() }
   - id: learn.public.user_profiles
     domain: Identity
     note: Optional public profile, at most one per user.
     columns:
-      - { name: id, type: text, pk: true }
+      - { name: id, type: text, pk: true, default: cuid() }
       - { name: user_id, type: text, nullable: false, unique: true }
       - { name: bio, type: text, nullable: true }
       - { name: avatar_url, type: text, nullable: true }
@@ -28,17 +29,18 @@ tables:
     domain: Catalog
     note: Course category tree; a category may have a parent category.
     columns:
-      - { name: id, type: text, pk: true }
+      - { name: id, type: text, pk: true, default: cuid() }
       - { name: name, type: text }
       - { name: parent_id, type: text, nullable: true }
   - id: learn.public.courses
     domain: Catalog
     note: Course written by one instructor and optionally checked by a reviewer.
     columns:
-      - { name: id, type: text, pk: true }
+      - { name: id, type: text, pk: true, default: cuid() }
       - { name: title, type: text }
       - name: status
         type: CourseStatus
+        default: draft
         note: Stored values come from @map on CourseStatus, not the TypeScript names.
         enum:
           draft: Being written, not visible to students
@@ -54,16 +56,16 @@ tables:
     note: Ordered lesson inside a course.
     unique: [[course_id, position]]
     columns:
-      - { name: id, type: text, pk: true }
+      - { name: id, type: text, pk: true, default: cuid() }
       - { name: course_id, type: text, nullable: false }
       - { name: position, type: integer }
       - { name: title, type: text }
-      - { name: createdAt, type: timestamp(3), note: "No @map, so the column keeps the camelCase field name." }
+      - { name: createdAt, type: timestamp(3), default: now(), note: "No @map, so the column keeps the camelCase field name." }
   - id: learn.public.tags
     domain: Catalog
     note: Free label attached to courses.
     columns:
-      - { name: id, type: text, pk: true }
+      - { name: id, type: text, pk: true, default: cuid() }
       - { name: label, type: text, unique: true }
   - id: learn.public._CourseToTag
     domain: Catalog
@@ -80,17 +82,18 @@ tables:
       - { name: course_id, type: text, pk: true, nullable: false }
       - name: status
         type: EnrollmentStatus
+        default: ACTIVE
         enum:
           ACTIVE: Student currently has access
           COMPLETED: Student finished every lesson
           REFUNDED: Purchase refunded, access revoked
-      - { name: enrolled_at, type: timestamp(3) }
+      - { name: enrolled_at, type: timestamp(3), default: now() }
   - id: learn.public.lesson_progress
     domain: Learning
     note: Completion of one lesson by one enrolled student.
     unique: [[user_id, lesson_id]]
     columns:
-      - { name: id, type: text, pk: true }
+      - { name: id, type: text, pk: true, default: cuid() }
       - { name: user_id, type: text, nullable: false }
       - { name: course_id, type: text, nullable: false }
       - { name: lesson_id, type: text, nullable: false }
@@ -100,7 +103,7 @@ tables:
     note: Student rating of a course, one per student per course.
     unique: [[course_id, author_id]]
     columns:
-      - { name: id, type: text, pk: true }
+      - { name: id, type: text, pk: true, default: cuid() }
       - { name: course_id, type: text, nullable: false }
       - { name: author_id, type: text, nullable: false }
       - { name: rating, type: integer }
@@ -109,29 +112,30 @@ tables:
     domain: Sales
     note: Discount code applied at checkout.
     columns:
-      - { name: id, type: text, pk: true }
+      - { name: id, type: text, pk: true, default: cuid() }
       - { name: code, type: text, unique: true }
       - { name: percent_off, type: integer }
   - id: learn.public.orders
     domain: Sales
     note: Checkout of one or more courses by a user.
     columns:
-      - { name: id, type: text, pk: true }
+      - { name: id, type: text, pk: true, default: cuid() }
       - { name: user_id, type: text, nullable: false }
       - { name: coupon_code, type: text, nullable: true, note: "References coupons.code, not coupons.id." }
       - name: status
         type: OrderStatus
+        default: PENDING
         enum:
           PENDING: Created, payment not confirmed
           PAID: Payment confirmed
           CANCELLED: Abandoned or cancelled before payment
       - { name: total_cents, type: integer }
-      - { name: placed_at, type: timestamp(3) }
+      - { name: placed_at, type: timestamp(3), default: now() }
   - id: learn.public.order_items
     domain: Sales
     note: One purchased course inside an order, with the price paid.
     columns:
-      - { name: id, type: text, pk: true }
+      - { name: id, type: text, pk: true, default: cuid() }
       - { name: order_id, type: text, nullable: false }
       - { name: course_id, type: text, nullable: false }
       - { name: price_cents, type: integer }
@@ -139,12 +143,12 @@ tables:
     domain: Audit
     note: Append-only activity log; actor_id is kept without a relation so events survive user deletion.
     columns:
-      - { name: id, type: text, pk: true }
+      - { name: id, type: text, pk: true, default: cuid() }
       - { name: actor_id, type: text, nullable: true }
       - { name: action, type: text }
       - { name: target_type, type: text }
       - { name: target_id, type: text }
-      - { name: created_at, type: timestamp(3) }
+      - { name: created_at, type: timestamp(3), default: now() }
 relations:
   - { from: { table: learn.public.user_profiles, columns: [user_id] }, to: { table: learn.public.users, columns: [id] }, cardinality: 1-1, optional: false, kind: db_fk, evidence: ["learn-prisma:prisma/schema.prisma#Profile"], review: pending }
   - { from: { table: learn.public.categories, columns: [parent_id] }, to: { table: learn.public.categories, columns: [id] }, cardinality: n-1, optional: true, kind: db_fk, evidence: ["learn-prisma:prisma/schema.prisma#CategoryTree"], review: pending }

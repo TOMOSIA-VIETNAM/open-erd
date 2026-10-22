@@ -36,7 +36,14 @@ printf 'open-erd.local.yaml\n' > <ws>/.gitignore
 
 ## 2. Extract scripts
 
-For each source:
+First find every model root of every source (`stacks.md`, "Finding every
+model root first"): path gems, submodules, engines, packages, shared
+folders. Show the user the list per source. A root outside the source path
+becomes its own source after the user confirms its path. If an expected root
+is missing (referenced but not on disk), stop here and tell the user what is
+missing and where it is referenced; do not build a partial model.
+
+Then for each source:
 
 1. Detect the stack(s) from marker files (`stacks.md`). Tell the user what
    you found and which files the script will read.
@@ -75,7 +82,13 @@ Facts confirmed by metadata get `kind: db_fk` (when a constraint exists) and
 From the facts files (and metadata cache), write one `model/<db>.yaml` per
 logical database and `model/cross-db.yaml` when needed, following every rule in
 `model.md` "Writing facts": table ids, direction, `kind`, evidence with the
-source name prefix, `review: pending`, English notes, enum meanings, `pii`.
+source name prefix, `review: pending`, English notes, enum meanings, `pii`,
+and each column's `default`, `auto_increment` and `generated` from the facts.
+
+Write a `note` on every table and every column, not only the important ones:
+the Excel table sheets show it as the Comment of each column. Keep each
+column note short (about 15 words at most), say only what code, schema
+comments or names show, and write `Unclear from code.` when nothing does.
 
 ## 5. Domains
 

@@ -192,17 +192,18 @@ test('CLI diff between two tags: summary, colored SVG and Changes sheet agree', 
   const sheet = workbook.getWorksheet('Changes');
   assert.deepEqual(sheet.getRow(1).values.slice(1), ['Database', 'Table', 'Change', 'Detail', 'Before', 'After']);
   assert.equal(sheet.rowCount - 1, result.changes.length);
-  const tables = workbook.getWorksheet('Tables');
+  assert.equal(workbook.views[0].activeTab, workbook.worksheets.length - 1, 'the file opens on Changes');
   const links = xlsxLinks(bytes).Changes;
   result.changes.forEach((c, i) => {
     const row = i + 2;
     assert.equal(sheet.getCell(`D${row}`).text, describeChange(c));
     const target = links.get(`B${row}`);
     if (to.tables.some((t) => t.id === c.table)) {
-      const tablesRow = Number(/!A(\d+)$/.exec(target.location)[1]);
-      assert.equal(tables.getCell(`D${tablesRow}`).text, c.table.split('.')[2]);
+      const [, name, at] = /^'([^']+)'!A(\d+)$/.exec(target.location);
+      assert.equal(at, '1');
+      assert.equal(workbook.getWorksheet(name).getCell('B1').text, c.table);
     } else {
-      assert.equal(target, undefined, `${c.table} has no Tables row to link to`);
+      assert.equal(target, undefined, `${c.table} has no sheet to link to`);
     }
   });
 
@@ -243,4 +244,16 @@ test('CLI diff --profile filters both sides before diffing', async () => {
   assert.ok(!svg.includes('password_digest'));
   assert.ok(!svg.includes('shop-api:app/models'), 'no evidence in a public diff');
   await readFile(join(ws, 'out', 'diff.public.xlsx'));
+});
+
+test('column default, auto-increment and generated expression changes are reported', async () => {
+  const from = await loadWorkspace(MULTI);
+  const edit = (c) =>
+    c.name === 'status' ? { ...c, default: 'paid' } : c.name === 'id' ? { ...c, auto_increment: undefined } : c.name === 'placed_at' ? { ...c, generated: 'now()' } : c;
+  const to = { ...from, tables: from.tables.map((t) => (t.id === 'shop._.orders' ? { ...t, columns: t.columns.map(edit) } : t)) };
+  assert.deepEqual(diffModels(from, to).changes.map(describeChange), [
+    'Column id: no longer auto-increment',
+    'Column placed_at: generated expression set to “now()”',
+    'Column status: default changed from “pending” to “paid”',
+  ]);
 });

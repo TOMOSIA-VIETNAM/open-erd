@@ -28,6 +28,9 @@ const LEGEND_GAP = 18;
 // Rules the embedded viewer script relies on. Without script none of these
 // classes is ever set, so the static drawing is unaffected.
 const VIEWER_STYLE = `.row-hit { fill: transparent; }
+/* The drawing moves under the pointer when dragged: no text selection, and
+   one composited layer for the pan/zoom transform. */
+.camera { -webkit-user-select: none; user-select: none; will-change: transform; }
 .column:hover .row-hit { fill: #eef3fb; }
 .column.hl-column .row-hit { fill: #fff1b8; }
 .domain, .stub, .table, .poly, .relation-group, .hub-badge { cursor: pointer; }
@@ -663,6 +666,9 @@ export function viewerData(model, diagram, technical = technicalColumns(model), 
         ...(c.nullable === undefined ? {} : { nullable: c.nullable }),
         ...(c.pk ? { pk: true } : {}),
         ...(c.unique ? { unique: true } : {}),
+        ...(c.auto_increment ? { autoIncrement: true } : {}),
+        ...(c.default === undefined ? {} : { default: c.default }),
+        ...(c.generated === undefined ? {} : { generated: c.generated }),
         ...(c.pii ? { pii: true } : {}),
         ...(technical.get(id).has(path) ? { technical: true } : {}),
         ...(c.enum ? { enum: c.enum } : {}),
