@@ -212,6 +212,7 @@ function showView(name) {
   clearSelection();
   // The tooltip described whatever was under the pointer in the old view.
   hideTip();
+  focusDomain(null);
   for (const [n, v] of views) v.style.display = n === name ? '' : 'none';
   state.view = name;
   // A neighborhood or join view of the same name may hold other tables now.
@@ -675,6 +676,17 @@ const joinButton = el('button', { class: 'oe-btn', text: 'Join path', title: 'Ho
 const legendButton = el('button', { class: 'oe-btn', text: 'Legend', title: 'What the lines and marks in this view mean', on: { click: () => setLegend(!legendOpen) } });
 // Review colours are for reviewers: off by default, so every line has one
 // neutral colour and only solid (confirmed) or dashed (not confirmed).
+// Overview lines standing for few relations are hidden at first (see
+// overview.min_relations); this button shows or hides them all, and
+// hovering a domain shows its own.
+const weakCount = views.get(OVERVIEW).querySelectorAll('.overview-link.weak').length;
+const weakButton = el('button', { class: 'oe-btn', title: `Lines standing for fewer than ${data.overviewMinRelations} relations`, on: { click: () => setWeak(!svg.classList.contains('show-weak')) } });
+function setWeak(on) {
+  svg.classList.toggle('show-weak', on);
+  weakButton.classList.toggle('on', on);
+  weakButton.textContent = on ? 'Hide weak links' : `${plural(weakCount, 'weak link')} hidden · Show all`;
+  if (legendOpen) setLegend(true);
+}
 const minimapButton = el('button', { class: 'oe-btn', text: 'Minimap', title: 'Small map of the whole view, shown while it does not fit on screen', on: { click: () => setMinimap(!map.on) } });
 const reviewButton = el('button', {
   class: 'oe-btn',
@@ -705,6 +717,7 @@ toolbar.div.append(
   crumbs,
   hopGroup,
   foldGroup,
+  weakButton,
   joinButton,
   legendButton,
   reviewButton,
@@ -753,6 +766,7 @@ function renderToolbar() {
   foldGroup.style.display = clusterGroups(currentView()).length > 0 ? '' : 'none';
   // Overview lines stand for many relations and carry no review colour.
   reviewButton.style.display = state.view === OVERVIEW ? 'none' : '';
+  weakButton.style.display = state.view === OVERVIEW && weakCount > 0 ? '' : 'none';
   layoutOverlays();
 }
 
@@ -1495,6 +1509,7 @@ const LEGEND = [
     [() => lineSample('overview-link kind-domain', 3), 'Relations between two domains; the thicker, the more', (v) => has(v, '.overview-link')],
     [() => sample([svgEl('g', { class: 'count-badge' }, [svgEl('rect', { x: 2, y: 1, width: 16, height: 16, rx: 8 }), svgEl('text', { x: 10, y: 9, 'dominant-baseline': 'central', 'text-anchor': 'middle', text: '4' })])]), 'Number of relations the line stands for', (v) => has(v, '.count-badge')],
     [() => lineSample('overview-link kind-cross_db', 2), 'Domains in different databases', (v) => has(v, '.overview-link.kind-cross_db')],
+    [() => lineSample('overview-link kind-domain', 1.2), `Lines of fewer than ${data.overviewMinRelations} relations are hidden: hover a domain to see its own, or Show all`, (v) => has(v, '.overview-link.weak') && !svg.classList.contains('show-weak')],
     [() => lineSample(''), 'Confirmed: database foreign key or declared in code', (v) => has(v, '.relation-group:not(.overview-link, .unconfirmed, .kind-view_source)')],
     [() => lineSample('unconfirmed'), 'Found in code, not confirmed', (v) => has(v, '.relation-group.unconfirmed')],
     [() => lineSample('kind-view_source review-reviewed'), 'A view reads this table', (v) => has(v, '.relation-group.kind-view_source')],
@@ -1789,6 +1804,30 @@ svg.addEventListener('pointerup', () => {
 });
 svg.addEventListener('pointerleave', hideTip);
 
+// Hovering a domain on the overview brings up all its lines (weak ones
+// too) and fades every other line and domain.
+let focused = null;
+function focusDomain(id) {
+  if (focused === id) return;
+  focused = id;
+  const view = views.get(OVERVIEW);
+  for (const e of view.querySelectorAll('.focus-link, .focus-node')) e.classList.remove('focus-link', 'focus-node');
+  view.classList.toggle('domain-focus', id !== null);
+  if (id === null) return;
+  view.querySelector(`.domain[data-domain="${CSS.escape(id)}"]`)?.classList.add('focus-node');
+  for (const g of view.querySelectorAll('.overview-link')) {
+    const ends = [g.getAttribute('data-from'), g.getAttribute('data-to')];
+    if (!ends.includes(id)) continue;
+    g.classList.add('focus-link');
+    for (const end of ends) view.querySelector(`.domain[data-domain="${CSS.escape(end)}"]`)?.classList.add('focus-node');
+  }
+}
+svg.addEventListener('pointerover', (e) => {
+  if (state.view !== OVERVIEW || press) return;
+  const domain = inUi(e) ? null : e.target.closest('.domain');
+  focusDomain(domain ? domain.getAttribute('data-domain') : null);
+});
+
 svg.addEventListener('click', (e) => {
   if (inUi(e)) return;
   if (dragged) {
@@ -1888,6 +1927,7 @@ window.addEventListener('resize', () => {
 // tooltip over everything.
 svg.append(legend.fo, minimap.fo, panel.fo, toolbar.fo, tip.fo);
 setBusiness(false);
+setWeak(false);
 // The view drawn visible without script is where the reader starts: the
 // overview, or all tables in a diff drawing.
 showView([...views].find(([, v]) => v.style.display !== 'none')?.[0] ?? OVERVIEW);

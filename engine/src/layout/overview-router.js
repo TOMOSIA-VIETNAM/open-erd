@@ -5,18 +5,19 @@ import { GRID, roundToGrid } from './table-box.js';
 // Lines of the overview: one per pair of domains. A domain box has no rows,
 // so a line may meet any of its four sides, at any free slot along it (one
 // grid step apart, a line per slot). Lines are placed one at a time, the ones
-// standing for most relations first, each taking the cheapest of these
-// shapes that keeps MARGIN px clear of every other box and group label and
-// never runs along a line placed before it:
+// standing for most relations first (so the weak links an overview hides at
+// first never push a strong line aside), each taking the cheapest of these
+// orthogonal shapes that keeps MARGIN px clear of every other box and group
+// label and never runs along a line placed before it:
 //   straight    the boxes face each other: a horizontal or vertical line;
 //   one bend    out of one box's side, into the other's top or bottom;
 //   two bends   out and back in through a free channel: a U under or over
 //               both boxes, a C beside both, or a Z through the gap between
-//               them;
-//   diagonal    a straight line between the box centres, when that is clear.
-// Cost is length, plus a fixed amount per bend, per crossing of a line
-// already placed, per badge it runs through, and for a diagonal. Only a line
-// none of these fits goes to the orthogonal router of the other views.
+//               them.
+// No diagonals: one line style throughout. Cost is length, plus a fixed
+// amount per bend, per crossing of a line already placed and per badge it
+// runs through. Only a line none of these fits goes to the orthogonal router
+// of the other views.
 // ponytail: the router fallback does not see the lines placed before it, so
 // it may run over one; pass them to the router as occupied tracks if that
 // ever shows on a real schema.
@@ -24,7 +25,6 @@ import { GRID, roundToGrid } from './table-box.js';
 const BEND_COST = 60;
 const CROSS_COST = 150;
 const BADGE_COST = 400;
-const DIAGONAL_COST = 120;
 // Slots tried per end: the free ones nearest to where the end would ideally be.
 const SLOTS_PER_END = 3;
 // Channels tried for a two-bend line, one grid step apart.
@@ -149,7 +149,7 @@ export function routeOverview(nodes, labels, frames, links) {
     const out = [];
     const [ax, ay] = centre(a);
     const [bx, by] = centre(b);
-    const add = (points, ends, bends, extra = 0) => out.push({ points, ends, bends, extra });
+    const add = (points, ends, bends) => out.push({ points, ends, bends });
     const facingX = bx >= ax ? ['right', 'left'] : ['left', 'right'];
     const facingY = by >= ay ? ['bottom', 'top'] : ['top', 'bottom'];
     // Straight: one coordinate free on both facing sides.
@@ -225,15 +225,6 @@ export function routeOverview(nodes, labels, frames, links) {
         }
       }
     }
-    // Diagonal, border to border along the centre line.
-    const dx = bx - ax;
-    const dy = by - ay;
-    const exit = (box, sign) => {
-      const t = Math.min(dx === 0 ? Infinity : box.w / 2 / Math.abs(dx), dy === 0 ? Infinity : box.h / 2 / Math.abs(dy));
-      const [cx, cy] = centre(box);
-      return [Math.round((cx + sign * dx * t) * 100) / 100, Math.round((cy + sign * dy * t) * 100) / 100];
-    };
-    if (dx !== 0 && dy !== 0) add([exit(a, 1), exit(b, -1)], [], 0, DIAGONAL_COST);
     return out;
   }
 
@@ -251,7 +242,7 @@ export function routeOverview(nodes, labels, frames, links) {
     for (const c of candidates(a, b)) {
       const segs = segmentsOf(c.points);
       if (segs.some((s) => placed.some((t) => alongside(s, t)))) continue;
-      let cost = lengthOf(c.points) + c.bends * BEND_COST + c.extra;
+      let cost = lengthOf(c.points) + c.bends * BEND_COST;
       if (best && cost >= best.cost) continue;
       for (const s of segs) for (const t of placed) if (crosses(s, t)) cost += CROSS_COST;
       for (const s of segs) for (const r of badges) if (segmentCrosses(s[0], s[1], r)) cost += BADGE_COST;

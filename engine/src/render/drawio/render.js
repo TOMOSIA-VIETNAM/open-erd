@@ -2,6 +2,7 @@ import { clusterLabel, engineName } from '../../layout/clusters.js';
 import { VIEW_SOURCE, buildDiagram } from '../../layout/diagram.js';
 import { COLUMN_FONT, HEADER_HEIGHT, PADDING_X, PK_FONT, ROW_HEIGHT, TYPE_FONT } from '../../layout/table-box.js';
 import { ALL_VIEW, DOMAIN_VIEW_PREFIX, OVERVIEW, hasAllView, viewNames } from '../../layout/views.js';
+import { minRelations } from '../../model/schema.js';
 import { UNCONFIRMED_DASH, isConfirmed, overviewStrokeWidth } from '../svg/markers.js';
 import { columnEntries, enumMeaning } from '../../model/columns.js';
 import { PALETTE } from '../../palette.js';
@@ -486,7 +487,7 @@ function hiddenLayers(scene, byId, heights, origin) {
   return [...layer(HUB_LAYER, hub), ...layer(POLY_LAYER, poly)];
 }
 
-function pageXml(scene, colorOf) {
+function pageXml(model, scene, colorOf) {
   const origin = { x: scene.bounds.x, y: scene.bounds.y };
   // Each cell sits inside the innermost frame around it (database, then
   // domain), with coordinates relative to that frame, so a frame dragged in
@@ -515,7 +516,24 @@ function pageXml(scene, colorOf) {
     cells.push(...drawn.cells);
   }
   const byId = new Map(scene.nodes.map((n) => [n.id, n]));
-  for (const r of scene.relations) cells.push(scene.name === OVERVIEW ? overviewEdgeCell(r, byId, heights, origin) : edgeCell(r, byId, heights, origin));
+  for (const r of scene.relations) {
+    if (r.weak) continue;
+    cells.push(scene.name === OVERVIEW ? overviewEdgeCell(r, byId, heights, origin) : edgeCell(r, byId, heights, origin));
+  }
+  // draw.io cannot hide a line until asked, so the overview leaves weak
+  // links out (as the SVG does at first) and says how many.
+  const weak = scene.relations.filter((r) => r.weak).length;
+  if (weak > 0) {
+    cells.push(
+      cell({
+        id: 'weak-links',
+        value: `${weak} weak link${weak === 1 ? '' : 's'} hidden (fewer than ${minRelations(model.config)} relations)`,
+        parent: '1',
+        geometry: box(10, 10, 360, 20),
+        styles: { text: 1, html: 0, align: 'left', verticalAlign: 'middle', fontSize: 11, fontColor: '#7a8597', strokeColor: 'none', fillColor: 'none' },
+      }),
+    );
+  }
   const layers = hiddenLayers(scene, byId, heights, origin);
   const { w, h } = scene.bounds;
   return [
@@ -544,6 +562,6 @@ export function renderDrawio(model, layout, options = {}) {
   const diagram = buildDiagram(model);
   const colorOf = (key) => COLORS[layout.colors[key] % COLORS.length];
   const names = hasAllView(diagram) ? [OVERVIEW, ALL_VIEW] : viewNames(diagram).filter((n) => n !== ALL_VIEW);
-  const pages = names.map((name) => pageXml(buildScene(model, layout, name, diagram, options), colorOf));
+  const pages = names.map((name) => pageXml(model, buildScene(model, layout, name, diagram, options), colorOf));
   return ['<mxfile host="open-erd" compressed="false">', ...pages, '</mxfile>', ''].join('\n');
 }

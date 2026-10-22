@@ -285,8 +285,18 @@ export const configSchema = {
     outputs: {
       type: 'object',
       fields: {
-        // out/erd.drawio: one draw.io page per view, editable in draw.io.
+        // out/erd.drawio: the overview and the view of all tables,
+        // editable in draw.io.
         drawio: { type: 'boolean' },
+      },
+    },
+    // The overview hides a line between two domains that stands for fewer
+    // than `min_relations` relations until the reader asks for it (1 shows
+    // every line); fields left out take their value from OVERVIEW_DEFAULTS.
+    overview: {
+      type: 'object',
+      fields: {
+        min_relations: { type: 'integer', min: 1 },
       },
     },
     // Left out of every profile render.
@@ -319,6 +329,12 @@ export const configSchema = {
  */
 /** Output files written when `outputs` in open-erd.yaml does not say otherwise. */
 export const OUTPUT_DEFAULTS = { drawio: true };
+
+/** Overview settings when `overview` in open-erd.yaml does not say otherwise. */
+export const OVERVIEW_DEFAULTS = { min_relations: 2 };
+
+/** Relation count below which an overview line is a weak link, hidden at first. */
+export const minRelations = (config) => ({ ...OVERVIEW_DEFAULTS, ...config.overview }).min_relations;
 
 export const PROFILE_DEFAULTS = {
   drop_evidence: true,

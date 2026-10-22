@@ -32,6 +32,7 @@ hub:                         # cross-cutting references, drawn as badges instead
   tables: [billing.public.users]
 collapse_join_tables: false  # true draws a pure join table as one n-n line
 outputs: { drawio: true }    # default true: render also writes out/erd.drawio (Overview and All tables pages)
+overview: { min_relations: 2 }   # default 2: overview lines of fewer relations start hidden (1 shows all)
 hidden:                      # left out of every profile render
   tables: [billing.public.audit_logs]
   columns: [billing.public.users.password_digest]   # embedded: <table id>.<entity>.<column> or <table id>.<entity>
