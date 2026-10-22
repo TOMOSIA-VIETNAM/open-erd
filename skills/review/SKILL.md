@@ -51,6 +51,11 @@ corrected values).
 
 ## 3. Finish
 
+Run `validate`, then the verification of what this review changed
+(rules.md, "Verification"). A user-confirmed fact the verifier calls
+`wrong`: show the user its reason and the code it cites, and change the
+fact only if the user agrees. Then:
+
 ```bash
 node <plugin root>/dist/open-erd.mjs validate --workspace <ws>
 node <plugin root>/dist/open-erd.mjs lock     --workspace <ws>
@@ -58,7 +63,8 @@ node <plugin root>/dist/open-erd.mjs layout   --workspace <ws>
 node <plugin root>/dist/open-erd.mjs render   --workspace <ws>
 ```
 
-Commit (rules.md): `review: <n> reviewed, <n> corrected, <n> deleted`.
+Commit (rules.md): `review: <n> reviewed, <n> corrected, <n> deleted`, with
+the `verify: ...` line `verify` printed in the body.
 
 Report the counts, how many items are left, and the output paths. End with
 the feedback line.

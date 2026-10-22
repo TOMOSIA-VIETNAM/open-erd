@@ -12,6 +12,11 @@ Run it after changing a skill prompt or the model Claude Code uses.
 - `run.mjs` — runs `/open-erd:init` headless on fixture sources, checks the
   resulting workspace end to end, scores it. Costs money (see below).
 - `score.test.mjs` — unit tests of the scorer on synthetic models.
+- `verify-case.mjs` — the verification case: slips wrong facts into a
+  fixture's expected model and scores a verification run.
+- `verify.test.mjs` — deterministic half of that case, no LLM: on every
+  fixture the structural wrong facts must be reported by the engine's facts
+  comparison, the AI-written ones left to the verifier agent.
 - `out/` — run output, gitignored.
 
 ## Commands
@@ -78,6 +83,31 @@ of several schemas (tenant vs public) still fails to match.
 Median: per case and per metric, the median run (lower middle for an even
 count), ranked by F1 for counts and accuracy for the rest. Totals sum the
 counts of those runs over all cases.
+
+## Verification case
+
+`node evals/run.mjs --task verify [--cases laravel,django]` (costs money,
+same options as above) checks the verification step of the skills instead
+of init. Per run:
+
+1. The fixture's expected model is committed as a workspace, with facts
+   files matching it in `extract/facts/` and the fixture sources copied as
+   for init.
+2. Wrong facts are written on top, uncommitted (first fitting fact in id
+   order): a column type (`column-type`), the target of a `db_fk` relation
+   (`db_fk-target`), the target of a declared or inferred relation
+   (`relation-target`) and a table note (`table-note`). The first two are
+   for `open-erd verify`, the last two for the verifier agent.
+3. Claude is asked to run the "Verification" step of `skills/_shared/rules.md`
+   on that change, fix what it finds and commit.
+4. `score.json`: per injected fact whether the model still holds the wrong
+   value (`caught`) and whether it is back to the expected one
+   (`restored`); `falseAlarms`, the record entries judged wrong or fixed
+   that name no injected fact; the record's counts. `result.json` adds
+   whether `verify` passes afterwards, the tree is clean, the sources are
+   untouched and the commit message has the `verify:` line.
+
+Run `node --test evals/*.test.mjs` for the deterministic half.
 
 ## Thresholds (on totals)
 

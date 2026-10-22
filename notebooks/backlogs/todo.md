@@ -100,4 +100,4 @@ Chi tiết từng task: `plan.md`. Đánh dấu `[x]` khi task pass verify.
 - [ ] 34. Sức khoẻ schema (danh sách phát hiện, không chấm điểm, `health.ignore`)
 - [ ] 35. Phạm vi ảnh hưởng (Impact theo vòng 1/2/3)
 - [ ] 36. `/open-erd:ask` + deep link `#tables=` / `#path=`
-- [ ] 37. Verifier: kiểm cơ học + agent kiểm lại fact do AI viết trước khi commit (`verify: full|ai-only|off`)
+- [x] 37. Verifier: kiểm cơ học + agent kiểm lại fact do AI viết trước khi commit (`verify: full|ai-only|off`)

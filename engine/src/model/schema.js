@@ -281,6 +281,15 @@ const profileFields = {
   hide: hideSpec,
 };
 
+// How much checking the skills do after writing the model and before
+// committing: `off` none; `ai-only` (default) the `verify` command compares
+// the structure with the extract facts, then a second agent re-reads the
+// code for the facts an AI wrote (notes, enum meanings, relations without a
+// constraint); `full` also has that agent re-read the facts scripts
+// extracted.
+export const VERIFY_MODES = ['full', 'ai-only', 'off'];
+export const VERIFY_DEFAULT = 'ai-only';
+
 // open-erd.yaml
 export const CONFIG_FILE = 'open-erd.yaml';
 export const configSchema = {
@@ -333,6 +342,12 @@ export const configSchema = {
     // overview with a warning; left out, a schema without the view of all
     // tables opens on the overview silently.
     default_view: { type: 'string', pattern: DEFAULT_VIEW_PATTERN, hint: 'all, overview, connections or domain:<db>/<domain>' },
+    // Checking before a commit, see VERIFY_MODES; VERIFY_DEFAULT when left out.
+    verify: { type: 'string', oneOf: VERIFY_MODES },
+    // Tables the extract facts list that the model leaves out on purpose
+    // (framework tables such as schema_migrations), so `verify` does not
+    // report them as missing. Ids as the table would have in the model.
+    not_in_model: { type: 'array', items: tableId },
     // Sharing profiles by name, used by `render --profile <name>`. Fields left
     // out take their value from PROFILE_DEFAULTS; `public` exists even when
     // not declared here.
@@ -373,5 +388,32 @@ export const lockedFileSchema = {
     schema_version: schemaVersion,
     relations: { type: 'array', items: { type: 'object', fields: lockedFields(relation) } },
     polymorphic: { type: 'array', items: { type: 'object', fields: lockedFields(polymorphic) } },
+  },
+};
+
+// tests/verification.yaml: the last verification of the facts an AI wrote,
+// written by the skills after the verifier agent answered. One entry per
+// fact checked: `fact` names it by model path (`<table id>.<column>.note`,
+// `<table id>.<column>.enum.<value>`, `relation <from> -> <to>`, ...),
+// `result` is the final verdict and `reason` why. `fixed`: found wrong,
+// corrected, then confirmed on a second check.
+export const VERIFICATION_FILE = 'tests/verification.yaml';
+export const VERIFY_RESULTS = ['wrong', 'unverifiable', 'fixed', 'confirmed'];
+export const verificationFileSchema = {
+  type: 'object',
+  fields: {
+    schema_version: schemaVersion,
+    facts: {
+      type: 'array',
+      required: true,
+      items: {
+        type: 'object',
+        fields: {
+          fact: { ...text, required: true },
+          result: { type: 'string', oneOf: VERIFY_RESULTS, required: true },
+          reason: text,
+        },
+      },
+    },
   },
 };

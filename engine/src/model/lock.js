@@ -23,8 +23,9 @@ export function parseLocked(text) {
 }
 
 // Old id -> current id for tables, and per current table old column path ->
-// current path, from the renamed_from fields the user confirmed.
-function renames(model) {
+// current path, from the renamed_from fields the user confirmed. `table` and
+// `column` map one name; `relation` and `polymorphic` a whole fact.
+export function renames(model) {
   const tables = new Map(model.tables.filter((t) => t.renamed_from).map((t) => [t.renamed_from, t.id]));
   const columns = new Map(
     model.tables.map((t) => [
@@ -39,6 +40,8 @@ function renames(model) {
   const table = (id) => tables.get(id) ?? id;
   const column = (tableId, path) => columns.get(table(tableId))?.get(path) ?? path;
   return {
+    table,
+    column,
     relation: (r) => {
       const end = (e) => ({ table: table(e.table), columns: e.columns.map((c) => column(e.table, c)) });
       return { ...r, from: end(r.from), to: end(r.to) };

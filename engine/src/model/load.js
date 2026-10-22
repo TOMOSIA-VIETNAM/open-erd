@@ -213,6 +213,10 @@ export function parseWorkspace(files) {
         if (!known) errors.push({ file: CONFIG_FILE, path: `${section}.columns[${i}]`, message: `unknown column ${JSON.stringify(ref)}` });
       });
     }
+    // A table both modelled and declared left out is one of the two by mistake.
+    (config.not_in_model ?? []).forEach((id, i) => {
+      if (tablesById.has(id)) errors.push({ file: CONFIG_FILE, path: `not_in_model[${i}]`, message: `${JSON.stringify(id)} is in the model; remove it from not_in_model` });
+    });
     const view = config.default_view ?? '';
     if (view.startsWith(DOMAIN_VIEW_PREFIX) && !tables.some(({ table: t }) => clusterKey(t) === view.slice(DOMAIN_VIEW_PREFIX.length))) {
       errors.push({ file: CONFIG_FILE, path: 'default_view', message: `no domain ${JSON.stringify(view.slice(DOMAIN_VIEW_PREFIX.length))} (expected domain:<db>/<domain> of a table)` });
@@ -269,6 +273,7 @@ export function normalizeModel(model) {
     );
   }
   if (config.sources) config.sources = [...config.sources].sort((a, b) => compareStrings(a.name, b.name));
+  if (config.not_in_model) config.not_in_model = sortedList(config.not_in_model);
   return {
     config,
     databases: [...model.databases]

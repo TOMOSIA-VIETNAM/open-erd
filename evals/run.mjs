@@ -2,7 +2,11 @@
 // produced end to end, and scores it against the fixture's expected model.
 //
 //   node evals/run.mjs [--cases rails,prisma] [--runs 3] [--parallel 3] [--out evals/out]
-//                      [--model <id>] [--budget 20] [--timeout-min 45]
+//                      [--model <id>] [--budget 20] [--timeout-min 45] [--task init|verify]
+//
+// --task verify instead starts from the fixture's expected model, slips
+// wrong facts into it (evals/verify-case.mjs) and has Claude run the
+// verification step of the skills on that change; see evals/README.md.
 //
 // Each run: copy fixtures/<case>/source into a fresh temp dir (one git repo
 // per source, committed, so writes into it are detectable), run Claude Code
@@ -17,12 +21,15 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ROOT, aggregate, formatDetails, formatTable, scoreCase } from './score.mjs';
+import { injectWrongFacts, readExpected, scoreVerify, toTexts } from './verify-case.mjs';
+import { parseWorkspace } from '../engine/src/model/load.js';
+import { factsFromModel } from '../engine/test/helpers/facts.js';
 
 const ENGINE = path.join(ROOT, 'dist/open-erd.mjs');
 const YAML = (await import('node:module')).createRequire(path.join(ROOT, 'engine/package.json'))('yaml');
 
 function parseArgs(argv) {
-  const opts = { runs: 1, parallel: 3, out: path.join(ROOT, 'evals/out'), budget: 20, timeoutMin: 45, model: null, cases: null };
+  const opts = { runs: 1, parallel: 3, out: path.join(ROOT, 'evals/out'), budget: 20, timeoutMin: 45, model: null, cases: null, task: 'init' };
   for (let i = 0; i < argv.length; i++) {
     const [k, v] = [argv[i], argv[i + 1]];
     if (k === '--cases') opts.cases = v.split(',');
@@ -32,6 +39,7 @@ function parseArgs(argv) {
     else if (k === '--model') opts.model = v;
     else if (k === '--budget') opts.budget = Number(v);
     else if (k === '--timeout-min') opts.timeoutMin = Number(v);
+    else if (k === '--task' && ['init', 'verify'].includes(v)) opts.task = v;
     else throw new Error(`unknown option ${k}`);
     i++;
   }
@@ -128,6 +136,72 @@ export function checkWorkspace(ws, sources, finalText) {
   return { checks, validateOutput: `${validate.stdout ?? ''}${validate.stderr ?? ''}`.trim() };
 }
 
+export function verifyPrompt(ws, pluginDir) {
+  return [
+    `Read ${pluginDir}/skills/_shared/rules.md and ${pluginDir}/skills/_shared/model.md, then run the "Verification" step of rules.md on the open-erd workspace ${ws}.`,
+    'The uncommitted changes under model/ were written earlier in this session from the source code; verify them before they are committed.',
+    'This session is non-interactive: nobody can answer questions. The extract facts in extract/facts are current: there is no extract script to run.',
+    'Fix what the verification finds wrong, write tests/verification.yaml, then commit the workspace as rules.md says, with the verify line in the message.',
+  ].join('\n');
+}
+
+/**
+ * One verification run: the fixture's expected model committed as a
+ * workspace with facts matching it, wrong facts written on top uncommitted,
+ * then Claude runs the verification step. Scored by scoreVerify.
+ */
+async function oneVerifyRun(caseName, opts, runDir, n) {
+  const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), `open-erd-eval-verify-${caseName}-`)));
+  const sources = prepareSources(caseName, tmp);
+  const ws = path.join(tmp, `${caseName}-erd`);
+  const expected = readExpected(caseName);
+  const config = fs.readFileSync(path.join(ROOT, 'fixtures', caseName, 'expected/open-erd.yaml'), 'utf8');
+  const { model } = parseWorkspace({ 'open-erd.yaml': config, ...toTexts(expected) });
+  const write = (rel, text) => {
+    fs.mkdirSync(path.dirname(path.join(ws, rel)), { recursive: true });
+    fs.writeFileSync(path.join(ws, rel), text);
+  };
+  write('open-erd.yaml', config);
+  write('.gitignore', 'open-erd.local.yaml\n.DS_Store\n');
+  write('open-erd.local.yaml', YAML.stringify({ sources: sources.map((s) => ({ name: s.name, path: s.path })) }));
+  for (const [rel, text] of Object.entries(toTexts(expected))) write(rel, text);
+  for (const { file, data } of factsFromModel(model)) write(`extract/facts/${file}`, `${JSON.stringify(data, null, 2)}\n`);
+  git(ws, 'init', '-q');
+  git(ws, 'add', '-A');
+  git(ws, '-c', 'user.name=eval', '-c', 'user.email=eval@example.invalid', 'commit', '-qm', 'model from fixture');
+  const { files, injected } = injectWrongFacts(expected);
+  for (const [rel, text] of Object.entries(toTexts(files))) write(rel, text);
+
+  const started = Date.now();
+  console.log(`[verify ${caseName}#${n}] start  tmp=${tmp} injected=${injected.map((i) => i.id).join(',')}`);
+  const { code, signal, result } = await runClaude({
+    prompt: verifyPrompt(ws, opts.pluginDir), cwd: tmp, transcript: path.join(runDir, 'transcript.jsonl'),
+    stderrFile: path.join(runDir, 'stderr.log'), model: opts.model, budget: opts.budget, timeoutMin: opts.timeoutMin, pluginDir: opts.pluginDir,
+  });
+  const verify = spawnSync('node', [ENGINE, 'verify', '--workspace', ws], { encoding: 'utf8' });
+  const checks = {
+    verifyPasses: verify.status === 0,
+    clean: git(ws, 'status', '--porcelain').stdout.trim() === '',
+    sourcesUntouched: sources.every((s) => hashTree(s.path) === s.hash && git(s.path, 'status', '--porcelain').stdout.trim() === ''),
+    verifyLine: /^verify: confirmed \d+, fixed \d+, unverifiable \d+/m.test(git(ws, 'log', '-1', '--format=%B').stdout),
+  };
+  fs.cpSync(ws, path.join(runDir, 'ws'), { recursive: true });
+  const apiError = result?.terminal_reason === 'api_error' || !result ? (result?.result ?? `no result event (exit ${code}, ${signal})`) : null;
+  const score = scoreVerify(ws, injected);
+  const summary = { task: 'verify', case: caseName, run: n, tmp, workspace: ws, exit: code, signal, wallMs: Date.now() - started,
+    costUsd: result?.total_cost_usd ?? null, apiError, checks, injected };
+  fs.writeFileSync(path.join(runDir, 'result.json'), `${JSON.stringify(summary, null, 2)}\n`);
+  if (apiError) {
+    console.log(`[verify ${caseName}#${n}] API ERROR, not scored: ${apiError}`);
+    return null;
+  }
+  fs.writeFileSync(path.join(runDir, 'score.json'), `${JSON.stringify({ task: 'verify', case: caseName, ...score }, null, 2)}\n`);
+  console.log(`[verify ${caseName}#${n}] done   caught ${score.caught}/${score.total}, false alarms ${score.falseAlarms.length}, checks ${JSON.stringify(checks)}, cost=$${summary.costUsd?.toFixed(2)}`);
+  for (const i of score.items.filter((x) => !x.caught)) console.log(`  missed ${i.id} (${i.layer})`);
+  for (const f of score.falseAlarms) console.log(`  false alarm: ${f}`);
+  return null;
+}
+
 async function oneRun(caseName, opts) {
   const caseOut = path.join(opts.out, caseName);
   fs.mkdirSync(caseOut, { recursive: true });
@@ -135,6 +209,7 @@ async function oneRun(caseName, opts) {
   while (fs.existsSync(path.join(caseOut, String(n)))) n++;
   const runDir = path.join(caseOut, String(n));
   fs.mkdirSync(runDir);
+  if (opts.task === 'verify') return oneVerifyRun(caseName, opts, runDir, n);
 
   const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), `open-erd-eval-${caseName}-`)));
   const sources = prepareSources(caseName, tmp);
@@ -197,6 +272,10 @@ async function main() {
     }
   };
   await Promise.all(Array.from({ length: Math.min(opts.parallel, queue.length) }, worker));
+  if (opts.task === 'verify') {
+    console.log(`\nAll runs under ${opts.out} (score.json per run)`);
+    return;
+  }
   if (scores.length) console.log(`\n${formatTable(aggregate(scores))}`);
   else console.log('\nno run produced a score');
   console.log(`\nAll runs under ${opts.out}: node evals/score.mjs --out ${path.relative(process.cwd(), opts.out) || '.'}`);

@@ -118,12 +118,14 @@ node <plugin root>/dist/open-erd.mjs render   --workspace <ws>
 
 Fix validation errors in the model and rerun until it passes. Then, before
 `layout`, run the missing-relation review (rules.md, "Missing-relation
-review").
+review"), then the verification of the whole model (rules.md,
+"Verification").
 
 ## 7. Commit and report
 
 Commit in the workspace (rules.md, "Committing the workspace"):
-`init: ERD from <source>@<sha>[, <source>@<sha>…]`.
+`init: ERD from <source>@<sha>[, <source>@<sha>…]`, with the `verify: ...`
+line `verify` printed in the body (none when `verify: off`).
 
 Report to the user: workspace path, output files the engine printed, counts
 (databases, tables, relations, polymorphic), and how many facts are pending

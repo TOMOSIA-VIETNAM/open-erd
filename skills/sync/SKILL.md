@@ -114,7 +114,8 @@ node <plugin root>/dist/open-erd.mjs render   --workspace <ws>
 `validate` reporting a locked fact as missing or changed means step 5 missed
 it: restore it or mark it `stale`. Never run `lock` in sync. Once `validate`
 passes and the facts changed, run the missing-relation review (rules.md,
-"Missing-relation review") before `layout`. Tell the user
+"Missing-relation review") before `layout`, then the verification of what
+changed (rules.md, "Verification"). Tell the user
 which nodes `layout` reports as moved.
 
 ## 7. Commit and report
@@ -125,7 +126,10 @@ Commit (rules.md) with a subject plus one line per source:
 sync: <n> added, <n> changed, <n> removed, <n> stale
 
 <source>: <sha>[+dirty]
+verify: confirmed <n>, fixed <n>, unverifiable <n>
 ```
+
+(the `verify:` line as `verify` printed it; none when `verify: off`).
 
 Report what changed in plain words, the stale and pending counts, and suggest
 `/open-erd:review` when there are any. End with the feedback line.
