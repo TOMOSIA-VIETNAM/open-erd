@@ -23,6 +23,7 @@ const PATTERNS = fileURLToPath(new URL('./fixtures/workspace-patterns', import.m
 const ER = { one: 'ERmandOne', zeroOrOne: 'ERzeroToOne', many: 'ERoneToMany', zeroOrMany: 'ERzeroToMany' };
 
 const escapeAttr = (text) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/\n/g, '&#10;');
+const escapeHtml = (text) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const parseStyle = (text) => Object.fromEntries(text.split(';').filter(Boolean).map((kv) => kv.split('=')));
 
 // Cells of one <diagram>, by id: a plain mxCell, or an mxCell wrapped in a
@@ -160,10 +161,16 @@ test('drawio: two line styles as in the SVG, one neutral colour', async () => {
 
 test('drawio: no tooltip anywhere; details are Edit Data properties of table headers and column names', async () => {
   const { xml } = await multi();
-  // draw.io draws an icon beside a cell with a tooltip or a note.
-  assert.doesNotMatch(xml, /\b(tooltip|note)=/);
+  // draw.io draws an icon beside a cell with a tooltip or a note: no
+  // tooltips, and a note on table headers only.
+  assert.doesNotMatch(xml, /\btooltip=/);
+  for (const page of parseXml(xml).children) {
+    for (const c of cellsOf(page)) if (c.data.note !== undefined) assert.ok(c.style.shape === 'table' && c.data.table, `${c.id} has a note`);
+  }
   const all = new Map(cellsOf(parseXml(xml).children.at(-1)).map((c) => [c.id, c]));
-  assert.deepEqual(all.get('n|shop._.orders').data, {
+  const { note, ...orders } = all.get('n|shop._.orders').data;
+  assert.ok(note);
+  assert.deepEqual(orders, {
     table: 'shop._.orders',
     domain: 'Orders',
     description: 'One order per checkout; the basket becomes order items.',
@@ -189,15 +196,16 @@ test('drawio: no tooltip anywhere; details are Edit Data properties of table hea
   assert.doesNotMatch(xml, /placeholders=/);
 });
 
-test('drawio: table headers link to the table in the SVG; Overview cards link to the All tables page', async () => {
+test('drawio: table headers link to the SVG only when it is published; Overview cards link to the All tables page', async () => {
   const { model, layout, xml } = await multi();
   const pages = parseXml(xml).children;
-  const all = cellsOf(pages.at(-1));
-  const headers = all.filter((c) => c.style.shape === 'table' && c.data.table);
-  assert.ok(headers.length > 0);
-  for (const h of headers) assert.equal(h.link, `erd.svg#table=${h.data.table}`);
-  const shared = cellsOf(parseXml(renderDrawio(model, layout, { svgFile: 'erd.partner.svg', fitStored: true })).children.at(-1));
-  assert.equal(shared.find((c) => c.id === 'n|shop._.orders').link, 'erd.partner.svg#table=shop._.orders');
+  const headers = (cells) => cells.filter((c) => c.style.shape === 'table' && c.data.table);
+  assert.ok(headers(cellsOf(pages.at(-1))).length > 0);
+  for (const h of headers(cellsOf(pages.at(-1)))) assert.equal(h.link, undefined, `${h.id}: a relative link opens nothing in draw.io`);
+  const url = 'https://example.com/erd/erd.svg';
+  for (const h of headers(cellsOf(parseXml(renderDrawio(model, layout, { svgUrl: url })).children.at(-1)))) {
+    assert.equal(h.link, `${url}#table=${encodeURIComponent(h.data.table)}`);
+  }
   const cards = cellsOf(pages[0]).filter((c) => c.id.startsWith('n|') && !c.id.endsWith('|accent'));
   assert.ok(cards.length > 0);
   for (const c of cards) assert.equal(c.link, `data:page/id,${pages[1].attrs.id}`);
@@ -217,14 +225,59 @@ test('drawio: icons as in the SVG, as data URI images in the labels', async () =
   assert.equal(status.length, 2, 'enum and index marks');
   assert.match(status[0], /stroke="#7c5cc4"/);
   assert.match(status[1], /fill="#1f9d8f"/);
-  // No key: an empty gutter keeps the name in line.
-  assert.match(name('n|shop._.orders|status').value, /^<span style="display:inline-block;width:15px"><\/span>status<img/);
+  // No key: an empty gutter keeps the name in line; the type on the right of the same label.
+  assert.match(name('n|shop._.orders|status').value, /<span style="display:inline-block;width:15px"><\/span>status<img/);
+  assert.match(name('n|shop._.orders|status').value, />varchar\(16\)<\/span><\/div>$/);
   // Header: star for a central table, table icon otherwise.
   assert.match(iconsIn(all.get('n|shop._.orders').value)[0], /fill="#f2b705"/);
   assert.equal(all.get('n|shop._.orders').style.html, '1');
   const plain = [...all.values()].find((c) => c.style.shape === 'table' && c.data.central === 'no');
   assert.match(iconsIn(plain.value)[0], /stroke="#5f6b7e"/);
   for (const svg of [...all.values()].flatMap((c) => iconsIn(c.value ?? ''))) parseXml(svg);
+});
+
+test('drawio: texts in the measured font, loaded by draw.io, and cut only when the layout cut them', async () => {
+  const { model, layout, xml } = await multi();
+  const page = cellsOf(parseXml(xml).children.at(-1));
+  const texts = page.filter((c) => c.value && (c.vertex === '1' || c.edge === '1'));
+  assert.ok(texts.length > 0);
+  for (const c of texts) {
+    assert.equal(c.style.fontFamily, 'Inter', c.id);
+    assert.match(decodeURIComponent(c.style.fontSource), /^https:\/\/fonts\.googleapis\.com\/css2\?family=Inter/, c.id);
+  }
+  // The fixture's boxes hold every name and type: nothing is cut.
+  assert.ok(!xml.includes('…'));
+  // A box narrower than its text (the layout caps widths) is cut as in the SVG.
+  const long = 'a_column_name_far_too_long_for_the_widest_box_the_layout_draws_at_all';
+  const wide = normalizeModel({ ...model, tables: [...model.tables, table('shop._.wide', 'Catalog', [[long, 'bigint']])] });
+  const { layout: wideLayout } = await computeLayout(wide);
+  const row = cellsOf(parseXml(renderDrawio(wide, wideLayout)).children.at(-1)).find((c) => c.id === `n|shop._.wide|${long}|name`);
+  assert.match(row.value, /…/);
+});
+
+test('drawio: a table header carries the table\'s note as HTML (description, columns, indexes, relations)', async () => {
+  const { model, xml } = await multi();
+  const all = new Map(cellsOf(parseXml(xml).children.at(-1)).map((c) => [c.id, c]));
+  const note = all.get('n|shop._.orders').data.note;
+  const orders = model.tables.find((t) => t.id === 'shop._.orders');
+  assert.match(note, /^<p[^>]*><b>shop\._\.orders<\/b><\/p><p[^>]*>One order per checkout; the basket becomes order items\.<\/p>/);
+  // One header row, then one row per column.
+  const table = note.match(/<table[^>]*>([\s\S]*?)<\/table>/)[1];
+  const rows = table.match(/<tr[^>]*>[\s\S]*?<\/tr>/g);
+  assert.equal(rows.length, orders.columns.length + 1);
+  assert.deepEqual([...rows[0].matchAll(/<th[^>]*>([^<]*)<\/th>/g)].map((m) => m[1]), ['Column', 'Type', 'Null', 'Default', 'Comment']);
+  const cellsOfRow = (name) => [...rows.find((r) => new RegExp(`(<td[^>]*>|> |<b>)${name}(</b>)?</td>`).test(r)).matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map((m) => m[1]);
+  const [statusName, statusType, , statusDefault, statusComment] = cellsOfRow('status');
+  assert.match(statusName, />IX<\/span> .*>ENUM<\/span> status$/);
+  assert.equal(statusType, 'varchar(16)');
+  assert.equal(statusDefault, 'pending');
+  assert.equal(statusComment, 'Lifecycle of the order; only paid orders are shipped.<br>pending — Created, waiting for payment<br>paid — Payment confirmed by the gateway<br>cancelled — Cancelled by the customer or by timeout');
+  assert.match(cellsOfRow('id')[0], />PK<\/span> <b>id<\/b>$/);
+  assert.match(cellsOfRow('user_id')[0], />FK<\/span> /);
+  assert.equal(cellsOfRow('user_id')[2], 'no');
+  assert.match(note, /<b>Indexes<\/b><\/p>index_orders_on_placed_at: placed_at where status = 'paid'<br>index_orders_on_user_id_and_status: user_id, status<br>/);
+  assert.match(note, /<b>References<\/b><\/p>[^]*user_id → auth\.public\.users\.id<br>/);
+  assert.match(note, /<b>Referenced by<\/b><\/p>[^]*shop\._\.order_items\.order_id → id<br>/);
 });
 
 test('drawio: hub and polymorphic target lines sit on their own hidden layers, attached to existing rows', async () => {
@@ -280,9 +333,13 @@ test('drawio: a public profile render holds no hidden table, hidden or PII colum
     assert.ok(!shared.includes(text), `public render leaks ${text}`);
   }
   for (const e of new Set([...model.relations, ...model.polymorphic].flatMap((f) => f.evidence))) assert.ok(!shared.includes(e), `public render leaks evidence ${e}`);
+  const internal = model.tables.flatMap((t) => [t.internal_note, ...columnEntries(t).map(({ column: c }) => c.internal_note)]).filter(Boolean);
+  assert.ok(internal.length > 0, 'the fixture must have internal notes');
+  for (const note of internal) assert.ok(full.includes(escapeAttr(escapeHtml(note))), `full render lacks the internal note ${note}, so the check below proves nothing`);
   const notes = model.tables.flatMap((t) => [t.internal_note, t.note_source, ...columnEntries(t).flatMap(({ column: c }) => [c.internal_note, c.note_source])]).filter(Boolean);
-  assert.ok(notes.length > 0, 'the fixture must have internal notes');
-  for (const note of notes) assert.ok(!shared.includes(escapeAttr(note)), `public render leaks note ${note}`);
+  for (const note of notes) {
+    assert.ok(!shared.includes(escapeAttr(escapeHtml(note))) && !shared.includes(escapeAttr(note)), `public render leaks note ${note}`);
+  }
 });
 
 test('CLI: render writes out/erd.drawio (headers linking to erd.svg; erd.<profile>.svg for a profile) and none with outputs.drawio false', async () => {
@@ -292,14 +349,21 @@ test('CLI: render writes out/erd.drawio (headers linking to erd.svg; erd.<profil
     await cp(MULTI, dir, { recursive: true });
     await run('layout', '--workspace', dir);
     await run('render', '--workspace', dir);
-    assert.match(await readFile(join(dir, 'out', 'erd.drawio'), 'utf8'), /link="erd\.svg#table=/);
+    assert.doesNotMatch(await readFile(join(dir, 'out', 'erd.drawio'), 'utf8'), /#table=/);
+    const config = join(dir, 'open-erd.yaml');
+    const original = await readFile(config, 'utf8');
+    await writeFile(config, `${original}outputs: { drawio_svg_url: "https://example.com/erd/erd.svg" }\n`);
+    await run('render', '--workspace', dir);
+    assert.match(await readFile(join(dir, 'out', 'erd.drawio'), 'utf8'), /link="https:\/\/example\.com\/erd\/erd\.svg#table=shop\._\.orders"/);
     await run('render', '--workspace', dir, '--profile', 'public');
     const shared = await readFile(join(dir, 'out', 'erd.public.drawio'), 'utf8');
     parseXml(shared);
-    assert.match(shared, /link="erd\.public\.svg#table=/);
-    assert.doesNotMatch(shared, /link="erd\.svg#/);
+    assert.match(shared, /link="https:\/\/example\.com\/erd\/erd\.public\.svg#table=/);
+    assert.doesNotMatch(shared, /erd\.svg#/);
+    await writeFile(config, `${original}outputs: { drawio_svg_url: "erd.svg" }\n`);
+    await assert.rejects(run('validate', '--workspace', dir), /drawio_svg_url/);
+    await writeFile(config, original);
     await rm(join(dir, 'out'), { recursive: true });
-    const config = join(dir, 'open-erd.yaml');
     await writeFile(config, `${await readFile(config, 'utf8')}outputs: { drawio: false }\n`);
     const { stdout } = await run('render', '--workspace', dir);
     assert.doesNotMatch(stdout, /drawio/);

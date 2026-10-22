@@ -1,13 +1,13 @@
 import { clusterLabel, engineName } from '../../layout/clusters.js';
-import { VIEW_SOURCE, buildDiagram } from '../../layout/diagram.js';
-import { COLUMN_FONT, HEADER_HEIGHT, ICON_GUTTER, PADDING_X, PK_FONT, ROW_HEIGHT, TYPE_FONT } from '../../layout/table-box.js';
+import { VIEW_SOURCE, buildDiagram, keyColumns } from '../../layout/diagram.js';
+import { EMBED_INSET, HEADER_HEIGHT, HINT_OFFSET, ICON_GUTTER, PADDING_X, ROW_HEIGHT } from '../../layout/table-box.js';
 import { ALL_VIEW, DOMAIN_VIEW_PREFIX, OVERVIEW, hasAllView, viewNames } from '../../layout/views.js';
 import { STRENGTH_SEGMENTS } from '../../layout/domains.js';
 import { ICON_PAINT, UNCONFIRMED_DASH, enumIconSvg, indexIconSvg, isConfirmed, keyIconSvg, linkIconSvg, starIconSvg, tableIconSvg } from '../svg/markers.js';
 import { dbDisplayName } from '../../display-name.js';
 import { columnEntries, enumMeaning } from '../../model/columns.js';
 import { PALETTE } from '../../palette.js';
-import { measureText, truncate } from '../../text/measure.js';
+import { FONT_FAMILY, TEXT_STYLE_CSS } from '../../text/font.js';
 import { buildScene } from '../svg/render.js';
 
 // draw.io export: the overview and the view of all tables, drawn from the
@@ -21,13 +21,18 @@ import { buildScene } from '../svg/render.js';
 // column's type, default, references, enum meanings) are custom properties
 // of the cell, read in draw.io with Edit Data (Cmd/Ctrl+M or right-click,
 // Edit Data). No cell has a tooltip: draw.io draws an (i) icon on such a
-// cell, over the lines, and a click on it opens the tooltip editor. For the
-// same reason the model's `note` is the property `description`: draw.io
-// reads a `note` property as a cell note and draws a note icon beside it.
+// cell, over the lines, and a click on it opens the tooltip editor.
+// draw.io also draws an icon beside every cell with a `note` property, so
+// only a table carries one (its whole description as HTML, see tableNote);
+// a column's note is the property `description`.
 //
-// A table's header links to the same table in the interactive SVG written
-// beside this file (`erd.svg#table=<table id>`); a domain card on the
-// Overview links to the page that shows its tables.
+// A domain card on the Overview links to the page that shows its tables. A
+// table's header links to the same table in the interactive SVG only when
+// the SVG is hosted somewhere (`svgUrl`): draw.io resolves a relative link
+// against its own site and cannot open a local file.
+//
+// Texts are drawn in the font the layout measured them with (FONT_FAMILY,
+// loaded by draw.io from FONT_SOURCE), so they fit the boxes as in the SVG.
 
 // draw.io styles want hex colours; the palette is written as hsl().
 function hslToHex(text) {
@@ -59,6 +64,9 @@ function dashPattern(link) {
 // bar), which draw.io calls ERoneToMany.
 const ER_ARROWS = { one: 'ERmandOne', zeroOrOne: 'ERzeroToOne', many: 'ERoneToMany', zeroOrMany: 'ERzeroToMany', none: 'none' };
 
+const FONT_SOURCE = `https://fonts.googleapis.com/css2?family=${FONT_FAMILY}:wght@400;700`;
+const FONT_STYLE = { fontFamily: FONT_FAMILY, fontSource: encodeURIComponent(FONT_SOURCE) };
+
 const escapeXml = (text) =>
   String(text).replace(/[&<>"\n]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', '\n': '&#10;' })[c]);
 const escapeHtml = (text) => String(text).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
@@ -84,7 +92,9 @@ export function pageName(name) {
 function cell({ id, value = '', data = {}, link, styles, parent, vertex = true, geometry, source, target }) {
   const kind = vertex ? 'vertex="1"' : 'edge="1"';
   const ends = `${source ? ` source="${escapeXml(source)}"` : ''}${target ? ` target="${escapeXml(target)}"` : ''}`;
-  const inner = `<mxCell style="${escapeXml(style(styles))}" ${kind} parent="${escapeXml(parent)}"${ends}>${geometry}</mxCell>`;
+  // Every cell with a text gets the font; cells without one stay short.
+  const all = value === '' ? styles : { ...styles, ...FONT_STYLE };
+  const inner = `<mxCell style="${escapeXml(style(all))}" ${kind} parent="${escapeXml(parent)}"${ends}>${geometry}</mxCell>`;
   const props = Object.entries({ link, ...data }).filter(([, v]) => v !== undefined && v !== null && v !== '');
   if (props.length > 0) {
     return `<UserObject id="${escapeXml(id)}" label="${escapeXml(value)}"${props.map(([k, v]) => ` ${k}="${escapeXml(v)}"`).join('')}>${inner}</UserObject>`;
@@ -109,13 +119,17 @@ const ICON_IMG = Object.fromEntries(
   }),
 );
 // An icon in the left gutter (ICON_GUTTER wide, as in the SVG, so names line
-// up whether or not a row has one), or a mark after a name (HINT_WIDTH each).
+// up whether or not a row has one), or the marks after a name, centred where
+// the SVG draws them (HINT_OFFSET after the name, then one every icon width),
+// inside the gap the layout keeps between name and type.
 const gutterIcon = (kind) =>
   kind
     ? `<img src="${ICON_IMG[kind]}" width="${ICON_SIZE}" height="${ICON_SIZE}" style="vertical-align:middle;margin-right:${ICON_GAP}px">`
     : `<span style="display:inline-block;width:${ICON_GUTTER}px"></span>`;
-const HINT_WIDTH = ICON_SIZE + ICON_GAP;
-const hintIcon = (kind) => `<img src="${ICON_IMG[kind]}" width="${ICON_SIZE}" height="${ICON_SIZE}" style="vertical-align:middle;margin-left:${ICON_GAP}px">`;
+const hintIcons = (kinds) =>
+  kinds
+    .map((kind, i) => `<img src="${ICON_IMG[kind]}" width="${ICON_SIZE}" height="${ICON_SIZE}" style="vertical-align:middle${i === 0 ? `;margin-left:${HINT_OFFSET - ICON_SIZE / 2}px` : ''}">`)
+    .join('');
 
 const yesNo = (value) => (value ? 'yes' : 'no');
 const lines = (list) => list.join('\n');
@@ -147,14 +161,75 @@ function columnData(path, c, references) {
   };
 }
 
-// What each column references, by `<table id>|<column path>`: the other end
-// of every relation it starts, and the targets of a polymorphic id column.
-function referencesOf(model) {
-  const refs = new Map();
-  const add = (table, column, text) => refs.set(`${table}|${column}`, [...(refs.get(`${table}|${column}`) ?? []), text]);
-  for (const r of model.relations) r.from.columns.forEach((c, i) => add(r.from.table, c, `${r.to.table}.${r.to.columns[i]}`));
-  for (const a of model.polymorphic) for (const target of a.targets) add(a.table, a.id_column, `${target} (polymorphic)`);
-  return refs;
+// Relations by table, as text: `column` what each column references, by
+// `<table id>|<column path>` (the other end of every relation it starts, the
+// targets of a polymorphic id column); `out` and `in` one line per relation
+// a table starts or receives, for its note.
+function relationsOf(model) {
+  const column = new Map();
+  const out = new Map();
+  const into = new Map();
+  const add = (map, key, text) => map.set(key, [...(map.get(key) ?? []), text]);
+  for (const r of model.relations) {
+    r.from.columns.forEach((c, i) => add(column, `${r.from.table}|${c}`, `${r.to.table}.${r.to.columns[i]}`));
+    add(out, r.from.table, `${r.from.columns.join(', ')} → ${r.to.table}.${r.to.columns.join(', ')}`);
+    add(into, r.to.table, `${r.from.table}.${r.from.columns.join(', ')} → ${r.to.columns.join(', ')}`);
+  }
+  for (const a of model.polymorphic) {
+    for (const target of a.targets) {
+      add(column, `${a.table}|${a.id_column}`, `${target} (polymorphic)`);
+      add(into, target, `${a.table}.${a.id_column} (polymorphic «${a.name}»)`);
+    }
+    add(out, a.table, `${a.id_column} → ${a.targets.join(', ')} (polymorphic «${a.name}»)`);
+  }
+  return { column, out, in: into };
+}
+
+// Marks before a column name in a table's note: text in the colour of the
+// matching icon.
+const NOTE_MARKS = [
+  ['pk', 'PK', ICON_PAINT['icon-pk'].stroke],
+  ['fk', 'FK', ICON_PAINT['icon-fk'].stroke],
+  ['index', 'IX', ICON_PAINT['icon-index'].fill],
+  ['enum', 'ENUM', ICON_PAINT['hint-enum'].stroke],
+  ['pii', 'PII', '#c53030'],
+];
+
+/**
+ * draw.io note of a table (Edit Note; its icon sits by the table's corner):
+ * what the SVG's table panel shows, as HTML. Description and team-only
+ * note, the columns (marks, type, nullable, default, comment), indexes and
+ * the relations the table starts and receives. Built from the model the
+ * render was given, so a profile's filtering applies to it.
+ */
+function tableNote(t, keys, relations) {
+  const muted = (text) => `<span style="color:#8a94a6">${escapeHtml(text)}</span>`;
+  const head = (text) => `<p style="margin:8px 0 2px"><b>${text}</b></p>`;
+  const list = (items) => items.map((i) => `${escapeHtml(i)}<br>`).join('');
+  // Layout by attributes on the table and rows, not a style per cell: a
+  // large schema has thousands of cells.
+  const columns = columnEntries(t).map(({ path, column: c }) => {
+    const has = { pk: c.pk, fk: keys.fk.has(path), index: keys.indexed.has(path), enum: Object.keys(c.enum ?? {}).length > 0, pii: c.pii };
+    const marks = NOTE_MARKS.filter(([key]) => has[key])
+      .map(([, text, color]) => `<span style="color:${color};font-size:9px;font-weight:bold">${text}</span> `)
+      .join('');
+    const enumLines = Object.entries(c.enum ?? {}).map(([value, meaning]) => (enumMeaning(value, meaning) ? `${value} — ${enumMeaning(value, meaning)}` : value));
+    const comment = [...(c.note ? [escapeHtml(c.note)] : []), ...enumLines.map(escapeHtml), ...(c.internal_note ? [muted(c.internal_note)] : [])].join('<br>');
+    const nullable = c.nullable === undefined ? '' : yesNo(c.nullable);
+    // Only the comment wraps; the note box is narrow.
+    return `<tr valign="top"><td nowrap>${marks}${c.pk ? `<b>${escapeHtml(path)}</b>` : escapeHtml(path)}</td><td nowrap>${escapeHtml(c.type)}</td><td nowrap>${nullable}</td><td nowrap>${escapeHtml(c.default ?? '')}</td><td>${comment}</td></tr>`;
+  });
+  const th = (text) => `<th>${text}</th>`;
+  const index = (i) => `${i.name ? `${i.name}: ` : ''}${i.columns.join(', ')}${i.unique ? ' (unique)' : ''}${i.where ? ` where ${i.where}` : ''}`;
+  return [
+    `<p style="margin:0 0 4px"><b>${escapeHtml(t.id)}</b></p>`,
+    t.note ? `<p style="margin:0 0 2px">${escapeHtml(t.note)}</p>` : '',
+    t.internal_note ? `<p style="margin:0 0 2px">${muted(t.internal_note)}</p>` : '',
+    `<table cellpadding="2" style="border-collapse:collapse;width:100%;overflow-wrap:anywhere;font-size:11px;margin-top:6px"><tr align="left" style="color:#7a8597;white-space:nowrap">${['Column', 'Type', 'Null', 'Default', 'Comment'].map(th).join('')}</tr>${columns.join('')}</table>`,
+    t.indexes?.length ? head('Indexes') + list(t.indexes.map(index)) : '',
+    relations.out.get(t.id) ? head('References') + list(relations.out.get(t.id)) : '',
+    relations.in.get(t.id) ? head('Referenced by') + list(relations.in.get(t.id)) : '',
+  ].join('');
 }
 
 const ROW_STYLE = {
@@ -172,9 +247,11 @@ const ROW_STYLE = {
   points: '[[0,0.5],[1,0.5]]',
   portConstraint: 'eastwest',
 };
-// Texts come fitted to the box by the layout (cut with an ellipsis), so the
-// inner padding is kept small. Labels are HTML (for the icons); callers
-// escape their text.
+// One text per row, spanning the row: a column's name and type sit in one
+// HTML label (name left, type right), so each row is fitted on its own as
+// the layout fitted it. Texts come fitted by the layout (cut with an
+// ellipsis only when even the widest box cannot hold them), so the inner
+// padding is kept small. Callers escape their text.
 const CELL_STYLE = {
   shape: 'partialRectangle',
   connectable: 0,
@@ -184,7 +261,9 @@ const CELL_STYLE = {
   bottom: 0,
   right: 0,
   overflow: 'hidden',
-  whiteSpace: 'nowrap',
+  // With wrap, draw.io gives an HTML label the cell's width, which the
+  // name/type layout needs; the label itself never wraps (see rowHtml).
+  whiteSpace: 'wrap',
   html: 1,
   // draw.io adds 2 px around every label unless told otherwise.
   spacing: 0,
@@ -192,22 +271,38 @@ const CELL_STYLE = {
   fontColor: '#2a3546',
   align: 'left',
   spacingLeft: PADDING_X - 2,
-  spacingRight: 4,
+  spacingRight: PADDING_X - 2,
 };
+
+// HTML of a text in measured glyph widths: the layout sums glyph advances,
+// so kerning and ligatures are turned off as in the SVG.
+const measured = (html) => `<span style="${TEXT_STYLE_CSS}">${html}</span>`;
+
+// A column row: gutter icon, name and marks on the left, type on the right,
+// in `width` px (draw.io sizes an HTML label to its content, so the width is
+// set). The name gives way first if the label is still too narrow.
+function rowHtml(row, width) {
+  const name = gutterIcon(row.key) + (row.pk ? `<b>${escapeHtml(row.name.text)}</b>` : escapeHtml(row.name.text)) + hintIcons(row.hints.map((h) => h.kind));
+  return (
+    `<div style="display:flex;align-items:center;width:${width}px;white-space:nowrap;${TEXT_STYLE_CSS}">` +
+    `<span style="flex:1 1 auto;min-width:0;overflow:hidden">${name}</span>` +
+    `<span style="flex:none;padding-left:4px;color:#7a8597">${escapeHtml(row.type.text)}</span></div>`
+  );
+}
 
 /**
  * A table (or a polymorphic node) as a draw.io table shape: the header holds
- * the title (HTML), each entry of `rows` becomes a tableRow with one cell per
- * text (a single text spans both columns; names are HTML, types plain). Rows are ROW_HEIGHT tall from the
+ * the title (HTML), each entry of `rows` ({ id?, label, data?, fill?, style? })
+ * becomes a tableRow with one text cell. Rows are ROW_HEIGHT tall from the
  * header down, the same slots the layout gave the columns, so a row's middle
  * is where the router attached the line.
  */
-function tableCells({ id, parent, x, y, w, title, header, stroke, strokeWidth, dashed, titleColor, data, link }, rows, typeWidth) {
+function tableCells({ id, parent, x, y, w, title, header, stroke, strokeWidth, dashed, titleColor, data, link }, rows) {
   const h = HEADER_HEIGHT + ROW_HEIGHT * rows.length;
   const out = [
     cell({
       id,
-      value: title,
+      value: measured(title),
       data,
       link,
       parent,
@@ -251,33 +346,18 @@ function tableCells({ id, parent, x, y, w, title, header, stroke, strokeWidth, d
         geometry: box(0, HEADER_HEIGHT + ROW_HEIGHT * i, w, ROW_HEIGHT),
         styles: { ...ROW_STYLE, fillColor: r.fill ?? 'none', strokeColor: 'inherit' },
       }),
-    );
-    const span = r.type === undefined;
-    const nameWidth = span ? w : w - typeWidth;
-    out.push(
       cell({
         id: `${rowId}|name`,
-        value: r.name,
-        // On the name, not the row: in draw.io a click selects the table,
+        value: r.label,
+        // On the text, not the row: in draw.io a click selects the table,
         // the next click the text under the mouse, so this is the cell a
         // reader has selected when opening Edit Data.
         data: r.data,
         parent: rowId,
-        geometry: box(0, 0, nameWidth, ROW_HEIGHT),
-        styles: { ...CELL_STYLE, ...(span ? { colspan: 2 } : {}), ...r.nameStyle },
+        geometry: box(0, 0, w, ROW_HEIGHT),
+        styles: { ...CELL_STYLE, ...r.style },
       }),
     );
-    if (!span) {
-      out.push(
-        cell({
-          id: `${rowId}|type`,
-          value: r.type,
-          parent: rowId,
-          geometry: box(nameWidth, 0, typeWidth, ROW_HEIGHT),
-          styles: { ...CELL_STYLE, html: 0, align: 'right', spacingLeft: 2, spacingRight: PADDING_X - 2, fontColor: '#7a8597' },
-        }),
-      );
-    }
   });
   return { cells: out, h };
 }
@@ -299,38 +379,23 @@ function tableNode(n, parent, x, y, ctx) {
     ...b.rows.map((r) => ({ y: r.centerY, row: r })),
     ...b.insets.map((e) => ({ y: e.title.centerY, inset: e })),
   ].sort((p, q) => p.y - q.y);
-  // A draw.io table has one width per column for all rows, while the layout
-  // fitted each row on its own. The name column gets the widest name, the
-  // type column the rest; when both cannot fit, the box is shared in
-  // proportion. Texts are then cut to their cell (with an ellipsis; the SVG
-  // and the Excel file keep the full text). A name shares its cell with the
-  // gutter icon before it and the marks after it.
-  const NAME_PAD = PADDING_X - 2 + 4;
-  const TYPE_PAD = PADDING_X - 2 + 2;
-  const indent = (r) => 12 * r.depth;
-  const icons = (r) => ICON_GUTTER + HINT_WIDTH * r.hints.length;
-  const nameFont = (r) => (r.pk ? PK_FONT : COLUMN_FONT);
-  const nameNeed = Math.max(0, ...b.rows.map((r) => Math.ceil(measureText(r.name.full, nameFont(r)) + indent(r) + icons(r)) + NAME_PAD));
-  const typeNeed = Math.max(0, ...b.rows.map((r) => Math.ceil(measureText(r.type.full, TYPE_FONT)) + TYPE_PAD));
-  const typeWidth = nameNeed + typeNeed <= n.w ? n.w - nameNeed : Math.round((n.w * typeNeed) / (nameNeed + typeNeed));
   const insetFill = '#f6f8fb';
-  const rows = slots.map(({ row, inset }) => {
-    if (inset) return { name: escapeHtml(inset.title.full), type: '', fill: insetFill, nameStyle: { fontStyle: 1, fontColor: '#56627a' } };
+  // Embedded columns are indented inside their entity's inset, as in the SVG.
+  const pad = (depth) => PADDING_X - 2 + EMBED_INSET * depth;
+  const inset = (depth) => ({ spacingLeft: pad(depth), spacingRight: pad(depth) });
+  const rows = slots.map(({ row, inset: entity }) => {
+    if (entity) return { label: measured(escapeHtml(entity.title.text)), fill: insetFill, style: { fontStyle: 1, fontColor: '#56627a', ...inset(1) } };
     const { column } = columns.get(row.column);
-    const name = truncate(row.name.full, n.w - typeWidth - NAME_PAD - indent(row) - icons(row), nameFont(row)).text;
     return {
       id: rowId(t.id, row.column),
-      name: gutterIcon(row.key) + escapeHtml(name) + row.hints.map((h) => hintIcon(h.kind)).join(''),
-      type: truncate(row.type.full, typeWidth - TYPE_PAD, TYPE_FONT).text,
-      data: columnData(row.column, column, ctx.references.get(`${t.id}|${row.column}`)),
+      label: rowHtml(row, n.w - 2 * pad(row.depth)),
+      data: columnData(row.column, column, ctx.relations.column.get(`${t.id}|${row.column}`)),
       fill: row.depth > 0 ? insetFill : undefined,
-      nameStyle: { fontStyle: row.pk ? 1 : 0, spacingLeft: PADDING_X - 2 + indent(row) },
+      style: inset(row.depth),
     };
   });
-  for (const f of b.facts) rows.push({ name: escapeHtml(f.text.full), nameStyle: { fontSize: 11, fontColor: '#5f6b7e' } });
-  for (const badge of b.badges) {
-    rows.push({ name: escapeHtml(`→ ${badge.label.full}`), nameStyle: { fontSize: 11, fontColor: '#56627a' } });
-  }
+  for (const f of b.facts) rows.push({ label: measured(escapeHtml(f.text.text)), style: { fontSize: 11, fontColor: '#5f6b7e' } });
+  for (const badge of b.badges) rows.push({ label: measured(escapeHtml(`→ ${badge.label.text}`)), style: { fontSize: 11, fontColor: '#56627a' } });
   const kind = t.kind ?? 'table';
   const tag = b.tag ? ` ${b.tag.text}` : '';
   return tableCells(
@@ -348,20 +413,18 @@ function tableNode(n, parent, x, y, ctx) {
       strokeWidth: b.central ? 2 : null,
       dashed: kind === 'table' ? null : '5 3',
       titleColor: '#172033',
-      data: tableData(t, b.central),
-      link: `${ctx.svgFile}#table=${encodeURIComponent(t.id)}`,
+      data: { ...tableData(t, b.central), note: tableNote(t, ctx.keys.get(t.id), ctx.relations) },
+      link: ctx.svgUrl ? `${ctx.svgUrl}#table=${encodeURIComponent(t.id)}` : undefined,
     },
     rows,
-    typeWidth,
   );
 }
 
 function polyNode(n, parent, x, y) {
-  const rows = n.box.rows.map((r) => ({ name: escapeHtml(r.name.full), nameStyle: { fontColor: '#4a4236' } }));
+  const rows = n.box.rows.map((r) => ({ label: measured(escapeHtml(r.name.text)), style: { fontColor: '#4a4236' } }));
   return tableCells(
-    { id: nodeId(n.id), parent, x, y, w: n.w, title: escapeHtml(n.box.title.full), header: '#fffdf7', stroke: '#a08a5c', dashed: '4 3', titleColor: '#6b5428' },
+    { id: nodeId(n.id), parent, x, y, w: n.w, title: escapeHtml(n.box.title.text), header: '#fffdf7', stroke: '#a08a5c', dashed: '4 3', titleColor: '#6b5428' },
     rows,
-    0,
   );
 }
 
@@ -627,17 +690,18 @@ function pageXml(scene, ctx) {
  * instead, so every table is still in the file. Plain (uncompressed) XML
  * with no timestamps, so the same model and layout always give the same
  * bytes. Options are those of renderSvg's scenes (`fitStored` for a profile),
- * plus `svgFile`: the name of the SVG written beside this file, which table
- * headers link to (default erd.svg; erd.<profile>.svg for a profile render).
+ * plus `svgUrl`: where the SVG of this render is hosted, which table headers
+ * link to (no links when left out).
  */
-export function renderDrawio(model, layout, { svgFile = 'erd.svg', ...options } = {}) {
+export function renderDrawio(model, layout, { svgUrl, ...options } = {}) {
   const diagram = buildDiagram(model);
   const names = hasAllView(diagram) ? [OVERVIEW, ALL_VIEW] : viewNames(diagram).filter((n) => n !== ALL_VIEW);
   // A page's id is its view name, so links to a page stay valid across renders.
   const ctx = {
     colorOf: (key) => COLORS[layout.colors[key] % COLORS.length],
-    references: referencesOf(model),
-    svgFile,
+    relations: relationsOf(model),
+    keys: keyColumns(model),
+    svgUrl,
     pageLink: (name) => (names.includes(name) ? `data:page/id,${name}` : null),
   };
   const pages = names.map((name) => pageXml(buildScene(model, layout, name, diagram, options), ctx));

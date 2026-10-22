@@ -47,9 +47,6 @@ const RING_GAP = 40;
 const NEIGHBORHOOD_MARGIN = 60;
 const SEARCH_LIMIT = 40;
 const TIP_OFFSET = 14;
-// Pair tooltips (a connector, a matrix cell) list this many relations per
-// direction; the panel lists them all.
-const TIP_RELATIONS = 6;
 // Smallest text in table boxes and matrix headers, and the size it should
 // have on screen at least when a large view opens zoomed in.
 const SMALLEST_TEXT = 12;
@@ -813,6 +810,7 @@ const searchButton = el('button', { class: 'oe-btn oe-tool oe-search-trigger', t
   el('kbd', { text: FIND_KEY }),
 ]);
 const joinButton = toolButton('join', 'Join path', `How to join two tables: the condition of each hop (${MOD_KEY}J)`, () => (join.open ? clearSelection() : openJoinSpot(selectedTable())));
+joinButton.append(el('kbd', { text: `${MOD_KEY}J` }));
 
 // Dropdown menus of the toolbar; one open at a time.
 const menus = [];
@@ -961,9 +959,11 @@ const backPill = overlay('oe-back-host');
 backPill.fo.style.display = 'none';
 // Shown in a view reached by navigation, and wherever the step behind was a
 // table: it then names that table.
+// Never on the overview, never pointing back to it: the overview is one
+// click away on the toolbar's Map tab.
 function backPillShown() {
   const prev = nav.back.at(-1);
-  return Boolean(prev) && (NAVIGATED(state.view) || Boolean(prev.table));
+  return Boolean(prev) && state.view !== OVERVIEW && prev.view !== OVERVIEW && (NAVIGATED(state.view) || Boolean(prev.table));
 }
 function updateBackPill() {
   const prev = nav.back.at(-1);
@@ -1511,7 +1511,7 @@ function panelHeader({ name, tip, cluster, central = false, note, extra = [] }) 
       // Two domains (the relations between them) read "A ⇄ B" as chips.
       ...(cluster ? [cluster].flat().flatMap((c, i) => [i > 0 ? el('span', { class: 'oe-ph-sep', title: tip, text: '⇄' }) : null, domainChip(c)]) : []),
     ]),
-    note ? el('div', { class: 'oe-ph-note', title: note, text: note, on: { click: (e) => (e.currentTarget.classList.toggle('open'), layoutOverlays()) } }) : null,
+    note ? el('div', { class: 'oe-ph-note', text: note }) : null,
     ...extra,
   ]);
 }
@@ -1535,6 +1535,8 @@ const keyIcon = (key) => (key ? svgEl('svg', { class: 'oe-key', width: 14, heigh
 // One column: key icon, name (bold for a primary key), small chips, type
 // on the right; the note under it on one line. The enum chip folds the
 // values out under the row; a click on the note shows all of it.
+const hintIcon = (draw, title) => el('span', { class: 'hint', title }, [svgEl('svg', { width: 10, height: 12, viewBox: '0 0 10 12' }, parsed(draw(5, 6)))]);
+
 function columnRow(n, c, open) {
   const values = Object.entries(c.enum ?? {});
   const list = values.length > 0 ? el('div', { class: 'oe-enum-list', style: c.name === open ? '' : 'display:none' }, values.map(([v, meaning]) => el('div', {}, [el('code', { class: 'oe-code', text: v }), meaning ? el('span', { text: ` — ${meaning}` }) : null]))) : null;
@@ -1542,15 +1544,20 @@ function columnRow(n, c, open) {
     el(b.kind === 'enum' ? 'button' : 'span', { class: `oe-badge ${b.kind}`, title: b.title, text: b.text, ...(b.kind === 'enum' ? { on: { click: () => ((list.style.display = list.style.display === 'none' ? '' : 'none'), layoutOverlays()) } } : {}) }),
   );
   const key = c.pk ? 'pk' : c.fk ? 'fk' : null;
-  const comment = [c.note, c.internalNote && `Internal: ${c.internalNote}`].filter(Boolean).join(' · ');
+  const indexed = (n.indexes ?? []).some((i) => i.columns.includes(c.name));
   return el('div', { class: `oe-col${c.name === open ? ' open' : ''}`, 'data-column': c.name }, [
     el('div', { class: 'l1' }, [
       el('span', { class: 'gutter', title: key === 'pk' ? 'Primary key' : key === 'fk' ? 'References another table' : '' }, [keyIcon(key)]),
       el('span', { class: `name${c.pk ? ' pk' : ''}`, text: c.name }),
+      // The marks the table box draws after a name: listed values, an index.
+      values.length > 0 ? hintIcon(enumIconSvg, 'Column with listed values') : null,
+      indexed ? hintIcon(indexIconSvg, 'Column in an index (see Indexes)') : null,
       ...chips,
       el('span', { class: 'type', text: c.type }),
     ]),
-    comment ? el('div', { class: 'l2', title: comment, text: comment, on: { click: (e) => (e.currentTarget.classList.toggle('open'), layoutOverlays()) } }) : null,
+    // The panel is the detail view: notes in full, the team's note muted under.
+    c.note ? el('div', { class: 'l2', text: c.note }) : null,
+    c.internalNote ? el('div', { class: 'l2 internal', text: `Internal: ${c.internalNote}` }) : null,
     c.warning ? el('div', { class: 'l2 oe-warn', text: `${MISSING}: ${c.warning}` }) : null,
     list,
   ]);
@@ -2059,6 +2066,7 @@ function copyText(text, status, what, then = () => {}) {
 // view or the mode changes. Open by default in the view of all tables,
 // closed elsewhere.
 const legend = overlay('oe-legend-host');
+const LEGEND_ROOM = 8;
 legend.fo.style.display = 'none';
 let legendOpen = true;
 
@@ -2253,42 +2261,24 @@ const tip = overlay('oe-tip-host');
 tip.fo.style.display = 'none';
 tip.fo.style.pointerEvents = 'none';
 
-// Relations between two domains (a connector, a matrix cell): how many each
-// way, and the first few of each.
-function pairTip(a, b) {
-  const directions = byDirection(a, b);
-  const total = directions.reduce((n, d) => n + d.relations.length, 0);
-  if (a === b) return [el('b', { text: domainName(a) }), el('div', { text: `${plural(total, 'relation')} inside the domain` }), ...pairSamples(directions), el('div', { class: 'muted', text: 'Click to list them' })];
-  return [
-    el('div', {}, [el('b', { text: `${plural(total, 'relation')} between ${domainName(a)} and ${domainName(b)}` })]),
-    ...directions.map((d) => el('div', { text: `${domainName(d.from)} → ${domainName(d.to)}: ${plural(d.relations.length, 'relation')}` })),
-    dbOf(a) !== dbOf(b) ? el('div', { class: 'muted', text: `Cross-DB: ${dbDisplayName(dbOf(a))} ⇄ ${dbDisplayName(dbOf(b))}` }) : null,
-    ...pairSamples(directions),
-    total > 0 ? el('div', { class: 'muted', text: 'Click to list them' }) : null,
-  ];
-}
 // An overview connector: one line, the list only in the panel.
 // A matrix cell: one line in the direction of its row and column, the list
 // only in the panel.
 function cellTip(row, col) {
   const [there, back] = byDirection(row, col);
   const head = row === col ? `${domainName(row)} · ${plural(there.relations.length, 'relation')} inside` : `${domainName(row)} → ${domainName(col)} · ${plural(there.relations.length, 'relation')}${back.relations.length > 0 ? ` · ${back.relations.length} back` : ''}`;
-  return [el('b', { text: head }), el('div', { class: 'muted', text: 'Click to list them' })];
+  return [el('b', { text: head }), el('div', { class: 'muted', text: 'Click to see the list' })];
 }
 
-// Named in the direction the relations point (the stronger one first when
-// they point both ways).
-function connectorTip(a, b) {
+// Every tooltip about the relations between two domains (a connector, a
+// card's related domain, a matrix cell) is one line, "A → B · N relations
+// · M back", named in the direction the relations point (the stronger one
+// first when they point both ways); the list is only in the panel.
+function connectorTip(a, b, hint = 'Click to see the list') {
   const [main, other] = byDirection(a, b).sort((x, y) => y.relations.length - x.relations.length);
   const backText = other.relations.length > 0 ? ` · ${other.relations.length} back` : '';
-  return [el('div', {}, [el('b', { text: `${domainName(main.from)} → ${domainName(main.to)}` }), el('span', { text: ` · ${plural(main.relations.length, 'relation')}${backText}` })]), el('div', { class: 'muted', text: 'Click to see the list' })];
+  return [el('div', {}, [el('b', { text: `${domainName(main.from)} → ${domainName(main.to)}` }), el('span', { text: ` · ${plural(main.relations.length, 'relation')}${backText}` })]), el('div', { class: 'muted', text: hint })];
 }
-const pairSamples = (directions) =>
-  directions.flatMap((d) => [
-    ...d.relations.slice(0, TIP_RELATIONS).map((r) => el('div', { class: 'muted', text: `${short(r.from)}.${r.column} → ${short(r.to)}` })),
-    d.relations.length > TIP_RELATIONS ? el('div', { class: 'muted', text: `… ${d.relations.length - TIP_RELATIONS} more` }) : null,
-  ]);
-
 // Lines of the table views: their two ends and kind.
 function lineTip(g) {
   const [id, from, to] = [g.getAttribute('data-id'), g.getAttribute('data-from'), g.getAttribute('data-to')];
@@ -2306,7 +2296,7 @@ function tipLines(target) {
   const related = target.closest('.card-related');
   if (related) {
     const [a, b] = [target.closest('.domain').getAttribute('data-domain'), related.getAttribute('data-domain')];
-    return [...pairTip(a, b).slice(0, -1), el('div', { class: 'muted', text: `Click to open ${domainName(b)}` })];
+    return connectorTip(a, b, `Click to open ${domainName(b)}`);
   }
   const line = target.closest('.relation-group, .hub-route');
   if (line?.hasAttribute('data-group')) return [el('b', { text: line.getAttribute('data-label') }), el('div', { class: 'muted', text: JSON.parse(line.getAttribute('data-tables')).map(short).join(', ') })];
@@ -2423,13 +2413,16 @@ function layoutOverlays() {
     reviewChip.fo.setAttribute('height', Math.ceil(r.height) + 2);
   }
   if (legend.fo.style.display !== 'none') {
+    // The area is LEGEND_ROOM larger than the card on every side, so its
+    // shadow and the hover lift are never cut off at the area's edge.
     legend.fo.setAttribute('y', 0);
-    legend.fo.setAttribute('width', 300);
+    legend.fo.setAttribute('width', 300 + 2 * LEGEND_ROOM);
     legend.fo.setAttribute('height', h);
+    legend.div.style.padding = `${LEGEND_ROOM}px`;
     const r = legend.div.firstChild.getBoundingClientRect();
-    legend.fo.setAttribute('x', PANEL_MARGIN);
-    legend.fo.setAttribute('y', Math.max(TOOLBAR_HEIGHT + PANEL_MARGIN, h - r.height - PANEL_MARGIN));
-    legend.fo.setAttribute('height', Math.ceil(r.height) + 1);
+    legend.fo.setAttribute('x', PANEL_MARGIN - LEGEND_ROOM);
+    legend.fo.setAttribute('y', Math.max(TOOLBAR_HEIGHT + PANEL_MARGIN, h - r.height - PANEL_MARGIN) - LEGEND_ROOM);
+    legend.fo.setAttribute('height', Math.ceil(r.height) + 1 + 2 * LEGEND_ROOM);
   }
   if (panel.fo.style.display !== 'none') {
     const room = h - TOOLBAR_HEIGHT - 2 * PANEL_MARGIN;
