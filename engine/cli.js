@@ -217,13 +217,14 @@ async function runRender({ workspace, profile }) {
   }
   if (openingView(shown).fallback) console.error(`warning: default_view "${shown.config.default_view}" is not in this render; it opens on the overview`);
   const xlsx = await serializeWorkbook(buildWorkbook(shown, { warnings }), { date: await workspaceDate(workspace) });
-  const base = join(workspace, 'out', profile === undefined ? 'erd' : `erd.${profile}`);
+  const name = profile === undefined ? 'erd' : `erd.${profile}`;
+  const base = join(workspace, 'out', name);
   await mkdir(join(workspace, 'out'), { recursive: true });
   await writeFile(`${base}.svg`, svg);
   await writeFile(`${base}.xlsx`, xlsx);
   const written = [`${base}.svg`, `${base}.xlsx`];
   if ({ ...OUTPUT_DEFAULTS, ...shown.config.outputs }.drawio) {
-    await writeFile(`${base}.drawio`, renderDrawio(shown, layout, profile === undefined ? {} : { fitStored: true }));
+    await writeFile(`${base}.drawio`, renderDrawio(shown, layout, { svgFile: `${name}.svg`, ...(profile === undefined ? {} : { fitStored: true }) }));
     written.push(`${base}.drawio`);
   }
   console.log(`wrote ${written.join(', ')}${profile === undefined ? '' : ` (profile ${profile})`}`);

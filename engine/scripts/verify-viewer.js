@@ -116,6 +116,16 @@ const closeMenu = (menu) => evaluate(`${menuOpen(menu)} && ${menuButton(menu)}.c
 const backButton = `document.querySelector('.oe-left > button')`;
 // Cmd+F on macOS (CDP modifier 4 = Meta), Ctrl+F elsewhere (2).
 const FIND_MODIFIER = process.platform === 'darwin' ? 4 : 2;
+// Cmd+<letter> on macOS, Ctrl+<letter> elsewhere.
+async function modKey(letter) {
+  const code = `Key${letter.toUpperCase()}`;
+  const vk = letter.toUpperCase().charCodeAt(0);
+  await send('Input.dispatchKeyEvent', { type: 'keyDown', key: letter, code, windowsVirtualKeyCode: vk, modifiers: FIND_MODIFIER });
+  await send('Input.dispatchKeyEvent', { type: 'keyUp', key: letter, code, windowsVirtualKeyCode: vk, modifiers: FIND_MODIFIER });
+  await pause(200);
+}
+// The toolbar's view tabs: all, overview (Map), connections.
+const viewTab = (name) => click(`document.querySelector('.oe-view-tabs [data-view="${name}"]')`);
 async function findKey() {
   await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'f', code: 'KeyF', windowsVirtualKeyCode: 70, modifiers: FIND_MODIFIER });
   await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'f', code: 'KeyF', windowsVirtualKeyCode: 70, modifiers: FIND_MODIFIER });
@@ -196,12 +206,12 @@ await mouse('mouseMoved', onConnector);
 await pause(200);
 await shot(
   'overview-connector-tooltip',
-  `${ov}.querySelector('.card-links') !== null && [...document.querySelectorAll('.oe-tip')].some((t) => new RegExp(${data}.domainLinks[${JSON.stringify(pairKey)}].length + ' relations? between').test(t.textContent))`,
+  `${ov}.querySelector('.card-links') !== null && [...document.querySelectorAll('.oe-tip')].some((t) => / → .+ · \\d+ relations?( · \\d+ back)?Click to see the list$/.test(t.textContent) && t.querySelectorAll('.muted').length === 1)`,
 );
 await mouse('mousePressed', onConnector);
 await mouse('mouseReleased', onConnector);
 await pause(150);
-await shot('overview-connector-panel', `document.querySelectorAll('.oe-panel .oe-chip').length === ${data}.domainLinks[${JSON.stringify(pairKey)}].length && document.querySelector('.oe-panel .oe-ph-sep')?.textContent === '⇄' && document.querySelectorAll('.oe-panel .oe-domain-chip').length === 2`);
+await shot('overview-connector-panel', `document.querySelectorAll('.oe-panel .oe-chip').length === new Set(${data}.domainLinks[${JSON.stringify(pairKey)}].map((r) => r.from + ' ' + r.to)).size && document.querySelector('.oe-panel .oe-ph-sep')?.textContent === '⇄' && document.querySelectorAll('.oe-panel .oe-domain-chip').length === 2`);
 await key('Escape');
 const relatedKey = await evaluate(`${hubCard}.querySelector('.card-related').getAttribute('data-domain')`);
 await click(`${hubCard}.querySelector('.card-related .card-related-name')`);
@@ -234,18 +244,21 @@ await shot('back-pill-click', viewIs('overview'));
 // Connections: the Map | Connections switch, a cell's tooltip names both
 // directions, a click lists its relations as chips, the header row and
 // column stay on screen while the matrix is panned.
-await click(`document.querySelector('.oe-map-tabs [data-view="connections"]')`);
+await viewTab('connections');
 const cx = `document.querySelector('g.view[data-view="connections"]')`;
-await shot('connections', `${backPill}?.textContent === '← Overview' && ${viewIs('connections')} && ${cx}.querySelectorAll('.mx-cell').length === ${cx}.querySelectorAll('.mx-rows .mx-head').length ** 2 && document.querySelector('.oe-map-tabs [data-view="connections"]').classList.contains('on')`);
+await shot('connections', `${backPill}?.textContent === '← Overview' && ${viewIs('connections')} && ${cx}.querySelectorAll('.mx-cell').length === ${cx}.querySelectorAll('.mx-rows .mx-head').length ** 2 && document.querySelector('.oe-view-tabs [data-view="connections"]').classList.contains('on')`);
 const cellSel = `${cx}.querySelector('.mx-cell[data-from=${JSON.stringify(pairEnds[0])}][data-to=${JSON.stringify(pairEnds[1])}]')`;
 await mouse('mouseMoved', await centre(cellSel));
 await pause(150);
 await shot(
   'connections-cell-hover',
-  `${cellSel}.classList.contains('hl') && ${cx}.querySelectorAll('.mx-head.hl').length >= 2 && [...document.querySelectorAll('.oe-tip')].some((t) => t.textContent.includes('→') && /relations? between/.test(t.textContent))`,
+  `${cellSel}.classList.contains('hl') && ${cx}.querySelectorAll('.mx-head.hl').length >= 2 && [...document.querySelectorAll('.oe-tip')].some((t) => /^.+ → .+ · \\d+ relations?( · \\d+ back)?Click to list them$/.test(t.textContent) && t.children.length === 2)`,
 );
+// The matrix draws nothing the legend explains: no legend, no pill, L does nothing.
+await key('l', 'KeyL');
+await shot('connections-no-legend', `[...document.querySelectorAll('foreignObject')].every((f) => !f.querySelector('.oe-legend, .oe-legend-pill') || f.style.display === 'none')`);
 await click(cellSel);
-await shot('connections-cell-panel', `document.querySelectorAll('.oe-panel .oe-chip').length === ${data}.domainLinks[${JSON.stringify(pairKey)}].length`);
+await shot('connections-cell-panel', `document.querySelectorAll('.oe-panel .oe-chip').length === new Set(${data}.domainLinks[${JSON.stringify(pairKey)}].map((r) => r.from + ' ' + r.to)).size`);
 await key('Escape');
 // Pan so the first cell sits just right of and below the screen corner:
 // its own header row and column would then be off screen.
@@ -340,7 +353,8 @@ await shot('database-crumb', `${viewIs('overview')} && (() => {
 const dbName = domain.split('/')[0];
 const dbLabel = dbName[0].toUpperCase() + dbName.slice(1);
 await click(menuButton('views'));
-await shot('views-menu', `${menuItem('views', 'Overview')} !== undefined && ${menuItem('views', dbLabel)} !== undefined`);
+// Views are toolbar tabs; the menu only jumps to databases.
+await shot('views-menu', `${menuItem('views', 'Overview')} === undefined && ${menuItem('views', 'All tables')} === undefined && ${menuItem('views', dbLabel)} !== undefined && document.querySelectorAll('.oe-view-tabs .oe-btn').length >= 2`);
 await click(menuItem('views', dbLabel));
 await shot('views-menu-database', `${viewIs('overview')} && !${menuOpen('views')} && (() => {
   const r = document.querySelector('.database[data-database=${JSON.stringify(dbName)}] .db-frame').getBoundingClientRect();
@@ -395,13 +409,22 @@ await shot(
 );
 // Copy schema: SQL (JSON for MongoDB) or Markdown, from a menu in the panel.
 await evaluate(stubClipboard);
+const tabsTop = await evaluate(`document.querySelector('.oe-panel .oe-tabs').getBoundingClientRect().top`);
 await click(`document.querySelector('.oe-panel .oe-copy-schema')`);
-await shot('copy-schema-menu', `[...document.querySelectorAll('.oe-copy-menu .oe-item')].map((b) => b.textContent).join('|') === (${data}.databases[${JSON.stringify(table.split('.')[0])}].engine === 'mongodb' ? 'JSON schema (approximate)|Markdown table' : 'SQL (CREATE TABLE, approximate)|Markdown table')`);
+// A popover over the panel: short labels, nothing below it moves.
+await shot('copy-schema-menu', `[...document.querySelectorAll('.oe-copy-menu .oe-item')].map((b) => b.textContent).join('|') === (${data}.databases[${JSON.stringify(table.split('.')[0])}].engine === 'mongodb' ? 'JSON schema|Markdown' : 'SQL|Markdown')
+  && getComputedStyle(document.querySelector('.oe-copy-menu')).position === 'absolute' && document.querySelector('.oe-copy-menu .oe-item').title.length > 20 && document.querySelector('.oe-panel .oe-tabs').getBoundingClientRect().top === ${tabsTop}`);
 await click(`document.querySelector('.oe-copy-menu .oe-item')`);
 await shot('copy-schema-sql', `/^Copied (SQL|JSON schema)$/.test(document.querySelector('.oe-panel .oe-status-inline').textContent) && (window.__copied.startsWith('-- Generated from the ERD; types as recorded, review before use') || JSON.parse(window.__copied).$comment !== undefined)`);
 await click(`document.querySelector('.oe-panel .oe-copy-schema')`);
-await click(`[...document.querySelectorAll('.oe-copy-menu .oe-item')].find((b) => b.textContent === 'Markdown table')`);
-await shot('copy-schema-markdown', `window.__copied.startsWith('### ${table.split('.')[2]}') && window.__copied.includes('| # | Column | Type |')`);
+await click(`[...document.querySelectorAll('.oe-copy-menu .oe-item')].find((b) => b.textContent === 'Markdown')`);
+await pause(3000);
+// The label stays until the next copy or another panel.
+await shot('copy-schema-markdown', `window.__copied.startsWith('### ${table.split('.')[2]}') && window.__copied.includes('| # | Column | Type |') && document.querySelector('.oe-panel .oe-status-inline').textContent === 'Copied Markdown'`);
+// Cmd+C (Ctrl+C) with the table selected: its SQL with indexes, and a toast.
+await evaluate(`window.getSelection().removeAllRanges(); document.activeElement?.blur?.()`);
+await modKey('c');
+await shot('cmd-c-copies-table', `/^Copied (SQL|JSON schema) for ${table.split('.')[2]}$/.test(document.querySelector('.oe-toast')?.textContent) && document.querySelector('.oe-toast').closest('foreignObject').style.display !== 'none' && (window.__copied.startsWith('-- Generated from the ERD') || JSON.parse(window.__copied).$comment !== undefined)`);
 
 // Hover a column with an enum when there is one, else the first column.
 const column = await evaluate(`(() => { const d = JSON.parse(document.getElementById('open-erd-data').textContent);
@@ -569,7 +592,7 @@ await shot('no-business-mode', `![...document.querySelectorAll('button')].some((
 // The table highlighted earlier has lines; open its neighborhood from the
 // full view, or from its domain view in a schema too large for a full view.
 if (await evaluate(`document.querySelector('g.view[data-view="all"]') !== null`)) {
-  await choose('views', 'All tables');
+  await viewTab('all');
   await shot('all-tables', `${viewIs('all')} && document.querySelector('.oe-crumbs .here').textContent === 'All tables · ' + Object.values(${data}.nodes).filter((x) => x.kind === 'table').length + ' tables'`);
   // The legend is open here, drawn with the diagram's own line and marker
   // classes, listing only what this view draws: no review colours outside
@@ -590,8 +613,17 @@ if (await evaluate(`document.querySelector('g.view[data-view="all"]') !== null`)
   await click(`[...document.querySelectorAll('.oe-legend .oe-link')].find((b) => b.textContent === 'Hide')`);
   await shot('legend-pill', `(() => { const p = document.querySelector('.oe-legend-pill'); const r = p?.getBoundingClientRect();
     return p && document.querySelector('.oe-legend') === null && r.left < 40 && r.bottom > innerHeight - 40 && ![...document.querySelectorAll('.oe-more-menu .oe-item')].some((b) => b.textContent.startsWith('Legend')); })()`);
+  // A card like the minimap (radius 8, its bottom margin), a notation glimpse.
+  await shot('legend-pill-style', `(() => { const p = document.querySelector('.oe-legend-pill'); const r = p.getBoundingClientRect(); const cs = getComputedStyle(p);
+    const map = document.querySelector('.oe-minimap'); const m = map?.closest('foreignObject').style.display !== 'none' ? map.getBoundingClientRect() : null;
+    return cs.borderRadius === '8px' && p.querySelector('.oe-legend-glyph .marker') && p.querySelector('.oe-chevron') && p.textContent === 'Legend' && (!m || Math.abs(m.bottom - r.bottom) < 3) || { radius: cs.borderRadius, bottom: r.bottom, map: m?.bottom }; })()`);
   await click(`document.querySelector('.oe-legend-pill')`);
   await shot('legend-reopened', `document.querySelector('.oe-legend') !== null && document.querySelector('.oe-legend-pill') === null`);
+  // L folds and unfolds it.
+  await key('l', 'KeyL');
+  await shot('legend-l-key', `document.querySelector('.oe-legend') === null && document.querySelector('.oe-legend-pill') !== null`);
+  await key('l', 'KeyL');
+  await shot('legend-l-key-again', `document.querySelector('.oe-legend') !== null`);
   // Review mode, in the ⋯ menu with the counts, only when something waits
   // for review: pending lines turn amber, the legend shows the review icons
   // and a chip says the mode is on; its × turns it off.
@@ -652,7 +684,7 @@ if (await evaluate(`document.querySelector('g.view[data-view="all"]') !== null`)
   await click(`document.querySelector('.oe-crumbs .oe-link')`);
   await click(`document.querySelector('.domain[data-domain=${JSON.stringify(domain)}]')`);
   await click(menuButton('views'));
-  await shot('no-all-tables', `${viewIs(`domain:${domain}`)} && ${menuItem('views', 'All tables')} === undefined`);
+  await shot('no-all-tables', `${viewIs(`domain:${domain}`)} && document.querySelector('.oe-view-tabs [data-view="all"]') === null`);
   await closeMenu('views');
 }
 await click(inView(`.table[data-id="${table}"]`), { where: 'top', count: 2 });
@@ -678,7 +710,7 @@ await shot(
 await send('Emulation.setDeviceMetricsOverride', { ...VIEWPORT, deviceScaleFactor: 1, mobile: false });
 await evaluate(`window.dispatchEvent(new Event('resize'))`);
 await pause(200);
-await click(`[...document.querySelectorAll('.oe-toolbar .oe-btn')].find((b) => b.textContent === 'Direct + next level')`);
+await click(`[...document.querySelectorAll('.oe-toolbar .oe-btn')].find((b) => b.textContent === '+1 level')`);
 await shot('neighborhood-2-hops', `${viewIs('neighborhood')} && ${visible}.querySelectorAll('.table, .poly').length >= ${oneHop}`);
 // The second ring stays fully readable while the centre is selected, and the
 // fitted drawing ends left of the open panel.
@@ -704,13 +736,14 @@ const hub = await evaluate(`(() => { for (const v of document.querySelectorAll('
   if (groups.length > 0) return [v.getAttribute('data-view'), groups[0].getAttribute('data-hub')]; } return null; })()`);
 if (hub) {
   const [hubView, hubTable] = hub;
-  if (hubView === 'all') await choose('views', 'All tables');
+  if (hubView === 'all') await viewTab('all');
   else {
     await click(`document.querySelector('.oe-crumbs .oe-link')`);
     await click(`document.querySelector('.domain[data-domain=${JSON.stringify(hubView.slice(7))}]')`);
   }
   // The legend sits bottom left and may cover the hub table.
   await evaluate(`[...document.querySelectorAll('.oe-legend .oe-link')].find((b) => b.textContent === 'Hide')?.click()`);
+  await bringIntoView(inView(`.table[data-id="${hubTable}"]`));
   await click(inView(`.table[data-id="${hubTable}"]`), { where: 'top' });
   await tab('relations');
   const referrers = await evaluate(`new Set(${data}.hubLinks.filter((l) => l.to === ${JSON.stringify(hubTable)} && l.from !== l.to).map((l) => l.from)).size`);
@@ -756,7 +789,7 @@ if (grouped) {
 // lines hidden, the header counts them), nothing else moves; Expand all
 // restores it.
 {
-  if (await evaluate(`document.querySelector('g.view[data-view="all"]') !== null`)) await choose('views', 'All tables');
+  if (await evaluate(`document.querySelector('g.view[data-view="all"]') !== null`)) await viewTab('all');
   else {
     await click(`document.querySelector('.oe-crumbs .oe-link')`);
     await click(`document.querySelector('.domain[data-domain=${JSON.stringify(domain)}]')`);
@@ -765,6 +798,8 @@ if (grouped) {
     const withLines = [...v.querySelectorAll('.cluster')].map((c) => c.getAttribute('data-cluster')).find((k) => [...v.querySelectorAll('.relation-group')].some((g) => d.nodes[g.getAttribute('data-from')]?.cluster === k || d.nodes[g.getAttribute('data-to')]?.cluster === k));
     return withLines ?? null; })()`);
   const others = `[...${visible}.querySelectorAll('.nodes .table')].filter((g) => ${data}.nodes[g.getAttribute('data-id')].cluster !== ${JSON.stringify(fold)}).map((g) => g.getBoundingClientRect().x).join()`;
+  await evaluate(`window.dispatchEvent(new Event('resize'))`);
+  await bringIntoView(inView(`.cluster[data-cluster="${fold}"] .cluster-label`));
   const before = await evaluate(others);
   await click(inView(`.cluster[data-cluster="${fold}"] .cluster-label`));
   await shot(
@@ -825,15 +860,23 @@ const joinPair = await evaluate(`(() => { const d = ${data}; const plain = d.lin
     const ends = [a.from === mid ? a.to : a.from, b.from === mid ? b.to : b.from]; if (ends[0] !== ends[1] && d.nodes[ends[0]].kind === 'table' && d.nodes[ends[1]].kind === 'table') return ends; }
   return null; })()`);
 if (joinPair) {
-  const pickJoin = async (id) => {
-    await click(`document.querySelector('.oe-join-field input')`);
+  // Cmd+J (Ctrl+J): the join spotlight, From then To.
+  await key('Escape');
+  await modKey('j');
+  const joinSpot = `document.querySelector('.oe-join-spot')`;
+  await shot('join-spotlight', `${joinSpot}.closest('foreignObject').style.display !== 'none' && document.activeElement === ${joinSpot}.querySelector('.oe-join-from input') && ${joinSpot}.getBoundingClientRect().width >= Math.min(900, innerWidth * 0.9) - 1`);
+  const pickJoin = async (slot, id) => {
     await send('Input.insertText', { text: id.split('.')[2] });
     await pause(150);
-    await click(`[...document.querySelectorAll('.oe-join-picks .oe-result')].find((b) => b.querySelector('.where').textContent === ${JSON.stringify(id)})`);
+    // The highlighted hit is the table when it comes first; else move to it.
+    const index = await evaluate(`[...document.querySelectorAll('.oe-join-spot .oe-result')].findIndex((b) => b.title === ${JSON.stringify(id)})`);
+    for (let i = 0; i < index; i++) await key('ArrowDown');
+    await key(slot === 'from' ? 'Tab' : 'Enter');
   };
-  await click(`[...document.querySelectorAll('.oe-btn')].find((b) => b.textContent === 'Join path')`);
-  await pickJoin(joinPair[0]);
-  await pickJoin(joinPair[1]);
+  await pickJoin('from', joinPair[0]);
+  await shot('join-spotlight-to', `document.activeElement === ${joinSpot}.querySelector('.oe-join-to input') && ${joinSpot}.querySelector('.oe-join-from input').value === ${JSON.stringify(joinPair[0].split('.')[2])}
+    && [...document.querySelectorAll('.oe-join-spot .oe-result .name')].every((n) => n.scrollWidth <= n.clientWidth + 1 || getComputedStyle(n).textOverflow === 'ellipsis') && [...document.querySelectorAll('.oe-join-spot .oe-result')].every((r) => r.getBoundingClientRect().height < 30)`);
+  await pickJoin('to', joinPair[1]);
   const flowsAt = (ms) => evaluate(`new Promise((done) => setTimeout(() => done(${visible}.querySelectorAll('.flow').length), ${ms}))`);
   const early = await flowsAt(0);
   const late = await flowsAt(1500);
@@ -852,6 +895,7 @@ if (joinPair) {
   if (await evaluate(`!${sqlButton}.disabled`)) {
     await evaluate(stubClipboard);
     await click(sqlButton);
+    await pause(3000);
     await shot('join-path-sql-copied', `document.querySelector('.oe-panel .row .muted').textContent === 'Copied SQL' && window.__copied.startsWith('-- Generated from the ERD: review before running')`);
   } else {
     await shot('join-path-sql-disabled', `/^No SQL: The path spans \\d+ databases/.test([...document.querySelectorAll('.oe-panel p.muted')].map((p) => p.textContent).join())`);
@@ -868,6 +912,78 @@ if (joinPair) {
   }
   await key('Escape');
 }
+
+// Shortcuts: Cmd+A (Ctrl+A) opens all tables; the ⋯ menu lists every key.
+await key('Escape');
+if (await evaluate(`document.querySelector('g.view[data-view="all"]') !== null`)) {
+  await click(`document.querySelector('.oe-crumbs .oe-link')`);
+  await modKey('a');
+  await shot('cmd-a-all-tables', `${viewIs('all')} && document.querySelector('.oe-view-tabs [data-view="all"]').classList.contains('on')`);
+}
+await choose('more', 'Keyboard shortcuts');
+await shot('keyboard-shortcuts', `document.querySelectorAll('.oe-panel .oe-keys tr').length === 8 && /J/.test(document.querySelector('.oe-panel .oe-keys').textContent) && document.querySelector('.oe-panel .oe-keys').textContent.includes('Alt+←')`);
+await key('Escape');
+
+// The minimap stays bottom right, left of an open panel: after a relation
+// chip opens another table, and at once when the panel closes.
+{
+  const chipTable = await evaluate(`(() => { const d = ${data}; const l = d.links.find((x) => x.kind !== 'view_source' && x.from !== x.to && d.nodes[x.from]?.kind === 'table' && d.nodes[x.to]?.kind === 'table'); return l ? l.from : null; })()`);
+  if (chipTable) {
+    await searchFor(chipTable.split('.')[2]);
+    await tab('relations');
+    await click(`document.querySelector('.oe-panel .oe-chip')`);
+    await pause(200);
+    const mapRight = `(() => { const f = document.querySelector('.oe-minimap')?.closest('foreignObject'); if (!f || f.style.display === 'none') return null; return document.querySelector('.oe-minimap').getBoundingClientRect().right; })()`;
+    await shot('minimap-after-chip', `(() => { const r = ${mapRight}; const panel = document.querySelector('.oe-panel').closest('foreignObject').style.display !== 'none'; return r === null || Math.abs(r - (innerWidth - 12 - (panel ? 464 : 0))) < 4 || { r, panel }; })()`);
+    await key('Escape');
+    await shot('minimap-after-panel-close', `(() => { const r = ${mapRight}; return r === null || Math.abs(r - (innerWidth - 12)) < 4 || { r }; })()`);
+  }
+}
+
+// Table to table: chips A → B → C leave a trail in the panel; Back returns
+// to B then to A (selected, panel open), Forward to B again; the table
+// reached pulses.
+{
+  const chain = await evaluate(`(() => { const d = ${data}; const ok = (l) => l.kind !== 'view_source' && l.from !== l.to && d.nodes[l.from]?.kind === 'table' && d.nodes[l.to]?.kind === 'table';
+    for (const a of d.links.filter(ok)) for (const b of d.links.filter(ok)) if (b.from === a.to && b.to !== a.from) return [a.from, a.to, b.to]; return null; })()`);
+  if (chain) {
+    const [ta, tb, tc] = chain;
+    const chipTo = async (id) => {
+      await tab('relations');
+      await click(`[...document.querySelectorAll('.oe-panel .oe-chip')].find((c) => c.title === ${JSON.stringify(id)} || c.title.startsWith(${JSON.stringify(id + ' ·')}))`);
+      await pause(200);
+    };
+    await key('Escape');
+    await searchFor(ta.split('.')[2]);
+    await chipTo(tb);
+    await shot('table-arrives-pulsing', `${inView(`.table.selected.arrive[data-id="${tb}"]`)} !== null`);
+    await chipTo(tc);
+    const selected = (id) => `${inView(`.table.selected[data-id="${id}"]`)} !== null && document.querySelector('.oe-panel .oe-ph-name')?.textContent === ${JSON.stringify(id.split('.')[2])}`;
+    await shot('table-trail', `${selected(tc)} && [...document.querySelectorAll('.oe-panel .oe-trail .items > *')].map((e) => e.textContent).filter((t) => t !== '›').slice(-3).join() === ${JSON.stringify([ta, tb, tc].map((t) => t.split('.')[2]).join())}
+      && document.querySelector('.oe-back-pill')?.textContent === ${JSON.stringify(`← ${tb.split('.')[2]}`)}`);
+    await key('Backspace');
+    await shot('table-back-once', selected(tb));
+    await click(`document.querySelector('.oe-panel .oe-trail-btn')`);
+    await shot('table-back-twice', `${selected(ta)} && document.querySelector('.oe-panel .oe-tab.on')?.getAttribute('data-tab') === 'relations'`);
+    await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39, modifiers: 1 });
+    await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39, modifiers: 1 });
+    await pause(200);
+    await shot('table-forward', selected(tb));
+    await key('Escape');
+  }
+}
+
+// The Back pill sits just above the top left corner of the drawing's sheet.
+await click(`document.querySelector('.oe-crumbs .oe-link')`);
+await click(`document.querySelector('.domain .card-box')`, { where: 'top' });
+await shot('back-pill-on-sheet', `(() => { const p = document.querySelector('.oe-back-pill').getBoundingClientRect(); const s = ${visible}.querySelector(':scope > rect').getBoundingClientRect();
+  const corner = s.left >= 0 && s.top >= 44; return !corner || (Math.abs(p.left - Math.max(12, s.left)) < 3 && p.bottom <= s.top + 1 && s.top - p.bottom < 12) || { p: [p.left, p.bottom], s: [s.left, s.top] }; })()`);
+await mouse('mouseMoved', { x: 700, y: 500 });
+await wheel(0, { deltaX: -120 });
+await pause(100);
+await shot('back-pill-follows-sheet', `(() => { const p = document.querySelector('.oe-back-pill').getBoundingClientRect(); const s = ${visible}.querySelector(':scope > rect').getBoundingClientRect();
+  return s.left < 0 || s.top < 44 || Math.abs(p.left - Math.max(12, s.left)) < 3 || { p: p.left, s: s.left }; })()`);
+await click(`document.querySelector('.oe-crumbs .oe-link')`);
 
 // Camera as { x, y, s } from the transform the viewer writes.
 const camera = () =>
@@ -921,6 +1037,33 @@ await shot(
   'scroll-pans',
   `${afterScroll.s === afterPinch.s && Math.abs(afterScroll.x - (afterPinch.x - 40)) < 0.01 && Math.abs(afterScroll.y - (afterPinch.y - 120)) < 0.01} || ${JSON.stringify({ afterPinch, afterScroll })}`,
 );
+
+// Deep links: erd.svg#table=<id> opens on that table, selected, with its
+// panel; #column=<id>.<column> unfolds that column; selecting a table writes
+// its link into the address without adding history entries.
+{
+  const linked = await evaluate(`(() => { const d = ${data}; const [id, n] = Object.entries(d.nodes).find(([, n]) => n.kind === 'table' && n.columns.length > 2); return [id, n.columns[2].name]; })()`);
+  const base = pathToFileURL(resolve(input)).href;
+  const open = async (hash) => {
+    const blank = once('Page.loadEventFired');
+    await send('Page.navigate', { url: 'about:blank' });
+    await blank;
+    const page = once('Page.loadEventFired');
+    await send('Page.navigate', { url: `${base}${hash}` });
+    await page;
+    await pause(500);
+  };
+  await open(`#table=${encodeURIComponent(linked[0])}`);
+  const home = await evaluate(`document.querySelector('g.view[data-view="all"]') ? 'all' : 'domain:' + ${data}.nodes[${JSON.stringify(linked[0])}].cluster`);
+  await shot('deep-link-table', `${viewIs(home)} && ${inView(`.table.selected[data-id="${linked[0]}"]`)} !== null && document.querySelector('.oe-panel .oe-ph-name')?.textContent === ${JSON.stringify(linked[0].split('.')[2])}`);
+  await open(`#column=${encodeURIComponent(`${linked[0]}.${linked[1]}`)}`);
+  await shot('deep-link-column', `document.querySelector('.oe-panel .oe-col.open')?.getAttribute('data-column') === ${JSON.stringify(linked[1])} && decodeURIComponent(location.hash) === ${JSON.stringify(`#column=${linked[0]}.${linked[1]}`)}`);
+  const other = await evaluate(`[...${visible}.querySelectorAll('.table')].map((g) => g.getAttribute('data-id')).find((id) => id !== ${JSON.stringify(linked[0])})`);
+  await bringIntoView(inView(`.table[data-id="${other}"]`));
+  const before = await evaluate('history.length');
+  await click(inView(`.table[data-id="${other}"]`), { where: 'top' });
+  await shot('selection-updates-hash', `decodeURIComponent(location.hash) === ${JSON.stringify(`#table=${other}`)} && history.length === ${before}`);
+}
 
 // Without script the file must still show the static overview.
 await send('Emulation.setScriptExecutionDisabled', { value: true });

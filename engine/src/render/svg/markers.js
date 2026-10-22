@@ -153,3 +153,17 @@ export function reviewIconSvg(state, cx, cy) {
 
 /** What each review state means to a reader, for tooltips. */
 export const REVIEW_WORDS = { reviewed: 'Confirmed', pending: 'Not confirmed yet', stale: 'Code changed since confirmed' };
+
+/**
+ * Paint of each icon class above as SVG presentation attributes, for an icon
+ * drawn outside this file's SVG (a standalone image in a draw.io label),
+ * where the SVG stylesheet does not apply. The SVG stylesheet is generated from it.
+ */
+export const ICON_PAINT = {
+  'hint-enum': { fill: 'none', stroke: '#7c5cc4', 'stroke-width': 1.3, 'stroke-linecap': 'round' },
+  'icon-pk': { fill: 'none', stroke: '#c98a04', 'stroke-width': 1.4, 'stroke-linecap': 'round' },
+  'icon-fk': { fill: 'none', stroke: '#2f6fd6', 'stroke-width': 1.3, 'stroke-linecap': 'round' },
+  'icon-index': { fill: '#1f9d8f', stroke: 'none' },
+  'icon-table': { fill: 'none', stroke: '#5f6b7e', 'stroke-width': 1.1 },
+  'icon-central': { fill: '#f2b705', stroke: '#a87a00', 'stroke-width': 0.8, 'stroke-linejoin': 'round' },
+};

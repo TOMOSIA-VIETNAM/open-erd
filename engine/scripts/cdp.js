@@ -59,7 +59,9 @@ export async function launchChrome() {
     const exited = new Promise((done) => chrome.once('exit', done));
     chrome.kill();
     await exited;
-    await rm(profile, { recursive: true, force: true });
+    // Chrome's helper processes may still be writing for a moment after it
+    // exits; Node retries the removal for that.
+    await rm(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   };
   return { send, once, listeners, close };
 }

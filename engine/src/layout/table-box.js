@@ -20,8 +20,12 @@ export const BADGE_FONT = { size: 11, weight: 400 };
 export const BADGE_ARROW_WIDTH = 10;
 const BADGE_ARROW_GAP = 5;
 export const MUTED_TITLE_FONT = { size: 12, weight: 400 };
-// Overview card of a domain. Every card has the same size whatever it
-// says, so editing a note never moves a card or makes layout.json stale.
+// Overview card of a domain. Every card of a schema has the same size
+// whatever it says, so editing a note never moves a card or makes
+// layout.json stale. A schema without any domain note leaves the note band
+// out of every card (NOTE_BAND shorter); a card without a note in a schema
+// with some moves its central table and related domains up, so the free
+// space is at the bottom rather than a gap in the middle.
 export const CARD_TITLE_FONT = { size: 15, weight: 700 };
 export const CARD_TEXT_FONT = { size: 12, weight: 400 };
 export const CARD_LABEL_FONT = { size: 11, weight: 700 };
@@ -45,6 +49,8 @@ export const CARD = {
   dbGap: 5,
   // Small colour square before a related domain's name.
   swatch: 14,
+  // Height of the two note lines.
+  noteBand: 40,
 };
 // A polymorphic node lists this many targets at most; the rest collapse into
 // one "+N more" row (all targets stay in the node's data for the viewer).
@@ -276,7 +282,8 @@ const barWidth = (segments) => segments * CARD.segment.w + (segments - 1) * CARD
  * most related to, each with `segments` of a strength bar filled. Cross-DB
  * related domains carry their database as a small tag. Fixed size (CARD).
  */
-export function domainCard(card, { related, segments, total }) {
+export function domainCard(card, { related, segments, total, withNotes = true }) {
+  const up = card.note ? 0 : CARD.noteBand;
   const inner = CARD.w - CARD.padX - CARD.padX;
   const countText = `${card.tables} ${card.tables === 1 ? 'table' : 'tables'}`;
   const countWidth = Math.ceil(measureText(countText, CARD_TEXT_FONT));
@@ -285,11 +292,12 @@ export function domainCard(card, { related, segments, total }) {
   return {
     kind: 'domain',
     w: CARD.w,
-    h: CARD.h,
+    h: withNotes ? CARD.h : CARD.h - CARD.noteBand,
+    layout: { dividerY: CARD.dividerY - up, relatedLabelY: CARD.relatedLabelY - up, relatedY: CARD.relatedY.map((y) => y - up) },
     title: { ...fit(card.name, inner - countWidth - 12, CARD_TITLE_FONT), centerY: CARD.titleY },
     count: { ...fit(countText, countWidth, CARD_TEXT_FONT), centerY: CARD.titleY },
     note: card.note ? { full: card.note, lines: wrapTwoLines(card.note, inner, CARD_TEXT_FONT).map((l, i) => ({ ...l, centerY: CARD.noteY[i] })) } : null,
-    central: centralText ? { ...fit(centralText, inner - ICON_GUTTER, CARD_TEXT_FONT), centerY: CARD.centralY } : null,
+    central: centralText ? { ...fit(centralText, inner - ICON_GUTTER, CARD_TEXT_FONT), centerY: CARD.centralY - up } : null,
     related: related.map((r, i) => {
       const db = r.crossDb ? r.key.split('/')[0] : null;
       const dbWidth = db ? Math.ceil(measureText(db, CARD_DB_FONT)) + 8 + CARD.dbGap : 0;
@@ -299,7 +307,7 @@ export function domainCard(card, { related, segments, total }) {
         segments: segments[i],
         name: fit(r.key.slice(r.key.indexOf('/') + 1), rowRoom - dbWidth, CARD_TEXT_FONT),
         db,
-        centerY: CARD.relatedY[i],
+        centerY: CARD.relatedY[i] - up,
       };
     }),
   };

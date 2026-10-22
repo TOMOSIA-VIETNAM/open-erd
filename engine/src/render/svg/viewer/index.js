@@ -10,6 +10,7 @@ import { findJoinPaths, hopCondition, pathNames, sqlSkeleton } from './join-path
 import { collectionDocument, createTableSql, isDocumentStore, markdownTable } from './schema-copy.js';
 import { centreOn, fitsInside, minimapSize, visibleRect } from './minimap.js';
 import { columnBadges, panelTabs } from './panel-parts.js';
+import { emptyHistory, goBack, goForward, tableTrail, visit } from './history.js';
 import { endTransforms, radialLayout, straightLink } from './radial.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -65,15 +66,18 @@ const COLLAPSED_HEIGHT = 48;
 // The two sizes of neighborhood, worded for readers who do not think in
 // graph hops. Toolbar and panel use the same words.
 const RELATED = {
-  label: 'Related tables:',
+  label: 'Related:',
   title: 'Shows this table with the tables it is related to, in a ring around it.',
   options: [
     { hops: 1, text: 'Direct', title: 'Tables linked to this one by a relation.' },
-    { hops: 2, text: 'Direct + next level', title: 'Tables linked to this one, and the tables linked to those.' },
+    { hops: 2, text: '+1 level', title: 'Tables linked to this one, and the tables linked to those (direct + next level).' },
   ],
 };
 
 const svg = document.documentElement;
+// Shortcuts use Cmd on a Mac, Ctrl elsewhere.
+const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+const MOD_KEY = IS_MAC ? '⌘' : 'Ctrl+';
 const data = JSON.parse(document.getElementById('open-erd-data').textContent);
 
 // ---------------------------------------------------------------- helpers
@@ -172,7 +176,10 @@ function overlay(cls) {
   return { fo, div };
 }
 
-const state = { view: OVERVIEW, hops: 1, center: null, joinPath: null, history: [], cam: { x: 0, y: 0, s: 1 } };
+const state = { view: OVERVIEW, hops: 1, center: null, joinPath: null, cam: { x: 0, y: 0, s: 1 } };
+// Steps behind and ahead (see history.js): Back and Forward walk views and,
+// inside them, the tables the reader jumped between.
+let nav = emptyHistory();
 
 // ---------------------------------------------------------------- camera
 
@@ -185,6 +192,7 @@ function applyCamera() {
   const { x, y, s } = state.cam;
   camera.setAttribute('transform', `translate(${x} ${y}) scale(${s})`);
   if (state.view === CONNECTIONS) stickHeaders();
+  placeBackPill();
   updateMinimap();
 }
 
@@ -213,7 +221,7 @@ function zoomToRect(r, maxScale) {
   const { w, h } = viewport();
   const panelOpen = panel.fo.style.display !== 'none';
   // The Back pill floats under the toolbar in a navigated view: keep clear of it.
-  const top = TOOLBAR_HEIGHT + (state.history.length > 0 && NAVIGATED(state.view) ? BACK_PILL_ROOM : 0);
+  const top = TOOLBAR_HEIGHT + (backPillShown() ? BACK_PILL_ROOM : 0);
   const area = { w: panelOpen ? w - PANEL_WIDTH - 2 * PANEL_MARGIN : w, h: h - top };
   const s = Math.min((area.w - 2 * FIT_PADDING) / r.w, (area.h - 2 * FIT_PADDING) / r.h, maxScale);
   state.cam = { s, x: (area.w - r.w * s) / 2 - r.x * s, y: top + (area.h - r.h * s) / 2 - r.y * s };
@@ -275,25 +283,64 @@ function readableStart(bounds, focus, maxScale = MAX_FIT_SCALE) {
   applyCamera();
 }
 
+// What is on screen, as a step Back or Forward can return to: the view,
+// the selected table, its panel's tab and scroll position.
 function snapshot() {
-  return { view: state.view, center: state.center, hops: state.hops, joinPath: state.joinPath };
+  const tab = panel.div.querySelector('.oe-tab.on')?.getAttribute('data-tab') ?? null;
+  return { view: state.view, center: state.center, hops: state.hops, joinPath: state.joinPath, table: selectedTable(), tab, scroll: panel.div.scrollTop };
+}
+function recordVisit() {
+  nav = visit(nav, snapshot());
+  updateBackPill();
 }
 
-/** Switches view, remembering where we came from; then focuses `focus`. */
+/** Switches view and/or focuses `focus`, remembering where we came from. */
 function navigate(name, { focus, column } = {}) {
-  if (name !== state.view) {
-    state.history.push(snapshot());
-    showView(name);
+  if (name !== state.view || (focus && focus !== selectedTable())) recordVisit();
+  if (name !== state.view) showView(name);
+  if (focus) {
+    focusNode(focus, column);
+    arrive(focus);
   }
-  if (focus) focusNode(focus, column);
 }
 
+// Back to a step: its view (rebuilt when the viewer builds it), then its
+// table with the same panel tab and scroll.
+function restore(step) {
+  if (step.view === NEIGHBORHOOD) buildNeighborhood(step.center, step.hops);
+  if (step.view === JOIN_VIEW) buildJoinView(step.joinPath);
+  if (step.view !== state.view || step.view === NEIGHBORHOOD || step.view === JOIN_VIEW) showView(step.view);
+  if (step.table && currentIndex().has(step.table)) {
+    focusNode(step.table);
+    if (step.tab) panel.div.querySelector(`.oe-tab[data-tab="${step.tab}"]`)?.click();
+    panel.div.scrollTop = step.scroll ?? 0;
+    arrive(step.table);
+  } else clearSelection();
+  renderToolbar();
+}
 function back() {
-  const prev = state.history.pop();
-  if (!prev) return;
-  if (prev.view === NEIGHBORHOOD) buildNeighborhood(prev.center, prev.hops);
-  if (prev.view === JOIN_VIEW) buildJoinView(prev.joinPath);
-  showView(prev.view);
+  const { history, target } = goBack(nav, snapshot());
+  if (!target) return;
+  nav = history;
+  restore(target);
+}
+function forward() {
+  const { history, target } = goForward(nav, snapshot());
+  if (!target) return;
+  nav = history;
+  restore(target);
+}
+
+// A table reached by a jump pulses briefly, so the eye finds it.
+const ARRIVE_MS = 1600;
+function arrive(id) {
+  const g = currentIndex().get(id)?.el;
+  if (!g) return;
+  g.classList.remove('arrive');
+  // Restart the animation when the same table is reached twice.
+  void g.getBoundingClientRect();
+  g.classList.add('arrive');
+  setTimeout(() => g.classList.remove('arrive'), ARRIVE_MS);
 }
 
 /** Domain view holding table `id` (its own domain), or null for unknown ids. */
@@ -307,7 +354,11 @@ function goToNode(id, column) {
   // Overview nodes are domains (cluster keys), not tables.
   if (!data.nodes[id] && indexes.get(OVERVIEW).has(id)) navigate(domainView(id));
   // A stub only names the table; its columns are in its own domain view.
-  else if (currentIndex().has(id) && state.view !== OVERVIEW && !currentIndex().get(id).el.classList.contains('stub')) focusNode(id, column);
+  else if (currentIndex().has(id) && state.view !== OVERVIEW && !currentIndex().get(id).el.classList.contains('stub')) {
+    if (id !== selectedTable()) recordVisit();
+    focusNode(id, column);
+    arrive(id);
+  }
   else if (homeView(id)) navigate(homeView(id), { focus: id, column });
 }
 
@@ -515,6 +566,7 @@ function selectNode(id) {
   // it is what the reader asked to see.
   currentView().classList.toggle('center-selected', state.view === NEIGHBORHOOD && id === state.center);
   showPanel(poly ? polyPanel(id, poly) : nodePanel(id));
+  if (!poly) shareHash(`table=${id}`);
 }
 
 function focusNode(id, column) {
@@ -701,7 +753,7 @@ const markerGroup = (kind, transform) => svgEl('g', { transform }, parsed(marker
 
 function openNeighborhood(id, hops = state.hops) {
   if (!fullBoxes.has(id)) return;
-  if (state.view !== NEIGHBORHOOD) state.history.push(snapshot());
+  if (state.view !== NEIGHBORHOOD || state.center !== id) recordVisit();
   buildNeighborhood(id, hops);
   showView(NEIGHBORHOOD);
   selectNode(id);
@@ -742,21 +794,25 @@ function relatedButtons(open) {
 }
 const hopButtons = relatedButtons((hops) => openNeighborhood(state.center, hops));
 const hopGroup = el('div', { class: 'oe-related', title: RELATED.title }, [el('span', { text: RELATED.label }), el('div', { class: 'oe-seg' }, hopButtons)]);
-// The overview as cards or as the matrix of the same domains.
-const mapTabs = [
+// The three ways to look at the whole schema, always on the toolbar: every
+// table, the domain cards (Map) and the domain matrix (Connections). A
+// schema too large for the view of all tables has no first one.
+const viewTabs = [
+  [ALL_VIEW, 'All tables', `Every table of every domain (${MOD_KEY}A)`],
   [OVERVIEW, 'Map', 'Domains as cards: what each holds and what it is related to'],
   [CONNECTIONS, 'Connections', 'Domain × domain matrix: how many relations go from each domain to each other'],
-].map(([name, text, title]) => el('button', { class: 'oe-btn', text, title, 'data-view': name, on: { click: () => navigate(name) } }));
-const mapGroup = el('div', { class: 'oe-seg oe-map-tabs' }, mapTabs);
+]
+  .filter(([name]) => views.has(name))
+  .map(([name, text, title]) => el('button', { class: 'oe-btn', text, title, 'data-view': name, on: { click: () => navigate(name) } }));
+const viewGroup = el('div', { class: 'oe-seg oe-view-tabs' }, viewTabs);
 
-const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
-const FIND_KEY = IS_MAC ? '⌘F' : 'Ctrl+F';
+const FIND_KEY = `${MOD_KEY}F`;
 const searchButton = el('button', { class: 'oe-btn oe-tool oe-search-trigger', title: `Search tables and columns (${FIND_KEY} or /)`, 'aria-label': 'Search tables and columns', on: { click: () => openSpotlight() } }, [
   iconSvg('search'),
   el('span', { class: 'label', text: 'Search' }),
   el('kbd', { text: FIND_KEY }),
 ]);
-const joinButton = toolButton('join', 'Join path', 'How to join two tables: the condition of each hop', () => (join.open ? clearSelection() : openJoin()));
+const joinButton = toolButton('join', 'Join path', `How to join two tables: the condition of each hop (${MOD_KEY}J)`, () => (join.open ? clearSelection() : openJoinSpot(selectedTable())));
 
 // Dropdown menus of the toolbar; one open at a time.
 const menus = [];
@@ -789,24 +845,20 @@ function menuItem(label, title, onClick, { checked = null, detail = null, disabl
   ]);
 }
 
-// The view switcher: Overview, All tables, then each database, which shows
-// that database's frame (in the view of all tables when it is on screen,
-// else on the overview).
+// Databases: each one's frame, in the view of all tables when it is on
+// screen, else on the overview. The views themselves are the toolbar tabs.
 const viewsMenu = dropdown(
-  el('button', { class: 'oe-btn oe-tool', title: 'Switch view: the overview, all tables, or one database', 'aria-label': 'Switch view' }, [iconSvg('views'), el('span', { class: 'label', text: 'Views' }), iconSvg('caret', 12)]),
+  el('button', { class: 'oe-btn oe-tool', title: 'Show one database', 'aria-label': 'Show one database' }, [iconSvg('views'), el('span', { class: 'label', text: 'Databases' }), iconSvg('caret', 12)]),
   'oe-views-menu',
 );
 const DATABASES = [...views.get(OVERVIEW).querySelectorAll('.database')].map((g) => g.getAttribute('data-database'));
 // replaceChildren would print a null as text: optional entries are filtered.
 const fillMenu = (menu, items) => menu.replaceChildren(...items.filter(Boolean));
 viewsMenu.onOpen = () =>
-  fillMenu(viewsMenu.menu, [
-    menuItem('Overview', 'Databases and their domains, as cards', () => (closeMenus(), navigate(OVERVIEW)), { checked: state.view === OVERVIEW }),
-    menuItem('Connections', 'Domain × domain matrix of relation counts', () => (closeMenus(), navigate(CONNECTIONS)), { checked: state.view === CONNECTIONS }),
-    views.has(ALL_VIEW) ? menuItem(`All tables · ${plural(tableCount(null), 'table')}`, 'Every table of every domain', () => (closeMenus(), navigate(ALL_VIEW)), { checked: state.view === ALL_VIEW }) : null,
-    DATABASES.length > 0 ? el('div', { class: 'oe-menu-sub', text: 'Databases' }) : null,
-    ...DATABASES.map((db) => menuItem(dbDisplayName(db), `Show the ${dbDisplayName(db)} database (${data.databases[db].label})`, () => (closeMenus(), showDatabase(db)), { detail: data.databases[db].label })),
-  ]);
+  fillMenu(
+    viewsMenu.menu,
+    DATABASES.map((db) => menuItem(dbDisplayName(db), `Show the ${dbDisplayName(db)} database (${data.databases[db].label})`, () => (closeMenus(), showDatabase(db)), { detail: data.databases[db].label })),
+  );
 
 // The ⋯ menu: view and display settings, rebuilt on every open so labels
 // and checks reflect the current state.
@@ -831,6 +883,7 @@ moreMenu.onOpen = () => {
     menuItem('Expand all', foldable ? 'Unfold every domain in this view' : 'Nothing to fold in this view', fold(false), { disabled: !foldable }),
     el('div', { class: 'oe-menu-sep' }),
     menuItem('Minimap', 'Small map of the whole view, shown while it does not fit on screen', toggle(() => setMinimap(!map.on)), { checked: map.on }),
+    menuItem('Keyboard shortcuts', 'Keys that work in this file', () => (closeMenus(), showShortcuts())),
     // Nothing to review: the entry would switch on a mode that changes nothing.
     REVIEW_TOTAL > 0 && reviewable()
       ? menuItem(`Review mode · ${reviewCounts()}`, 'Color lines by review status: amber = not confirmed yet, red = code changed since review', toggle(() => setReviewMode(!reviewing())), {
@@ -856,7 +909,7 @@ downloadMenu.menu.append(
 
 toolbar.div.append(
   el('div', { class: 'oe-left' }, [backButton, crumbs]),
-  el('div', { class: 'oe-right' }, [hopGroup, mapGroup, searchButton, joinButton, viewsMenu.wrap, moreMenu.wrap, downloadMenu.wrap]),
+  el('div', { class: 'oe-right' }, [hopGroup, viewGroup, searchButton, joinButton, viewsMenu.wrap, moreMenu.wrap, downloadMenu.wrap]),
 );
 
 function crumb(text, onClick) {
@@ -885,11 +938,10 @@ function renderToolbar() {
   if (state.view === NEIGHBORHOOD) parts.push(crumb(`Tables related to ${short(state.center)}`));
   if (state.view === JOIN_VIEW) parts.push(crumb(`Join path: ${short(state.joinPath.nodes[0])} → ${short(state.joinPath.nodes.at(-1))}`));
   crumbs.replaceChildren(...parts.flatMap((p, i) => (i === 0 ? [p] : [el('span', { class: 'sep', text: '›' }), p])));
-  backButton.disabled = state.history.length === 0;
+  backButton.disabled = nav.back.length === 0;
   updateBackPill();
   hopGroup.style.display = state.view === NEIGHBORHOOD ? '' : 'none';
-  mapGroup.style.display = state.view === OVERVIEW || state.view === CONNECTIONS ? '' : 'none';
-  for (const b of mapTabs) b.classList.toggle('on', b.getAttribute('data-view') === state.view);
+  for (const b of viewTabs) b.classList.toggle('on', b.getAttribute('data-view') === state.view);
   hopButtons.forEach((b, i) => b.classList.toggle('on', state.hops === RELATED.options[i].hops));
   layoutOverlays();
 }
@@ -907,11 +959,46 @@ function viewLabel(snap) {
 }
 const backPill = overlay('oe-back-host');
 backPill.fo.style.display = 'none';
+// Shown in a view reached by navigation, and wherever the step behind was a
+// table: it then names that table.
+function backPillShown() {
+  const prev = nav.back.at(-1);
+  return Boolean(prev) && (NAVIGATED(state.view) || Boolean(prev.table));
+}
 function updateBackPill() {
-  const prev = state.history.at(-1);
-  const show = Boolean(prev) && NAVIGATED(state.view);
+  const prev = nav.back.at(-1);
+  const show = backPillShown();
   backPill.fo.style.display = show ? '' : 'none';
-  if (show) backPill.div.replaceChildren(el('button', { class: 'oe-back-pill', title: 'Back (Backspace or Alt+←)', text: `← ${viewLabel(prev)}`, on: { click: back } }));
+  if (!show) return;
+  const label = prev.table ? short(prev.table) : viewLabel(prev);
+  backPill.div.replaceChildren(el('button', { class: 'oe-back-pill', title: 'Back (Backspace or Alt+←)', text: `← ${label}`, on: { click: back } }));
+  backPill.fo.setAttribute('width', viewport().w);
+  backPill.fo.setAttribute('height', 40);
+  const r = backPill.div.firstChild.getBoundingClientRect();
+  backPill.size = { w: Math.ceil(r.width) + 2, h: Math.ceil(r.height) + 2 };
+  backPill.fo.setAttribute('width', backPill.size.w);
+  backPill.fo.setAttribute('height', backPill.size.h);
+  placeBackPill();
+}
+
+// The Back pill sits just above the top left corner of the drawing's white
+// sheet and moves with it; it stays on the canvas, below the toolbar (and
+// the review chip), left of the panel. With that corner off screen it waits
+// at the canvas's top left.
+function placeBackPill() {
+  if (backPill.fo.style.display === 'none' || !backPill.size) return;
+  const vp = viewport();
+  const { w, h } = backPill.size;
+  const chip = reviewChip.fo.style.display !== 'none' ? Number(reviewChip.fo.getAttribute('height')) + 8 : 0;
+  const minY = TOOLBAR_HEIGHT + 8 + chip;
+  const b = viewBounds(state.view);
+  const { x: cx, y: cy, s } = state.cam;
+  const corner = { x: cx + b.x * s, y: cy + b.y * s };
+  const onScreen = corner.x >= 0 && corner.x <= vp.w && corner.y >= TOOLBAR_HEIGHT && corner.y <= vp.h;
+  const want = onScreen ? { x: corner.x, y: corner.y - h - 6 } : { x: PANEL_MARGIN, y: minY };
+  const maxX = vp.w - w - PANEL_MARGIN - panelRoom();
+  backPill.fo.setAttribute('x', Math.max(PANEL_MARGIN, Math.min(want.x, maxX)));
+  backPill.fo.setAttribute('y', Math.max(minY, Math.min(want.y, vp.h - h - PANEL_MARGIN)));
 }
 
 /** Shows database `db`'s frame: in the view of all tables when on it, else on the overview. */
@@ -1059,6 +1146,7 @@ const spotlightOpen = () => spotlight.fo.style.display !== 'none';
 
 function openSpotlight() {
   closeMenus();
+  closeJoinSpot();
   hideTip();
   spotlight.fo.style.display = '';
   layoutOverlays();
@@ -1114,15 +1202,176 @@ spotlightInput.addEventListener('keydown', (e) => {
   e.stopPropagation();
 });
 
+// Join spotlight: Cmd+J / Ctrl+J (or the toolbar's Join path) opens two
+// fields, From and To, over the same kind of result list (tables only).
+// Enter or Tab takes the highlighted table and moves to To; Enter on To
+// finds the paths and shows them in the join panel. From starts with the
+// selected table, if any.
+const joinSpot = overlay('oe-spotlight-host');
+joinSpot.fo.style.display = 'none';
+const joinInputs = {
+  from: el('input', { type: 'search', class: 'oe-spotlight-input', placeholder: 'From table', 'aria-label': 'From table', autocomplete: 'off', spellcheck: 'false' }),
+  to: el('input', { type: 'search', class: 'oe-spotlight-input', placeholder: 'To table', 'aria-label': 'To table', autocomplete: 'off', spellcheck: 'false' }),
+};
+const joinList = el('div', { class: 'oe-spotlight-list', role: 'listbox' });
+joinSpot.div.append(
+  el('div', { class: 'oe-spotlight-backdrop', on: { pointerdown: () => closeJoinSpot() } }),
+  el('div', { class: 'oe-spotlight oe-join-spot', role: 'dialog', 'aria-label': 'Join path' }, [
+    ...['from', 'to'].map((slot) => el('div', { class: `oe-spotlight-field oe-join-${slot}` }, [el('span', { class: 'oe-field-label', text: slot === 'from' ? 'From' : 'To' }), joinInputs[slot]])),
+    joinList,
+    el('div', { class: 'oe-spotlight-hint', text: '↑ ↓ to move · Tab or Enter: next field · Enter on To: find the path · Esc to close' }),
+  ]),
+);
+const joinPick = { from: null, to: null, field: 'from', hits: [], items: [], active: 0 };
+const joinSpotOpen = () => joinSpot.fo.style.display !== 'none';
+const tableHits = (text) => [...new Set(search(text).filter((h) => !h.column).map((h) => h.id))];
+
+function openJoinSpot(from = null) {
+  closeMenus();
+  closeSpotlight();
+  hideTip();
+  joinPick.from = data.nodes[from]?.kind === 'table' ? from : null;
+  joinPick.to = null;
+  joinInputs.from.value = joinPick.from ? short(joinPick.from) : '';
+  joinInputs.to.value = '';
+  joinSpot.fo.style.display = '';
+  layoutOverlays();
+  focusJoinField(joinPick.from ? 'to' : 'from');
+}
+function closeJoinSpot() {
+  if (!joinSpotOpen()) return;
+  joinSpot.fo.style.display = 'none';
+  for (const i of Object.values(joinInputs)) i.blur();
+}
+function focusJoinField(slot) {
+  joinPick.field = slot;
+  joinInputs[slot].focus();
+  joinInputs[slot].select();
+  renderJoinHits();
+}
+function setJoinActive(i) {
+  joinPick.items[joinPick.active]?.classList.remove('active');
+  joinPick.active = i;
+  joinPick.items[i]?.classList.add('active');
+  joinPick.items[i]?.scrollIntoView({ block: 'nearest' });
+}
+function renderJoinHits() {
+  const text = joinInputs[joinPick.field].value;
+  // A field showing the table it holds lists that table first.
+  const chosen = joinPick[joinPick.field];
+  joinPick.hits = chosen && text === short(chosen) ? [chosen, ...tableHits(text).filter((id) => id !== chosen)] : tableHits(text);
+  joinPick.active = 0;
+  joinPick.items = joinPick.hits.map((id, i) =>
+    el('button', { class: `oe-result${i === 0 ? ' active' : ''}`, role: 'option', title: id, on: { click: () => takeJoinHit(id), pointermove: () => joinPick.active !== i && setJoinActive(i) } }, [
+      el('span', { class: 'kind is-table', text: 'table' }),
+      el('span', { class: 'name', text: short(id) }),
+      el('span', { class: 'where', text: `${dbDisplayName(dbOf(id))} › ${domainName(data.nodes[id].cluster)}` }),
+    ]),
+  );
+  const empty = text.trim() ? 'No table matches' : `Type the name of the ${joinPick.field === 'from' ? 'first' : 'second'} table`;
+  joinList.replaceChildren(...(joinPick.items.length > 0 ? joinPick.items : [el('div', { class: 'oe-spotlight-empty', text: empty })]));
+}
+// Takes a table for the current field: From moves on to To, To runs.
+function takeJoinHit(id) {
+  joinPick[joinPick.field] = id;
+  joinInputs[joinPick.field].value = short(id);
+  if (joinPick.field === 'from') return focusJoinField('to');
+  if (!joinPick.from) return focusJoinField('from');
+  closeJoinSpot();
+  join.from = joinPick.from;
+  setJoinEnd('to', joinPick.to);
+}
+for (const slot of ['from', 'to']) {
+  joinInputs[slot].addEventListener('focus', () => {
+    if (joinPick.field !== slot) {
+      joinPick.field = slot;
+      renderJoinHits();
+    }
+  });
+  joinInputs[slot].addEventListener('input', () => {
+    joinPick[slot] = null;
+    renderJoinHits();
+  });
+  joinInputs[slot].addEventListener('keydown', (e) => {
+    if ((e.key === 'Enter' || (e.key === 'Tab' && !e.shiftKey)) && joinPick.hits[joinPick.active]) {
+      e.preventDefault();
+      takeJoinHit(joinPick.hits[joinPick.active]);
+    } else if (e.key === 'Tab' && e.shiftKey && slot === 'to') {
+      e.preventDefault();
+      focusJoinField('from');
+    } else if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && joinPick.items.length > 0) {
+      e.preventDefault();
+      setJoinActive((joinPick.active + (e.key === 'ArrowDown' ? 1 : joinPick.items.length - 1)) % joinPick.items.length);
+    } else if (e.key === 'Escape') closeJoinSpot();
+    else return;
+    e.stopPropagation();
+  });
+}
+
+// ---------------------------------------------------------------- deep links
+
+// erd.svg#table=<table id>, #column=<table id>.<column> or #view=<view>
+// opens there: a table in the view of all tables (its domain view in a
+// schema without one), selected, with its panel; a column also unfolds in
+// the panel. Selecting a table writes its link back into the address
+// (replaceState: Back does not walk through selections), so the address bar
+// is always a link to what is on screen.
+let lastHash = null;
+function shareHash(value) {
+  const hash = `#${value.replace(/[^A-Za-z0-9_./:-]/g, encodeURIComponent)}`;
+  if (hash === location.hash) return;
+  lastHash = hash;
+  try {
+    history.replaceState(null, '', hash);
+  } catch {
+    // A page that may not change its address (some file viewers) keeps it.
+  }
+}
+function openDeepLink(hash) {
+  if (!hash || hash === lastHash) return false;
+  const [key, ...rest] = hash.slice(1).split('=');
+  const value = decodeURIComponent(rest.join('='));
+  if (key === 'view' && views.has(value) && value !== NEIGHBORHOOD && value !== JOIN_VIEW) {
+    navigate(value);
+    return true;
+  }
+  if (key !== 'table' && key !== 'column') return false;
+  const parts = value.split('.');
+  const id = parts.slice(0, 3).join('.');
+  const column = key === 'column' ? parts.slice(3).join('.') : null;
+  if (data.nodes[id]?.kind !== 'table') return false;
+  const home = views.has(ALL_VIEW) ? ALL_VIEW : homeView(id);
+  navigate(home, { focus: id, column });
+  if (column && data.nodes[id].columns.some((c) => c.name === column)) {
+    showPanel(nodePanel(id, column));
+    panel.div.querySelector('.oe-col.open')?.scrollIntoView({ block: 'nearest' });
+    shareHash(`column=${id}.${column}`);
+  }
+  return true;
+}
+
 // ---------------------------------------------------------------- panel
 
 const panel = overlay('oe-panel');
+function showShortcuts() {
+  showPanel([
+    panelHeader({ name: 'Keyboard shortcuts' }),
+    el('table', { class: 'oe-keys' }, SHORTCUTS.map(([keys, what]) => el('tr', {}, [el('td', {}, [el('kbd', { text: keys })]), el('td', { text: what })]))),
+  ]);
+}
 panel.fo.style.display = 'none';
 
 function hidePanel() {
+  const was = panel.fo.style.display !== 'none';
   panel.fo.style.display = 'none';
   join.open = false;
   joinButton.classList.remove('on');
+  // The minimap and the Back pill keep clear of the panel: with it gone
+  // they move back to the right edge now, not at the next pan.
+  if (was) {
+    updateMinimap();
+    placeBackPill();
+  }
 }
 
 function showPanel(children) {
@@ -1216,16 +1465,25 @@ function chipEntries(id, links, otherEnd) {
 // Copy the table as SQL (a JSON schema-like document for MongoDB) or as a
 // Markdown table, from a small menu under an icon button; `status` says
 // what was copied.
-function copySchemaButton(id, n, status) {
+// CREATE TABLE of a table with its indexes and database foreign keys (a
+// JSON schema-like document for a document store).
+function tableSql(id, n = data.nodes[id]) {
   const engine = data.databases[dbOf(id)].engine;
+  if (isDocumentStore(engine)) return collectionDocument(id, n);
   const foreignKeys = [...data.links, ...data.hubLinks]
     .filter((l) => l.from === id && l.kind === 'db_fk' && l.fromColumns)
     .map((l) => ({ columns: l.fromColumns, to: l.to, toColumns: l.toColumns }));
+  return createTableSql(id, n, engine, foreignKeys);
+}
+
+function copySchemaButton(id, n, status) {
+  const engine = data.databases[dbOf(id)].engine;
   const options = isDocumentStore(engine)
-    ? [['JSON schema (approximate)', 'Fields, required list, enum values and indexes as a JSON document', () => collectionDocument(id, n), 'JSON schema']]
-    : [['SQL (CREATE TABLE, approximate)', 'Types as recorded in the ERD, NOT NULL, DEFAULT, keys, unique constraints, database foreign keys and indexes', () => createTableSql(id, n, engine, foreignKeys), 'SQL']];
-  options.push(['Markdown table', 'The column grid as a Markdown table', () => markdownTable(id, n), 'Markdown table']);
-  const menu = el('div', { class: 'oe-menu oe-copy-menu', style: 'display:none' });
+    ? [['JSON schema', 'Fields, required list, enum values and indexes as a JSON schema-like document (approximate)', () => collectionDocument(id, n), 'JSON schema']]
+    : [['SQL', 'CREATE TABLE incl. indexes — approximate types: NOT NULL, DEFAULT, keys, unique constraints, database foreign keys', () => tableSql(id, n), 'SQL']];
+  options.push(['Markdown', 'The column grid as a Markdown table', () => markdownTable(id, n), 'Markdown']);
+  // A popover over the panel's content, anchored under the button.
+  const menu = el('div', { class: 'oe-menu oe-copy-menu oe-popover', style: 'display:none' });
   const toggle = toolButton('copy', '', 'Copy schema: SQL or Markdown', () => {
     menu.style.display = menu.style.display === 'none' ? '' : 'none';
     layoutOverlays();
@@ -1315,10 +1573,27 @@ function tableActions(id, n) {
   const status = el('span', { class: 'oe-status-inline muted' });
   return el('div', { class: 'oe-actions' }, [
     el('span', { class: 'oe-actions-label', text: 'Related', title: RELATED.title }),
-    el('div', { class: 'oe-seg', title: RELATED.title }, RELATED.options.map((o) => el('button', { class: 'oe-btn', text: o.hops === 1 ? 'Direct' : '+1 level', title: `Related tables: ${o.title}`, on: { click: () => openNeighborhood(id, o.hops) } }))),
+    el('div', { class: 'oe-seg', title: RELATED.title }, RELATED.options.map((o) => el('button', { class: 'oe-btn', text: o.text, title: `Related tables: ${o.title}`, on: { click: () => openNeighborhood(id, o.hops) } }))),
     toolButton('join', '', 'Find a join path from this table', () => openJoin(id), ' oe-join-from'),
     copySchemaButton(id, n, status),
     status,
+  ]);
+}
+
+// The last tables visited, newest at the right (cut at the left when long),
+// each a link back to it, with Back and Forward.
+function tableTrailRow(id) {
+  const tables = tableTrail(nav, { table: id });
+  if (tables.length < 2 && nav.back.length === 0 && nav.forward.length === 0) return null;
+  const arrow = (text, title, go, enabled) => el('button', { class: 'oe-trail-btn', text, title, 'aria-label': title, ...(enabled ? {} : { disabled: '' }), on: { click: go } });
+  const items = tables.flatMap((t, i) => [
+    i > 0 ? el('span', { class: 'sep', text: '›' }) : null,
+    t === id ? el('b', { class: 'here', text: short(t), title: t }) : el('button', { class: 'oe-link', text: short(t), title: t, on: { click: () => goToNode(t) } }),
+  ]);
+  return el('div', { class: 'oe-trail' }, [
+    arrow('←', 'Back (Backspace or Alt+←)', back, nav.back.length > 0),
+    arrow('→', 'Forward (Shift+Backspace or Alt+→)', forward, nav.forward.length > 0),
+    el('div', { class: 'items' }, items),
   ]);
 }
 
@@ -1342,6 +1617,7 @@ function nodePanel(id, column = null) {
   const count = out.length + into.length + self.length + sharedOut.length + sharedIn.length;
   const bodies = { columns: () => n.columns.map((c) => columnRow(n, c, column)), relations, indexes: () => indexList(n) };
   return [
+    tableTrailRow(id),
     panelHeader({
       name: short(id),
       tip: `${id}${n.tableKind ? ` (${n.tableKind.replace('_', ' ')})` : ''}`,
@@ -1392,22 +1668,32 @@ function domainLinkPanel(a, b) {
   const id = pairId(a, b);
   const total = (data.domainLinks[id] ?? []).length;
   const crossDb = dbOf(a) !== dbOf(b);
-  const chip = (r) =>
-    el(
-      'button',
-      {
-        class: `oe-chip${isConfirmed(r.kind, r.review) ? '' : ' unconfirmed'}`,
-        title: [`${r.from}.${r.column} → ${r.to}`, r.cardinality, r.association ? `polymorphic «${r.association}»` : r.kind, r.via ? `via ${short(r.via)}` : null].filter(Boolean).join(' · '),
-        on: { click: () => navigate(homeView(r.from), { focus: r.from, column: r.column }) },
-      },
-      [el('span', { text: `${short(r.from)}.${r.column} → ${short(r.to)}` })],
-    );
+  // One chip per referencing table and referenced table ("campaign_surveys →
+  // campaigns"), its columns in the tooltip; dashed while any of them is
+  // not confirmed. A click opens the referencing table.
+  const chips = (relations) => {
+    const byTables = new Map();
+    for (const r of relations) {
+      const key = `${r.from}\u0000${r.to}`;
+      if (!byTables.has(key)) byTables.set(key, []);
+      byTables.get(key).push(r);
+    }
+    return [...byTables.values()].map((list) => {
+      const [r] = list;
+      const confirmed = list.every((x) => isConfirmed(x.kind, x.review));
+      const title = list.map((x) => [`${short(x.from)}.${x.column} → ${short(x.to)}`, x.cardinality, x.association ? `polymorphic «${x.association}»` : x.kind, x.via ? `via ${short(x.via)}` : null].filter(Boolean).join(' · ')).join('\n');
+      return el('button', { class: `oe-chip${confirmed ? '' : ' unconfirmed'}`, title, on: { click: () => navigate(homeView(r.from), { focus: r.from, column: r.column }) } }, [
+        el('span', { text: `${short(r.from)} → ${short(r.to)}` }),
+        list.length > 1 ? el('span', { class: 'db', text: `×${list.length}` }) : null,
+      ]);
+    });
+  };
   return [
     panelHeader({ name: a === b ? 'Inside' : null, tip: crossDb ? `Cross-DB: ${crossing(a, b, '⇄')}` : '', cluster: a === b ? [a] : [a, b], note: a === b ? `${plural(total, 'relation')} inside this domain` : `${plural(total, 'relation')} between these two domains${crossDb ? ` · cross-DB` : ''}` }),
     changeList('links', id),
     ...byDirection(a, b)
       .filter((d) => d.relations.length > 0)
-      .map((d) => el('div', { class: 'oe-chip-group' }, [el('div', { class: 'sub', text: a === b ? `${domainName(a)} (${d.relations.length})` : `${domainName(d.from)} → ${domainName(d.to)} (${d.relations.length})` }), el('div', { class: 'oe-chipbox' }, d.relations.map(chip))])),
+      .map((d) => el('div', { class: 'oe-chip-group' }, [el('div', { class: 'sub', text: a === b ? `${domainName(a)} (${d.relations.length})` : `${domainName(d.from)} → ${domainName(d.to)} (${d.relations.length})` }), el('div', { class: 'oe-chipbox' }, chips(d.relations))])),
   ];
 }
 
@@ -1622,12 +1908,12 @@ function showJoinPath(i) {
   const steps = joinSteps(path);
   let name = joinViewFor(steps);
   if (!name) {
-    if (state.view !== JOIN_VIEW) state.history.push(snapshot());
+    if (state.view !== JOIN_VIEW) recordVisit();
     buildJoinView(path);
     name = JOIN_VIEW;
     showView(JOIN_VIEW);
   } else if (name !== state.view) {
-    state.history.push(snapshot());
+    recordVisit();
     showView(name);
   }
   clearSelection();
@@ -1742,9 +2028,12 @@ function joinPanel() {
   return parts;
 }
 
-function copyText(text, status, what) {
+// Copies `text`; `status` then says what was copied and keeps saying it
+// until another copy or until its panel is redrawn.
+function copyText(text, status, what, then = () => {}) {
   const done = () => {
     status.textContent = `Copied ${what}`;
+    then();
   };
   // A page opened from disk may have no clipboard API: select the text in a
   // field and copy that instead.
@@ -1797,12 +2086,14 @@ const reviewing = () => svg.classList.contains('review-mode');
 // connectors, line ends, the icons in boxes, and, in review mode only, the
 // review colours and icons.
 const strengthSample = () => sample([0, 1, 2, 3, 4].map((i) => svgEl('rect', { class: `seg${i < 3 ? ' on' : ''}`, x: 2 + i * 11, y: 6, width: 9, height: 6, rx: 1 })));
-const connectorSample = (cls, width) => sample([svgEl('path', { class: `card-link ${cls}`, d: 'M2 14C20 14 26 4 44 4', style: `stroke-width:${width}` })]);
+const connectorSample = (count, crossDb) => sample([connectorEl('M2 14C20 14 26 4 44 4', count, crossDb)]);
 const LEGEND = [
   ['Domain cards', [
     [strengthSample, 'Relations with that domain: more filled, more relations', (v) => has(v, '.card-related')],
-    [() => connectorSample('', 3), 'Hover a card: its relations to other domains; the thicker, the more', (v) => has(v, '.domain')],
-    [() => connectorSample('cross_db', 2), 'Domains in different databases', (v) => has(v, '.card-db')],
+    [() => connectorSample(1, false), 'Hover a card: few relations', (v) => has(v, '.domain')],
+    [() => connectorSample(5, false), 'some relations', (v) => has(v, '.domain')],
+    [() => connectorSample(12, false), 'many relations', (v) => has(v, '.domain')],
+    [() => connectorSample(3, true), 'Domain in another database', (v) => has(v, '.card-db')],
   ]],
   ['Review mode', [
     [() => reviewSample('kind-db_fk review-reviewed', 'reviewed'), REVIEW_WORDS.reviewed, (v) => reviewing() && has(v, '.relation-group.review-reviewed')],
@@ -1827,24 +2118,42 @@ const LEGEND = [
   ]],
 ];
 
+// Legend sections with something the view on screen draws.
+const legendSections = (view = currentView()) => LEGEND.map(([title, items]) => [title, items.filter(([, , present]) => present(view))]).filter(([, items]) => items.length > 0);
 function renderLegend() {
-  const view = currentView();
-  const sections = LEGEND.map(([title, items]) => [title, items.filter(([, , present]) => present(view))]).filter(([, items]) => items.length > 0);
+  const sections = legendSections();
   legend.div.replaceChildren(
     el('div', { class: 'oe-legend' }, [
       el('div', { class: 'head' }, [el('b', { text: 'Legend' }), el('button', { class: 'oe-link', text: 'Hide', on: { click: () => setLegend(false) } })]),
-      ...(sections.length > 0 ? [] : [el('div', { class: 'sub', text: 'Nothing to explain in this view.' })]),
       ...sections.flatMap(([title, items]) => [el('div', { class: 'sub', text: title }), ...items.map(([draw, text]) => el('div', { class: 'item' }, [draw(), el('span', { text })]))]),
     ]),
   );
 }
 
-// Folded, the legend is a small "Legend" pill in the same corner.
+// Folded, the legend is a small card in the same corner, a pair with the
+// minimap across the bottom: a glimpse of the notation (a crow's-foot line
+// and a key), "Legend", and a chevron saying it opens upwards.
+function legendPill() {
+  const preview = svgEl('svg', { class: 'oe-legend-glyph', width: 34, height: 14, viewBox: '0 0 34 14', 'aria-hidden': 'true' }, [
+    svgEl('g', { class: 'relation-group kind-db_fk review-reviewed' }, [svgEl('path', { class: 'relation', d: 'M1 7H20' }), svgEl('g', { class: 'marker' }, [markerGroup('many', 'translate(20 7) rotate(180)')])]),
+    ...parsed(keyIconSvg(28, 7)),
+  ]);
+  return el('button', { class: 'oe-legend-pill', title: 'What the marks in this view mean (L)', 'aria-label': 'Show the legend', on: { click: () => setLegend(true) } }, [
+    preview,
+    el('span', { text: 'Legend' }),
+    svgEl('svg', { class: 'oe-icon oe-chevron', width: 12, height: 12, viewBox: '0 0 16 16', 'aria-hidden': 'true' }, [svgEl('path', { d: 'M4.5 10L8 6.5L11.5 10' })]),
+  ]);
+}
+
+// A view with nothing to explain shows neither the legend nor its pill;
+// the reader's choice is kept for the next view.
 function setLegend(open) {
   legendOpen = open;
-  if (open) renderLegend();
-  else legend.div.replaceChildren(el('button', { class: 'oe-legend-pill', title: 'What the marks in this view mean', text: 'Legend', on: { click: () => setLegend(true) } }));
-  legend.fo.style.display = '';
+  const empty = legendSections().length === 0;
+  if (empty) legend.div.replaceChildren();
+  else if (open) renderLegend();
+  else legend.div.replaceChildren(legendPill());
+  legend.fo.style.display = empty ? 'none' : '';
   layoutOverlays();
 }
 
@@ -1958,6 +2267,22 @@ function pairTip(a, b) {
     total > 0 ? el('div', { class: 'muted', text: 'Click to list them' }) : null,
   ];
 }
+// An overview connector: one line, the list only in the panel.
+// A matrix cell: one line in the direction of its row and column, the list
+// only in the panel.
+function cellTip(row, col) {
+  const [there, back] = byDirection(row, col);
+  const head = row === col ? `${domainName(row)} · ${plural(there.relations.length, 'relation')} inside` : `${domainName(row)} → ${domainName(col)} · ${plural(there.relations.length, 'relation')}${back.relations.length > 0 ? ` · ${back.relations.length} back` : ''}`;
+  return [el('b', { text: head }), el('div', { class: 'muted', text: 'Click to list them' })];
+}
+
+// Named in the direction the relations point (the stronger one first when
+// they point both ways).
+function connectorTip(a, b) {
+  const [main, other] = byDirection(a, b).sort((x, y) => y.relations.length - x.relations.length);
+  const backText = other.relations.length > 0 ? ` · ${other.relations.length} back` : '';
+  return [el('div', {}, [el('b', { text: `${domainName(main.from)} → ${domainName(main.to)}` }), el('span', { text: ` · ${plural(main.relations.length, 'relation')}${backText}` })]), el('div', { class: 'muted', text: 'Click to see the list' })];
+}
 const pairSamples = (directions) =>
   directions.flatMap((d) => [
     ...d.relations.slice(0, TIP_RELATIONS).map((r) => el('div', { class: 'muted', text: `${short(r.from)}.${r.column} → ${short(r.to)}` })),
@@ -1973,9 +2298,9 @@ function lineTip(g) {
 
 function tipLines(target) {
   const connector = target.closest('.card-link');
-  if (connector) return pairTip(connector.getAttribute('data-from'), connector.getAttribute('data-to'));
+  if (connector) return connectorTip(connector.getAttribute('data-from'), connector.getAttribute('data-to'));
   const cell = target.closest('.mx-cell');
-  if (cell) return pairTip(cell.getAttribute('data-from'), cell.getAttribute('data-to'));
+  if (cell) return cellTip(cell.getAttribute('data-from'), cell.getAttribute('data-to'));
   const head = target.closest('.mx-head');
   if (head) return [el('b', { text: domainName(head.getAttribute('data-domain')) }), el('div', { class: 'muted', text: `${dbDisplayName(dbOf(head.getAttribute('data-domain')))} · click to open the domain` })];
   const related = target.closest('.card-related');
@@ -2080,22 +2405,14 @@ function layoutOverlays() {
   // hold it, so clicks on its lower items reach it.
   const drop = openMenu()?.menu;
   toolbar.fo.setAttribute('height', drop ? Math.ceil(drop.getBoundingClientRect().bottom + 8) : TOOLBAR_HEIGHT);
-  if (spotlightOpen()) {
-    spotlight.fo.setAttribute('width', w);
-    spotlight.fo.setAttribute('height', h);
+  for (const spot of [spotlight, joinSpot]) {
+    if (spot.fo.style.display === 'none') continue;
+    spot.fo.setAttribute('width', w);
+    spot.fo.setAttribute('height', h);
   }
-  // Floating pills under the toolbar, top left: Back, then the review chip.
-  let pillY = TOOLBAR_HEIGHT + 8;
-  if (backPill.fo.style.display !== 'none') {
-    backPill.fo.setAttribute('width', w);
-    backPill.fo.setAttribute('height', 40);
-    const r = backPill.div.firstChild.getBoundingClientRect();
-    backPill.fo.setAttribute('x', PANEL_MARGIN);
-    backPill.fo.setAttribute('y', pillY);
-    backPill.fo.setAttribute('width', Math.ceil(r.width) + 2);
-    backPill.fo.setAttribute('height', Math.ceil(r.height) + 2);
-    pillY += Math.ceil(r.height) + 8;
-  }
+  // The review chip floats under the toolbar, top left; the Back pill
+  // follows the drawing (see placeBackPill).
+  const pillY = TOOLBAR_HEIGHT + 8;
   if (reviewChip.fo.style.display !== 'none') {
     reviewChip.fo.setAttribute('width', w);
     reviewChip.fo.setAttribute('height', 40);
@@ -2209,17 +2526,21 @@ function connectors(id) {
       const reach = CONNECTOR_BEND * Math.hypot(x2 - x1, y2 - y1);
       const [ox, oy] = outward[side];
       const d = `M${x1} ${y1}C${x1 + ox * reach} ${y1 + oy * reach} ${x2 - ox * reach} ${y2 - oy * reach} ${x2} ${y2}`;
-      // A wide transparent twin makes the thin line easy to point at.
-      paths.push(
-        svgEl('g', { class: `card-link${dbOf(id) === dbOf(e.other) ? '' : ' cross_db'}`, 'data-from': id, 'data-to': e.other }, [
-          svgEl('path', { class: 'card-link-hit', d }),
-          svgEl('path', { class: 'card-link-line', d, style: `stroke-width:${overviewStrokeWidth(e.count) * 1.5}` }),
-        ]),
-      );
+      paths.push(connectorEl(d, e.count, dbOf(id) !== dbOf(e.other), { 'data-from': id, 'data-to': e.other }));
     });
   }
   return svgEl('g', { class: 'card-links' }, paths);
 }
+// One overview connector, as drawn on hover and in the legend: as thick
+// as its relations are many, dashed between databases. A wide transparent
+// twin makes the thin line easy to point at.
+function connectorEl(d, count, crossDb, attrs = {}) {
+  return svgEl('g', { class: `card-link${crossDb ? ' cross_db' : ''}`, ...attrs }, [
+    svgEl('path', { class: 'card-link-hit', d }),
+    svgEl('path', { class: 'card-link-line', d, style: `stroke-width:${overviewStrokeWidth(count) * 1.5}` }),
+  ]);
+}
+
 function focusDomain(id) {
   clearTimeout(unfocusTimer);
   if (focused === id) return;
@@ -2267,10 +2588,12 @@ svg.addEventListener('focusout', (e) => {
 // Matrix: hovering a cell marks it and its two headers.
 function markCell(cell) {
   const view = views.get(CONNECTIONS);
-  for (const e of view.querySelectorAll('.mx-cell.hl, .mx-head.hl')) e.classList.remove('hl');
+  for (const e of view.querySelectorAll('.mx-cell.hl, .mx-head.hl, .mx-cell.cross')) e.classList.remove('hl', 'cross');
   if (!cell) return;
   cell.classList.add('hl');
   const ends = [cell.getAttribute('data-from'), cell.getAttribute('data-to')];
+  // Crosshair: the cell's whole row and column.
+  for (const c of view.querySelectorAll('.mx-cell')) if (c !== cell && (c.getAttribute('data-from') === ends[0] || c.getAttribute('data-to') === ends[1])) c.classList.add('cross');
   for (const h of view.querySelectorAll('.mx-head')) if (ends.includes(h.getAttribute('data-domain'))) h.classList.add('hl');
 }
 svg.addEventListener('pointerover', (e) => {
@@ -2369,6 +2692,10 @@ document.addEventListener(
   (e) => {
     const drop = openMenu();
     if (drop && !e.composedPath().includes(drop.wrap)) closeMenus();
+    // A popover in the panel closes on any press outside its own dropdown.
+    for (const pop of panel.div.querySelectorAll('.oe-popover')) {
+      if (pop.style.display !== 'none' && !e.composedPath().includes(pop.parentNode)) pop.style.display = 'none';
+    }
   },
   true,
 );
@@ -2376,11 +2703,75 @@ document.addEventListener(
 // Cmd+F / Ctrl+F, or "/" outside a text field, opens the search; Escape
 // closes the innermost thing open: search, a menu, then the selection.
 const typing = () => document.activeElement instanceof HTMLInputElement || document.activeElement instanceof HTMLTextAreaElement;
+// Keyboard shortcuts, also listed under ⋯ › Keyboard shortcuts.
+const SHORTCUTS = [
+  [`${MOD_KEY}F or /`, 'Search tables and columns'],
+  [`${MOD_KEY}J`, 'Join path between two tables'],
+  [`${MOD_KEY}A`, 'All tables'],
+  [`${MOD_KEY}C`, 'Copy the selected table as SQL (with its indexes)'],
+  ['L', 'Show or hide the legend'],
+  ['Backspace or Alt+←', 'Back to the previous table or view'],
+  ['Shift+Backspace or Alt+→', 'Forward again'],
+  ['Esc', 'Close search, menu or panel'],
+];
+const selectedTable = () => {
+  const id = currentView().querySelector('.table.selected')?.getAttribute('data-id');
+  return data.nodes[id]?.kind === 'table' ? id : null;
+};
+
+// A short message at the bottom of the screen, gone after a moment.
+const toast = overlay('oe-toast-host');
+toast.fo.style.display = 'none';
+toast.fo.style.pointerEvents = 'none';
+let toastTimer = 0;
+function showToast(text) {
+  toast.div.replaceChildren(el('div', { class: 'oe-toast', role: 'status', text }));
+  toast.fo.style.display = '';
+  const vp = viewport();
+  toast.fo.setAttribute('width', vp.w);
+  toast.fo.setAttribute('height', 60);
+  const r = toast.div.firstChild.getBoundingClientRect();
+  toast.fo.setAttribute('x', Math.round((vp.w - r.width) / 2));
+  toast.fo.setAttribute('y', vp.h - r.height - 28);
+  toast.fo.setAttribute('width', Math.ceil(r.width) + 2);
+  toast.fo.setAttribute('height', Math.ceil(r.height) + 2);
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => (toast.fo.style.display = 'none'), 2500);
+}
+const hasTextSelection = () => (window.getSelection()?.toString() ?? '') !== '';
+
 document.addEventListener('keydown', (e) => {
   const find = (e.key === 'f' || e.key === 'F') && (IS_MAC ? e.metaKey : e.ctrlKey) && !e.altKey && !e.shiftKey;
   if (find || (e.key === '/' && !typing() && !e.metaKey && !e.ctrlKey)) {
     e.preventDefault();
     openSpotlight();
+    return;
+  }
+  const mod = (IS_MAC ? e.metaKey : e.ctrlKey) && !e.altKey && !e.shiftKey;
+  const letter = e.key.length === 1 ? e.key.toLowerCase() : '';
+  // Cmd+J / Ctrl+J: the join spotlight. Chrome and Safari let a page take
+  // it over; where a browser keeps it, the toolbar's Join path does the same.
+  if (mod && letter === 'j') {
+    e.preventDefault();
+    if (joinSpotOpen()) closeJoinSpot();
+    else openJoinSpot(selectedTable());
+    return;
+  }
+  // Cmd+A / Ctrl+A: all tables, except in a text field where it selects.
+  if (mod && letter === 'a' && !typing() && views.has(ALL_VIEW)) {
+    e.preventDefault();
+    closeSpotlight();
+    closeJoinSpot();
+    navigate(ALL_VIEW);
+    return;
+  }
+  // Cmd+C / Ctrl+C with a table selected and no text selected: its SQL.
+  if (mod && letter === 'c' && !typing() && !hasTextSelection() && selectedTable()) {
+    e.preventDefault();
+    const id = selectedTable();
+    const status = { textContent: '' };
+    const what = isDocumentStore(data.databases[dbOf(id)].engine) ? 'JSON schema' : 'SQL';
+    copyText(tableSql(id), status, what, () => showToast(`Copied ${what} for ${short(id)}`));
     return;
   }
   const card = document.activeElement?.closest?.('.domain');
@@ -2389,14 +2780,26 @@ document.addEventListener('keydown', (e) => {
     navigate(domainView(card.getAttribute('data-domain')));
     return;
   }
+  if (letter === 'l' && !e.metaKey && !e.ctrlKey && !e.altKey && !typing()) {
+    if (legendSections().length > 0) setLegend(!legendOpen);
+    return;
+  }
   // Backspace outside a text field, or Alt+←, goes back like the toolbar's Back.
-  if ((e.key === 'Backspace' && !typing() && !e.metaKey && !e.ctrlKey) || (e.key === 'ArrowLeft' && e.altKey && !typing())) {
+  // Shift+Backspace or Alt+→ goes forward again.
+  const backspace = e.key === 'Backspace' && !typing() && !e.metaKey && !e.ctrlKey;
+  if ((backspace && e.shiftKey) || (e.key === 'ArrowRight' && e.altKey && !typing())) {
+    e.preventDefault();
+    if (!spotlightOpen()) forward();
+    return;
+  }
+  if (backspace || (e.key === 'ArrowLeft' && e.altKey && !typing())) {
     e.preventDefault();
     if (!spotlightOpen()) back();
     return;
   }
   if (e.key !== 'Escape') return;
   if (spotlightOpen()) return closeSpotlight();
+  if (joinSpotOpen()) return closeJoinSpot();
   if (openMenu()) return closeMenus();
   clearSelection();
 });
@@ -2408,11 +2811,13 @@ window.addEventListener('resize', () => {
 
 // Later overlays paint on top: the toolbar's menus over the panel, the
 // search over everything but the tooltip.
-svg.append(legend.fo, minimap.fo, backPill.fo, reviewChip.fo, panel.fo, toolbar.fo, spotlight.fo, tip.fo);
+svg.append(legend.fo, minimap.fo, backPill.fo, reviewChip.fo, panel.fo, toolbar.fo, spotlight.fo, joinSpot.fo, toast.fo, tip.fo);
 // The view drawn visible without script is where the reader starts (all
 // tables unless the workspace configured another view). All tables open at
 // a readable size around the most central table; a diff drawing shows its
 // whole view, banner included.
 const start = [...views].find(([, v]) => v.style.display !== 'none')?.[0] ?? OVERVIEW;
 showView(start);
-if (start === ALL_VIEW && !data.changes) readableStart(viewBounds(ALL_VIEW), indexes.get(ALL_VIEW).get(data.mostCentral)?.box ?? null);
+if (!openDeepLink(location.hash) && start === ALL_VIEW && !data.changes) readableStart(viewBounds(ALL_VIEW), indexes.get(ALL_VIEW).get(data.mostCentral)?.box ?? null);
+// Another link opened in the same tab (a hash change only) goes there too.
+window.addEventListener('hashchange', () => openDeepLink(location.hash));
