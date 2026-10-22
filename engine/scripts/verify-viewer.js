@@ -12,6 +12,7 @@ import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { launchChrome } from './cdp.js';
+import { impactRings, referencedColumns } from '../src/render/svg/viewer/impact.js';
 
 const VIEWPORT = { width: 1400, height: 900 };
 const [input, outDir] = process.argv.slice(2);
@@ -742,7 +743,7 @@ await shot('neighborhood-2-hops', `${viewIs('neighborhood')} && ${visible}.query
 // fitted drawing ends left of the open panel.
 await shot(
   'neighborhood-2-hops-readable',
-  `(() => { const outer = [...${visible}.querySelectorAll('.table.hop-2, .poly.hop-2')];
+  `(() => { const outer = [...${visible}.querySelectorAll('.table.ring-2, .poly.ring-2')];
     const panel = [...document.querySelectorAll('foreignObject')].find((f) => f.querySelector('.oe-panel'));
     const drawn = ${visible}.querySelector(':scope > rect').getBoundingClientRect();
     return outer.length === 0 || (outer.every((g) => getComputedStyle(g).opacity === '1') && drawn.right <= panel.getBoundingClientRect().left + 1); })()`,
@@ -782,6 +783,97 @@ if (hub) {
   await click(`[...document.querySelectorAll('.oe-panel .oe-btn')].find((b) => b.textContent === 'Direct')`);
   await shot('hub-neighborhood', `${viewIs('neighborhood')} && ${visible}.querySelectorAll('.table').length >= ${referrers} + 1`);
   await key('Escape');
+  await click(backButton);
+}
+
+// Impact: the table panel's Impact button opens a radial view of the
+// tables depending on it, each outlined in its ring's colour, with the
+// legend's ring entries and a panel listing every ring; a jump from the list
+// selects the table and keeps the list; a download keeps the colours; Back
+// leaves. A referenced column's Impact button (Columns tab) starts from that
+// column; a hub table is a target like any other. The target is the table
+// most referenced, hubs aside.
+const model = JSON.parse(/<script type="application\/json" id="open-erd-data">([^<]*)<\/script>/.exec(await readFile(input, 'utf8'))[1]);
+const hubIds = new Set(model.hubLinks.map((l) => l.to));
+const impactTarget =
+  Object.keys(model.nodes)
+    .filter((id) => model.nodes[id].kind === 'table' && !hubIds.has(id))
+    .map((id) => [id, impactRings(model, id)])
+    .filter(([, rings]) => rings.length > 0)
+    .sort((a, b) => b[1][0].length - a[1][0].length || (a[0] < b[0] ? -1 : 1))[0]?.[0] ?? null;
+const impactChecks = (id, column = null) => {
+  const rings = impactRings(model, id, column);
+  const drawn = rings.map((r) => r.filter((t) => model.nodes[t.id]).length);
+  const name = `${id.split('.')[2]}${column ? `.${column}` : ''}`;
+  return `(() => { const v = ${visible}; const drawn = ${JSON.stringify(drawn)};
+    const got = drawn.map((_, i) => v.querySelectorAll('.table.ring-' + (i + 1)).length);
+    const listed = [...document.querySelectorAll('.oe-panel .oe-impact-ring')].map((r) => r.querySelectorAll('.oe-impact-table').length);
+    const crumb = document.querySelector('.oe-crumbs .oe-link:last-child')?.textContent;
+    const centre = [...v.querySelectorAll('.table.ring-0')].map((g) => g.getAttribute('data-id'));
+    const stroke = getComputedStyle(v.querySelector('.table.ring-1 > rect:last-of-type')).strokeWidth;
+    return ${viewIs('impact')} && JSON.stringify(centre) === ${JSON.stringify(JSON.stringify([id]))}
+      && JSON.stringify(got) === JSON.stringify(drawn) && JSON.stringify(listed) === ${JSON.stringify(JSON.stringify(rings.map((r) => r.length)))}
+      && crumb === ${JSON.stringify(`Impact of ${name}`)}
+      && document.querySelector('.oe-panel .oe-ph-note')?.textContent === ${JSON.stringify(`${rings.flat().length} ${rings.flat().length === 1 ? 'table depends' : 'tables depend'} on it, up to 3 relations away.`)} && stroke === '4px'
+      || { view: v.getAttribute('data-view'), centre, got, drawn, listed, crumb, stroke }; })()`;
+};
+if (impactTarget) {
+  await key('Escape');
+  await searchFor(impactTarget);
+  await click(`document.querySelector('.oe-panel .oe-impact')`);
+  await evaluate(`document.querySelector('.oe-legend-pill')?.click()`);
+  const rings = impactRings(model, impactTarget);
+  await shot(
+    'impact-from-table',
+    `${impactChecks(impactTarget)} === true && [...document.querySelectorAll('.oe-legend .item')].filter((i) => i.querySelector('.legend-ring')).length === ${1 + rings.length} && decodeURIComponent(location.hash) === ${JSON.stringify(`#impact=${impactTarget}`)} || ${impactChecks(impactTarget)}`,
+  );
+  // Nothing drawn runs under the open panel once fitted.
+  await shot('impact-fits-left-of-panel', `(() => { const drawn = ${visible}.querySelector(':scope > rect').getBoundingClientRect();
+    const panel = [...document.querySelectorAll('foreignObject')].find((f) => f.querySelector('.oe-panel')).getBoundingClientRect(); return drawn.right <= panel.left + 1 || { drawn: drawn.right, panel: panel.left }; })()`);
+  const first = rings[0].find((t) => model.nodes[t.id]).id;
+  await click(`[...document.querySelectorAll('.oe-panel .oe-impact-table .oe-link')].find((b) => b.title === ${JSON.stringify(`Go to ${first}`)})`);
+  await shot('impact-list-jump', `${viewIs('impact')} && ${inView(`.table.selected[data-id="${first}"]`)} !== null && document.querySelectorAll('.oe-panel .oe-impact-ring').length === ${rings.length}`);
+  await key('Escape');
+  await click(`document.querySelector('.oe-crumbs .oe-link:last-child')`);
+  await shot('impact-crumb-lists', `document.querySelectorAll('.oe-panel .oe-impact-ring').length === ${rings.length}`);
+  // The download is the impact view with its colours, named after the table.
+  const downloads = join(resolve(outDir), 'downloads', 'impact');
+  await mkdir(downloads, { recursive: true });
+  await send('Page.setDownloadBehavior', { behavior: 'allow', downloadPath: downloads });
+  await choose('download', 'This view as SVG');
+  let file = null;
+  for (let i = 0; i < 100 && !file; i++) {
+    file = (await readdir(downloads)).find((f) => f.endsWith('-impact.svg'));
+    await pause(100);
+  }
+  await pause(200);
+  const plain = file ? (await readFile(join(downloads, file))).toString() : '';
+  if (!/data-view="impact"/.test(plain) || !/class="table[^"]* ring-1/.test(plain) || !plain.includes('--impact-ring-1') || /foreignObject/.test(plain)) failures.push(`impact download: ${file}`);
+  await closeMenu('download');
+  // Back walks the jump first (the table selected in the view), then leaves.
+  await click(backButton);
+  await shot('impact-back-jump', `${viewIs('impact')} && ${visible}.querySelector('.table.selected') === null && document.querySelectorAll('.oe-panel .oe-impact-ring').length === ${rings.length}`);
+  await click(backButton);
+  await shot('impact-back', `!(${viewIs('impact')}) && ${inView(`.table.selected[data-id="${impactTarget}"]`)} !== null`);
+  const column = [...referencedColumns(model, impactTarget)][0];
+  await tab('columns');
+  await click(`document.querySelector('.oe-panel .oe-col[data-column="${column}"] .oe-impact-btn')`);
+  await shot('impact-from-column', impactChecks(impactTarget, column));
+  await click(backButton);
+  // A table nothing references offers the button disabled.
+  const unreferenced = Object.keys(model.nodes).find((id) => model.nodes[id].kind === 'table' && impactRings(model, id, null, 1).length === 0);
+  if (unreferenced) {
+    await key('Escape');
+    await searchFor(unreferenced);
+    await shot('impact-disabled', `document.querySelector('.oe-panel .oe-impact').disabled === true`);
+  }
+}
+const hubTarget = [...hubIds].sort((a, b) => impactRings(model, b)[0].length - impactRings(model, a)[0].length || (a < b ? -1 : 1))[0];
+if (hubTarget) {
+  await key('Escape');
+  await searchFor(hubTarget);
+  await click(`document.querySelector('.oe-panel .oe-impact')`);
+  await shot('impact-hub', impactChecks(hubTarget));
   await click(backButton);
 }
 
@@ -1302,6 +1394,10 @@ await shot(
   await shot('deep-link-table', `${viewIs(home)} && ${inView(`.table.selected[data-id="${linked[0]}"]`)} !== null && document.querySelector('.oe-panel .oe-ph-name')?.textContent === ${JSON.stringify(linked[0].split('.')[2])}`);
   await open(`#column=${encodeURIComponent(`${linked[0]}.${linked[1]}`)}`);
   await shot('deep-link-column', `document.querySelector('.oe-panel .oe-col.open')?.getAttribute('data-column') === ${JSON.stringify(linked[1])} && decodeURIComponent(location.hash) === ${JSON.stringify(`#column=${linked[0]}.${linked[1]}`)}`);
+  if (impactTarget) {
+    await open(`#impact=${encodeURIComponent(impactTarget)}`);
+    await shot('deep-link-impact', impactChecks(impactTarget));
+  }
   const other = await evaluate(`[...${visible}.querySelectorAll('.table')].map((g) => g.getAttribute('data-id')).find((id) => id !== ${JSON.stringify(linked[0])})`);
   await bringIntoView(inView(`.table[data-id="${other}"]`));
   const before = await evaluate('history.length');
