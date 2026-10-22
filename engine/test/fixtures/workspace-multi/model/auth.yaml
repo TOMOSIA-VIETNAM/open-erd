@@ -20,7 +20,7 @@ tables:
     columns:
       - { name: id, type: bigint, pk: true }
       - { name: user_id, type: bigint, nullable: false }
-      - { name: display_name, type: varchar(80) }
+      - { name: display_name, type: varchar(80), pii: true }
   - id: auth.public.roles
     domain: Identity
     columns:

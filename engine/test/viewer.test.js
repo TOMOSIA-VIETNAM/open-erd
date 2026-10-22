@@ -13,6 +13,7 @@ import { applyProfile } from '../src/model/profile.js';
 import { centreOn, fitsInside, minimapSize, visibleRect } from '../src/render/svg/viewer/minimap.js';
 import { endTransforms, radialLayout, straightLink } from '../src/render/svg/viewer/radial.js';
 import { tourIndex, tourSteps } from '../src/render/svg/viewer/tour.js';
+import { piiSummary } from '../src/render/svg/viewer/pii.js';
 import { domainSummary } from '../src/layout/domains.js';
 import { loadMulti } from './helpers/shop.js';
 
@@ -294,4 +295,38 @@ test('tour: one step per domain in the overview order the matrix rows carry, cen
   assert.equal(tourSteps(['db/One'], { 'db._.t': { kind: 'table', cluster: 'db/One' } }).at(0).title, 'One · 1 table');
   // Next and Prev wrap round.
   assert.deepEqual([tourIndex(0, -1, 4), tourIndex(3, 1, 4), tourIndex(1, 1, 4)], [3, 0, 2]);
+});
+
+test('personal data summary: pii columns per domain then table, most first, ties by key, columns in model order', async () => {
+  const { svg } = await multi();
+  const summary = piiSummary(JSON.parse(dataBlock(svg)).nodes);
+  assert.deepEqual(summary, {
+    total: 4,
+    tables: 4,
+    domains: [
+      { cluster: 'auth/Identity', count: 2, tables: [{ id: 'auth.public.user_profiles', columns: ['display_name'] }, { id: 'auth.public.users', columns: ['email'] }] },
+      { cluster: 'auth/Organizations', count: 1, tables: [{ id: 'auth.public.invitations', columns: ['email'] }] },
+      { cluster: 'shop/Content', count: 1, tables: [{ id: 'shop._.comments', columns: ['body'] }] },
+    ],
+  });
+  // More columns first, whatever the key order; a table without any is left out.
+  const t = (cluster, ...pii) => ({ kind: 'table', cluster, columns: [{ name: 'id' }, ...pii.map((name) => ({ name, pii: true }))] });
+  const nodes = { 'a.x.one': t('a/A', 'n'), 'b.x.two': t('b/B', 'n', 'm'), 'b.x.three': t('b/B', 'p'), 'b.x.none': t('b/B'), 'a/poly': { kind: 'poly', cluster: 'a/A' } };
+  assert.deepEqual(piiSummary(nodes), {
+    total: 4,
+    tables: 3,
+    domains: [
+      { cluster: 'b/B', count: 3, tables: [{ id: 'b.x.two', columns: ['n', 'm'] }, { id: 'b.x.three', columns: ['p'] }] },
+      { cluster: 'a/A', count: 1, tables: [{ id: 'a.x.one', columns: ['n'] }] },
+    ],
+  });
+  assert.deepEqual(piiSummary({}), { total: 0, tables: 0, domains: [] });
+});
+
+test('public profile: no pii flag in the embedded data, so the viewer offers no personal data map', async () => {
+  const { model, layout, svg } = await multi();
+  assert.match(dataBlock(svg), /"pii":true/);
+  const shared = renderSvg(applyProfile(model, 'public'), layout, { fitStored: true });
+  assert.doesNotMatch(dataBlock(shared), /"pii"/);
+  assert.equal(piiSummary(JSON.parse(dataBlock(shared)).nodes).total, 0);
 });

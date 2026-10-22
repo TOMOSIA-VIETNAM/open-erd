@@ -53,6 +53,11 @@ for (const output of ['svg', 'xlsx']) {
       assert.ok(full.includes(text), `full render lacks ${what}, so the check below proves nothing`);
       assert.ok(!shared.includes(text), `public render leaks ${what}: ${text}`);
     }
+    // The personal data sheet goes with the columns it lists.
+    if (output === 'xlsx') {
+      assert.match(full, /<sheet [^>]*name="PII"/);
+      assert.doesNotMatch(shared, /<sheet [^>]*name="PII"/);
+    }
     // Evidence is for reviewers: the workbook keeps it (To review), the
     // diagram never carries it, not even in a full render.
     for (const e of evidence) {

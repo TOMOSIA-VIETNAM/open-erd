@@ -70,8 +70,9 @@ more (`validate` rejects it).
 Every new table, column and polymorphic entry gets a `note` (rules in
 `model.md`, "Writing facts": business meaning learned from how the code uses
 it, not the name restated); also write one for any column or polymorphic
-entry still without a note. A new enum value gets a meaning only when the
-code reveals one, else `""`. Copy
+entry still without a note. A new column that holds personal data gets
+`pii: true` (the list in `model.md`, "Writing facts"). A new enum value
+gets a meaning only when the code reveals one, else `""`. Copy
 `default`, `auto_increment`, `generated` and each table's `indexes` from the
 facts, and update them like any other attribute when the facts change (an
 index added, dropped or changed in a migration). An extract script written

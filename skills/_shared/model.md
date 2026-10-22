@@ -302,8 +302,13 @@ polymorphic entry may also carry `note` and `internal_note`.
   what for (`Staff discuss an invoice or a payment with the customer.`).
   Write one for every polymorphic entry; the ERD shows it when the
   polymorphic node is selected.
-- **pii**: names, emails, phones, addresses, birth dates, government ids,
-  free-text written by end users, IPs.
+- **pii**: mark every column that holds or may hold personal data, not
+  only the obvious ones: names, emails, phone numbers, postal addresses,
+  birth dates, IP addresses, device ids, government ids (tax, passport,
+  national id numbers), auth, session and password reset tokens, free text
+  that may contain personal data (comments, messages, notes written by
+  users), geo location. The ERD's PII map, the PII sheet of the workbook
+  and the `public` profile (which drops these columns) rely on it.
 - **Special patterns** (STI, view, partition, tenant schemas, embedded
   documents, indexes, framework tables, replica/shard): use the
   fields in "Special patterns" above, not prose in `note`.
