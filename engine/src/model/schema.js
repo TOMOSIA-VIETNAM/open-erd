@@ -313,6 +313,11 @@ export const configSchema = {
         // out/erd.drawio: the overview and the view of all tables,
         // editable in draw.io.
         drawio: { type: 'boolean' },
+        // Where out/erd.svg is published (http or https). Set, each table
+        // header in erd.drawio links to the table there (<url>#table=<id>;
+        // a profile render to erd.<profile>.svg beside it). Left out, no
+        // links: draw.io cannot open a file next to the .drawio file.
+        drawio_svg_url: { type: 'string', pattern: /^https?:\/\/\S+$/, hint: 'http(s) URL of the published erd.svg' },
       },
     },
     // Left out of every profile render.

@@ -191,6 +191,13 @@ async function runLayout({ workspace, relayout = [] }) {
   return 0;
 }
 
+// Published URL of out/<name>.svg, from outputs.drawio_svg_url (the URL of
+// erd.svg; other renders sit beside it), for the draw.io header links.
+function svgUrlOf(config, name) {
+  const url = config.outputs?.drawio_svg_url;
+  return url === undefined ? undefined : new URL(`${name}.svg`, url).href;
+}
+
 // A profile render gets its own file name, so a shared file is never
 // mistaken for the full one (or the reverse) and both can sit side by side.
 async function runRender({ workspace, profile }) {
@@ -224,7 +231,7 @@ async function runRender({ workspace, profile }) {
   await writeFile(`${base}.xlsx`, xlsx);
   const written = [`${base}.svg`, `${base}.xlsx`];
   if ({ ...OUTPUT_DEFAULTS, ...shown.config.outputs }.drawio) {
-    await writeFile(`${base}.drawio`, renderDrawio(shown, layout, { svgFile: `${name}.svg`, ...(profile === undefined ? {} : { fitStored: true }) }));
+    await writeFile(`${base}.drawio`, renderDrawio(shown, layout, { svgUrl: svgUrlOf(shown.config, name), ...(profile === undefined ? {} : { fitStored: true }) }));
     written.push(`${base}.drawio`);
   }
   console.log(`wrote ${written.join(', ')}${profile === undefined ? '' : ` (profile ${profile})`}`);

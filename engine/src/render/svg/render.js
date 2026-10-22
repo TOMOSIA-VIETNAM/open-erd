@@ -169,8 +169,7 @@ const VIEWER_STYLE = `.row-hit { fill: transparent; }
 .oe-ph-name { font-size: 15px; color: #172033; overflow-wrap: anywhere; }
 .oe-domain-chip { font: inherit; font-size: 11px; line-height: 18px; padding: 0 8px; border: 1px solid; border-radius: 9px; background: #ffffff; cursor: pointer; }
 .oe-domain-chip:hover { background: #f6f8fb; }
-.oe-ph-note { color: #3d4a5e; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
-.oe-ph-note.open, .oe-col .l2.open { white-space: normal; }
+.oe-ph-note { color: #3d4a5e; margin-top: 4px; overflow-wrap: anywhere; }
 .oe-ph-sub { color: #7a8597; font-size: 12px; margin-top: 3px; overflow-wrap: anywhere; }
 .oe-ph-facts { margin-top: 4px; font-size: 12px; color: #56627a; }
 .oe-actions { display: flex; align-items: center; gap: 6px; margin: 0 0 10px; flex-wrap: wrap; }
@@ -191,7 +190,10 @@ const VIEWER_STYLE = `.row-hit { fill: transparent; }
 .oe-col .name { color: #1f2a3d; overflow-wrap: anywhere; }
 .oe-col .name.pk { font-weight: 700; }
 .oe-col .type { margin-left: auto; padding-left: 8px; flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: #8a94a6; }
-.oe-col .l2 { margin: 2px 0 0 19px; font-size: 11.5px; color: #7a8597; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.oe-col .l2 { margin: 2px 0 0 19px; font-size: 11.5px; line-height: 1.4; color: #66728a; overflow-wrap: anywhere; }
+.oe-col .l2.internal { color: #9aa4b5; }
+.oe-col .hint { flex: none; display: inline-flex; margin-left: -1px; }
+.oe-col .hint svg { overflow: visible; }
 .oe-badge { flex: none; font: inherit; font-size: 10px; line-height: 15px; padding: 0 5px; border-radius: 4px; background: #eef1f5; color: #56627a; border: 0; white-space: nowrap; max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
 .oe-badge.null { background: #f1f4f8; color: #7a8597; }
 .oe-badge.default { background: #eef4ff; color: #36569a; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }

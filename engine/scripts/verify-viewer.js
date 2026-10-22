@@ -224,12 +224,13 @@ await pause(100);
 await shot('overview-card-keyboard-focus', `${ov}.querySelectorAll('.card-links .card-link').length === ${relatedOf(busiest)}.length`);
 await key('Enter');
 await shot('overview-card-enter-opens', viewIs(`domain:${busiest}`));
-// A view reached by navigation names where Back goes, in a pill at the top
-// left; the pill, Backspace and Alt+← all go back.
+// No Back pill pointing to the overview (the Map tab is one click away);
+// Backspace, Alt+← and the toolbar's Back still go back to it.
 const backPill = `document.querySelector('.oe-back-pill')`;
-await shot('back-pill', `${backPill}?.textContent === '← Overview' && ${backPill}.closest('foreignObject').style.display !== 'none'`);
+const pillShown = `(${backPill}?.closest('foreignObject').style.display ?? 'none') !== 'none'`;
+await shot('no-back-pill-to-overview', `!${pillShown}`);
 await key('Backspace');
-await shot('backspace-goes-back', `${viewIs('overview')} && ${backPill}.closest('foreignObject').style.display === 'none'`);
+await shot('backspace-goes-back', `${viewIs('overview')} && !${pillShown}`);
 await evaluate(`${hubCard}.focus()`);
 await key('Enter');
 await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'ArrowLeft', code: 'ArrowLeft', windowsVirtualKeyCode: 37, modifiers: 1 });
@@ -238,21 +239,26 @@ await pause(150);
 await shot('alt-left-goes-back', viewIs('overview'));
 await mouse('mouseMoved', { x: 5, y: 890 });
 await click(`document.querySelector('.domain[data-domain=${JSON.stringify(busiest)}] .card-box')`, { where: 'top' });
-await click(backPill);
-await shot('back-pill-click', viewIs('overview'));
+await click(backButton);
+await shot('toolbar-back-to-overview', `${viewIs('overview')} && !${pillShown}`);
+// The overview's cards: a related domain's tooltip is one line too.
+await mouse('mouseMoved', await centre(`${hubCard}.querySelector('.card-related .card-related-name')`));
+await pause(150);
+await shot('related-row-tooltip', `[...document.querySelectorAll('.oe-tip')].some((t) => t.closest('foreignObject').style.display !== 'none' && t.children.length === 2 && / → .+ · \\d+ relations?( · \\d+ back)?$/.test(t.firstChild.textContent) && /^Click to open /.test(t.lastChild.textContent))`);
+await mouse('mouseMoved', { x: 5, y: 890 });
 
 // Connections: the Map | Connections switch, a cell's tooltip names both
 // directions, a click lists its relations as chips, the header row and
 // column stay on screen while the matrix is panned.
 await viewTab('connections');
 const cx = `document.querySelector('g.view[data-view="connections"]')`;
-await shot('connections', `${backPill}?.textContent === '← Overview' && ${viewIs('connections')} && ${cx}.querySelectorAll('.mx-cell').length === ${cx}.querySelectorAll('.mx-rows .mx-head').length ** 2 && document.querySelector('.oe-view-tabs [data-view="connections"]').classList.contains('on')`);
+await shot('connections', `!${pillShown} && ${viewIs('connections')} && ${cx}.querySelectorAll('.mx-cell').length === ${cx}.querySelectorAll('.mx-rows .mx-head').length ** 2 && document.querySelector('.oe-view-tabs [data-view="connections"]').classList.contains('on')`);
 const cellSel = `${cx}.querySelector('.mx-cell[data-from=${JSON.stringify(pairEnds[0])}][data-to=${JSON.stringify(pairEnds[1])}]')`;
 await mouse('mouseMoved', await centre(cellSel));
 await pause(150);
 await shot(
   'connections-cell-hover',
-  `${cellSel}.classList.contains('hl') && ${cx}.querySelectorAll('.mx-head.hl').length >= 2 && [...document.querySelectorAll('.oe-tip')].some((t) => /^.+ → .+ · \\d+ relations?( · \\d+ back)?Click to list them$/.test(t.textContent) && t.children.length === 2)`,
+  `${cellSel}.classList.contains('hl') && ${cx}.querySelectorAll('.mx-head.hl').length >= 2 && [...document.querySelectorAll('.oe-tip')].some((t) => /^.+ → .+ · \\d+ relations?( · \\d+ back)?Click to see the list$/.test(t.textContent) && t.children.length === 2)`,
 );
 // The matrix draws nothing the legend explains: no legend, no pill, L does nothing.
 await key('l', 'KeyL');
@@ -376,6 +382,20 @@ await shot(
     return p.querySelector('.oe-ph-name').title.startsWith(${JSON.stringify(table)}) && p.querySelector('.oe-domain-chip').textContent === n.cluster.split('/').slice(1).join('/')
       && p.querySelector('.oe-actions .oe-seg') && p.querySelector('.oe-actions .oe-join-from') && p.querySelector('.oe-actions .oe-copy-schema') && tabs[0] === 'columns' && tabs.includes('relations') === true
       && tabs.includes('indexes') === Boolean(n.indexes) && !/Find join path from here|Copy schema ▾/.test(p.textContent) || tabs; })()`,
+);
+// The detail view: notes in full (no ellipsis), the bolt on indexed columns
+// and the list icon on columns with values, as in the table box; the
+// toolbar's Join path shows its shortcut like Search.
+await shot(
+  'panel-full-notes-icons',
+  `(() => { const n = ${data}.nodes[${JSON.stringify(table)}]; const p = document.querySelector('.oe-panel'); const note = p.querySelector('.oe-ph-note');
+    const full = (e) => !e || (getComputedStyle(e).whiteSpace !== 'nowrap' && getComputedStyle(e).textOverflow !== 'ellipsis' && e.scrollWidth <= e.clientWidth + 1);
+    const rows = [...p.querySelectorAll('.oe-col')];
+    const icons = rows.every((r) => { const c = n.columns.find((x) => x.name === r.getAttribute('data-column')); const idx = (n.indexes ?? []).some((i) => i.columns.includes(c.name));
+      return (r.querySelector('.hint .icon-index') !== null) === idx && (r.querySelector('.hint .hint-enum') !== null) === Boolean(c.enum); });
+    const notes = rows.every((r) => { const c = n.columns.find((x) => x.name === r.getAttribute('data-column')); const l2 = r.querySelector('.l2:not(.internal):not(.oe-warn)'); return (c.note ? l2?.textContent === c.note : l2 === null) && full(l2); });
+    const kbd = [...document.querySelectorAll('.oe-toolbar .oe-tool')].find((b) => b.textContent.startsWith('Join path'))?.querySelector('kbd');
+    return full(note) && icons && notes && kbd && /J$/.test(kbd.textContent) || { icons, notes, kbd: Boolean(kbd) }; })()`,
 );
 // Column rows: NULL only on nullable columns, "= default" when a default exists.
 await shot(
@@ -614,6 +634,12 @@ if (await evaluate(`document.querySelector('g.view[data-view="all"]') !== null`)
   await shot('legend-pill', `(() => { const p = document.querySelector('.oe-legend-pill'); const r = p?.getBoundingClientRect();
     return p && document.querySelector('.oe-legend') === null && r.left < 40 && r.bottom > innerHeight - 40 && ![...document.querySelectorAll('.oe-more-menu .oe-item')].some((b) => b.textContent.startsWith('Legend')); })()`);
   // A card like the minimap (radius 8, its bottom margin), a notation glimpse.
+  // Hovered, it lifts but keeps all four borders inside its area.
+  await mouse('mouseMoved', await centre(`document.querySelector('.oe-legend-pill')`));
+  await pause(250);
+  await shot('legend-pill-hover', `(() => { const p = document.querySelector('.oe-legend-pill').getBoundingClientRect(); const f = document.querySelector('.oe-legend-pill').closest('foreignObject').getBoundingClientRect();
+    return p.top - f.top >= 2 && f.bottom - p.bottom >= 2 && p.left - f.left >= 2 && f.right - p.right >= 2 || { p: [p.top, p.bottom], f: [f.top, f.bottom] }; })()`);
+  await mouse('mouseMoved', { x: 700, y: 400 });
   await shot('legend-pill-style', `(() => { const p = document.querySelector('.oe-legend-pill'); const r = p.getBoundingClientRect(); const cs = getComputedStyle(p);
     const map = document.querySelector('.oe-minimap'); const m = map?.closest('foreignObject').style.display !== 'none' ? map.getBoundingClientRect() : null;
     return cs.borderRadius === '8px' && p.querySelector('.oe-legend-glyph .marker') && p.querySelector('.oe-chevron') && p.textContent === 'Legend' && (!m || Math.abs(m.bottom - r.bottom) < 3) || { radius: cs.borderRadius, bottom: r.bottom, map: m?.bottom }; })()`);
@@ -973,9 +999,15 @@ await key('Escape');
   }
 }
 
-// The Back pill sits just above the top left corner of the drawing's sheet.
+// The Back pill sits just above the top left corner of the drawing's sheet:
+// from a domain view to another domain through a stub.
 await click(`document.querySelector('.oe-crumbs .oe-link')`);
-await click(`document.querySelector('.domain .card-box')`, { where: 'top' });
+await click(`document.querySelector('.domain[data-domain=${JSON.stringify(domain)}] .card-box')`, { where: 'top' });
+await bringIntoView(inView('.stub:not(.group-stub)'));
+await click(inView('.stub:not(.group-stub)'));
+await key('Escape');
+await evaluate(`window.dispatchEvent(new Event('resize'))`);
+await pause(100);
 await shot('back-pill-on-sheet', `(() => { const p = document.querySelector('.oe-back-pill').getBoundingClientRect(); const s = ${visible}.querySelector(':scope > rect').getBoundingClientRect();
   const corner = s.left >= 0 && s.top >= 44; return !corner || (Math.abs(p.left - Math.max(12, s.left)) < 3 && p.bottom <= s.top + 1 && s.top - p.bottom < 12) || { p: [p.left, p.bottom], s: [s.left, s.top] }; })()`);
 await mouse('mouseMoved', { x: 700, y: 500 });
