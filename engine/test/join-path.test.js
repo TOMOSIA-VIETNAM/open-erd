@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { buildDiagram } from '../src/layout/diagram.js';
 import { applyProfile } from '../src/model/profile.js';
 import { viewerData } from '../src/render/svg/render.js';
-import { HUB_COST, conditionsText, findJoinPaths } from '../src/render/svg/viewer/join-path.js';
+import { HUB_COST, conditionsText, findJoinPaths, sqlNames, sqlSkeleton } from '../src/render/svg/viewer/join-path.js';
 import { fk, loadMulti } from './helpers/shop.js';
 
 const dataOf = (model) => viewerData(model, buildDiagram(model));
@@ -108,4 +108,50 @@ test('profile public: paths never use a hidden table or a pii column', async () 
   const pii = { ...multi, tables: multi.tables.map((t) => (t.id === 'shop._.orders' ? { ...t, columns: t.columns.map((c) => (c.name === 'user_id' ? { ...c, pii: true } : c)) } : t)) };
   const text = findJoinPaths(dataOf(applyProfile(pii, 'public')), 'shop._.orders', 'auth.public.users').map(conditionsText).join('\n');
   assert.doesNotMatch(text, /user_id/);
+});
+
+test('SQL skeleton: inner joins in path order, a comment above every risky hop', async () => {
+  const data = dataOf(await loadMulti());
+  const [best] = findJoinPaths(data, 'shop._.tags', 'shop._.order_items');
+  assert.equal(
+    sqlSkeleton(best).sql,
+    [
+      '-- Generated from the ERD: review before running',
+      'SELECT *',
+      'FROM tags',
+      '-- verify: inferred',
+      '-- rows repeat: one tags row matches many product_tags rows',
+      'JOIN product_tags ON tags.id = product_tags.tag_id',
+      'JOIN products ON product_tags.product_id = products.id',
+      '-- rows repeat: one products row matches many order_items rows',
+      'JOIN order_items ON products.id = order_items.product_id',
+    ].join('\n'),
+  );
+  // A polymorphic hop names the type column to filter on, never a value.
+  const [poly] = findJoinPaths(data, 'shop._.comments', 'shop._.order_items');
+  assert.match(sqlSkeleton(poly).sql, /^-- add filter on comments\.commentable_type\nJOIN orders ON comments\.commentable_id = orders\.id$/m);
+  assert.doesNotMatch(sqlSkeleton(poly).sql, /LEFT|deleted/);
+});
+
+test('SQL skeleton: composite keys joined with AND; a cross-DB path is refused', async () => {
+  const multi = await loadMulti();
+  const lines = { id: 'shop._.order_lines', domain: 'Orders', columns: [{ name: 'id', type: 'bigint', pk: true }, { name: 'org_id', type: 'bigint' }, { name: 'order_no', type: 'bigint' }] };
+  const model = {
+    ...multi,
+    tables: [...multi.tables.map((t) => (t.id === 'shop._.orders' ? { ...t, columns: [...t.columns, { name: 'number', type: 'bigint' }] } : t)), lines],
+    relations: [...multi.relations, { ...fk('shop._.order_lines', 'org_id', 'shop._.orders'), from: { table: 'shop._.order_lines', columns: ['order_no', 'org_id'] }, to: { table: 'shop._.orders', columns: ['number', 'organization_id'] } }],
+  };
+  const [p] = findJoinPaths(dataOf(model), 'shop._.order_lines', 'shop._.orders');
+  assert.equal(sqlSkeleton(p).sql.split('\n').at(-1), 'JOIN orders ON order_lines.order_no = orders.number AND order_lines.org_id = orders.organization_id');
+  const [cross] = findJoinPaths(dataOf(multi), 'activity._.page_views', 'shop._.products');
+  assert.ok(cross.hops.some((h) => h.flags.some((f) => f.type === 'cross_db')));
+  const refused = sqlSkeleton(cross);
+  assert.equal(refused.sql, undefined);
+  assert.match(refused.blocked, /^The path spans 2 databases \(activity, shop\): it cannot be one query/);
+});
+
+test('SQL names: the table name, schema-qualified only when two tables share it', () => {
+  const name = sqlNames(['billing.public.users', 'billing.audit.users', 'billing.public.orders']);
+  assert.deepEqual(['billing.public.users', 'billing.audit.users', 'billing.public.orders'].map(name), ['public.users', 'audit.users', 'orders']);
+  assert.equal(sqlNames(['shop._.orders'])('shop._.orders'), 'orders');
 });

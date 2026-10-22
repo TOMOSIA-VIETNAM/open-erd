@@ -212,17 +212,23 @@ export function buildDiagram(model) {
   return { nodes, links, hubLinks, clusters: new Map([...clusters].sort(([a], [b]) => compareStrings(a, b))) };
 }
 
+/** Id of the overview line between domains `a` and `b`, whatever their order. */
+export function domainLinkId(a, b) {
+  return compareStrings(a, b) <= 0 ? `${a}<->${b}` : `${b}<->${a}`;
+}
+
 /**
- * Relations between domains for the overview: one line per direction, from
- * the domain holding the referencing columns to the domain holding the
- * referenced keys, so both directions between two domains stay apart. A
- * polymorphic association counts once per target, since that is where its
- * rows point; a collapsed join table is one n-n relation, drawn from its first
- * key's table to its second. Hub relations are left out, as in every other
- * view: a hub is declared precisely so that it does not draw lines.
+ * Relations between domains for the overview: one line per pair of domains,
+ * whichever way its relations point, so two domains are joined by one line
+ * however they reference each other. Ends are in id order (`from` sorts
+ * before `to`); each relation keeps its own direction. A polymorphic
+ * association counts once per target, since that is where its rows point; a
+ * collapsed join table is one n-n relation, from its first key's table to its
+ * second. Hub relations are left out, as in every other view: a hub is
+ * declared precisely so that it does not draw lines.
  *
  * Each line carries the relations it stands for (`relations`, in id order),
- * which the viewer lists when the line is clicked:
+ * which the viewer lists by direction when the line is clicked:
  *   { id, from: { table, column }, to, cardinality, optional, kind, review, via? }
  */
 export function domainLinks(diagram) {
@@ -230,9 +236,9 @@ export function domainLinks(diagram) {
   const add = (owner, target, relation) => {
     const [a, b] = [diagram.nodes.get(owner).cluster, diagram.nodes.get(target).cluster];
     if (a === b) return;
-    const key = `${a}\u0000${b}`;
-    if (!pairs.has(key)) pairs.set(key, { from: a, to: b, relations: [] });
-    pairs.get(key).relations.push(relation);
+    const id = domainLinkId(a, b);
+    if (!pairs.has(id)) pairs.set(id, { id, ends: [a, b].sort(compareStrings), relations: [] });
+    pairs.get(id).relations.push(relation);
   };
   const entry = (l, from, column, to, extra = {}) => ({
     id: l.id,
@@ -258,14 +264,13 @@ export function domainLinks(diagram) {
     }
   }
   return [...pairs.values()]
-    .sort((a, b) => compareStrings(a.from, b.from) || compareStrings(a.to, b.to))
-    .map((p) => ({
-      id: `${p.from}->${p.to}`,
-      from: { node: p.from, column: null },
-      to: { node: p.to, column: null },
-      count: p.relations.length,
-      kind: p.from.split('/')[0] === p.to.split('/')[0] ? 'domain' : 'cross_db',
-      review: leastTrusted(p.relations.map((r) => r.review), REVIEW_TRUST),
-      relations: [...p.relations].sort((a, b) => compareStrings(a.id, b.id) || compareStrings(a.to, b.to)),
+    .sort((a, b) => compareStrings(a.id, b.id))
+    .map(({ id, ends: [a, b], relations }) => ({
+      id,
+      from: { node: a, column: null },
+      to: { node: b, column: null },
+      count: relations.length,
+      kind: a.split('/')[0] === b.split('/')[0] ? 'domain' : 'cross_db',
+      relations: [...relations].sort((x, y) => compareStrings(x.id, y.id) || compareStrings(x.to, y.to)),
     }));
 }

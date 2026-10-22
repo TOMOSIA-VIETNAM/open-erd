@@ -55,7 +55,7 @@ Mọi người trong dự án: dev, tester, PM, BrSE, khách hàng, đối tác.
 
 **Chống chằng chịt**
 - 3 tầng view:
-  - **Overview**: DB → domain; mỗi chiều tham chiếu giữa 2 domain là 1 line có mũi tên về domain giữ khoá được tham chiếu, nhãn "N relations" ("· cross-DB" khi khác DB); click line → panel liệt kê từng quan hệ, mỗi dòng dẫn tới domain view. Tính sẵn lúc build.
+  - **Overview**: DB → domain; mỗi cặp domain là 1 line (gộp cả 2 chiều), không mũi tên, nét dày theo số quan hệ, số quan hệ trong badge tròn giữa line; khác DB thì nét đứt. Line thẳng / 1 góc gấp giữa các cạnh box khi được, router orthogonal chỉ là fallback. Layout mới: domain trong 1 DB xếp lưới, domain liên kết nhiều đứng cạnh nhau (layout cũ giữ nguyên vị trí). Click line → panel liệt kê quan hệ theo chiều ("A → B (n)"), mỗi dòng dẫn tới domain view. Tính sẵn lúc build.
   - **Domain**: bảng trong domain; bảng ngoài domain là stub mờ. Tính sẵn lúc build.
   - **Neighborhood** (UI: "Related tables: Direct · Direct + next level"): 1 bảng + 1–2 hop, line có crow's foot như view chính. Tính trong viewer bằng thuật toán radial deterministic (không ELK).
 - **Hub**: cột/bảng khai báo hub (`created_by`, `tenant_id`, `users`, …) hiện thành badge trong box (`→ users ×3`), không vẽ line. Chỉ dùng cho tham chiếu cắt ngang (audit, tenant/company), không cho bảng nghiệp vụ trung tâm; ưu tiên `hub.columns`. Panel của bảng hub liệt kê mọi quan hệ hub trỏ vào nó; chọn bảng hub thì line hub (route tính sẵn lúc build, ẩn mặc định) hiện trong view hiện tại; neighborhood của bảng hub gồm cả các bảng đó.
@@ -93,7 +93,7 @@ Mọi người trong dự án: dev, tester, PM, BrSE, khách hàng, đối tác.
 - Chọn 2 bảng → tối đa 3 đường ngắn nhất, xếp hạng: `db_fk`/`reviewed` trước, `inferred`/`pending` sau, đi qua bảng hub với chi phí cao; hoà thì theo id.
 - Tô sáng đường trên sơ đồ, animation theo thứ tự hop; panel liệt kê từng điều kiện nối (`a.x_id = b.id`, composite key đúng thứ tự, join table gộp được tách lại 2 hop).
 - Cờ: inferred/pending, cross-DB, polymorphic ("cần lọc theo `<type_column>`", không điền giá trị), cảnh báo nhân dòng khi hop đi theo chiều 1-n.
-- Nút copy chỉ copy danh sách điều kiện, không sinh câu SQL.
+- Copy danh sách điều kiện, hoặc copy SQL skeleton (`SELECT *`, INNER JOIN theo hop, comment `--` trên hop cần kiểm); đường xuyên DB không có skeleton.
 - Profile `public`: đường không đi qua bảng/cột bị lọc.
 
 **Workspace ERD**
@@ -104,7 +104,7 @@ Mọi người trong dự án: dev, tester, PM, BrSE, khách hàng, đối tác.
 
 ### Ngoài phạm vi bản đầu
 
-Export DBML/Mermaid/`.drawio`, HTML wrapper, lint gợi ý `add_foreign_key` / FK thiếu index, sinh câu SQL hoàn chỉnh, Redis/Elasticsearch store node.
+Export DBML/Mermaid, HTML wrapper, lint gợi ý `add_foreign_key` / FK thiếu index, sinh câu SQL hoàn chỉnh, Redis/Elasticsearch store node.
 
 ## Tech Stack
 

@@ -8,7 +8,8 @@ import { SELF_STUB } from '../src/layout/router.js';
 import { POLY_VISIBLE_TARGETS } from '../src/layout/table-box.js';
 import { ALL_VIEW, ALL_VIEW_MAX_TABLES, STUB_SLOT, viewNames } from '../src/layout/views.js';
 import { normalizeModel } from '../src/model/load.js';
-import { endMarkers } from '../src/render/svg/markers.js';
+import { endMarkers, overviewStrokeWidth } from '../src/render/svg/markers.js';
+import { gridPlace } from '../src/layout/elk-layout.js';
 import { HUB_ROUTE_LIMIT, buildScene, renderSvg } from '../src/render/svg/render.js';
 import { pathLength } from './helpers/geometry.js';
 import { fk, loadMulti, loadWorkspace, table } from './helpers/shop.js';
@@ -23,21 +24,26 @@ async function multi(change = (m) => m) {
 
 const withConfig = (config) => (m) => ({ ...m, config: { ...m.config, ...config } });
 
-test('relation kinds and review states carry their own classes and styles', async () => {
+test('relation kinds and review states carry their own classes; two line styles only', async () => {
   const { svg, scene } = await multi();
   const attr = (id) => id.replaceAll('>', '&gt;').replace(/[.()]/g, '\\$&');
   const group = (id) => svg.match(new RegExp(`<g class="relation-group ([^"]+)" data-id="${attr(id)}"`))?.[1];
-  assert.equal(group('shop._.payments(order_id)->shop._.orders(id)'), 'kind-inferred review-pending');
+  // Dashed (unconfirmed): an inference nobody reviewed, or a fact the code no
+  // longer supports. Everything else solid, whatever its kind.
+  assert.equal(group('shop._.payments(order_id)->shop._.orders(id)'), 'kind-inferred review-pending unconfirmed');
   assert.equal(group('shop._.refunds(payment_id)->shop._.payments(id)'), 'kind-inferred review-reviewed');
-  assert.equal(group('shop._.products(brand_id)->shop._.brands(id)'), 'kind-declared review-stale');
+  assert.equal(group('shop._.products(brand_id)->shop._.brands(id)'), 'kind-declared review-stale unconfirmed');
   assert.equal(group('activity._.audit_logs(organization_id)->auth.public.organizations(id)'), 'kind-cross_db review-pending');
   assert.equal(group('shop._.comments(commentable_id)->«commentable»'), 'kind-polymorphic review-reviewed');
-  // Inferred is dashed only while unreviewed; a reviewed inferred line is solid.
-  assert.match(svg, /\.kind-inferred\.review-pending \.relation, \.kind-inferred\.review-stale \.relation \{ stroke-dasharray: 6 4; \}/);
-  assert.doesNotMatch(svg, /\.kind-inferred \.relation/);
-  assert.match(svg, /\.kind-cross_db \.relation \{ stroke-dasharray: 10 3 2 3 2 3; \}/);
-  // Every cross-DB line, and only those, is labelled in the full view with the database it reaches.
-  for (const r of scene('all').relations) assert.equal(r.label?.text ?? null, r.link.kind === 'cross_db' ? `cross-DB → ${r.link.to.node.split('.')[0]}` : null, r.id);
+  assert.match(svg, /\.unconfirmed \.relation, \.poly-route\.unconfirmed \{ stroke-dasharray: 6 4; \}/);
+  // Kind has no dash pattern of its own; review colours only in review mode.
+  assert.doesNotMatch(svg, /\n\.kind-(cross_db|polymorphic|inferred)[^\n]*dasharray/);
+  assert.doesNotMatch(svg, /\n\.review-(pending|stale)/);
+  assert.match(svg, /\.review-mode \.review-pending :is\(\.relation, \.marker\) \{ stroke: #c27c0e; \}/);
+  // Every cross-DB line, and only those, is labelled in the full view with both databases.
+  for (const r of scene('all').relations) {
+    assert.equal(r.label?.text ?? null, r.link.kind === 'cross_db' ? `${r.link.from.node.split('.')[0]} → ${r.link.to.node.split('.')[0]}` : null, r.id);
+  }
 });
 
 test('hub relations are badges, not lines', async () => {
@@ -71,26 +77,30 @@ test('a polymorphic association is one virtual node and one line; targets are da
   assert.ok(attachable.x >= contentFrame.x && attachable.x + attachable.w <= contentFrame.x + contentFrame.w);
 });
 
-test('overview aggregates relations per direction between domains, with the relations behind each line', async () => {
-  const { scene } = await multi();
+test('overview: one line per pair of domains, its width and badge from the relation count', async () => {
+  const { scene, svg } = await multi();
   const overview = scene('overview');
-  const counts = Object.fromEntries(overview.relations.map((r) => [r.id, [r.link.count, r.link.kind, r.label.text]]));
+  const counts = Object.fromEntries(overview.relations.map((r) => [r.id, [r.link.count, r.link.kind, r.badge.text]]));
   assert.deepEqual(counts, {
     // memberships.role_id -> roles; memberships.user_id is a hub badge.
-    'auth/Organizations->auth/Identity': [1, 'domain', '1 relation'],
-    'activity/Audit->auth/Organizations': [1, 'cross_db', '1 relation · cross-DB → auth'],
-    'activity/Events->shop/Catalog': [1, 'cross_db', '1 relation · cross-DB → shop'],
-    'activity/Events->shop/Orders': [1, 'cross_db', '1 relation · cross-DB → shop'],
-    'shop/Orders->auth/Organizations': [1, 'cross_db', '1 relation · cross-DB → auth'],
-    'shop/Orders->shop/Catalog': [1, 'domain', '1 relation'],
+    'auth/Identity<->auth/Organizations': [1, 'domain', '1'],
+    'activity/Audit<->auth/Organizations': [1, 'cross_db', '1'],
+    'activity/Events<->shop/Catalog': [1, 'cross_db', '1'],
+    'activity/Events<->shop/Orders': [1, 'cross_db', '1'],
+    'auth/Organizations<->shop/Orders': [1, 'cross_db', '1'],
+    'shop/Catalog<->shop/Orders': [1, 'domain', '1'],
     // commentable -> products, attachable -> products
-    'shop/Content->shop/Catalog': [2, 'domain', '2 relations'],
+    'shop/Catalog<->shop/Content': [2, 'domain', '2'],
     // commentable -> orders, attachable -> orders, refunds
-    'shop/Content->shop/Orders': [3, 'domain', '3 relations'],
+    'shop/Content<->shop/Orders': [3, 'domain', '3'],
   });
-  // Only the referenced end carries a marker: an arrow at the domain holding the keys.
-  for (const r of overview.relations) assert.deepEqual(r.markers, { from: 'none', to: 'arrow' });
-  const content = overview.relations.find((r) => r.id === 'shop/Content->shop/Orders').link.relations;
+  // No arrowheads, no text label; the badge sits on the line's middle.
+  for (const r of overview.relations) {
+    assert.equal(r.markers, undefined);
+    assert.equal(r.label, undefined);
+    assert.ok(r.points.length <= 3 || r.id === 'activity/Events<->shop/Orders', `${r.id}: straight or one bend where the boxes allow`);
+  }
+  const content = overview.relations.find((r) => r.id === 'shop/Content<->shop/Orders').link.relations;
   assert.deepEqual(
     content.map((r) => [r.from.table, r.from.column, r.to, r.cardinality, r.association]),
     [
@@ -99,6 +109,11 @@ test('overview aggregates relations per direction between domains, with the rela
       ['shop._.comments', 'commentable_id', 'shop._.orders', 'n-1', 'commentable'],
     ],
   );
+  // Width in a few steps; cross-DB lines dashed; one neutral colour, no review classes.
+  assert.deepEqual([1, 2, 3, 4, 7, 8, 40].map(overviewStrokeWidth), [1.2, 2, 2, 3, 3, 4, 4]);
+  assert.match(svg, /<g class="relation-group overview-link kind-domain" data-id="shop\/Content&lt;-&gt;shop\/Orders"[^>]*>.*?style="stroke-width:2"/);
+  assert.match(svg, /\.overview-link\.kind-cross_db \.relation \{ stroke-dasharray: 8 6;/);
+  assert.doesNotMatch(svg, /overview-link[^"]*review-/);
   assert.deepEqual(
     overview.groups.map((g) => [g.kind, g.group.database, g.group.engine]),
     [['db', 'activity', 'mongodb'], ['db', 'auth', 'postgresql'], ['db', 'shop', 'mysql']],
@@ -107,17 +122,38 @@ test('overview aggregates relations per direction between domains, with the rela
   assert.equal(catalog.box.count.text, '4 tables');
 });
 
-test('references both ways between two domains are two overview lines', async () => {
+test('references both ways between two domains are one overview line listing both directions', async () => {
   const back = { from: { table: 'auth.public.roles', columns: ['id'] }, to: { table: 'auth.public.organizations', columns: ['id'] }, cardinality: '1-1', optional: false, kind: 'declared', evidence: ['db'], review: 'pending' };
   const { scene } = await multi((m) => normalizeModel({ ...m, relations: [...m.relations, back] }));
-  const lines = scene('overview').relations.filter((r) => ['auth/Identity->auth/Organizations', 'auth/Organizations->auth/Identity'].includes(r.id));
+  const lines = scene('overview').relations.filter((r) => r.id.includes('auth/Identity') && r.id.includes('auth/Organizations'));
   assert.deepEqual(
-    lines.map((r) => [r.id, r.link.count, r.link.review, r.link.relations.map((x) => x.from.table)]),
-    [
-      ['auth/Identity->auth/Organizations', 1, 'pending', ['auth.public.roles']],
-      ['auth/Organizations->auth/Identity', 1, 'pending', ['auth.public.memberships']],
-    ],
+    lines.map((r) => [r.id, r.link.count, r.link.relations.map((x) => `${x.from.table}->${x.to}`)]),
+    [['auth/Identity<->auth/Organizations', 2, ['auth.public.memberships->auth.public.roles', 'auth.public.roles->auth.public.organizations']]],
   );
+});
+
+test('overview grid: linked domains of a fresh layout are neighbours, the same on every run', () => {
+  // A chain a-b-c-d-e with heavy weights and one stray box: each link should
+  // end up between grid neighbours (straight or one bend).
+  const boxes = ['a', 'b', 'c', 'd', 'e', 'z'].map((id) => ({ id, w: 200, h: 60 }));
+  const pairs = [
+    { from: 'a', to: 'b', weight: 9 },
+    { from: 'b', to: 'c', weight: 7 },
+    { from: 'c', to: 'd', weight: 5 },
+    { from: 'd', to: 'e', weight: 3 },
+    { from: 'e', to: 'a', weight: 1 },
+  ];
+  const placed = gridPlace(boxes, pairs, 80, 2.5);
+  assert.deepEqual(gridPlace(boxes, [...pairs].reverse(), 80, 2.5), placed);
+  const cellOf = (id) => [placed.get(id).x, placed.get(id).y];
+  const xs = [...new Set(boxes.map((b) => placed.get(b.id).x))].sort((p, q) => p - q);
+  const ys = [...new Set(boxes.map((b) => placed.get(b.id).y))].sort((p, q) => p - q);
+  const grid = (id) => [ys.indexOf(cellOf(id)[1]), xs.indexOf(cellOf(id)[0])];
+  for (const { from, to } of pairs.slice(0, 4)) {
+    const [[r1, c1], [r2, c2]] = [grid(from), grid(to)];
+    assert.ok(Math.max(Math.abs(r1 - r2), Math.abs(c1 - c2)) === 1, `${from}-${to} are not neighbours: ${grid(from)} ${grid(to)}`);
+  }
+  for (const b of boxes) assert.ok(placed.get(b.id).x % 10 === 0 && placed.get(b.id).y % 10 === 0, `${b.id} off the grid`);
 });
 
 test('hub relations into a hub table are routed per view, hidden until it is selected', async () => {

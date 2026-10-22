@@ -2,7 +2,7 @@ import { compareStrings } from '../model/load.js';
 import { PALETTE } from '../palette.js';
 import { boundingBox, padFrame } from './clusters.js';
 import { buildDiagram } from './diagram.js';
-import { layoutGroups, layoutTables } from './elk-layout.js';
+import { gridPlace, layoutGroups, layoutTables } from './elk-layout.js';
 import { LAYOUT_FILE, LAYOUT_SCHEMA_VERSION } from './layout-file.js';
 import { carryRenames } from './renames.js';
 import { insertNextTo, settle } from './stability.js';
@@ -15,13 +15,13 @@ const sameSize = (a, b) => a.w === b.w && a.h === b.h;
 // merging two snapshots) may overlap; such a group must go through settle.
 const anyOverlap = (boxes) => boxes.some((a, i) => boxes.slice(i + 1).some((b) => overlaps(a, b)));
 
-// The children of `group` sharing the most lines with `id` (all of them when
-// it has none), in id order.
+// The children of `group` sharing the most relations with `id` (all of them
+// when it has none), in id order. An overview line counts its relations.
 function mostLinked(id, placedIds, pairs) {
   const links = new Map(placedIds.map((k) => [k, 0]));
-  for (const { from: a, to: b } of pairs) {
-    if (a === id && b !== id && links.has(b)) links.set(b, links.get(b) + 1);
-    if (b === id && a !== id && links.has(a)) links.set(a, links.get(a) + 1);
+  for (const { from: a, to: b, weight } of pairs) {
+    if (a === id && b !== id && links.has(b)) links.set(b, links.get(b) + weight);
+    if (b === id && a !== id && links.has(a)) links.set(a, links.get(a) + weight);
   }
   const most = Math.max(...links.values());
   return placedIds.filter((k) => links.get(k) === most).sort(compareStrings);
@@ -111,6 +111,7 @@ function stackAround(list, gap) {
 const FRESH = {
   layered: (children, pairs) => layoutTables(children, pairs),
   pack: (children, pairs, group) => layoutGroups(children, pairs, group.gap, group.aspect),
+  grid: (children, pairs, group) => gridPlace(children, pairs, group.gap, group.aspect),
   around: (children, pairs, group, links, boxes) => placeAround(children, links, group, boxes),
 };
 
@@ -151,7 +152,7 @@ async function arrange(node, old, links, boxes) {
   for (const r of results) for (const id of r.leaves.keys()) owner.set(id, r.id);
   const pairs = links
     .filter((l) => owner.has(l.from.node) && owner.has(l.to.node))
-    .map((l) => ({ from: owner.get(l.from.node), to: owner.get(l.to.node) }));
+    .map((l) => ({ from: owner.get(l.from.node), to: owner.get(l.to.node), weight: l.count ?? 1 }));
 
   const unchanged = kept.length > 0 && fresh.length === 0 && kept.every((r) => r.unchanged) && !anyOverlap(kept.map((r) => r.ref));
   let positions;

@@ -8,6 +8,7 @@ import { enumMeaning, technicalColumns } from '../src/model/columns.js';
 import { HINT_OFFSET, HINT_SIZE, tableBox } from '../src/layout/table-box.js';
 import { buildScene, renderSvg, viewerData } from '../src/render/svg/render.js';
 import { applyProfile } from '../src/model/profile.js';
+import { centreOn, fitsInside, minimapSize, visibleRect } from '../src/render/svg/viewer/minimap.js';
 import { endTransforms, radialLayout, straightLink } from '../src/render/svg/viewer/radial.js';
 import { loadMulti } from './helpers/shop.js';
 
@@ -100,7 +101,7 @@ test('viewer data: overview line relations, hub relations, link optionality, pol
   const { model, diagram, svg } = await multi();
   const data = JSON.parse(dataBlock(svg));
   // Each overview line lists the relations it stands for, keyed by its id.
-  assert.deepEqual(data.domainLinks['shop/Content->shop/Catalog'], [
+  assert.deepEqual(data.domainLinks['shop/Catalog<->shop/Content'], [
     { from: 'shop._.attachments', column: 'attachable_id', to: 'shop._.products', cardinality: 'n-1', kind: 'polymorphic', association: 'attachable' },
     { from: 'shop._.comments', column: 'commentable_id', to: 'shop._.products', cardinality: 'n-1', kind: 'polymorphic', association: 'commentable' },
   ]);
@@ -142,7 +143,7 @@ test('enum meanings that only restate their value are left out', () => {
   assert.equal(enumMeaning('0', 'Hidden from customers'), 'Hidden from customers');
 });
 
-test('columns with a note or enum values get a mark after the name, inside the row budget', async () => {
+test('only columns with enum values get a mark after the name, inside the row budget', async () => {
   const columns = [
     { name: 'id', type: 'bigint', pk: true },
     { name: 'title', type: 'varchar', note: 'Shown in lists.' },
@@ -152,15 +153,16 @@ test('columns with a note or enum values get a mark after the name, inside the r
   const box = tableBox({ id: 'db._.posts', columns });
   // Same size with or without marks: no stored layout goes stale.
   assert.deepEqual([box.w, box.h], [plain.w, plain.h]);
-  assert.deepEqual(box.rows.map((r) => r.hint), [null, 'note', 'enum']);
+  // Every column has a note, so a note gets no mark.
+  assert.deepEqual(box.rows.map((r) => r.hint), [null, null, 'enum']);
   for (const r of box.rows.filter((x) => x.hint)) {
     assert.equal(r.hintX, r.name.width + HINT_OFFSET);
     // The mark ends before the right-aligned type starts.
     assert.ok(12 + r.hintX + HINT_SIZE / 2 < box.w - 12 - r.type.width, r.column);
   }
   const { svg, model } = await multi();
-  assert.match(svg, /<rect class="hint-enum" /);
-  assert.match(svg, /<circle class="hint-note" /);
+  assert.match(svg, /<path class="hint-enum" d="M[^"]+h1\.2M/);
+  assert.doesNotMatch(svg, /hint-note/);
   // The viewer gets enum values whose meanings say nothing as empty meanings.
   const noisy = { ...model, tables: model.tables.map((t) => (t.id === 'shop._.orders' ? { ...t, columns: t.columns.map((c) => (c.name === 'status' ? { ...c, enum: { pending: 'Pending (Order.status)', paid: 'Payment confirmed' } } : c)) } : t)) };
   const data = viewerData(noisy, buildDiagram(noisy));
@@ -212,4 +214,23 @@ test('straight links run between box borders', () => {
     [50, 40],
     [50, 200],
   ]);
+});
+
+test('minimap: sized from the view bounds, its rectangle is the part on screen, a click centres there', () => {
+  const bounds = { x: -40, y: -40, w: 3600, h: 1800 };
+  assert.deepEqual(minimapSize(bounds, 180, 140), { w: 180, h: 90, scale: 0.05 });
+  // A tall view is capped in height.
+  assert.deepEqual(minimapSize({ x: 0, y: 0, w: 1000, h: 4000 }, 180, 140), { w: 35, h: 140, scale: 0.035 });
+  const viewport = { w: 1400, h: 900 };
+  // At scale 0.5 shifted by (100, 144): the toolbar's 44 px are not visible area.
+  const seen = visibleRect({ x: 100, y: 144, s: 0.5 }, viewport, 44);
+  assert.deepEqual(seen, { x: -200, y: -200, w: 2800, h: 1712 });
+  assert.equal(fitsInside(bounds, seen), false);
+  assert.equal(fitsInside(bounds, visibleRect({ x: 100, y: 144, s: 0.3 }, viewport, 44)), true);
+  // An open side panel narrows the visible area.
+  assert.equal(visibleRect({ x: 0, y: 44, s: 1 }, viewport, 44, 464).w, 936);
+  // Centring keeps the scale and puts the point in the middle of the visible area.
+  const cam = centreOn({ x: 1000, y: 500 }, { x: 0, y: 0, s: 2 }, viewport, 44, 464);
+  assert.equal(cam.s, 2);
+  assert.deepEqual([(468 - cam.x) / 2, (44 + 428 - cam.y) / 2], [1000, 500]);
 });

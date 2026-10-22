@@ -7,6 +7,7 @@
 // table), each polymorphic association as one edge per target, and the hub
 // relations drawn as badges. The data was filtered by the sharing profile
 // before it was written, so a path can never use a hidden table or column.
+import { trustOf } from '../markers.js';
 
 // Cost of one hop, plus a penalty for each step down in trust: a database
 // constraint or a reviewed fact costs nothing extra, an association the code
@@ -26,12 +27,8 @@ const POLYMORPHIC = 'polymorphic';
 
 const cmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 
-/** Trust class of a fact: `trusted`, `declared` or `doubtful`. */
-export function trustOf(kind, review) {
-  if (review === 'reviewed' || kind === 'db_fk') return 'trusted';
-  if (kind === 'inferred' || review === 'stale') return 'doubtful';
-  return 'declared';
-}
+// Trust class of a fact, shared with the line styles of the drawing.
+export { trustOf };
 
 const pkColumns = (node) => (node?.columns ?? []).filter((c) => c.pk).map((c) => c.name);
 
@@ -237,4 +234,46 @@ export function conditionsText(path) {
       return `${hopCondition(h, name)}${poly ? ` (filter by ${name(poly.table)}.${poly.column})` : ''}`;
     })
     .join('\n');
+}
+
+/**
+ * Names for the tables of a path inside SQL: the table name, or
+ * `schema.table` when two tables of the path share a name. Only for a path
+ * within one database (see sqlSkeleton); a schema written `_` (an engine
+ * without schemas) is never printed.
+ */
+export function sqlNames(nodes) {
+  const table = (id) => id.split('.').slice(2).join('.');
+  const count = new Map();
+  for (const id of new Set(nodes)) count.set(table(id), (count.get(table(id)) ?? 0) + 1);
+  return (id) => {
+    const schema = id.split('.')[1];
+    return count.get(table(id)) > 1 && schema !== '_' ? `${schema}.${table(id)}` : table(id);
+  };
+}
+
+// Comment lines above a JOIN, one per thing to check before running it.
+const SQL_NOTES = {
+  trust: (f) => `verify: ${f.text}`,
+  polymorphic: (f, name) => `add filter on ${name(f.table)}.${f.column}`,
+  multiplies: (f, name, hop) => `rows repeat: one ${name(hop.from)} row matches many ${name(hop.to)} rows`,
+};
+
+/**
+ * A starting point for a query along `path`: `SELECT *`, `FROM` the first
+ * table, one INNER JOIN per hop (composite keys joined with AND), each risky
+ * hop preceded by `-- ` comment lines. Nothing is guessed beyond the
+ * conditions (no LEFT JOIN, no soft-delete filter, no type value).
+ * Returns { sql } or, for a path spanning databases, { blocked: reason }.
+ */
+export function sqlSkeleton(path) {
+  const dbs = [...new Set(path.nodes.map(dbOf))];
+  if (dbs.length > 1) return { blocked: `The path spans ${dbs.length} databases (${dbs.join(', ')}): it cannot be one query. Join the results in the application.` };
+  const name = sqlNames(path.nodes);
+  const lines = ['-- Generated from the ERD: review before running', 'SELECT *', `FROM ${name(path.nodes[0])}`];
+  for (const hop of path.hops) {
+    for (const f of hop.flags) if (SQL_NOTES[f.type]) lines.push(`-- ${SQL_NOTES[f.type](f, name, hop)}`);
+    lines.push(`JOIN ${name(hop.to)} ON ${hopCondition(hop, name)}`);
+  }
+  return { sql: lines.join('\n') };
 }

@@ -2,9 +2,10 @@
 // browser; it turns the static drawing (overview visible, other views hidden)
 // into an explorable diagram. Everything it adds is created here at runtime,
 // so a viewer without script still shows the plain overview.
-import { endMarkers, markerSvg } from '../markers.js';
+import { endMarkers, enumIconSvg, isConfirmed, markerSvg } from '../markers.js';
 import { CANVAS_LIMITS, PIXEL_RATIO, canvasScale, exportBaseName } from './download.js';
-import { conditionsText, findJoinPaths, hopCondition, pathNames } from './join-path.js';
+import { conditionsText, findJoinPaths, hopCondition, pathNames, sqlSkeleton } from './join-path.js';
+import { centreOn, fitsInside, minimapSize, visibleRect } from './minimap.js';
 import { endTransforms, radialLayout, straightLink } from './radial.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -79,9 +80,10 @@ const clusterOf = (id) => data.nodes[id]?.cluster;
 const domainView = (cluster) => DOMAIN_PREFIX + cluster;
 const nodeIdOf = (g) => g.getAttribute('data-id') ?? g.getAttribute('data-domain');
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
-// "qlear (PostgreSQL) → qlear_mongo (MongoDB)" for the databases of two names.
+// "qlear (PostgreSQL) → qlear_mongo (MongoDB)" for the databases of two
+// names; `⇄` for an overview line, which stands for both directions.
 const dbOf = (name) => name.split(/[./]/)[0];
-const crossing = (from, to) => `${dbOf(from)} (${data.databases[dbOf(from)]}) → ${dbOf(to)} (${data.databases[dbOf(to)]})`;
+const crossing = (from, to, arrow = '→') => `${dbOf(from)} (${data.databases[dbOf(from)]}) ${arrow} ${dbOf(to)} (${data.databases[dbOf(to)]})`;
 const domainName = (cluster) => cluster.split('/').slice(1).join('/');
 // Table nodes per domain, for the counts in the breadcrumb.
 const tableCount = (cluster) => Object.values(data.nodes).filter((n) => n.kind === 'table' && (cluster === null || n.cluster === cluster)).length;
@@ -164,6 +166,7 @@ function applyCamera() {
   cameraFrame = 0;
   const { x, y, s } = state.cam;
   camera.setAttribute('transform', `translate(${x} ${y}) scale(${s})`);
+  updateMinimap();
 }
 // Pan and zoom gestures fire many events per frame: write the transform once
 // per frame, with the latest camera.
@@ -211,6 +214,8 @@ function showView(name) {
   hideTip();
   for (const [n, v] of views) v.style.display = n === name ? '' : 'none';
   state.view = name;
+  // A neighborhood or join view of the same name may hold other tables now.
+  map.view = null;
   zoomToRect(viewBounds(name), MAX_FIT_SCALE);
   renderToolbar();
   setLegend(name === ALL_VIEW);
@@ -294,6 +299,9 @@ function applyCollapse(name) {
     g.classList.toggle('oe-hidden', gone.length > 0);
     for (const key of new Set(gone.map(clusterOf))) linesHidden.set(key, (linesHidden.get(key) ?? 0) + 1);
   }
+  setToggles(view);
+  // Folded boxes leave the minimap.
+  if (name === state.view) map.view = null;
   for (const c of clusterGroups(view)) {
     const n = linesHidden.get(keyOf(c));
     if (!n) continue;
@@ -323,6 +331,64 @@ function unfoldFor(id) {
   if (collapsedIn(state.view).has(clusterOf(id))) setCollapsed(state.view, [clusterOf(id)], false);
 }
 
+// Each foldable frame gets a +/− toggle before its title and a header band
+// that shows it can be clicked (added here: without script nothing folds).
+// The title moves right to make room; the space the router keeps around a
+// title is wider than that.
+const DB_HEADER_HEIGHT = 60;
+const TOGGLE_SIZE = 9;
+const TOGGLE_ROOM = TOGGLE_SIZE + 6;
+function addFoldToggles(view) {
+  const add = (g, frame, left, cy, band) => {
+    const half = TOGGLE_SIZE / 2;
+    const cx = left + half;
+    const icon = svgEl('g', { class: 'fold-toggle' }, [
+      svgEl('rect', { x: cx - half, y: cy - half, width: TOGGLE_SIZE, height: TOGGLE_SIZE, rx: 2 }),
+      svgEl('path', { class: 'fold-sign', d: '' }),
+    ]);
+    icon.setAttribute('data-cx', cx);
+    icon.setAttribute('data-cy', cy);
+    const hit = svgEl('rect', { class: 'fold-hit', x: frame.x, y: frame.y, width: frame.w, height: band }, [svgEl('title', { text: 'Collapse group' })]);
+    g.append(icon, hit);
+  };
+  for (const c of clusterGroups(view)) {
+    const label = c.querySelector('.cluster-label');
+    const x = +label.getAttribute('x');
+    label.setAttribute('data-x', x);
+    label.setAttribute('x', x + TOGGLE_ROOM);
+    add(c, boxOf(c), x, +label.getAttribute('y'), COLLAPSED_HEIGHT);
+  }
+  for (const db of view.querySelectorAll('.database')) {
+    // The header (cylinder, name, pills) is read from its markup, since a
+    // hidden view has no layout boxes to measure, then moved right.
+    const x = +/^M\s*(-?[\d.]+)/.exec(db.querySelector('.db-icon').getAttribute('d'))[1];
+    for (const e of db.children) if (!e.matches('.db-frame, title')) e.setAttribute('transform', `translate(${TOGGLE_ROOM} 0)`);
+    add(db, boxOf(db), x, +db.querySelector('.db-name').getAttribute('y'), DB_HEADER_HEIGHT);
+  }
+  setToggles(view);
+}
+
+// "−" while a group is open, "+" once folded (a database: once all its
+// domains are).
+function setToggles(view) {
+  const shut = collapsedIn(view.getAttribute('data-view'));
+  const set = (g, folded) => {
+    const icon = g.querySelector(':scope > .fold-toggle');
+    if (!icon) return;
+    const [cx, cy] = [+icon.getAttribute('data-cx'), +icon.getAttribute('data-cy')];
+    const arm = TOGGLE_SIZE / 2 - 2;
+    icon.querySelector('.fold-sign').setAttribute('d', `M${cx - arm} ${cy}H${cx + arm}${folded ? `M${cx} ${cy - arm}V${cy + arm}` : ''}`);
+    g.querySelector(':scope > .fold-hit title').textContent = folded ? 'Expand group' : 'Collapse group';
+  };
+  for (const c of clusterGroups(view)) set(c, shut.has(keyOf(c)));
+  for (const db of view.querySelectorAll('.database')) {
+    const keys = clusterGroups(view).map(keyOf).filter((k) => k.split('/')[0] === db.getAttribute('data-database'));
+    set(db, keys.length > 0 && keys.every((k) => shut.has(k)));
+  }
+}
+
+for (const [name, view] of views) if (name !== OVERVIEW) addFoldToggles(view);
+
 // A click on the header band of a domain frame, or on a database frame's
 // header (which folds or unfolds all its domains); null when elsewhere.
 function headerClick(e) {
@@ -333,7 +399,7 @@ function headerClick(e) {
   const cluster = e.target.closest('.cluster');
   if (cluster && within(cluster.querySelector(':scope > rect'), COLLAPSED_HEIGHT)) return () => setCollapsed(state.view, [keyOf(cluster)], !collapsedIn(state.view).has(keyOf(cluster)));
   const db = e.target.closest('.database');
-  if (db && state.view !== OVERVIEW && within(db.querySelector('.db-frame'), 60)) {
+  if (db && state.view !== OVERVIEW && within(db.querySelector('.db-frame'), DB_HEADER_HEIGHT)) {
     const keys = clusterGroups(currentView()).map(keyOf).filter((k) => k.split('/')[0] === db.getAttribute('data-database'));
     if (keys.length === 0) return null;
     return () => setCollapsed(state.view, keys, keys.some((k) => !collapsedIn(state.view).has(k)));
@@ -495,9 +561,11 @@ function straightRelation(l, from, to, boxes, extraClass = '') {
   if (l.cardinality) {
     const kinds = endMarkers(l);
     const [at, back] = endTransforms(points);
-    children.push(svgEl('g', { class: 'marker' }, [markerGroup(kinds.from, at), markerGroup(kinds.to, back)]));
+    children.push(svgEl('g', { class: 'marker', 'data-ends': `${kinds.from} ${kinds.to}` }, [markerGroup(kinds.from, at), markerGroup(kinds.to, back)]));
   }
-  return svgEl('g', { class: `relation-group kind-${l.kind} review-${l.review}${extraClass}`, 'data-id': l.id, 'data-from': from, 'data-to': to }, children);
+  // Solid when confirmed, dashed when not, as in the drawn views.
+  const style = l.kind !== 'view_source' && !isConfirmed(l.kind, l.review) ? ' unconfirmed' : '';
+  return svgEl('g', { class: `relation-group kind-${l.kind} review-${l.review}${style}${extraClass}`, 'data-id': l.id, 'data-from': from, 'data-to': to }, children);
 }
 
 /**
@@ -542,7 +610,7 @@ function buildNeighborhood(center, hops) {
     if (l.to === center && l.from !== center && shown.has(l.from)) relations.append(relationLine(l, l.from, center));
   }
   for (const t of poly ? poly.targets.filter((x) => shown.has(x)) : []) {
-    relations.append(relationLine({ id: `${center}->${t}`, cardinality: 'n-1', optional: poly.optional, kind: 'polymorphic', review: 'reviewed' }, center, t));
+    relations.append(relationLine({ id: `${center}->${t}`, cardinality: 'n-1', optional: poly.optional, kind: 'polymorphic', review: poly.review }, center, t));
   }
   for (const id of ids.filter((n) => n !== center && data.nodes[n]?.kind === 'poly')) {
     const targets = data.nodes[id].targets.filter((t) => shown.has(t));
@@ -551,7 +619,7 @@ function buildNeighborhood(center, hops) {
       svgEl(
         'g',
         { class: 'poly-routes', 'data-poly': id, style: 'display:none' },
-        targets.map((t) => svgEl('path', { class: 'poly-route', 'data-target': t, d: linePath(ends(id, t)) })),
+        targets.map((t) => svgEl('path', { class: `poly-route${isConfirmed('polymorphic', data.nodes[id].review) ? '' : ' unconfirmed'}`, 'data-target': t, d: linePath(ends(id, t)) })),
       ),
     );
   }
@@ -572,16 +640,10 @@ function buildNeighborhood(center, hops) {
   state.hops = hops;
 }
 
-// The marker shapes of the drawn views, parsed once per kind and placed by
-// a transform along the line.
-const markerShapes = new Map();
-function markerGroup(kind, transform) {
-  if (!markerShapes.has(kind)) {
-    const doc = new DOMParser().parseFromString(`<svg xmlns="${SVG_NS}">${markerSvg(kind, 0, 0, 1)}</svg>`, 'image/svg+xml');
-    markerShapes.set(kind, [...doc.documentElement.childNodes]);
-  }
-  return svgEl('g', { transform }, markerShapes.get(kind).map((n) => document.importNode(n, true)));
-}
+// SVG markup shared with the renderer (markers, icons) as nodes of this
+// document; a marker is placed by a transform along its line.
+const parsed = (markup) => [...new DOMParser().parseFromString(`<svg xmlns="${SVG_NS}">${markup}</svg>`, 'image/svg+xml').documentElement.childNodes].map((n) => document.importNode(n, true));
+const markerGroup = (kind, transform) => svgEl('g', { transform }, parsed(markerSvg(kind, 0, 0, 1)));
 
 function openNeighborhood(id, hops = state.hops) {
   if (!fullBoxes.has(id)) return;
@@ -610,7 +672,16 @@ const foldButtons = [
 ].map(([text, fold]) => el('button', { class: 'oe-btn', text, title: `${fold ? 'Fold' : 'Unfold'} every domain in this view; a click on a domain's header folds just that one`, on: { click: () => setCollapsed(state.view, clusterGroups(currentView()).map(keyOf), fold) } }));
 const foldGroup = el('div', { class: 'oe-seg' }, foldButtons);
 const joinButton = el('button', { class: 'oe-btn', text: 'Join path', title: 'How to join two tables: the condition of each hop', on: { click: () => (join.open ? clearSelection() : openJoin()) } });
-const legendButton = el('button', { class: 'oe-btn', text: 'Legend', title: 'What the line ends, line styles and marks mean', on: { click: () => setLegend(!legendOpen) } });
+const legendButton = el('button', { class: 'oe-btn', text: 'Legend', title: 'What the lines and marks in this view mean', on: { click: () => setLegend(!legendOpen) } });
+// Review colours are for reviewers: off by default, so every line has one
+// neutral colour and only solid (confirmed) or dashed (not confirmed).
+const minimapButton = el('button', { class: 'oe-btn', text: 'Minimap', title: 'Small map of the whole view, shown while it does not fit on screen', on: { click: () => setMinimap(!map.on) } });
+const reviewButton = el('button', {
+  class: 'oe-btn',
+  text: 'Review mode',
+  title: 'Colour lines by review state: amber waits for review, red changed in the code since it was reviewed',
+  on: { click: () => setReviewMode(!svg.classList.contains('review-mode')) },
+});
 if (!views.has(ALL_VIEW)) allButton.style.display = 'none';
 const searchInput = el('input', { type: 'search', placeholder: 'Search tables and columns', 'aria-label': 'Search tables and columns' });
 const results = el('div', { class: 'oe-results', style: 'display:none' });
@@ -636,6 +707,8 @@ toolbar.div.append(
   foldGroup,
   joinButton,
   legendButton,
+  reviewButton,
+  minimapButton,
   allButton,
   el('div', { class: 'oe-search' }, [searchInput, results]),
   el('div', { class: 'oe-seg' }, modeButtons),
@@ -678,7 +751,8 @@ function renderToolbar() {
   hopButtons.forEach((b, i) => b.classList.toggle('on', state.hops === RELATED.options[i].hops));
   allButton.classList.toggle('on', state.view === ALL_VIEW);
   foldGroup.style.display = clusterGroups(currentView()).length > 0 ? '' : 'none';
-  legendButton.style.display = state.view === OVERVIEW ? 'none' : '';
+  // Overview lines stand for many relations and carry no review colour.
+  reviewButton.style.display = state.view === OVERVIEW ? 'none' : '';
   layoutOverlays();
 }
 
@@ -717,11 +791,15 @@ function viewAsSvg(keep) {
     for (const e of view.querySelectorAll('.flow')) e.remove();
     for (const e of view.querySelectorAll('.poly-routes, .hub-routes')) e.style.display = 'none';
   }
+  // A static file folds nothing: no toggles, titles back where they were drawn.
+  for (const e of view.querySelectorAll('.fold-toggle, .fold-hit')) e.remove();
+  for (const e of view.querySelectorAll('.cluster-label[data-x]')) e.setAttribute('x', e.getAttribute('data-x'));
+  for (const e of view.querySelectorAll('.database > [transform]')) e.removeAttribute('transform');
   for (const e of [...view.querySelectorAll('*')].filter(isHidden)) e.remove();
   for (const e of view.querySelectorAll('.relation-hit')) e.remove();
   const root = svgEl('svg', { width: w, height: h, viewBox: `${x} ${y} ${w} ${h}` }, [svg.querySelector('style').cloneNode(true), view]);
-  // Business mode and diff colours are classes on the root.
-  const cls = ['business', 'diff-mode'].filter((c) => svg.classList.contains(c));
+  // Business mode, review colours and diff colours are classes on the root.
+  const cls = ['business', 'review-mode', 'diff-mode'].filter((c) => svg.classList.contains(c));
   if (cls.length > 0) root.setAttribute('class', cls.join(' '));
   return { text: `<?xml version="1.0" encoding="UTF-8"?>\n${new XMLSerializer().serializeToString(root)}\n`, w, h };
 }
@@ -1006,32 +1084,44 @@ function polyPanel(id, poly) {
   ];
 }
 
-// An overview line: the relations it stands for, each leading to the domain
-// view of its referencing table.
-function domainLinkPanel(id, from, to) {
+// Relations of an overview line by direction: those whose referencing
+// table is in domain `a` (pointing at keys in `b`), then the others.
+function byDirection(id, a, b) {
   const relations = data.domainLinks[id] ?? [];
-  const reverse = `${to}->${from}`;
-  const reverseGroup = data.domainLinks[reverse] ? [...currentView().querySelectorAll('.relation-group')].find((g) => g.getAttribute('data-id') === reverse) : null;
-  const crossDb = from.split('/')[0] !== to.split('/')[0];
   return [
-    el('h3', { text: `${domainName(from)} → ${domainName(to)}` }),
-    el('div', { class: 'sub', text: `${plural(relations.length, 'relation')}: tables in ${domainName(from)} reference keys in ${domainName(to)}` }),
-    crossDb ? el('p', { text: `Cross-DB: ${crossing(from, to)}` }) : null,
+    [a, b],
+    [b, a],
+  ].map(([from, to]) => ({ from, to, relations: relations.filter((r) => clusterOf(r.from) === from) }));
+}
+
+// An overview line: the relations it stands for, grouped by direction
+// ("A → B (n)"), each leading to the domain view of its referencing table.
+function domainLinkPanel(id, a, b) {
+  const total = (data.domainLinks[id] ?? []).length;
+  const crossDb = dbOf(a) !== dbOf(b);
+  return [
+    el('h3', { text: `${domainName(a)} ⇄ ${domainName(b)}` }),
+    el('div', { class: 'sub', text: `${plural(total, 'relation')} between these two domains` }),
+    crossDb ? el('p', { text: `Cross-DB: ${crossing(a, b, '⇄')}` }) : null,
     changeList('links', id),
-    el(
-      'ul',
-      {},
-      relations.map((r) =>
-        el('li', {}, [
-          link(`${short(r.from)}.${r.column}`, () => navigate(homeView(r.from), { focus: r.from, column: r.column })),
-          el('span', { text: ` → ${short(r.to)}` }),
-          // A polymorphic entry names its association instead of its kind.
-          el('span', { class: 'detail', text: [r.cardinality, r.association ? `polymorphic «${r.association}»` : r.kind, r.via ? `via ${short(r.via)}` : null].filter(Boolean).join(' · ') }),
-        ]),
-      ),
-    ),
-    reverseGroup ? el('div', { class: 'row' }, [link(`Opposite direction: ${plural(data.domainLinks[reverse].length, 'relation')}`, () => flowRelation(reverseGroup))]) : null,
-    el('div', { class: 'row' }, [link(`Open ${domainName(from)}`, () => navigate(domainView(from))), el('span', { text: '·' }), link(`Open ${domainName(to)}`, () => navigate(domainView(to)))]),
+    ...byDirection(id, a, b)
+      .filter((d) => d.relations.length > 0)
+      .flatMap((d) => [
+        el('div', { class: 'sub', text: `${domainName(d.from)} → ${domainName(d.to)} (${d.relations.length})` }),
+        el(
+          'ul',
+          {},
+          d.relations.map((r) =>
+            el('li', {}, [
+              link(`${short(r.from)}.${r.column}`, () => navigate(homeView(r.from), { focus: r.from, column: r.column })),
+              el('span', { text: ` → ${short(r.to)}` }),
+              // A polymorphic entry names its association instead of its kind.
+              el('span', { class: 'detail', text: [r.cardinality, r.association ? `polymorphic «${r.association}»` : r.kind, r.via ? `via ${short(r.via)}` : null].filter(Boolean).join(' · ') }),
+            ]),
+          ),
+        ),
+      ]),
+    el('div', { class: 'row' }, [link(`Open ${domainName(a)}`, () => navigate(domainView(a))), el('span', { text: '·' }), link(`Open ${domainName(b)}`, () => navigate(domainView(b)))]),
   ];
 }
 
@@ -1066,7 +1156,8 @@ function changeList(kind, id) {
 
 // Pick two tables, see up to three ways to join them: each hop's condition
 // (`a.x_id = b.id`), what to watch out for, and the path lit up on the
-// diagram, hop after hop. Conditions only; the viewer never writes SQL.
+// diagram, hop after hop. The conditions copy as text, or as a SQL skeleton
+// (see sqlSkeleton) for a path within one database.
 const join = { open: false, from: null, to: null, paths: [], index: 0 };
 const JOIN_STEP_MS = 450;
 const JOIN_PICKS = 8;
@@ -1199,7 +1290,7 @@ function buildJoinView(path) {
   const relations = svgEl('g', { class: 'relations' });
   steps.forEach((s, i) => {
     const l = s.line.type === 'poly'
-      ? { id: `${s.line.poly}->${s.line.target}`, cardinality: 'n-1', optional: true, kind: 'polymorphic', review: 'reviewed', from: data.nodes[s.line.poly].table, to: s.line.target }
+      ? { id: `${s.line.poly}->${s.line.target}`, cardinality: 'n-1', optional: true, kind: 'polymorphic', review: data.nodes[s.line.poly].review, from: data.nodes[s.line.poly].table, to: s.line.target }
       : [...data.links, ...data.hubLinks].find((x) => x.id === s.line.id);
     // Drawn as the relation points, so its crow's feet stay right.
     const g = straightRelation(l, l.from, l.to, boxes);
@@ -1305,7 +1396,7 @@ function joinPanel() {
   const path = join.paths[join.index];
   const parts = [
     el('h3', { text: 'Join path' }),
-    el('div', { class: 'sub', text: 'How two tables join: the condition of each hop. No SQL is written for you.' }),
+    el('div', { class: 'sub', text: 'How two tables join: the condition of each hop.' }),
     joinField('from', 'From'),
     joinField('to', 'To'),
     !join.from || !join.to ? el('p', { class: 'muted', text: 'Type a name, or click a table on the diagram.' }) : null,
@@ -1336,9 +1427,18 @@ function joinPanel() {
     hubs.length > 0 ? `Passes through ${hubs.join(', ')}, a table shared by everything: rows meet only because they share it.` : null,
   ].filter(Boolean);
   const status = el('span', { class: 'muted' });
+  const skeleton = sqlSkeleton(path);
+  const sqlButton = el('button', {
+    class: 'oe-btn',
+    text: 'Copy as SQL skeleton',
+    title: skeleton.blocked ?? 'SELECT * with one JOIN per hop and a comment above each hop to check; review it before running',
+    ...(skeleton.blocked ? { disabled: '' } : {}),
+    on: { click: () => copyText(skeleton.sql, status, 'SQL skeleton') },
+  });
   parts.push(
     ...warnings.map((w) => el('p', { class: 'oe-warn', text: w })),
-    el('div', { class: 'row' }, [el('button', { class: 'oe-btn', text: 'Copy conditions', on: { click: () => copyText(conditionsText(path), status, plural(path.hops.length, 'condition')) } }), status]),
+    el('div', { class: 'row' }, [el('button', { class: 'oe-btn', text: 'Copy conditions', on: { click: () => copyText(conditionsText(path), status, plural(path.hops.length, 'condition')) } }), sqlButton, status]),
+    skeleton.blocked ? el('p', { class: 'muted', text: `No SQL skeleton: ${skeleton.blocked}` }) : null,
   );
   return parts;
 }
@@ -1366,9 +1466,10 @@ function copyText(text, status, what) {
 // ---------------------------------------------------------------- legend
 
 // Samples drawn with the diagram's own classes and marker shapes, so the
-// legend always looks like what it explains. Open by default in the view of
-// all tables, closed elsewhere; never on the overview, whose lines only
-// carry an arrow and a count.
+// legend always looks like what it explains. It lists only what the view on
+// screen draws (review colours only in review mode), rebuilt whenever the
+// view or the mode changes. Open by default in the view of all tables,
+// closed elsewhere.
 const legend = overlay('oe-legend-host');
 legend.fo.style.display = 'none';
 let legendOpen = false;
@@ -1383,46 +1484,136 @@ const endSample = (kind) =>
     ]),
     svgEl('rect', { class: 'table-box', x: 52, y: 1, width: 10, height: 16 }),
   ]);
-const lineSample = (classes) => sample([svgEl('g', { class: `relation-group ${classes}` }, [svgEl('path', { class: 'relation', d: 'M2 9H62' })])]);
+const lineSample = (classes, width) =>
+  sample([svgEl('g', { class: `relation-group ${classes}` }, [svgEl('path', { class: 'relation', d: 'M2 9H62', ...(width ? { style: `stroke-width:${width}` } : {}) })])]);
+const has = (view, selector) => view.querySelector(selector) !== null;
+// End marker kinds the view draws, as its marker groups list them.
+const endKinds = (view) => new Set([...view.querySelectorAll('.marker[data-ends]')].flatMap((g) => g.getAttribute('data-ends').split(' ')));
+const reviewing = () => svg.classList.contains('review-mode');
 const LEGEND = [
-  ['Line ends', [
-    [endSample('one'), 'exactly one'],
-    [endSample('zeroOrOne'), 'zero or one'],
-    [endSample('many'), 'one or more'],
-    [endSample('zeroOrMany'), 'zero or more'],
-  ]],
   ['Lines', [
-    [lineSample('kind-db_fk review-reviewed'), 'foreign key or declared'],
-    [lineSample('kind-inferred review-pending'), 'inferred from code'],
-    [lineSample('kind-cross_db review-reviewed'), 'cross-DB'],
-    [lineSample('kind-polymorphic review-reviewed'), 'polymorphic'],
-    [lineSample('kind-view_source review-reviewed'), 'view reads table'],
+    [() => lineSample('overview-link kind-domain', 3), 'Relations between two domains; the thicker, the more', (v) => has(v, '.overview-link')],
+    [() => sample([svgEl('g', { class: 'count-badge' }, [svgEl('rect', { x: 2, y: 1, width: 16, height: 16, rx: 8 }), svgEl('text', { x: 10, y: 9, 'dominant-baseline': 'central', 'text-anchor': 'middle', text: '4' })])]), 'Number of relations the line stands for', (v) => has(v, '.count-badge')],
+    [() => lineSample('overview-link kind-cross_db', 2), 'Domains in different databases', (v) => has(v, '.overview-link.kind-cross_db')],
+    [() => lineSample(''), 'Confirmed: database foreign key or declared in code', (v) => has(v, '.relation-group:not(.overview-link, .unconfirmed, .kind-view_source)')],
+    [() => lineSample('unconfirmed'), 'Found in code, not confirmed', (v) => has(v, '.relation-group.unconfirmed')],
+    [() => lineSample('kind-view_source review-reviewed'), 'A view reads this table', (v) => has(v, '.relation-group.kind-view_source')],
   ]],
-  ['Review', [
-    [lineSample('kind-db_fk review-reviewed'), 'reviewed'],
-    [lineSample('kind-db_fk review-pending'), 'pending review'],
-    [lineSample('kind-db_fk review-stale'), 'stale: code changed'],
+  ['Review mode', [
+    [() => lineSample('kind-declared review-pending'), 'Waiting for review', (v) => reviewing() && has(v, '.relation-group.review-pending:not(.overview-link)')],
+    [() => lineSample('kind-declared review-stale unconfirmed'), 'Changed in the code since it was reviewed', (v) => reviewing() && has(v, '.relation-group.review-stale')],
   ]],
+  ['Line ends', [
+    ['one', 'Exactly one'],
+    ['zeroOrOne', 'Zero or one'],
+    ['many', 'One or more'],
+    ['zeroOrMany', 'Zero or more'],
+  ].map(([kind, text]) => [() => endSample(kind), text, (v) => endKinds(v).has(kind)])],
   ['In boxes', [
-    [sample([svgEl('path', { class: 'badge-arrow', d: 'M2 9H12M8 6L12 9L8 12' }), svgEl('text', { class: 'badge-text', x: 16, y: 9, 'dominant-baseline': 'central', text: 'users ×3' })]), 'hub reference (badge)'],
-    [sample([svgEl('circle', { class: 'hint-note', cx: 8, cy: 9, r: 2.5 })]), 'column has a note'],
-    [sample([svgEl('rect', { class: 'hint-enum', x: 5.5, y: 6.5, width: 5, height: 5, rx: 1 })]), 'column has enum values'],
-    [sample([svgEl('path', { class: 'col-warn', d: 'M4 13L8 5L12 13Z' })]), 'possibly missing relation'],
-    [sample([svgEl('rect', { class: 'stub-box', x: 1, y: 1, width: 62, height: 16, rx: 4 }), svgEl('text', { class: 'stub-title', x: 6, y: 9, 'dominant-baseline': 'central', text: 'orders' })]), 'table of another domain'],
+    [() => sample(parsed(enumIconSvg(8, 9))), 'Column with listed values', (v) => has(v, '.hint-enum')],
+    [() => sample([svgEl('path', { class: 'col-warn', d: 'M4 13L8 5L12 13Z' })]), 'Possible missing relation', (v) => has(v, '.col-warn')],
+    [() => sample([svgEl('rect', { class: 'stub-box', x: 1, y: 1, width: 62, height: 16, rx: 4 }), svgEl('text', { class: 'stub-title', x: 6, y: 9, 'dominant-baseline': 'central', text: 'orders' })]), 'Linked table in another domain: click to open', (v) => has(v, '.stub')],
+    [() => sample([svgEl('path', { class: 'badge-arrow', d: 'M2 9H12M8 6L12 9L8 12' }), svgEl('text', { class: 'badge-text', x: 16, y: 9, 'dominant-baseline': 'central', text: 'users ×3' })]), 'Reference to a common table, shown as text instead of a line', (v) => has(v, '.hub-badge')],
+    [() => sample([svgEl('rect', { class: 'poly-box', x: 1, y: 1, width: 62, height: 16, rx: 4 }), svgEl('text', { class: 'poly-title', x: 6, y: 9, 'dominant-baseline': 'central', text: '«able»' })]), 'Polymorphic: one column pair points at several tables', (v) => has(v, '.poly')],
   ]],
 ];
-legend.div.append(
-  el('div', { class: 'oe-legend' }, [
-    el('div', { class: 'head' }, [el('b', { text: 'Legend' }), el('button', { class: 'oe-link', text: 'Hide', on: { click: () => setLegend(false) } })]),
-    ...LEGEND.flatMap(([title, items]) => [el('div', { class: 'sub', text: title }), ...items.map(([svgSample, text]) => el('div', { class: 'item' }, [svgSample, el('span', { text })]))]),
-  ]),
-);
+
+function renderLegend() {
+  const view = currentView();
+  const sections = LEGEND.map(([title, items]) => [title, items.filter(([, , present]) => present(view))]).filter(([, items]) => items.length > 0);
+  legend.div.replaceChildren(
+    el('div', { class: 'oe-legend' }, [
+      el('div', { class: 'head' }, [el('b', { text: 'Legend' }), el('button', { class: 'oe-link', text: 'Hide', on: { click: () => setLegend(false) } })]),
+      ...(sections.length > 0 ? [] : [el('div', { class: 'sub', text: 'Nothing to explain in this view.' })]),
+      ...sections.flatMap(([title, items]) => [el('div', { class: 'sub', text: title }), ...items.map(([draw, text]) => el('div', { class: 'item' }, [draw(), el('span', { text })]))]),
+    ]),
+  );
+}
 
 function setLegend(open) {
   legendOpen = open;
-  legend.fo.style.display = open && state.view !== OVERVIEW ? '' : 'none';
+  if (open) renderLegend();
+  legend.fo.style.display = open ? '' : 'none';
   legendButton.classList.toggle('on', open);
   layoutOverlays();
+}
+
+function setReviewMode(on) {
+  svg.classList.toggle('review-mode', on);
+  reviewButton.classList.toggle('on', on);
+  if (legendOpen) setLegend(true);
+}
+
+// ---------------------------------------------------------------- minimap
+
+// The whole current view in small, bottom right, with a rectangle for the
+// part on screen; a click or a drag on it moves the view there. Shown only
+// while the view does not fit on screen, unless turned off in the toolbar.
+// It lives outside the drawing, so downloads never include it.
+const MINIMAP_WIDTH = 180;
+const MINIMAP_MAX_HEIGHT = 140;
+const MINIMAP_PAD = 4;
+const minimap = overlay('oe-minimap-host');
+minimap.fo.style.display = 'none';
+const map = { on: true, view: null, size: null, seen: null, svg: null };
+
+// Group frames tinted as drawn, every box a grey block; no text.
+function buildMinimap() {
+  const bounds = viewBounds(state.view);
+  const size = minimapSize(bounds, MINIMAP_WIDTH, MINIMAP_MAX_HEIGHT);
+  const frames = [...currentView().querySelectorAll('.cluster, .database')].map((g) => {
+    const b = boxOf(g);
+    const fill = g.classList.contains('cluster') ? g.querySelector(':scope > rect').getAttribute('fill') : '#eef1f5';
+    return svgEl('rect', { class: 'frame', x: b.x, y: b.y, width: b.w, height: b.h, rx: 8, fill });
+  });
+  const boxes = [...currentIndex().values()].filter((e) => !e.el.classList.contains('oe-hidden')).map(({ box: b }) => svgEl('rect', { class: 'node', x: b.x, y: b.y, width: b.w, height: b.h }));
+  map.seen = svgEl('rect', { class: 'seen' });
+  map.svg = svgEl('svg', { width: size.w, height: size.h, viewBox: `${bounds.x} ${bounds.y} ${bounds.w} ${bounds.h}` }, [...frames, ...boxes, map.seen]);
+  minimap.div.replaceChildren(el('div', { class: 'oe-minimap' }, [map.svg]));
+  map.view = state.view;
+  map.size = size;
+  map.bounds = bounds;
+}
+
+const panelRoom = () => (panel.fo.style.display !== 'none' ? PANEL_WIDTH + 2 * PANEL_MARGIN : 0);
+
+function updateMinimap() {
+  if (map.view !== state.view) buildMinimap();
+  const vp = viewport();
+  const seen = visibleRect(state.cam, vp, TOOLBAR_HEIGHT, panelRoom());
+  const show = map.on && !fitsInside(map.bounds, seen);
+  minimapButton.classList.toggle('on', map.on);
+  minimap.fo.style.display = show ? '' : 'none';
+  if (!show) return;
+  for (const [k, v] of Object.entries(seen)) map.seen.setAttribute({ x: 'x', y: 'y', w: 'width', h: 'height' }[k], v);
+  const w = map.size.w + 2 * MINIMAP_PAD + 2;
+  const h = map.size.h + 2 * MINIMAP_PAD + 2;
+  minimap.fo.setAttribute('width', w);
+  minimap.fo.setAttribute('height', h);
+  minimap.fo.setAttribute('x', vp.w - w - PANEL_MARGIN - panelRoom());
+  minimap.fo.setAttribute('y', vp.h - h - PANEL_MARGIN);
+}
+
+// A press on the minimap centres the view on that point; dragging follows.
+function minimapPan(e) {
+  const r = map.svg.getBoundingClientRect();
+  const p = { x: map.bounds.x + (e.clientX - r.left) / map.size.scale, y: map.bounds.y + (e.clientY - r.top) / map.size.scale };
+  state.cam = centreOn(p, state.cam, viewport(), TOOLBAR_HEIGHT, panelRoom());
+  scheduleCamera();
+}
+minimap.div.addEventListener('pointerdown', (e) => {
+  if (e.button !== 0) return;
+  e.preventDefault();
+  minimap.div.setPointerCapture(e.pointerId);
+  minimapPan(e);
+});
+minimap.div.addEventListener('pointermove', (e) => {
+  if (minimap.div.hasPointerCapture(e.pointerId)) minimapPan(e);
+});
+
+function setMinimap(on) {
+  map.on = on;
+  updateMinimap();
 }
 
 // ---------------------------------------------------------------- tooltip
@@ -1431,17 +1622,22 @@ const tip = overlay('oe-tip-host');
 tip.fo.style.display = 'none';
 tip.fo.style.pointerEvents = 'none';
 
-// Lines: an overview line says which way its relations point and lists
-// the first few; any other line names its two ends and kind.
+// Lines: an overview line names its two domains and lists the first few
+// relations each way; any other line names its two ends and kind.
 function lineTip(g) {
   const [id, from, to] = [g.getAttribute('data-id'), g.getAttribute('data-from'), g.getAttribute('data-to')];
   if (state.view === OVERVIEW) {
-    const relations = data.domainLinks[id] ?? [];
+    const directions = byDirection(id, from, to).filter((d) => d.relations.length > 0);
+    const total = directions.reduce((n, d) => n + d.relations.length, 0);
     return [
-      el('div', {}, [el('b', { text: `${domainName(from)} → ${domainName(to)}` })]),
-      el('div', { text: `${plural(relations.length, 'relation')}: tables in ${domainName(from)} reference ${domainName(to)}` }),
-      ...relations.slice(0, TIP_RELATIONS).map((r) => el('div', { class: 'muted', text: `${short(r.from)}.${r.column} → ${short(r.to)}` })),
-      relations.length > TIP_RELATIONS ? el('div', { class: 'muted', text: `… ${relations.length - TIP_RELATIONS} more` }) : null,
+      el('div', {}, [el('b', { text: `${domainName(from)} ⇄ ${domainName(to)}` })]),
+      el('div', { text: plural(total, 'relation') }),
+      dbOf(from) !== dbOf(to) ? el('div', { text: `Cross-DB: ${dbOf(from)} ⇄ ${dbOf(to)}` }) : null,
+      ...directions.flatMap((d) => [
+        el('div', { text: `${domainName(d.from)} → ${domainName(d.to)} (${d.relations.length})` }),
+        ...d.relations.slice(0, TIP_RELATIONS).map((r) => el('div', { class: 'muted', text: `${short(r.from)}.${r.column} → ${short(r.to)}` })),
+        d.relations.length > TIP_RELATIONS ? el('div', { class: 'muted', text: `… ${d.relations.length - TIP_RELATIONS} more` }) : null,
+      ]),
       el('div', { class: 'muted', text: 'Click to list them all' }),
     ];
   }
@@ -1534,7 +1730,7 @@ function layoutOverlays() {
   const drop = [results, menu].find((d) => d.style.display !== 'none');
   toolbar.fo.setAttribute('height', drop ? Math.ceil(TOOLBAR_HEIGHT + drop.getBoundingClientRect().height + 8) : TOOLBAR_HEIGHT);
   if (legend.fo.style.display !== 'none') {
-    legend.fo.setAttribute('width', 260);
+    legend.fo.setAttribute('width', 300);
     legend.fo.setAttribute('height', h);
     const r = legend.div.firstChild.getBoundingClientRect();
     legend.fo.setAttribute('x', PANEL_MARGIN);
@@ -1550,6 +1746,8 @@ function layoutOverlays() {
     panel.fo.setAttribute('height', room);
     panel.fo.setAttribute('height', Math.ceil(panel.div.getBoundingClientRect().height) + 1);
   }
+  // The panel takes the right edge: the minimap moves left of it.
+  updateMinimap();
 }
 
 // ---------------------------------------------------------------- input
@@ -1688,7 +1886,7 @@ window.addEventListener('resize', () => {
 
 // Later overlays paint on top: the search results over the panel, the
 // tooltip over everything.
-svg.append(legend.fo, panel.fo, toolbar.fo, tip.fo);
+svg.append(legend.fo, minimap.fo, panel.fo, toolbar.fo, tip.fo);
 setBusiness(false);
 // The view drawn visible without script is where the reader starts: the
 // overview, or all tables in a diff drawing.

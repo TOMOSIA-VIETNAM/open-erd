@@ -107,9 +107,9 @@ if (await evaluate(`JSON.parse(document.getElementById('open-erd-data').textCont
   await shot('overview', viewIs('overview'));
 }
 
-// Overview lines say which way their relations point and list them: an
-// arrow at the referenced domain, an "N relations" label, a tooltip, and a
-// panel whose every entry leads to the referencing table's domain view.
+// Overview lines, one per pair of domains: no arrowheads and no text label,
+// a count badge instead, a tooltip, and a panel listing the relations by
+// direction, every entry leading to the referencing table's domain view.
 const data = `JSON.parse(document.getElementById('open-erd-data').textContent)`;
 await key('Escape');
 await click(`document.querySelector('.oe-crumbs .oe-link') ?? document.querySelector('.oe-crumbs .here')`);
@@ -122,12 +122,13 @@ if (overviewLine) {
   await pause(150);
   await shot(
     'overview-line-tooltip',
-    `${viewIs('overview')} && [...document.querySelectorAll('.oe-tip')].some((t) => /relations? ?:/.test(t.textContent)) && ${inView('.relation-group .marker .head')} !== null && [...${visible}.querySelectorAll('.edge-label text')].every((t) => /^\\d+ relations?( · cross-DB → \\S+)?$/.test(t.textContent))`,
+    `${viewIs('overview')} && [...document.querySelectorAll('.oe-tip')].some((t) => /⇄/.test(t.textContent) && /\\d+ relations?/.test(t.textContent)) && ${inView('.relation-group .marker')} === null && ${inView('.edge-label')} === null && ${visible}.querySelectorAll('.count-badge').length === ${visible}.querySelectorAll('.relation-group').length`,
   );
   await click(lineSel);
   await shot(
     'overview-line-panel',
-    `(() => { const n = ${data}.domainLinks[${JSON.stringify(overviewLine)}].length; return document.querySelector('.oe-panel h3')?.textContent.includes('→') && document.querySelectorAll('.oe-panel li').length === n || { n, li: document.querySelectorAll('.oe-panel li').length }; })()`,
+    `(() => { const n = ${data}.domainLinks[${JSON.stringify(overviewLine)}].length; const groups = [...document.querySelectorAll('.oe-panel .sub')].filter((x) => /→ .+ \\(\\d+\\)$/.test(x.textContent)).length;
+      return document.querySelector('.oe-panel h3')?.textContent.includes('⇄') && document.querySelectorAll('.oe-panel li').length === n && groups >= 1 || { n, li: document.querySelectorAll('.oe-panel li').length, groups }; })()`,
   );
   const target = await evaluate(`${data}.domainLinks[${JSON.stringify(overviewLine)}][0].from`);
   await click(`document.querySelector('.oe-panel li .oe-link')`);
@@ -271,7 +272,7 @@ if (offsets[0] === offsets[1]) failures.push(`flow does not move: ${offsets}`);
   await pick('This view as SVG');
   const plain = (await saved(`${base}.svg`)).toString();
   const views = (plain.match(/<g class="view"/g) ?? []).length;
-  if (views !== 1 || plain.includes('<script') || plain.includes('foreignObject') || /class="[^"]*\b(dimmed|flowing)\b/.test(plain) || !plain.includes('@font-face')) {
+  if (views !== 1 || plain.includes('<script') || plain.includes('foreignObject') || plain.includes('class="fold-toggle') || /class="[^"]*\b(dimmed|flowing)\b/.test(plain) || !plain.includes('@font-face')) {
     failures.push(`download svg: ${JSON.stringify({ views, script: plain.includes('<script'), highlight: /\b(dimmed|flowing)\b/.test(plain) })}`);
   }
   await click(`document.querySelector('.oe-menu .oe-check input')`);
@@ -331,22 +332,55 @@ await click(`[...document.querySelectorAll('.oe-btn')].find((b) => b.textContent
 if (await evaluate(`document.querySelector('g.view[data-view="all"]') !== null`)) {
   await click(`[...document.querySelectorAll('.oe-btn')].find((b) => b.textContent === 'All tables')`);
   await shot('all-tables', `${viewIs('all')} && document.querySelector('.oe-crumbs .here').textContent === 'All tables · ' + Object.values(${data}.nodes).filter((x) => x.kind === 'table').length + ' tables'`);
-  // The legend is open here, drawn with the diagram's own line and marker classes.
+  // The legend is open here, drawn with the diagram's own line and marker
+  // classes, listing only what this view draws: no review colours outside
+  // review mode, an end-marker entry per kind drawn.
+  const legendHost = `[...document.querySelectorAll('foreignObject')].find((x) => x.querySelector('.oe-legend'))`;
+  const drawnEnds = `new Set([...${visible}.querySelectorAll('.marker[data-ends]')].flatMap((g) => g.getAttribute('data-ends').split(' ')).filter((k) => k !== 'none')).size`;
   await shot(
     'legend',
-    `(() => { const f = [...document.querySelectorAll('foreignObject')].find((x) => x.querySelector('.oe-legend')); const r = f.querySelector('.oe-legend').getBoundingClientRect();
-      return f.style.display !== 'none' && f.querySelectorAll('.oe-legend .item').length >= 16 && f.querySelector('.oe-legend .col-warn') !== null && f.querySelectorAll('.oe-legend .marker path').length >= 4 && f.querySelector('.oe-legend .review-pending .relation') !== null && r.bottom <= innerHeight && r.left >= 0; })()`,
+    `(() => { const f = ${legendHost}; const r = f.querySelector('.oe-legend').getBoundingClientRect(); const ends = f.querySelectorAll('.oe-legend .item .marker').length;
+      return f.style.display !== 'none' && ends === ${drawnEnds} && (f.querySelector('.oe-legend .hint-enum') !== null) === (${inView('.hint-enum')} !== null) && f.querySelector('.oe-legend .review-pending') === null && r.bottom <= innerHeight && r.left >= 0 || { ends, drawn: ${drawnEnds} }; })()`,
   );
-  // A cross-DB line names the database it reaches; its panel names both with their engines.
+  // Review mode: pending lines turn amber and the legend explains it.
+  const pending = await evaluate(`${inView('.relation-group.review-pending:not(.kind-view_source) path.relation')} !== null`);
+  await click(`[...document.querySelectorAll('.oe-btn')].find((b) => b.textContent === 'Review mode')`);
+  await shot(
+    'review-mode',
+    `document.documentElement.classList.contains('review-mode') && (!${pending} || (getComputedStyle(${inView('.relation-group.review-pending:not(.kind-view_source) path.relation')}).stroke === 'rgb(194, 124, 14)' && ${legendHost}.querySelector('.oe-legend .review-pending') !== null))`,
+  );
+  await click(`[...document.querySelectorAll('.oe-btn')].find((b) => b.textContent === 'Review mode')`);
+  if (pending) failures.push(...(await evaluate(`getComputedStyle(${inView('.relation-group.review-pending:not(.kind-view_source) path.relation')}).stroke === 'rgb(107, 119, 138)'`) ? [] : ['review mode off: pending line is not neutral']));
+  // A cross-DB line names both databases; its panel names both with their engines.
   const cross = await evaluate(`${inView('.relation-group.kind-cross_db')}?.getAttribute('data-id') ?? null`);
   if (cross) {
     await click(inView(`.relation-group[data-id="${cross}"] path.relation-hit`));
     await shot(
       'cross-db-line',
-      `/^cross-DB → \\S+$/.test(${inView(`.relation-group[data-id="${cross}"] .edge-label text`)}.textContent) && /Cross-DB: \\S+ \\(.+\\) → \\S+ \\(.+\\)/.test(document.querySelector('.oe-panel').textContent)`,
+      `/^\\S+ → \\S+$/.test(${inView(`.relation-group[data-id="${cross}"] .edge-label text`)}.textContent) && /Cross-DB: \\S+ \\(.+\\) → \\S+ \\(.+\\)/.test(document.querySelector('.oe-panel').textContent)`,
     );
     await key('Escape');
   }
+  // Minimap: zoomed in, the view no longer fits, so the minimap shows; a
+  // click on it moves the view there. Fitting the view again hides it.
+  const minimapHost = `document.querySelector('.oe-minimap')?.closest('foreignObject')`;
+  for (let i = 0; i < 8; i++) await send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: 500, y: 500, deltaX: 0, deltaY: -30, modifiers: 2 });
+  await pause(200);
+  const beforeMap = await evaluate(`document.querySelector('.camera').getAttribute('transform')`);
+  await shot('minimap-visible', `${minimapHost}?.style.display === '' && (() => { const r = ${minimapHost}.getBoundingClientRect(); return r.right <= innerWidth && r.bottom <= innerHeight; })()`);
+  const mapBox = await evaluate(`(() => { const r = document.querySelector('.oe-minimap svg').getBoundingClientRect(); return { x: r.left + r.width * 0.85, y: r.top + r.height * 0.8 }; })()`);
+  await mouse('mouseMoved', mapBox);
+  await mouse('mousePressed', mapBox);
+  await mouse('mouseReleased', mapBox);
+  await pause(200);
+  await shot('minimap-click-pans', `document.querySelector('.camera').getAttribute('transform') !== ${JSON.stringify(beforeMap)} && ${visible}.getAttribute('data-view') === 'all'`);
+  await click(`[...document.querySelectorAll('.oe-btn')].find((b) => b.textContent === 'Minimap')`);
+  await shot('minimap-off', `${minimapHost}.style.display === 'none'`);
+  await click(`[...document.querySelectorAll('.oe-btn')].find((b) => b.textContent === 'Minimap')`);
+  // A resize fits the view again: everything visible, no minimap.
+  await evaluate(`window.dispatchEvent(new Event('resize'))`);
+  await pause(100);
+  await shot('minimap-hidden-when-fitted', `${minimapHost}.style.display === 'none'`);
   await click(`[...document.querySelectorAll('.oe-btn')].find((b) => b.textContent === 'Legend')`);
 } else {
   await click(`document.querySelector('.oe-crumbs .oe-link')`);
@@ -423,10 +457,11 @@ if (hub) {
   await shot(
     'domain-collapsed',
     `(() => { const c = ${inView(`.cluster[data-cluster="${fold}"]`)}; const tables = [...${visible}.querySelectorAll('.nodes .table')].filter((g) => ${data}.nodes[g.getAttribute('data-id')].cluster === ${JSON.stringify(fold)});
-      return c.querySelector('.cluster-label').textContent.endsWith('(collapsed)') && tables.every((g) => getComputedStyle(g).display === 'none') && /\\d+ links? hidden/.test(c.querySelector('.fold-badge')?.textContent ?? '') && ${others} === ${JSON.stringify(before)}; })()`,
+      return c.querySelector('.cluster-label').textContent.endsWith('(collapsed)') && tables.every((g) => getComputedStyle(g).display === 'none') && /\\d+ links? hidden/.test(c.querySelector('.fold-badge')?.textContent ?? '') && ${others} === ${JSON.stringify(before)}
+        && /V/.test(c.querySelector('.fold-toggle .fold-sign').getAttribute('d')) && c.querySelector('.fold-hit title').textContent === 'Expand group' && getComputedStyle(c.querySelector('.fold-hit')).cursor === 'pointer'; })()`,
   );
   await click(`[...document.querySelectorAll('.oe-btn')].find((b) => b.textContent === 'Expand all')`);
-  await shot('domains-expanded', `${visible}.querySelectorAll('.oe-hidden').length === 0 && ${visible}.querySelector('.fold-badge') === null`);
+  await shot('domains-expanded', `${visible}.querySelectorAll('.oe-hidden').length === 0 && ${visible}.querySelector('.fold-badge') === null && [...${visible}.querySelectorAll('.fold-sign')].every((p) => !/V/.test(p.getAttribute('d')))`);
   await click(`[...document.querySelectorAll('.oe-btn')].find((b) => b.textContent === 'Collapse all')`);
   await shot('domains-all-collapsed', `${visible}.querySelectorAll('.nodes .table:not(.oe-hidden)').length === ${visible}.querySelectorAll('.nodes .table').length - ${visible}.querySelectorAll('.nodes .table.oe-hidden').length && ${visible}.querySelectorAll('.cluster.folded').length === ${visible}.querySelectorAll('.cluster').length`);
   await click(`[...document.querySelectorAll('.oe-btn')].find((b) => b.textContent === 'Expand all')`);
@@ -497,6 +532,15 @@ if (joinPair) {
   );
   await click(`[...document.querySelectorAll('.oe-panel .oe-btn')].find((b) => b.textContent === 'Copy conditions')`);
   await shot('join-path-copied', `/^Copied \\d+ conditions?$/.test(document.querySelector('.oe-panel .row .muted').textContent)`);
+  // The SQL skeleton copies for a path within one database, and is disabled
+  // with its reason for a path across databases.
+  const sqlButton = `[...document.querySelectorAll('.oe-panel .oe-btn')].find((b) => b.textContent === 'Copy as SQL skeleton')`;
+  if (await evaluate(`!${sqlButton}.disabled`)) {
+    await click(sqlButton);
+    await shot('join-path-sql-copied', `document.querySelector('.oe-panel .row .muted').textContent === 'Copied SQL skeleton'`);
+  } else {
+    await shot('join-path-sql-disabled', `/^No SQL skeleton: The path spans \\d+ databases/.test([...document.querySelectorAll('.oe-panel p.muted')].map((p) => p.textContent).join())`);
+  }
   await key('Escape');
   await click(`document.querySelector('.oe-crumbs .oe-link')`);
   await evaluate(`(() => { const i = document.querySelector('.oe-search input'); i.value = ''; i.dispatchEvent(new Event('input')); })()`);
