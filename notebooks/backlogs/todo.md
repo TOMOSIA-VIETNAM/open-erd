@@ -91,3 +91,12 @@ Chi tiết từng task: `plan.md`. Đánh dấu `[x]` khi task pass verify.
 - [x] 28. Overview dạng thẻ (A): mỗi domain 1 thẻ (tên, số bảng, mô tả nghiệp vụ `domain note`, bảng chính, 2–3 domain liên quan nhất dạng thanh đậm nhạt), không line mặc định; hover thẻ → line cong dày theo số quan hệ; domain trung tâm nổi bật; không hiện số trên sơ đồ (chỉ tooltip/panel)
 - [x] 29. Tab "Connections" (B): ma trận domain × domain tô đậm nhạt theo số quan hệ, hover ô → câu đầy đủ, click ô → danh sách quan hệ
 - [x] 30. Mặc định mở All tables, zoom sẵn vào vùng bảng trung tâm (chữ đọc được) + minimap; tự về overview khi không có view all; `default_view` vẫn ghi đè được
+
+## Tính năng tiếp theo (spec: `next-features.md`)
+
+- [ ] 31. ERD tự cập nhật trong CI (`/open-erd:ci-setup`, `apply-facts`, comment diff vào PR)
+- [ ] 32. Tour (chế độ trình chiếu theo domain)
+- [ ] 33. Bản đồ PII (toggle, panel tổng kết, sheet PII)
+- [ ] 34. Sức khoẻ schema (danh sách phát hiện, không chấm điểm, `health.ignore`)
+- [ ] 35. Phạm vi ảnh hưởng (Impact theo vòng 1/2/3)
+- [ ] 36. `/open-erd:ask` + deep link `#tables=` / `#path=`
