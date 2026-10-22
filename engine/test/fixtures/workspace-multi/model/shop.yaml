@@ -90,7 +90,7 @@ tables:
       - { name: id, type: bigint, pk: true }
       - { name: commentable_type, type: varchar(40) }
       - { name: commentable_id, type: bigint, nullable: false }
-      - { name: body, type: text }
+      - { name: body, type: text, pii: true, note: Free text written by the customer. }
       - { name: created_by, type: bigint }
   - id: shop._.attachments
     domain: Content

@@ -13,6 +13,7 @@ import { columnBadges, panelTabs } from './panel-parts.js';
 import { emptyHistory, goBack, goForward, tableTrail, visit } from './history.js';
 import { endTransforms, radialLayout, straightLink } from './radial.js';
 import { TOUR_STEP_MS, tourIndex, tourSteps } from './tour.js';
+import { piiSummary } from './pii.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const HTML_NS = 'http://www.w3.org/1999/xhtml';
@@ -158,6 +159,24 @@ function addHitPaths(root) {
   }
 }
 addHitPaths(svg);
+
+// Personal data (see the PII mode section): the tables, columns, domain
+// cards and matrix headers holding columns marked `pii` get classes the
+// mode's styles pick out. Marked once here, before the neighborhood and
+// join views copy boxes, so their copies carry the marks too. A sharing
+// profile that drops pii columns leaves nothing to mark.
+const PII = piiSummary(data.nodes);
+{
+  const columns = new Map(PII.domains.flatMap((d) => d.tables.map((t) => [t.id, new Set(t.columns)])));
+  const domains = new Set(PII.domains.map((d) => d.cluster));
+  for (const g of svg.querySelectorAll('.table[data-id], .stub[data-id]')) {
+    const mine = columns.get(g.getAttribute('data-id'));
+    if (!mine) continue;
+    g.classList.add('has-pii');
+    for (const c of g.querySelectorAll('.column')) if (mine.has(c.getAttribute('data-column'))) c.classList.add('pii');
+  }
+  for (const g of svg.querySelectorAll('.domain[data-domain], .mx-head[data-domain]')) if (domains.has(g.getAttribute('data-domain'))) g.classList.add('has-pii');
+}
 
 const camera = svgEl('g', { class: 'camera' });
 views.values().next().value.before(camera);
@@ -892,7 +911,7 @@ viewsMenu.onOpen = () =>
 
 // The ⋯ menu: view and display settings, rebuilt on every open so labels
 // and checks reflect the current state.
-const moreMenu = dropdown(toolButton('more', '', 'More: collapse or expand domains, legend, minimap, review mode'), 'oe-more-menu');
+const moreMenu = dropdown(toolButton('more', '', 'More: collapse or expand domains, legend, minimap, review mode, personal data'), 'oe-more-menu');
 // Overview cards and the matrix stand for many relations and carry no review colour.
 const reviewable = () => state.view !== OVERVIEW && state.view !== CONNECTIONS;
 const REVIEW_TOTAL = data.review.pending + data.review.stale;
@@ -921,6 +940,8 @@ moreMenu.onOpen = () => {
           detail: 'Color lines by review status: amber = not confirmed yet, red = code changed since review',
         })
       : null,
+    // A model without personal data (or a profile that dropped it) has nothing to show.
+    PII.total > 0 ? menuItem(`Personal data (PII) · ${PII_COUNTS}`, `${PII_TIP} (P)`, toggle(() => setPiiMode(!piiOn())), { checked: piiOn(), detail: PII_TIP }) : null,
   ]);
 };
 
@@ -1015,13 +1036,13 @@ function updateBackPill() {
 
 // The Back pill sits just above the top left corner of the drawing's white
 // sheet and moves with it; it stays on the canvas, below the toolbar (and
-// the review chip), left of the panel. With that corner off screen it waits
+// the review and PII chips), left of the panel. With that corner off screen it waits
 // at the canvas's top left.
 function placeBackPill() {
   if (backPill.fo.style.display === 'none' || !backPill.size) return;
   const vp = viewport();
   const { w, h } = backPill.size;
-  const chip = reviewChip.fo.style.display !== 'none' ? Number(reviewChip.fo.getAttribute('height')) + 8 : 0;
+  const chip = Math.max(...[reviewChip, piiChip].map((c) => (c.fo.style.display !== 'none' ? Number(c.fo.getAttribute('height')) + 8 : 0)));
   const minY = TOOLBAR_HEIGHT + 8 + chip;
   const b = viewBounds(state.view);
   const { x: cx, y: cy, s } = state.cam;
@@ -1072,8 +1093,8 @@ function viewAsSvg(keep) {
   // The pulse on a table just reached is a moment on screen, not drawing.
   for (const e of view.querySelectorAll('.arrive')) e.classList.remove('arrive');
   const root = svgEl('svg', { width: w, height: h, viewBox: `${x} ${y} ${w} ${h}` }, [svg.querySelector('style').cloneNode(true), view]);
-  // Review colours and diff colours are classes on the root.
-  const cls = ['review-mode', 'diff-mode'].filter((c) => svg.classList.contains(c));
+  // Review colours, the personal data map and diff colours are classes on the root.
+  const cls = ['review-mode', 'pii-mode', 'diff-mode'].filter((c) => svg.classList.contains(c));
   if (cls.length > 0) root.setAttribute('class', cls.join(' '));
   return { text: `<?xml version="1.0" encoding="UTF-8"?>\n${new XMLSerializer().serializeToString(root)}\n`, w, h };
 }
@@ -2147,6 +2168,10 @@ const LEGEND = [
     [() => reviewSample('kind-declared review-pending', 'pending'), REVIEW_WORDS.pending, (v) => reviewing() && has(v, '.relation-group.review-pending')],
     [() => reviewSample('kind-declared review-stale unconfirmed', 'stale'), REVIEW_WORDS.stale, (v) => reviewing() && has(v, '.relation-group.review-stale')],
   ]],
+  ['Personal data', [
+    [() => sample([svgEl('rect', { class: 'legend-pii', x: 1, y: 2, width: 62, height: 14, rx: 2 }), svgEl('text', { class: 'legend-pii-text', x: 6, y: 9, 'dominant-baseline': 'central', text: 'email' })]), 'Column marked as personal data (PII)', (v) => piiOn() && has(v, '.column.pii')],
+    [() => sample([svgEl('rect', { class: 'legend-pii-card', x: 1, y: 1, width: 62, height: 16, rx: 4 })]), 'Domain with personal data', (v) => piiOn() && has(v, '.domain.has-pii')],
+  ]],
   ['Line ends', [
     ['one', 'Exactly one'],
     ['zeroOrOne', 'Zero or one'],
@@ -2217,6 +2242,81 @@ function setReviewMode(on) {
   reviewChip.fo.style.display = on ? '' : 'none';
   if (legendOpen) setLegend(true);
   layoutOverlays();
+}
+
+// ---------------------------------------------------------------- PII mode
+
+// The personal data map (⋯ › Personal data, or P; offered only when some
+// column is marked `pii`, see PII): tables holding such columns stay
+// readable with those rows tinted, everything else fades, in every view
+// until turned off. A selection takes over the fading while it lasts. A
+// chip under the toolbar says the mode is on: List reopens the summary, ×
+// turns it off. The summary panel counts the columns per domain, then per
+// table, most first; a click goes to the table or column and keeps the
+// list open. Esc closes the panel as usual and leaves the mode on. The
+// mode is a class on the root, so a download keeps it, like review mode.
+const piiOn = () => svg.classList.contains('pii-mode');
+const PII_COUNTS = `${plural(PII.total, 'column')} in ${plural(PII.tables, 'table')}`;
+const PII_TIP = 'Tint the columns marked as personal data and fade everything else';
+const piiChip = overlay('oe-pii-chip-host');
+piiChip.fo.style.display = 'none';
+piiChip.div.append(
+  el('div', { class: 'oe-review-chip oe-pii-chip', title: 'Columns marked as personal data are tinted; everything else fades' }, [
+    el('span', { text: `PII: ${PII_COUNTS}` }),
+    el('button', { class: 'oe-link', text: 'List', title: 'Show the personal data columns by domain and table', on: { click: () => showPiiSummary() } }),
+    el('button', { class: 'oe-chip-close', text: '×', title: 'Turn the personal data map off (P)', 'aria-label': 'Turn the personal data map off', on: { click: () => setPiiMode(false) } }),
+  ]),
+);
+
+// Built once and reused, so a domain folded by the reader stays folded
+// when the list comes back after a jump.
+let piiPanel = null;
+function piiSummaryPanel() {
+  if (piiPanel) return piiPanel;
+  const go = (id, column) => () => {
+    const scroll = panel.div.scrollTop;
+    goToNode(id, column);
+    showPiiSummary(scroll);
+  };
+  const named = (d) => (DATABASES.length > 1 ? `${dbDisplayName(dbOf(d.cluster))} · ${domainName(d.cluster)}` : domainName(d.cluster));
+  piiPanel = [
+    panelHeader({ name: 'Personal data (PII)', note: `${PII_COUNTS} in ${plural(PII.domains.length, 'domain')}` }),
+    ...PII.domains.map((d) =>
+      el('details', { class: 'oe-pii-domain', open: '' }, [
+        el('summary', {}, [el('span', { class: 'name', text: named(d), title: d.cluster }), el('span', { class: 'n', text: String(d.count) })]),
+        ...d.tables.map((t) =>
+          el('div', { class: 'oe-pii-table' }, [
+            el('button', { class: 'oe-link', text: short(t.id), title: `Go to ${t.id}`, on: { click: go(t.id) } }),
+            el('span', { class: 'n', text: String(t.columns.length) }),
+            el('div', { class: 'oe-chipbox' }, t.columns.map((c) => el('button', { class: 'oe-chip', title: `Go to ${short(t.id)}.${c}`, text: c, on: { click: go(t.id, c) } }))),
+          ]),
+        ),
+      ]),
+    ),
+  ];
+  return piiPanel;
+}
+function showPiiSummary(scroll = 0) {
+  showPanel(piiSummaryPanel());
+  panel.div.scrollTop = scroll;
+}
+const piiSummaryShown = () => piiPanel !== null && panel.fo.style.display !== 'none' && panel.div.contains(piiPanel[0]);
+
+function setPiiMode(on) {
+  if (PII.total === 0) return;
+  svg.classList.toggle('pii-mode', on);
+  piiChip.fo.style.display = on ? '' : 'none';
+  // A selection would fade the map it was asked for.
+  if (on) {
+    clearSelection();
+    // A view seen whole is fitted again left of the panel, as when a panel opens on a neighborhood.
+    const whole = fitsInside(viewBounds(state.view), visibleRect(state.cam, viewport(), TOOLBAR_HEIGHT, 0));
+    showPiiSummary();
+    if (whole) zoomToRect(viewBounds(state.view), MAX_FIT_SCALE);
+  } else if (piiSummaryShown()) hidePanel();
+  if (legendOpen) setLegend(true);
+  layoutOverlays();
+  placeBackPill();
 }
 
 // ---------------------------------------------------------------- tour
@@ -2540,7 +2640,7 @@ function layoutOverlays() {
     spot.fo.setAttribute('width', w);
     spot.fo.setAttribute('height', h);
   }
-  // The review chip floats under the toolbar, top left; the Back pill
+  // The review and PII chips float under the toolbar, top left; the Back pill
   // follows the drawing (see placeBackPill).
   const pillY = TOOLBAR_HEIGHT + 8;
   if (reviewChip.fo.style.display !== 'none') {
@@ -2551,6 +2651,16 @@ function layoutOverlays() {
     reviewChip.fo.setAttribute('y', pillY);
     reviewChip.fo.setAttribute('width', Math.ceil(r.width) + 2);
     reviewChip.fo.setAttribute('height', Math.ceil(r.height) + 2);
+  }
+  // The PII chip comes next to it, or in its place.
+  if (piiChip.fo.style.display !== 'none') {
+    piiChip.fo.setAttribute('width', w);
+    piiChip.fo.setAttribute('height', 40);
+    const r = piiChip.div.firstChild.getBoundingClientRect();
+    piiChip.fo.setAttribute('x', reviewChip.fo.style.display !== 'none' ? PANEL_MARGIN + Number(reviewChip.fo.getAttribute('width')) + 8 : PANEL_MARGIN);
+    piiChip.fo.setAttribute('y', pillY);
+    piiChip.fo.setAttribute('width', Math.ceil(r.width) + 2);
+    piiChip.fo.setAttribute('height', Math.ceil(r.height) + 2);
   }
   if (legend.fo.style.display !== 'none') {
     // The area is LEGEND_ROOM larger than the card on every side, so its
@@ -2856,10 +2966,11 @@ const SHORTCUTS = [
   [`${MOD_KEY}C`, 'Copy the selected table as SQL (with its indexes)'],
   ['L', 'Show or hide the legend'],
   ['T', 'Tour: each domain in turn (← → step, Space pauses, Esc ends)'],
+  PII.total > 0 ? ['P', 'Personal data map: PII columns tinted, the rest faded, with their list'] : null,
   ['Backspace or Alt+←', 'Back to the previous table or view'],
   ['Shift+Backspace or Alt+→', 'Forward again'],
   ['Esc', 'Close search, menu or panel'],
-];
+].filter(Boolean);
 const selectedTable = () => {
   const id = currentView().querySelector('.table.selected')?.getAttribute('data-id');
   return data.nodes[id]?.kind === 'table' ? id : null;
@@ -2944,6 +3055,10 @@ document.addEventListener('keydown', (e) => {
     toggleTourPause();
     return;
   }
+  if (letter === 'p' && plain) {
+    setPiiMode(!piiOn());
+    return;
+  }
   if (letter === 'l' && !e.metaKey && !e.ctrlKey && !e.altKey && !typing()) {
     if (legendSections().length > 0) setLegend(!legendOpen);
     return;
@@ -2977,7 +3092,7 @@ window.addEventListener('resize', () => {
 
 // Later overlays paint on top: the toolbar's menus over the panel, the
 // search over everything but the tooltip.
-svg.append(legend.fo, minimap.fo, backPill.fo, reviewChip.fo, panel.fo, tourBox.fo, toolbar.fo, spotlight.fo, joinSpot.fo, toast.fo, tip.fo);
+svg.append(legend.fo, minimap.fo, backPill.fo, reviewChip.fo, piiChip.fo, panel.fo, tourBox.fo, toolbar.fo, spotlight.fo, joinSpot.fo, toast.fo, tip.fo);
 // The view drawn visible without script is where the reader starts (all
 // tables unless the workspace configured another view). All tables open at
 // a readable size around the most central table; a diff drawing shows its

@@ -947,7 +947,9 @@ if (await evaluate(`document.querySelector('g.view[data-view="all"]') !== null`)
   await shot('cmd-a-all-tables', `${viewIs('all')} && document.querySelector('.oe-view-tabs [data-view="all"]').classList.contains('on')`);
 }
 await choose('more', 'Keyboard shortcuts');
-await shot('keyboard-shortcuts', `document.querySelectorAll('.oe-panel .oe-keys tr').length === 9 && /J/.test(document.querySelector('.oe-panel .oe-keys').textContent) && document.querySelector('.oe-panel .oe-keys').textContent.includes('Alt+←')`);
+// P is listed only when some column is marked as personal data.
+const piiTotal = await evaluate(`Object.values(${data}.nodes).reduce((n, x) => n + (x.columns ?? []).filter((c) => c.pii).length, 0)`);
+await shot('keyboard-shortcuts', `document.querySelectorAll('.oe-panel .oe-keys tr').length === ${piiTotal > 0 ? 10 : 9} && /J/.test(document.querySelector('.oe-panel .oe-keys').textContent) && document.querySelector('.oe-panel .oe-keys').textContent.includes('Alt+←')`);
 // A short panel leaves the minimap in its corner; a tall one pushes it left.
 {
   const mm = `(() => { const f = document.querySelector('.oe-minimap')?.closest('foreignObject'); return f && f.style.display !== 'none' ? document.querySelector('.oe-minimap').getBoundingClientRect() : null; })()`;
@@ -1083,6 +1085,76 @@ await shot(
   'scroll-pans',
   `${afterScroll.s === afterPinch.s && Math.abs(afterScroll.x - (afterPinch.x - 40)) < 0.01 && Math.abs(afterScroll.y - (afterPinch.y - 120)) < 0.01} || ${JSON.stringify({ afterPinch, afterScroll })}`,
 );
+
+// Personal data map: ⋯ › Personal data (and P) tints the pii columns of the
+// tables on screen and fades the rest, with a chip and a summary panel whose
+// counts add up to every pii column; a click in the list goes to the column
+// and keeps the list open; the map stays on in other views, Esc only closes
+// the panel, a download keeps it, P or the chip's × turns it off. Without
+// personal data (a public profile) there is no entry, chip or key.
+{
+  const piiHost = `document.querySelector('.oe-pii-chip').closest('foreignObject')`;
+  const piiOn = `document.documentElement.classList.contains('pii-mode')`;
+  await key('Escape');
+  if (await evaluate(`document.querySelector('g.view[data-view="all"]') !== null`)) await viewTab('all');
+  await click(menuButton('more'));
+  if (piiTotal === 0) {
+    await shot('pii-hidden', `${menuItem('more', 'Personal data')} === undefined && ${piiHost}.style.display === 'none'`);
+    await closeMenu('more');
+    await key('p', 'KeyP');
+    await shot('pii-key-does-nothing', `!${piiOn} && ${piiHost}.style.display === 'none'`);
+  } else {
+    await click(menuItem('more', 'Personal data'));
+    await closeMenu('more');
+    // Every pii row of a full table on screen is tinted; a table without any fades.
+    const tinted = `(() => { const d = ${data}; const v = ${visible};
+      const want = [...v.querySelectorAll('.table')].reduce((n, g) => n + (d.nodes[g.getAttribute('data-id')]?.columns ?? []).filter((c) => c.pii && g.querySelector('.column[data-column="' + CSS.escape(c.name) + '"]')).length, 0);
+      const got = [...v.querySelectorAll('.column.pii')].filter((c) => getComputedStyle(c.querySelector('.row-hit')).fill === 'rgb(255, 217, 204)').length;
+      const faded = v.querySelector('.table:not(.has-pii)');
+      return (got === want && (!faded || getComputedStyle(faded).opacity === '0.2')) || { got, want, faded: faded && getComputedStyle(faded).opacity }; })()`;
+    const listed = `[...document.querySelectorAll('.oe-panel .oe-pii-domain > summary .n')].reduce((n, e) => n + Number(e.textContent), 0)`;
+    await shot('pii-on-menu', `${piiOn} && ${piiHost}.style.display !== 'none' && document.querySelector('.oe-pii-chip').textContent.startsWith('PII: ${piiTotal} column') && ${tinted} === true
+      && document.querySelector('.oe-panel .oe-ph-name')?.textContent === 'Personal data (PII)' && ${listed} === ${piiTotal}`);
+    const target = await evaluate(`(() => { const t = document.querySelector('.oe-panel .oe-pii-table'); return [t.querySelector('.oe-link').title.slice('Go to '.length), t.querySelector('.oe-chip').textContent]; })()`);
+    await click(`document.querySelector('.oe-panel .oe-pii-table .oe-chip')`);
+    await pause(200);
+    await shot('pii-list-jumps', `${inView(`.table.selected[data-id="${target[0]}"] .column.hl-column[data-column="${target[1]}"]`)} !== null && document.querySelector('.oe-panel .oe-ph-name')?.textContent === 'Personal data (PII)' && ${piiOn}`);
+    await key('Escape');
+    await viewTab('overview');
+    const domains = await evaluate(`document.querySelectorAll('.oe-panel .oe-pii-domain').length || new Set(Object.values(${data}.nodes).filter((n) => (n.columns ?? []).some((c) => c.pii)).map((n) => n.cluster)).size`);
+    await shot('pii-overview', `${piiOn} && document.querySelector('.oe-panel').closest('foreignObject').style.display === 'none' && ${inView('.domain.has-pii')} !== null
+      && ${visible}.querySelectorAll('.domain.has-pii').length === ${domains} && [...${visible}.querySelectorAll('.domain:not(.has-pii)')].every((g) => getComputedStyle(g).opacity === '0.2')`);
+    const piiDomain = await evaluate(`${inView('.domain.has-pii')}.getAttribute('data-domain')`);
+    await click(`document.querySelector('.domain[data-domain=${JSON.stringify(piiDomain)}] .card-box')`, { where: 'top' });
+    await shot('pii-domain-view', `${viewIs(`domain:${piiDomain}`)} && ${piiOn} && ${tinted} === true`);
+    // A download of the view keeps the map.
+    const downloads = join(resolve(outDir), 'downloads', 'pii');
+    await mkdir(downloads, { recursive: true });
+    await send('Page.setDownloadBehavior', { behavior: 'allow', downloadPath: downloads });
+    await choose('download', 'This view as SVG');
+    let file = null;
+    for (let i = 0; i < 100 && !file; i++) {
+      file = (await readdir(downloads)).find((f) => f.endsWith('.svg'));
+      await pause(100);
+    }
+    await pause(200);
+    const saved = file ? (await readFile(join(downloads, file))).toString() : '';
+    if (!/<svg [^>]*class="pii-mode"/.test(saved) || !/class="column pii"/.test(saved) || /foreignObject/.test(saved)) failures.push(`download with the personal data map: ${file}`);
+    await closeMenu('download');
+    await key('p', 'KeyP');
+    const plainTable = `${inView('.table:not(.has-pii)')}`;
+    await shot('pii-off-key', `!${piiOn} && ${piiHost}.style.display === 'none' && (${plainTable} === null || getComputedStyle(${plainTable}).opacity === '1') && getComputedStyle(${inView('.column.pii .row-hit')}).fill !== 'rgb(255, 217, 204)'`);
+    await key('p', 'KeyP');
+    // A view seen whole is fitted again left of the summary panel.
+    const clearOfPanel = `(() => { const s = ${visible}.querySelector(':scope > rect').getBoundingClientRect(); const p = document.querySelector('.oe-panel').getBoundingClientRect();
+      return s.right <= p.left + 1 || { sheet: s.right, panel: p.left }; })()`;
+    await shot('pii-on-key', `${piiOn} && ${listed} === ${piiTotal} && ${tinted} === true && ${clearOfPanel} === true`);
+    await click(`document.querySelector('.oe-pii-chip .oe-chip-close')`);
+    await shot('pii-off-chip', `!${piiOn} && ${piiHost}.style.display === 'none' && document.querySelector('.oe-panel').closest('foreignObject').style.display === 'none'`);
+  }
+  // A toolbar button keeps the focus after a click, and Space would press it.
+  await evaluate('document.activeElement?.blur()');
+}
 
 // Tour: T walks the domains in the overview's order (the matrix rows),
 // each in its view with a caption (its note when it has one; name and table

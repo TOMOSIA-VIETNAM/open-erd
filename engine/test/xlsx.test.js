@@ -29,7 +29,8 @@ async function loadBack(model) {
 const rowValues = (sheet, n) => sheet.getRow(n).values.slice(1).map((v) => v?.text ?? v);
 
 const TABLE_GRID = ['#', 'Name', 'Type', 'Nullable', 'Default', 'Generated', 'Expression', 'Primary Key', 'Auto Inc', 'Index', 'Comment'];
-const FIXED_TAIL = ['Relations', 'Polymorphic', 'Indexes', 'To review'];
+// workspace-multi marks some columns as personal data, so it has a PII sheet.
+const FIXED_TAIL = ['Relations', 'Polymorphic', 'Indexes', 'PII', 'To review'];
 const rowOf = (location) => Number(/!A(\d+)$/.exec(location)[1]);
 const sheetOf = (location) => /^'([^']+)'!A\d+$/.exec(location)[1];
 const browseKey = (id, domain) => [id.split('.')[0], domain, id.split('.')[2]].join(' ');
@@ -163,6 +164,30 @@ test('links: Overview to each table sheet and back, fact lists to table sheets',
       }
     }
   }
+});
+
+test('PII lists every personal data column, linked to its table sheet and its row; absent without any', async () => {
+  const model = await loadMulti();
+  const { workbook, links } = await loadBack(model);
+  const sheet = workbook.getWorksheet('PII');
+  assert.deepEqual(rowValues(sheet, 1), ['Database', 'Domain', 'Table', 'Column', 'Type', 'Note']);
+  const rows = [...Array(sheet.rowCount - 1).keys()].map((i) => rowValues(sheet, i + 2).map((v) => v ?? ''));
+  assert.deepEqual(rows, [
+    ['auth', 'Identity', 'auth.public.user_profiles', 'display_name', 'varchar(80)', ''],
+    ['auth', 'Identity', 'auth.public.users', 'email', 'varchar(255)', ''],
+    ['auth', 'Organizations', 'auth.public.invitations', 'email', 'varchar(255)', ''],
+    ['shop', 'Content', 'shop._.comments', 'body', 'text', 'Free text written by the customer.'],
+  ]);
+  for (let r = 2; r <= sheet.rowCount; r++) {
+    const table = links.PII.get(`C${r}`);
+    const column = links.PII.get(`D${r}`);
+    const target = workbook.getWorksheet(sheetOf(table.location));
+    assert.equal(target.getCell('B1').text, table.display);
+    assert.equal(sheetOf(column.location), target.name);
+    assert.equal(target.getCell(`B${rowOf(column.location)}`).text, column.display);
+  }
+  const none = { ...model, tables: model.tables.map((t) => ({ ...t, columns: t.columns.map(({ pii, ...c }) => c) })) };
+  assert.equal((await loadBack(none)).workbook.getWorksheet('PII'), undefined);
 });
 
 test('links inside the workbook use location, with no relationship and no leading #', async () => {

@@ -86,6 +86,7 @@ const SHEETS = {
   relations: 'Relations',
   polymorphic: 'Polymorphic',
   indexes: 'Indexes',
+  pii: 'PII',
   review: 'To review',
   changes: 'Changes',
   verification: 'Verification',
@@ -243,7 +244,7 @@ const tableLinker = (names) => (id) => (names.has(id) ? link(id, names.get(id), 
 /**
  * Workbook of `model` (already filtered by a sharing profile, if any), with
  * sheets in reading order: Overview, one sheet per table, Relations,
- * Polymorphic, Indexes, To review. More sheets can be appended with addSheet before
+ * Polymorphic, Indexes, PII (only when some column is marked `pii`), To review. More sheets can be appended with addSheet before
  * serializeWorkbook. `warnings` are the possibly missing relations listed at
  * the end of To review (missingRelations of `model` when left out; see
  * renderSvg for what a profile or a diff passes).
@@ -335,6 +336,20 @@ export function buildWorkbook(model, { warnings = missingRelations(model) } = {}
     [{ header: 'Table' }, { header: 'Index' }, { header: 'Columns' }, { header: 'Unique' }, { header: 'Where', wrap: true }, { header: 'Using' }],
     tables.flatMap((t) => (t.indexes ?? []).map((i) => [tableLink(t.id), i.name ?? '', i.columns.join(', '), yesNo(i.unique === true), i.where ?? '', i.using ?? ''])),
   );
+
+  // Every column marked as personal data, in table order then column order,
+  // linked to its table's sheet and to its row there (title line, header,
+  // then one row per column). A model without any (a sharing profile drops
+  // them) gets no sheet.
+  const pii = tables.flatMap((t) =>
+    columnEntries(t)
+      .map((e, i) => ({ ...e, row: i + 3 }))
+      .filter((e) => e.column.pii)
+      .map((e) => [t.id.split('.')[0], t.domain, tableLink(t.id), link(e.path, names.get(t.id), e.row), e.column.type, e.column.note ?? '']),
+  );
+  if (pii.length > 0) {
+    addSheet(workbook, SHEETS.pii, [{ header: 'Database' }, { header: 'Domain' }, { header: 'Table' }, { header: 'Column' }, { header: 'Type' }, { header: 'Note', wrap: true }], pii);
+  }
 
   addSheet(
     workbook,
