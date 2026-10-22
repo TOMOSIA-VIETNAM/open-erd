@@ -10,6 +10,13 @@ levels above this skill's base directory): `${CLAUDE_PLUGIN_ROOT}/skills/_shared
 `${CLAUDE_PLUGIN_ROOT}/skills/_shared/model.md`. When a script needs fixing:
 `${CLAUDE_PLUGIN_ROOT}/skills/init/stacks.md`.
 
+Text typed after the command (`/open-erd:sync <text>`) is the user's focus for
+this run, e.g. "new billing tables" or "only the orders domain": still sync
+everything that changed, but look hardest at that area (scan its code for
+tables, columns, relations and notes the scripts may miss) and report on it
+first. With no text, sync everything. If nothing changed since the last sync,
+say the model is up to date; still run layout and render so the outputs use the installed plugin version, and commit only if they changed.
+
 No `open-erd.yaml` in the workspace → offer `/open-erd:init`.
 
 ## 1. Preconditions

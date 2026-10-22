@@ -15,10 +15,10 @@ In Claude Code:
 
 ## Use
 
-1. **Create the ERD** — `/open-erd:init`
+1. **Create the ERD** (once per project) — `/open-erd:init`
 2. **Open it** — `out/erd.svg` in Chrome or Safari
-3. **Code changed? Update** — `/open-erd:sync`
-4. **Confirm what AI guessed** — `/open-erd:review`
+3. **Update after code changes** (run often) — `/open-erd:sync` or `/open-erd:sync <what to focus on>`
+4. **Confirm relations AI guessed** (dashed lines; optional) — `/open-erd:review`
 5. **Send feedback** — `/open-erd:feedback <text>`
 
 Want a change? Just say it: *"orders.status: refunded means money returned"*.
