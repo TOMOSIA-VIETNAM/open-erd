@@ -19,8 +19,9 @@ In Claude Code:
 2. **Open it** — `out/erd.svg` in Chrome or Safari
 3. **Update after code changes** (run often) — `/open-erd:sync` or `/open-erd:sync <what to focus on>`
 4. **Confirm relations AI guessed** (dashed lines; optional) — `/open-erd:review`
-5. **Preview ERD changes on pull requests** (optional) — `/open-erd:ci-setup`
-6. **Send feedback** — `/open-erd:feedback <text>`
+5. **Ask about the data** — `/open-erd:ask "how does a client win a prize?"`: answer from the ERD, with a link that lights the tables
+6. **Preview ERD changes on pull requests** (optional) — `/open-erd:ci-setup`
+7. **Send feedback** — `/open-erd:feedback <text>`
 
 Want a change? Just say it: *"orders.status: refunded means money returned"*.
 

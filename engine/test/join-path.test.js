@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { buildDiagram } from '../src/layout/diagram.js';
 import { applyProfile } from '../src/model/profile.js';
 import { viewerData } from '../src/render/svg/render.js';
-import { HUB_COST, describeHop, findJoinPaths, hopCondition, pathNames, sqlNames, sqlSkeleton } from '../src/render/svg/viewer/join-path.js';
+import { HUB_COST, describeHop, findJoinPaths, hopCondition, pathNames, pathThrough, sqlNames, sqlSkeleton } from '../src/render/svg/viewer/join-path.js';
 import { fk, loadMulti } from './helpers/shop.js';
 
 // The conditions of a path, one hop per line, as the panel lists them.
@@ -174,4 +174,24 @@ test('a hop flags its review state for the viewer to show as an icon; inferred s
   assert.deepEqual(flags('db_fk', 'stale'), [{ type: 'trust', text: 'stale', review: 'stale' }]);
   assert.deepEqual(flags('inferred', 'pending'), [{ type: 'trust', text: 'inferred' }]);
   assert.deepEqual(flags('db_fk', 'reviewed'), []);
+});
+
+test('a path through several tables: the cheapest path between each pair of neighbours, end to end', async () => {
+  const data = dataOf(await loadMulti());
+  const [first] = findJoinPaths(data, 'shop._.tags', 'shop._.products');
+  const [second] = findJoinPaths(data, 'shop._.products', 'shop._.order_items');
+  const { path } = pathThrough(data, ['shop._.tags', 'shop._.products', 'shop._.order_items']);
+  assert.equal(route(path), [...first.nodes, ...second.nodes.slice(1)].join(' > '));
+  assert.deepEqual(path.hops, [...first.hops, ...second.hops]);
+  assert.equal(path.cost, first.cost + second.cost);
+  // Two tables: the same as the join panel's best path.
+  assert.deepEqual(pathThrough(data, ['shop._.tags', 'shop._.order_items']).path, findJoinPaths(data, 'shop._.tags', 'shop._.order_items')[0]);
+});
+
+test('a path through tables some pair of which nothing joins names that pair', async () => {
+  const model = await loadMulti();
+  const data = dataOf(model);
+  const lone = Object.keys(data.nodes).find((id) => data.nodes[id].kind === 'table' && findJoinPaths(data, id, 'shop._.orders').length === 0);
+  assert.ok(lone, 'the fixture has a table no relation reaches');
+  assert.deepEqual(pathThrough(data, ['shop._.products', 'shop._.orders', lone]), { gap: ['shop._.orders', lone] });
 });
