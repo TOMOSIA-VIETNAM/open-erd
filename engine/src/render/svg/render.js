@@ -9,6 +9,7 @@ import { columnEntries, enumMeaning } from '../../model/columns.js';
 import { compareStrings } from '../../model/load.js';
 import { CONNECTIONS_VIEW } from '../../model/schema.js';
 import { missingRelations } from '../../model/missing.js';
+import { healthFindings } from '../../model/health.js';
 import { measureText } from '../../text/measure.js';
 import { FONT_FAMILY, TEXT_STYLE_CSS, fontFaceCss } from '../../text/font.js';
 import { PALETTE } from '../../palette.js';
@@ -49,6 +50,12 @@ const VIEWER_STYLE = `.row-hit { fill: transparent; }
 .pii-mode .column.pii .column-name { fill: #a8341a; }
 .pii-mode .domain.has-pii .card-box { stroke: #d9603f; stroke-width: 2; }
 .pii-mode .mx-head:not(.has-pii) { opacity: 0.35; }
+/* Schema health: a triangle on each table with a finding, its columns in a
+   finding tinted, only while the mode is on. */
+.health-mark { display: none; }
+.health-mode .health-mark { display: inline; }
+.health-mode .view:not(.dimmed) :is(.table, .stub).has-health:not(.hl) > rect:last-of-type { stroke: #e8a317; stroke-width: 2; }
+.health-mode .column.health:not(.hl-column) .row-hit { fill: #fff1d6; }
 .domain, .stub, .table, .poly, .relation-group, .hub-badge { cursor: pointer; }
 .relation-hit { fill: none; stroke: transparent; stroke-width: 12; }
 .view.dimmed :is(.table, .stub, .poly, .domain, .relation-group):not(.hl) { opacity: 0.16; }
@@ -159,6 +166,15 @@ const VIEWER_STYLE = `.row-hit { fill: transparent; }
 .oe-pii-table { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 6px; margin: 6px 0 0 14px; }
 .oe-pii-table > .oe-link { overflow-wrap: anywhere; }
 .oe-pii-table > .oe-chipbox { flex-basis: 100%; }
+.oe-health-filters { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; }
+.oe-health-filter { font-size: 12px; padding: 2px 10px; }
+.oe-health-item { border-top: 1px solid #f0f2f6; padding: 8px 0; }
+.oe-health-head { display: flex; align-items: baseline; gap: 6px; }
+.oe-health-head .rule { font-weight: 600; color: #172033; }
+.oe-health-where { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 6px; margin-top: 4px; }
+.oe-health-where > .oe-link { overflow-wrap: anywhere; }
+.oe-health-item p { margin: 4px 0; }
+.oe-health-sql { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; color: #1f2a3d; background: #f6f8fb; border: 1px solid #e3e7ed; border-radius: 4px; padding: 6px 8px; margin: 4px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; -webkit-user-select: text; user-select: text; }
 .oe-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.92em; color: #4c4f9e; background: #f1f1fa; border-radius: 3px; padding: 0 3px; overflow-wrap: anywhere; }
 .oe-tip .oe-code { color: #c8caff; background: #2c3650; }
 .oe-star { color: #d99a00; }
@@ -227,6 +243,8 @@ const VIEWER_STYLE = `.row-hit { fill: transparent; }
 .oe-badge.enum { background: #f1ecfb; color: #6a4bb0; cursor: pointer; }
 .oe-badge.enum:hover { background: #e6dcf8; }
 .oe-badge.pii { background: #ffe1d8; color: #a8341a; font-weight: 700; }
+.oe-badge.sev-medium { background: #fde3b4; color: #8a5a00; font-weight: 700; }
+.oe-badge.sev-low { background: #e6ebf2; color: #56627a; font-weight: 700; }
 .oe-badge.unique { background: #e6f4f1; color: #136e63; font-weight: 700; }
 .oe-enum-list { margin: 4px 0 0 19px; padding: 4px 8px; border-left: 2px solid #e6dcf8; font-size: 12px; color: #3d4a5e; }
 .oe-enum-list > div { margin: 2px 0; overflow-wrap: anywhere; }
@@ -1090,7 +1108,7 @@ function warningsByTable(warnings) {
  * neighborhood view, which spans domains). Keys are written in a fixed
  * order and lists come from the sorted model, so the text is deterministic.
  */
-export function viewerData(model, diagram, diff = null, warnings = missingRelations(model)) {
+export function viewerData(model, diagram, diff = null, warnings = missingRelations(model), health = healthFindings(model)) {
   const warned = warningsByTable(warnings);
   // Note fields in a fixed order; a sharing profile has already removed the
   // ones it drops.
@@ -1188,6 +1206,8 @@ export function viewerData(model, diagram, diff = null, warnings = missingRelati
   // Business note of each domain, for its card's tooltip.
   const domainNotes = Object.fromEntries(model.databases.flatMap((db) => Object.entries(db.domains ?? {}).filter(([, d]) => d.note).map(([name, d]) => [`${db.database}/${name}`, d.note])));
   const base = { project, nodes, links, hubLinks, domainLinks: domains, domainNotes, databases, review, mostCentral: diagram.mostCentral };
+  // Schema health findings for the Health list; left out when there are none.
+  if (health.length > 0) base.health = health.map(({ related, ...f }) => f);
   if (!diff) return base;
   const sorted = (map) => Object.fromEntries([...map].sort(([a], [b]) => compareStrings(a, b)));
   const { sentences } = diff.marks;
@@ -1228,9 +1248,13 @@ export function openingView(model, diagram = buildDiagram(model)) {
  * `{ warnings }`: the possibly missing relations to mark (missingRelations
  * of `model` when left out); a profile render passes the ones found on the
  * full model (see warningsFor), a diff passes none.
+ *
+ * `{ health }`: the schema health findings the viewer lists (healthFindings
+ * of `model` when left out); a profile render passes the ones found on the
+ * full model and narrowed by healthFor, a diff passes none.
  */
 export function renderSvg(model, layout, options = {}) {
-  const { diff = null, warnings = missingRelations(model), ...sceneOptions } = options;
+  const { diff = null, warnings = missingRelations(model), health = diff ? [] : healthFindings(model), ...sceneOptions } = options;
   const diagram = buildDiagram(model);
   const marks = diff?.marks ?? NO_MARKS;
   // A diagram too large for the view of all tables opens a diff on the
@@ -1252,7 +1276,7 @@ export function renderSvg(model, layout, options = {}) {
     `<style>${STYLE}</style>`,
     ...scenes.map((s) => viewSvg(s.scene, colorOf, s.scene.name === visible, marks, s.banner, columnWarnings)),
     viewGroup(CONNECTIONS_VIEW, connections.bounds, visible === CONNECTIONS_VIEW, [connections.svg]),
-    `<script type="application/json" id="open-erd-data">${scriptJson(viewerData(model, diagram, diff, warnings))}</script>`,
+    `<script type="application/json" id="open-erd-data">${scriptJson(viewerData(model, diagram, diff, warnings, health))}</script>`,
     `<script><![CDATA[\n${VIEWER_SCRIPT}\n]]></script>`,
     '</svg>',
     '',

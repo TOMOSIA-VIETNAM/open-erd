@@ -97,7 +97,7 @@ Chi tiết từng task: `plan.md`. Đánh dấu `[x]` khi task pass verify.
 - [x] 31. ERD tự cập nhật trong CI (`/open-erd:ci-setup`, `apply-facts`, comment diff vào PR)
 - [x] 32. Tour (chế độ trình chiếu theo domain)
 - [x] 33. Bản đồ PII (toggle, panel tổng kết, sheet PII)
-- [ ] 34. Sức khoẻ schema (danh sách phát hiện, không chấm điểm, `health.ignore`)
+- [x] 34. Sức khoẻ schema (danh sách phát hiện, không chấm điểm, `health.ignore`)
 - [ ] 35. Phạm vi ảnh hưởng (Impact theo vòng 1/2/3)
 - [ ] 36. `/open-erd:ask` + deep link `#tables=` / `#path=`
 - [x] 37. Verifier: kiểm cơ học + agent kiểm lại fact do AI viết trước khi commit (`verify: full|ai-only|off`)

@@ -178,6 +178,28 @@ const PII = piiSummary(data.nodes);
   for (const g of svg.querySelectorAll('.domain[data-domain], .mx-head[data-domain]')) if (domains.has(g.getAttribute('data-domain'))) g.classList.add('has-pii');
 }
 
+// Schema health (see the health mode section): each table with a finding
+// gets a small amber triangle on its top right corner and its columns in a
+// finding a class, both shown only while the mode is on. Marked here for
+// the same reason as personal data. A render without findings has none.
+const HEALTH = data.health ?? [];
+{
+  const byTable = new Map();
+  for (const f of HEALTH) {
+    if (!byTable.has(f.table)) byTable.set(f.table, { columns: new Set() });
+    for (const c of f.columns ?? []) byTable.get(f.table).columns.add(c);
+  }
+  for (const g of svg.querySelectorAll('.table[data-id], .stub[data-id]')) {
+    const mine = byTable.get(g.getAttribute('data-id'));
+    if (!mine) continue;
+    g.classList.add('has-health');
+    for (const c of g.querySelectorAll('.column')) if (mine.columns.has(c.getAttribute('data-column'))) c.classList.add('health');
+    const { x, y, w } = boxOf(g);
+    const cx = x + w - 2;
+    g.append(svgEl('path', { class: 'col-warn health-mark', d: `M${cx - 7} ${y + 5}L${cx} ${y - 8}L${cx + 7} ${y + 5}Z` }));
+  }
+}
+
 const camera = svgEl('g', { class: 'camera' });
 views.values().next().value.before(camera);
 for (const v of views.values()) camera.append(v);
@@ -911,7 +933,7 @@ viewsMenu.onOpen = () =>
 
 // The ⋯ menu: view and display settings, rebuilt on every open so labels
 // and checks reflect the current state.
-const moreMenu = dropdown(toolButton('more', '', 'More: collapse or expand domains, legend, minimap, review mode, personal data'), 'oe-more-menu');
+const moreMenu = dropdown(toolButton('more', '', 'More: collapse or expand domains, legend, minimap, review mode, personal data, schema health'), 'oe-more-menu');
 // Overview cards and the matrix stand for many relations and carry no review colour.
 const reviewable = () => state.view !== OVERVIEW && state.view !== CONNECTIONS;
 const REVIEW_TOTAL = data.review.pending + data.review.stale;
@@ -942,6 +964,8 @@ moreMenu.onOpen = () => {
       : null,
     // A model without personal data (or a profile that dropped it) has nothing to show.
     PII.total > 0 ? menuItem(`Personal data (PII) · ${PII_COUNTS}`, `${PII_TIP} (P)`, toggle(() => setPiiMode(!piiOn())), { checked: piiOn(), detail: PII_TIP }) : null,
+    // No findings, no entry: the list would be empty.
+    HEALTH.length > 0 ? menuItem(`Schema health · ${HEALTH_COUNTS}`, `${HEALTH_TIP} (H)`, toggle(() => setHealthMode(!healthOn())), { checked: healthOn(), detail: HEALTH_TIP }) : null,
   ]);
 };
 
@@ -1036,13 +1060,13 @@ function updateBackPill() {
 
 // The Back pill sits just above the top left corner of the drawing's white
 // sheet and moves with it; it stays on the canvas, below the toolbar (and
-// the review and PII chips), left of the panel. With that corner off screen it waits
+// the mode chips), left of the panel. With that corner off screen it waits
 // at the canvas's top left.
 function placeBackPill() {
   if (backPill.fo.style.display === 'none' || !backPill.size) return;
   const vp = viewport();
   const { w, h } = backPill.size;
-  const chip = Math.max(...[reviewChip, piiChip].map((c) => (c.fo.style.display !== 'none' ? Number(c.fo.getAttribute('height')) + 8 : 0)));
+  const chip = Math.max(...modeChips().map((c) => (c.fo.style.display !== 'none' ? Number(c.fo.getAttribute('height')) + 8 : 0)));
   const minY = TOOLBAR_HEIGHT + 8 + chip;
   const b = viewBounds(state.view);
   const { x: cx, y: cy, s } = state.cam;
@@ -1093,8 +1117,8 @@ function viewAsSvg(keep) {
   // The pulse on a table just reached is a moment on screen, not drawing.
   for (const e of view.querySelectorAll('.arrive')) e.classList.remove('arrive');
   const root = svgEl('svg', { width: w, height: h, viewBox: `${x} ${y} ${w} ${h}` }, [svg.querySelector('style').cloneNode(true), view]);
-  // Review colours, the personal data map and diff colours are classes on the root.
-  const cls = ['review-mode', 'pii-mode', 'diff-mode'].filter((c) => svg.classList.contains(c));
+  // Review colours, the personal data map, health marks and diff colours are classes on the root.
+  const cls = ['review-mode', 'pii-mode', 'health-mode', 'diff-mode'].filter((c) => svg.classList.contains(c));
   if (cls.length > 0) root.setAttribute('class', cls.join(' '));
   return { text: `<?xml version="1.0" encoding="UTF-8"?>\n${new XMLSerializer().serializeToString(root)}\n`, w, h };
 }
@@ -2172,6 +2196,9 @@ const LEGEND = [
     [() => sample([svgEl('rect', { class: 'legend-pii', x: 1, y: 2, width: 62, height: 14, rx: 2 }), svgEl('text', { class: 'legend-pii-text', x: 6, y: 9, 'dominant-baseline': 'central', text: 'email' })]), 'Column marked as personal data (PII)', (v) => piiOn() && has(v, '.column.pii')],
     [() => sample([svgEl('rect', { class: 'legend-pii-card', x: 1, y: 1, width: 62, height: 16, rx: 4 })]), 'Domain with personal data', (v) => piiOn() && has(v, '.domain.has-pii')],
   ]],
+  ['Schema health', [
+    [() => sample([svgEl('rect', { class: 'stub-box', x: 1, y: 6, width: 54, height: 11, rx: 3 }), svgEl('path', { class: 'col-warn', d: 'M49 12L55 1L61 12Z' })]), 'Table with a health finding', (v) => healthOn() && has(v, '.has-health')],
+  ]],
   ['Line ends', [
     ['one', 'Exactly one'],
     ['zeroOrOne', 'Zero or one'],
@@ -2314,6 +2341,101 @@ function setPiiMode(on) {
     showPiiSummary();
     if (whole) zoomToRect(viewBounds(state.view), MAX_FIT_SCALE);
   } else if (piiSummaryShown()) hidePanel();
+  if (legendOpen) setLegend(true);
+  layoutOverlays();
+  placeBackPill();
+}
+
+// ---------------------------------------------------------------- health mode
+
+// Schema health (⋯ › Schema health, or H; offered only when the render has
+// findings, see model/health.js): each table with a finding gets a small
+// amber triangle and its columns in a finding a tint, in every view until
+// turned off. A chip under the toolbar says the mode is on: List reopens
+// the findings, × turns it off. The list shows every finding in the
+// engine's order (medium first), filterable by severity; a click on the
+// table or a column goes there and keeps the list open. The mode is a class
+// on the root, so a download keeps the marks.
+const healthOn = () => svg.classList.contains('health-mode');
+const SEVERITIES = ['medium', 'low'];
+const severityCount = (s) => HEALTH.filter((f) => f.severity === s).length;
+const HEALTH_COUNTS = `${plural(HEALTH.length, 'finding')} (${SEVERITIES.filter(severityCount).map((s) => `${severityCount(s)} ${s}`).join(', ')})`;
+const HEALTH_TIP = 'Mark the tables with schema health findings and list them with suggested fixes';
+// Rules in words; the rule id (for health.ignore) is the tooltip.
+const RULE_WORDS = {
+  missing_fk: 'No foreign key in the database',
+  unindexed_fk: 'Reference without an index',
+  polymorphic_unindexed: 'Polymorphic pair without an index',
+  orphan_table: 'Unconnected table',
+  redundant_index: 'Redundant index',
+};
+const healthChip = overlay('oe-health-chip-host');
+healthChip.fo.style.display = 'none';
+healthChip.div.append(
+  el('div', { class: 'oe-review-chip oe-health-chip', title: 'Tables with schema health findings carry an amber triangle' }, [
+    el('span', { text: `Health: ${HEALTH_COUNTS}` }),
+    el('button', { class: 'oe-link', text: 'List', title: 'Show the schema health findings', on: { click: () => showHealthList() } }),
+    el('button', { class: 'oe-chip-close', text: '×', title: 'Turn the health marks off (H)', 'aria-label': 'Turn the health marks off', on: { click: () => setHealthMode(false) } }),
+  ]),
+);
+// Chips of the modes, in the order they sit under the toolbar.
+const modeChips = () => [reviewChip, piiChip, healthChip];
+
+// Built once and reused, so the severity filter stays as the reader set it.
+let healthPanel = null;
+function healthListPanel() {
+  if (healthPanel) return healthPanel;
+  const go = (id, column) => () => {
+    const scroll = panel.div.scrollTop;
+    goToNode(id, column);
+    showHealthList(scroll);
+  };
+  const items = HEALTH.map((f) =>
+    el('div', { class: 'oe-health-item', 'data-severity': f.severity }, [
+      el('div', { class: 'oe-health-head' }, [
+        el('span', { class: `oe-badge sev-${f.severity}`, text: f.severity }),
+        el('span', { class: 'rule', text: RULE_WORDS[f.rule] ?? f.rule, title: `Rule ${f.rule}` }),
+      ]),
+      el('div', { class: 'oe-health-where' }, [
+        el('button', { class: 'oe-link', text: short(f.table), title: `Go to ${f.table}`, on: { click: go(f.table, f.columns?.[0]) } }),
+        ...(f.columns ?? []).map((c) => el('button', { class: 'oe-chip', title: `Go to ${short(f.table)}.${c}`, text: c, on: { click: go(f.table, c) } })),
+      ]),
+      el('p', { text: f.message }),
+      el('p', { class: 'muted', text: f.suggestion }),
+      f.sql ? el('pre', { class: 'oe-health-sql', text: f.sql }) : null,
+    ]),
+  );
+  const filters = [null, ...SEVERITIES.filter(severityCount)].map((s) =>
+    el('button', { class: `oe-btn oe-health-filter${s === null ? ' on' : ''}`, 'data-severity': s ?? 'all', text: s === null ? `All ${HEALTH.length}` : `${s[0].toUpperCase()}${s.slice(1)} ${severityCount(s)}`, on: { click: () => filter(s) } }),
+  );
+  function filter(severity) {
+    for (const b of filters) b.classList.toggle('on', b.getAttribute('data-severity') === (severity ?? 'all'));
+    for (const item of items) item.style.display = severity === null || item.getAttribute('data-severity') === severity ? '' : 'none';
+  }
+  healthPanel = [
+    panelHeader({ name: 'Schema health', note: `${HEALTH_COUNTS}. No score: each finding is something to look at, with SQL to review before use.` }),
+    // One severity only: nothing to filter.
+    filters.length > 2 ? el('div', { class: 'oe-health-filters', role: 'group', 'aria-label': 'Filter by severity' }, filters) : null,
+    ...items,
+  ];
+  return healthPanel;
+}
+function showHealthList(scroll = 0) {
+  showPanel(healthListPanel());
+  panel.div.scrollTop = scroll;
+}
+const healthListShown = () => healthPanel !== null && panel.fo.style.display !== 'none' && panel.div.contains(healthPanel[0]);
+
+function setHealthMode(on) {
+  if (HEALTH.length === 0) return;
+  svg.classList.toggle('health-mode', on);
+  healthChip.fo.style.display = on ? '' : 'none';
+  if (on) {
+    // A view seen whole is fitted again left of the panel, as for the personal data list.
+    const whole = fitsInside(viewBounds(state.view), visibleRect(state.cam, viewport(), TOOLBAR_HEIGHT, 0));
+    showHealthList();
+    if (whole) zoomToRect(viewBounds(state.view), MAX_FIT_SCALE);
+  } else if (healthListShown()) hidePanel();
   if (legendOpen) setLegend(true);
   layoutOverlays();
   placeBackPill();
@@ -2640,27 +2762,20 @@ function layoutOverlays() {
     spot.fo.setAttribute('width', w);
     spot.fo.setAttribute('height', h);
   }
-  // The review and PII chips float under the toolbar, top left; the Back pill
-  // follows the drawing (see placeBackPill).
+  // The chips of the modes on float under the toolbar, top left, one after
+  // the other; the Back pill follows the drawing (see placeBackPill).
   const pillY = TOOLBAR_HEIGHT + 8;
-  if (reviewChip.fo.style.display !== 'none') {
-    reviewChip.fo.setAttribute('width', w);
-    reviewChip.fo.setAttribute('height', 40);
-    const r = reviewChip.div.firstChild.getBoundingClientRect();
-    reviewChip.fo.setAttribute('x', PANEL_MARGIN);
-    reviewChip.fo.setAttribute('y', pillY);
-    reviewChip.fo.setAttribute('width', Math.ceil(r.width) + 2);
-    reviewChip.fo.setAttribute('height', Math.ceil(r.height) + 2);
-  }
-  // The PII chip comes next to it, or in its place.
-  if (piiChip.fo.style.display !== 'none') {
-    piiChip.fo.setAttribute('width', w);
-    piiChip.fo.setAttribute('height', 40);
-    const r = piiChip.div.firstChild.getBoundingClientRect();
-    piiChip.fo.setAttribute('x', reviewChip.fo.style.display !== 'none' ? PANEL_MARGIN + Number(reviewChip.fo.getAttribute('width')) + 8 : PANEL_MARGIN);
-    piiChip.fo.setAttribute('y', pillY);
-    piiChip.fo.setAttribute('width', Math.ceil(r.width) + 2);
-    piiChip.fo.setAttribute('height', Math.ceil(r.height) + 2);
+  let chipX = PANEL_MARGIN;
+  for (const chip of modeChips()) {
+    if (chip.fo.style.display === 'none') continue;
+    chip.fo.setAttribute('width', w);
+    chip.fo.setAttribute('height', 40);
+    const r = chip.div.firstChild.getBoundingClientRect();
+    chip.fo.setAttribute('x', chipX);
+    chip.fo.setAttribute('y', pillY);
+    chip.fo.setAttribute('width', Math.ceil(r.width) + 2);
+    chip.fo.setAttribute('height', Math.ceil(r.height) + 2);
+    chipX += Math.ceil(r.width) + 2 + 8;
   }
   if (legend.fo.style.display !== 'none') {
     // The area is LEGEND_ROOM larger than the card on every side, so its
@@ -2967,6 +3082,7 @@ const SHORTCUTS = [
   ['L', 'Show or hide the legend'],
   ['T', 'Tour: each domain in turn (← → step, Space pauses, Esc ends)'],
   PII.total > 0 ? ['P', 'Personal data map: PII columns tinted, the rest faded, with their list'] : null,
+  HEALTH.length > 0 ? ['H', 'Schema health: tables with findings marked, with their list'] : null,
   ['Backspace or Alt+←', 'Back to the previous table or view'],
   ['Shift+Backspace or Alt+→', 'Forward again'],
   ['Esc', 'Close search, menu or panel'],
@@ -3059,6 +3175,10 @@ document.addEventListener('keydown', (e) => {
     setPiiMode(!piiOn());
     return;
   }
+  if (letter === 'h' && plain) {
+    setHealthMode(!healthOn());
+    return;
+  }
   if (letter === 'l' && !e.metaKey && !e.ctrlKey && !e.altKey && !typing()) {
     if (legendSections().length > 0) setLegend(!legendOpen);
     return;
@@ -3092,7 +3212,7 @@ window.addEventListener('resize', () => {
 
 // Later overlays paint on top: the toolbar's menus over the panel, the
 // search over everything but the tooltip.
-svg.append(legend.fo, minimap.fo, backPill.fo, reviewChip.fo, piiChip.fo, panel.fo, tourBox.fo, toolbar.fo, spotlight.fo, joinSpot.fo, toast.fo, tip.fo);
+svg.append(legend.fo, minimap.fo, backPill.fo, reviewChip.fo, piiChip.fo, healthChip.fo, panel.fo, tourBox.fo, toolbar.fo, spotlight.fo, joinSpot.fo, toast.fo, tip.fo);
 // The view drawn visible without script is where the reader starts (all
 // tables unless the workspace configured another view). All tables open at
 // a readable size around the most central table; a diff drawing shows its

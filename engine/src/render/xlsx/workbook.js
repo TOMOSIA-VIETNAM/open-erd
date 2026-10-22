@@ -2,6 +2,7 @@ import ExcelJS from 'exceljs';
 import { columnEntries, enumMeaning } from '../../model/columns.js';
 import { compareStrings } from '../../model/load.js';
 import { missingRelations } from '../../model/missing.js';
+import { healthFindings } from '../../model/health.js';
 import { KIND_TRUST, REVIEW_TRUST, databaseFacts, factText, tableFacts } from '../../layout/diagram.js';
 import { FULL_WIDTH } from '../../text/measure.js';
 import { changeLabel, describeChange, showValue } from '../../diff/changes.js';
@@ -87,6 +88,7 @@ const SHEETS = {
   polymorphic: 'Polymorphic',
   indexes: 'Indexes',
   pii: 'PII',
+  health: 'Health',
   review: 'To review',
   changes: 'Changes',
   verification: 'Verification',
@@ -244,12 +246,14 @@ const tableLinker = (names) => (id) => (names.has(id) ? link(id, names.get(id), 
 /**
  * Workbook of `model` (already filtered by a sharing profile, if any), with
  * sheets in reading order: Overview, one sheet per table, Relations,
- * Polymorphic, Indexes, PII (only when some column is marked `pii`), To review. More sheets can be appended with addSheet before
+ * Polymorphic, Indexes, PII (only when some column is marked `pii`), Health
+ * (only with findings), To review. More sheets can be appended with addSheet before
  * serializeWorkbook. `warnings` are the possibly missing relations listed at
- * the end of To review (missingRelations of `model` when left out; see
- * renderSvg for what a profile or a diff passes).
+ * the end of To review (missingRelations of `model` when left out), `health`
+ * the schema health findings (healthFindings of `model` when left out); see
+ * renderSvg for what a profile or a diff passes.
  */
-export function buildWorkbook(model, { warnings = missingRelations(model) } = {}) {
+export function buildWorkbook(model, { warnings = missingRelations(model), health = healthFindings(model) } = {}) {
   const workbook = new ExcelJS.Workbook();
   const tenancy = tenancyOf(model);
   const tables = browseOrder(model.tables);
@@ -349,6 +353,17 @@ export function buildWorkbook(model, { warnings = missingRelations(model) } = {}
   );
   if (pii.length > 0) {
     addSheet(workbook, SHEETS.pii, [{ header: 'Database' }, { header: 'Domain' }, { header: 'Table' }, { header: 'Column' }, { header: 'Type' }, { header: 'Note', wrap: true }], pii);
+  }
+
+  // Schema health findings in their order (severity, table, rule), linked
+  // to the table's sheet; no sheet without any.
+  if (health.length > 0) {
+    addSheet(
+      workbook,
+      SHEETS.health,
+      [{ header: 'Severity' }, { header: 'Rule' }, { header: 'Database' }, { header: 'Table' }, { header: 'Column(s)' }, { header: 'Finding', wrap: true }, { header: 'Suggestion', wrap: true }, { header: 'SQL', wrap: true }],
+      health.map((f) => [f.severity, f.rule, f.table.split('.')[0], tableLink(f.table), (f.columns ?? []).join(', '), f.message, f.suggestion, f.sql ?? '']),
+    );
   }
 
   addSheet(

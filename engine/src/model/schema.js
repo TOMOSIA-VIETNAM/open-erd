@@ -290,6 +290,20 @@ const profileFields = {
 export const VERIFY_MODES = ['full', 'ai-only', 'off'];
 export const VERIFY_DEFAULT = 'ai-only';
 
+// Schema health checks (see model/health.js), each with the severity its
+// findings carry. Findings are a list for a reviewer, never a score.
+export const HEALTH_RULES = {
+  missing_fk: 'medium',
+  unindexed_fk: 'medium',
+  polymorphic_unindexed: 'medium',
+  orphan_table: 'low',
+  redundant_index: 'low',
+};
+export const HEALTH_SEVERITIES = ['medium', 'low'];
+// `<rule>:<table id>` silences a rule on a whole table, `<rule>:<table id>.<column>`
+// only the findings on that column.
+export const HEALTH_IGNORE_PATTERN = /^[a-z_]+:[^.\s]+\.[^.\s]+\.[^.\s]+(\.\S+)?$/;
+
 // open-erd.yaml
 export const CONFIG_FILE = 'open-erd.yaml';
 export const configSchema = {
@@ -335,6 +349,15 @@ export const configSchema = {
     // named like a reference that are none (an external provider id), and
     // tables that stand alone on purpose. Same shape as `hidden`.
     ignore_missing: hideSpec,
+    // Schema health findings to stop reporting: `<rule>:<table id>` for a
+    // whole table, `<rule>:<table id>.<column>` for the findings that
+    // involve that column. Rules are the keys of HEALTH_RULES.
+    health: {
+      type: 'object',
+      fields: {
+        ignore: { type: 'array', items: { type: 'string', pattern: HEALTH_IGNORE_PATTERN, hint: '<rule>:<table id>[.<column>]' } },
+      },
+    },
     // View the file opens on, also the one drawn without script:
     // all (when left out) | overview | connections | domain:<db>/<domain>.
     // A configured view the render does not have (the view of all tables of
