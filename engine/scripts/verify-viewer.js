@@ -947,9 +947,11 @@ if (await evaluate(`document.querySelector('g.view[data-view="all"]') !== null`)
   await shot('cmd-a-all-tables', `${viewIs('all')} && document.querySelector('.oe-view-tabs [data-view="all"]').classList.contains('on')`);
 }
 await choose('more', 'Keyboard shortcuts');
-// P is listed only when some column is marked as personal data.
+// P is listed only when some column is marked as personal data, H only
+// when the render has schema health findings.
 const piiTotal = await evaluate(`Object.values(${data}.nodes).reduce((n, x) => n + (x.columns ?? []).filter((c) => c.pii).length, 0)`);
-await shot('keyboard-shortcuts', `document.querySelectorAll('.oe-panel .oe-keys tr').length === ${piiTotal > 0 ? 10 : 9} && /J/.test(document.querySelector('.oe-panel .oe-keys').textContent) && document.querySelector('.oe-panel .oe-keys').textContent.includes('Alt+←')`);
+const healthTotal = await evaluate(`(${data}.health ?? []).length`);
+await shot('keyboard-shortcuts', `document.querySelectorAll('.oe-panel .oe-keys tr').length === ${9 + (piiTotal > 0) + (healthTotal > 0)} && /J/.test(document.querySelector('.oe-panel .oe-keys').textContent) && document.querySelector('.oe-panel .oe-keys').textContent.includes('Alt+←')`);
 // A short panel leaves the minimap in its corner; a tall one pushes it left.
 {
   const mm = `(() => { const f = document.querySelector('.oe-minimap')?.closest('foreignObject'); return f && f.style.display !== 'none' ? document.querySelector('.oe-minimap').getBoundingClientRect() : null; })()`;
@@ -1153,6 +1155,61 @@ await shot(
     await shot('pii-off-chip', `!${piiOn} && ${piiHost}.style.display === 'none' && document.querySelector('.oe-panel').closest('foreignObject').style.display === 'none'`);
   }
   // A toolbar button keeps the focus after a click, and Space would press it.
+  await evaluate('document.activeElement?.blur()');
+}
+
+// Schema health: ⋯ › Schema health (and H) marks every table with a finding
+// with a triangle, shows a chip and the list of findings; the severity
+// filter (shown with two severities or more) hides the others; a click on a column in the list goes there and
+// keeps the list open; H or the chip's × turns it off. Without findings
+// there is no entry, chip or key.
+{
+  const healthHost = `document.querySelector('.oe-health-chip').closest('foreignObject')`;
+  const healthOn = `document.documentElement.classList.contains('health-mode')`;
+  await key('Escape');
+  if (await evaluate(`document.querySelector('g.view[data-view="all"]') !== null`)) await viewTab('all');
+  await click(menuButton('more'));
+  if (healthTotal === 0) {
+    await shot('health-hidden', `${menuItem('more', 'Schema health')} === undefined && ${healthHost}.style.display === 'none'`);
+    await closeMenu('more');
+    await key('h', 'KeyH');
+    await shot('health-key-does-nothing', `!${healthOn} && ${healthHost}.style.display === 'none'`);
+  } else {
+    await click(menuItem('more', 'Schema health'));
+    await closeMenu('more');
+    // Every table on screen with a finding shows its triangle, and only those.
+    const marked = `(() => { const d = ${data}; const v = ${visible}; const tables = new Set(d.health.map((f) => f.table));
+      const want = [...v.querySelectorAll('.table')].filter((g) => tables.has(g.getAttribute('data-id'))).length;
+      const got = [...v.querySelectorAll('.health-mark')].filter((m) => getComputedStyle(m).display !== 'none').length;
+      return (got === want && [...v.querySelectorAll('.table:not(.has-health) .health-mark')].length === 0) || { want, got }; })()`;
+    const items = `[...document.querySelectorAll('.oe-panel .oe-health-item')]`;
+    const shown = `${items}.filter((e) => e.style.display !== 'none')`;
+    await shot('health-on-menu', `${healthOn} && ${healthHost}.style.display !== 'none' && document.querySelector('.oe-health-chip').textContent.startsWith('Health: ${healthTotal} finding') && ${marked} === true
+      && document.querySelector('.oe-panel .oe-ph-name')?.textContent === 'Schema health' && ${items}.length === ${healthTotal}`);
+    const severities = await evaluate(`[...document.querySelectorAll('.oe-panel .oe-health-filter')].map((b) => b.getAttribute('data-severity')).filter((s) => s !== 'all')`);
+    for (const severity of severities) {
+      await click(`document.querySelector('.oe-panel .oe-health-filter[data-severity="${severity}"]')`);
+      const want = await evaluate(`${data}.health.filter((f) => f.severity === '${severity}').length`);
+      await shot(`health-filter-${severity}`, `${shown}.length === ${want} && ${shown}.every((e) => e.getAttribute('data-severity') === '${severity}')`);
+    }
+    // One severity only: the list has no filter.
+    if (severities.length > 0) await click(`document.querySelector('.oe-panel .oe-health-filter[data-severity="all"]')`);
+    else await shot('health-no-filter', `document.querySelector('.oe-panel .oe-health-filters') === null`);
+    const target = await evaluate(`(() => { const e = ${shown}.find((x) => x.querySelector('.oe-chip')); return e ? [e.querySelector('.oe-link').title.slice('Go to '.length), e.querySelector('.oe-chip').textContent] : null; })()`);
+    if (target) {
+      await click(`${shown}.find((x) => x.querySelector('.oe-chip')).querySelector('.oe-chip')`);
+      await pause(200);
+      await shot('health-list-jumps', `${inView(`.table.selected[data-id="${target[0]}"] .column.hl-column[data-column="${target[1]}"]`)} !== null && ${inView(`.table.selected[data-id="${target[0]}"] .health-mark`)} !== null
+        && document.querySelector('.oe-panel .oe-ph-name')?.textContent === 'Schema health' && ${healthOn}`);
+    }
+    await key('Escape');
+    await key('h', 'KeyH');
+    await shot('health-off-key', `!${healthOn} && ${healthHost}.style.display === 'none' && [...document.querySelectorAll('.health-mark')].every((m) => getComputedStyle(m).display === 'none')`);
+    await key('h', 'KeyH');
+    await shot('health-on-key', `${healthOn} && ${items}.length === ${healthTotal} && document.querySelector('.oe-panel').closest('foreignObject').style.display !== 'none'`);
+    await click(`document.querySelector('.oe-health-chip .oe-chip-close')`);
+    await shot('health-off-chip', `!${healthOn} && ${healthHost}.style.display === 'none' && document.querySelector('.oe-panel').closest('foreignObject').style.display === 'none'`);
+  }
   await evaluate('document.activeElement?.blur()');
 }
 

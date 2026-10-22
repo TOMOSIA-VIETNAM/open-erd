@@ -42,6 +42,10 @@ ignore_missing:              # possibly missing relations `validate` stops repor
     - billing.public.payments.stripe_charge_id   # not a FK: Stripe charge id
   tables:
     - billing.public.settings                    # standalone key/value store
+health:                      # schema health findings to stop reporting
+  ignore:
+    - unindexed_fk:billing.public.audit_logs          # <rule>:<table id>, whole table
+    - missing_fk:billing.public.payments.order_id     # <rule>:<table id>.<column>, that column only
 default_view: all            # all (default) | overview | connections | domain:<db>/<domain>; the view the SVG opens on
 verify: ai-only              # ai-only (default) | full | off; checking before each commit, see rules.md "Verification"
 not_in_model:                # tables the extract facts list that the model leaves out on purpose; `verify` skips them
@@ -70,6 +74,13 @@ static file) or a table stands alone on purpose, add it to
 `ignore_missing` with the reason as a YAML comment on the same line.
 `ignore_missing.columns` silences column warnings only,
 `ignore_missing.tables` only the "nothing connects this table" warning.
+
+`validate` also counts schema health findings (rules `missing_fk`,
+`unindexed_fk`, `polymorphic_unindexed`, `orphan_table`,
+`redundant_index`; listed in erd.svg and the Health sheet). They never
+fail validation and are not model errors: do not change the model to make
+one go away. Add an entry to `health.ignore` only when the user says a
+finding is intended, with their reason as a comment.
 
 `not_in_model` takes table ids as the table would have in the model
 (`<db>.<schema>.<table>`, `_` as schema where the engine has none); an id

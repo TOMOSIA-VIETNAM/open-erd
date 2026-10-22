@@ -13,6 +13,7 @@ import { compareFacts, describeDelta, readFacts } from './src/model/facts.js';
 import { applyFacts, needsSyncMarkdown } from './src/model/apply-facts.js';
 import { parseVerification, serializeVerification, verificationSummary } from './src/model/verification.js';
 import { formatWarning, missingRelations, warningsFor } from './src/model/missing.js';
+import { healthFindings, healthFor, healthSummary } from './src/model/health.js';
 import { addChangesSheet, addVerificationSheet, buildWorkbook, serializeWorkbook } from './src/render/xlsx/workbook.js';
 import { changesMarkdown, describeChange, diffModels, summarize, summaryLine } from './src/diff/changes.js';
 import { diffMarks, mergeLayouts, unionModel } from './src/diff/union.js';
@@ -181,7 +182,9 @@ async function runValidate({ workspace }) {
   // Possibly missing relations are for a reviewer to look at, not errors.
   const warnings = missingRelations(model);
   for (const w of warnings) console.error(formatWarning(w));
-  console.log(`${workspace}: valid${locked ? `, ${locked.relations?.length ?? 0} locked relation(s) and ${locked.polymorphic?.length ?? 0} polymorphic association(s) intact` : ''}${warnings.length > 0 ? `; ${warnings.length} possibly missing relation(s), see the warnings (silence a known one with ignore_missing in ${CONFIG_FILE})` : ''}`);
+  // Health findings never fail validation; one count points at the list.
+  const health = healthSummary(healthFindings(model));
+  console.log(`${workspace}: valid${locked ? `, ${locked.relations?.length ?? 0} locked relation(s) and ${locked.polymorphic?.length ?? 0} polymorphic association(s) intact` : ''}${warnings.length > 0 ? `; ${warnings.length} possibly missing relation(s), see the warnings (silence a known one with ignore_missing in ${CONFIG_FILE})` : ''}${health ? `; ${health}, listed under Health in erd.svg and erd.xlsx (silence one with health.ignore in ${CONFIG_FILE})` : ''}`);
   return 0;
 }
 
@@ -375,18 +378,20 @@ async function runRender({ workspace, profile }) {
   let shown = model;
   // Found on the full model, narrowed to what the profile still shows.
   let warnings = missingRelations(model);
+  let health = healthFindings(model);
   if (profile === undefined) {
-    svg = renderSvg(model, layout, { warnings });
+    svg = renderSvg(model, layout, { warnings, health });
   } else {
     // Positions come from the layout of the full model, so check that one;
     // the filtered model is drawn at those positions (see resolveView).
     checkLayout(model, layout);
     shown = applyProfile(model, profile);
     warnings = warningsFor(warnings, shown);
-    svg = renderSvg(shown, layout, { fitStored: true, warnings });
+    health = healthFor(health, shown);
+    svg = renderSvg(shown, layout, { fitStored: true, warnings, health });
   }
   if (openingView(shown).fallback) console.error(`warning: default_view "${shown.config.default_view}" is not in this render; it opens on the overview`);
-  const workbook = buildWorkbook(shown, { warnings });
+  const workbook = buildWorkbook(shown, { warnings, health });
   // The verifier's reasons are team-internal, like evidence and internal
   // notes: a profile that drops either does not get the sheet.
   const verification = await readVerification(workspace);
@@ -481,7 +486,7 @@ async function runDiff({ workspace, from, to, 'to-workspace': toWorkspace, profi
   // Change colours only on the drawing; the workbook is the "to" side's,
   // with its To review checklist.
   const svg = renderSvg(union, layout, { diff: { from, to: toLabel, summary, marks: diffMarks(union, result.changes) }, warnings: [] });
-  const workbook = buildWorkbook(toModel, { warnings: warningsFor(missingRelations(after.model), toModel) });
+  const workbook = buildWorkbook(toModel, { warnings: warningsFor(missingRelations(after.model), toModel), health: healthFor(healthFindings(after.model), toModel) });
   addChangesSheet(workbook, toModel, result.changes);
   const xlsx = await serializeWorkbook(workbook, { date: toWorkspace ? await workspaceDate(toWorkspace) : await workspaceDate(workspace, to === WORKTREE ? 'HEAD' : to) });
 

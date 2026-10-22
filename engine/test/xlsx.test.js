@@ -29,8 +29,8 @@ async function loadBack(model) {
 const rowValues = (sheet, n) => sheet.getRow(n).values.slice(1).map((v) => v?.text ?? v);
 
 const TABLE_GRID = ['#', 'Name', 'Type', 'Nullable', 'Default', 'Generated', 'Expression', 'Primary Key', 'Auto Inc', 'Index', 'Comment'];
-// workspace-multi marks some columns as personal data, so it has a PII sheet.
-const FIXED_TAIL = ['Relations', 'Polymorphic', 'Indexes', 'PII', 'To review'];
+// workspace-multi marks some columns as personal data and has health findings, so it has PII and Health sheets.
+const FIXED_TAIL = ['Relations', 'Polymorphic', 'Indexes', 'PII', 'Health', 'To review'];
 const rowOf = (location) => Number(/!A(\d+)$/.exec(location)[1]);
 const sheetOf = (location) => /^'([^']+)'!A\d+$/.exec(location)[1];
 const browseKey = (id, domain) => [id.split('.')[0], domain, id.split('.')[2]].join(' ');

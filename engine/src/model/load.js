@@ -1,6 +1,6 @@
 import { parseDocument } from 'yaml';
 import { clusterKey } from '../layout/clusters.js';
-import { CONFIG_FILE, CROSS_DB_FILE, DOMAIN_VIEW_PREFIX, configSchema, crossDbFileSchema, modelFileSchema } from './schema.js';
+import { CONFIG_FILE, CROSS_DB_FILE, DOMAIN_VIEW_PREFIX, HEALTH_RULES, configSchema, crossDbFileSchema, modelFileSchema } from './schema.js';
 import { columnEntries } from './columns.js';
 import { joinPath, validateNode } from './validate.js';
 
@@ -213,6 +213,16 @@ export function parseWorkspace(files) {
         if (!known) errors.push({ file: CONFIG_FILE, path: `${section}.columns[${i}]`, message: `unknown column ${JSON.stringify(ref)}` });
       });
     }
+    // A misspelt rule, table or column would silently keep a finding.
+    (config.health?.ignore ?? []).forEach((entry, i) => {
+      const at = `health.ignore[${i}]`;
+      const rule = entry.slice(0, entry.indexOf(':'));
+      const [tableId, name] = splitColumnRef(entry.slice(rule.length + 1));
+      if (!(rule in HEALTH_RULES)) errors.push({ file: CONFIG_FILE, path: at, message: `unknown rule ${JSON.stringify(rule)} (known: ${Object.keys(HEALTH_RULES).join(', ')})` });
+      else if (!tablesById.has(tableId)) errors.push({ file: CONFIG_FILE, path: at, message: `unknown table ${JSON.stringify(tableId)}` });
+      else if (name && rule === 'orphan_table') errors.push({ file: CONFIG_FILE, path: at, message: 'orphan_table is about a whole table; leave out the column' });
+      else if (name && !columnsOf.get(tableId).has(name)) errors.push({ file: CONFIG_FILE, path: at, message: `unknown column ${JSON.stringify(name)} in ${tableId}` });
+    });
     // A table both modelled and declared left out is one of the two by mistake.
     (config.not_in_model ?? []).forEach((id, i) => {
       if (tablesById.has(id)) errors.push({ file: CONFIG_FILE, path: `not_in_model[${i}]`, message: `${JSON.stringify(id)} is in the model; remove it from not_in_model` });
@@ -274,6 +284,7 @@ export function normalizeModel(model) {
   }
   if (config.sources) config.sources = [...config.sources].sort((a, b) => compareStrings(a.name, b.name));
   if (config.not_in_model) config.not_in_model = sortedList(config.not_in_model);
+  if (config.health?.ignore) config.health = { ...config.health, ignore: sortedList(config.health.ignore) };
   return {
     config,
     databases: [...model.databases]
