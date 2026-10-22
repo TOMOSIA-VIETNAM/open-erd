@@ -79,4 +79,6 @@ Mục tiêu: không tin một agent duy nhất; mỗi lần cập nhật ERD có
 
 - Overview: legend mở có thể che thẻ ở góc dưới trái → tự né thẻ hoặc thu gọn mặc định ở Overview.
 - Tooltip dòng "Related domains" trên thẻ: hiện click mở domain (đã chốt), kiểm lại có cần mở panel danh sách không.
-- draw.io: icon note nằm góc dưới-trái bảng, có thể gần line chạy sát mép trái (draw.io không cho chỉnh vị trí).
+- draw.io: icon note nằm góc dưới-trái bảng, có thể gần line chạy sát mép trái (draw.io không cho chỉnh vị trí). **Chưa làm**: icon do draw.io tự vẽ cho thuộc tính `note`, không đặt vị trí được; máy không có `drawio` CLI để thử phương án khác.
+
+Trạng thái: tính năng 1–7 đã xong (todo 31–37); legend gấp sẵn ở Overview/neighborhood/impact; tooltip "Related domains" giữ click mở domain.
