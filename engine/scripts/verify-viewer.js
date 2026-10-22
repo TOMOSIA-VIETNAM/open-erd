@@ -642,7 +642,7 @@ if (await evaluate(`document.querySelector('g.view[data-view="all"]') !== null`)
   await mouse('mouseMoved', { x: 700, y: 400 });
   await shot('legend-pill-style', `(() => { const p = document.querySelector('.oe-legend-pill'); const r = p.getBoundingClientRect(); const cs = getComputedStyle(p);
     const map = document.querySelector('.oe-minimap'); const m = map?.closest('foreignObject').style.display !== 'none' ? map.getBoundingClientRect() : null;
-    return cs.borderRadius === '8px' && p.querySelector('.oe-legend-glyph .marker') && p.querySelector('.oe-chevron') && p.textContent === 'Legend' && (!m || Math.abs(m.bottom - r.bottom) < 3) || { radius: cs.borderRadius, bottom: r.bottom, map: m?.bottom }; })()`);
+    return cs.borderRadius === '8px' && p.querySelector('.icon-legend') && p.querySelector('.oe-chevron') && p.textContent === 'Legend' && (!m || Math.abs(m.bottom - r.bottom) < 3) || { radius: cs.borderRadius, bottom: r.bottom, map: m?.bottom }; })()`);
   await click(`document.querySelector('.oe-legend-pill')`);
   await shot('legend-reopened', `document.querySelector('.oe-legend') !== null && document.querySelector('.oe-legend-pill') === null`);
   // L folds and unfolds it.
@@ -948,6 +948,17 @@ if (await evaluate(`document.querySelector('g.view[data-view="all"]') !== null`)
 }
 await choose('more', 'Keyboard shortcuts');
 await shot('keyboard-shortcuts', `document.querySelectorAll('.oe-panel .oe-keys tr').length === 8 && /J/.test(document.querySelector('.oe-panel .oe-keys').textContent) && document.querySelector('.oe-panel .oe-keys').textContent.includes('Alt+←')`);
+// A short panel leaves the minimap in its corner; a tall one pushes it left.
+{
+  const mm = `(() => { const f = document.querySelector('.oe-minimap')?.closest('foreignObject'); return f && f.style.display !== 'none' ? document.querySelector('.oe-minimap').getBoundingClientRect() : null; })()`;
+  const short = await evaluate(`(() => { const m = ${mm}; const p = document.querySelector('.oe-panel').getBoundingClientRect(); return m ? { right: m.right, panelBottom: p.bottom, top: m.top } : null; })()`);
+  if (short && short.panelBottom + 8 <= short.top) await shot('minimap-short-panel', `Math.abs(${mm}.right - (innerWidth - 12)) < 4`);
+  const tall = await evaluate(`(() => { const d = ${data}; return Object.entries(d.nodes).filter(([, n]) => n.kind === 'table').sort(([, a], [, b]) => b.columns.length - a.columns.length)[0][0]; })()`);
+  await key('Escape');
+  await searchFor(tall.split('.')[2]);
+  await pause(200);
+  if (await evaluate(`(() => { const m = ${mm}; return m !== null && document.querySelector('.oe-panel').getBoundingClientRect().bottom + 8 > m.top; })()`)) await shot('minimap-tall-panel', `(() => { const m = ${mm}; const p = document.querySelector('.oe-panel').getBoundingClientRect(); return p.bottom + 8 > m.top && Math.abs(m.right - (innerWidth - 12 - 464)) < 4 || { m: m.right, pb: p.bottom, mt: m.top }; })()`);
+}
 await key('Escape');
 
 // The minimap stays bottom right, left of an open panel: after a relation
@@ -960,7 +971,10 @@ await key('Escape');
     await click(`document.querySelector('.oe-panel .oe-chip')`);
     await pause(200);
     const mapRight = `(() => { const f = document.querySelector('.oe-minimap')?.closest('foreignObject'); if (!f || f.style.display === 'none') return null; return document.querySelector('.oe-minimap').getBoundingClientRect().right; })()`;
-    await shot('minimap-after-chip', `(() => { const r = ${mapRight}; const panel = document.querySelector('.oe-panel').closest('foreignObject').style.display !== 'none'; return r === null || Math.abs(r - (innerWidth - 12 - (panel ? 464 : 0))) < 4 || { r, panel }; })()`);
+    // Left of the panel only when the panel comes down to the minimap.
+    const expectedRight = `(() => { const f = document.querySelector('.oe-panel').closest('foreignObject'); const m = document.querySelector('.oe-minimap').closest('foreignObject');
+      const reaches = f.style.display !== 'none' && f.getBoundingClientRect().bottom + 8 > m.getBoundingClientRect().top; return innerWidth - 12 - (reaches ? 464 : 0); })()`;
+    await shot('minimap-after-chip', `(() => { const r = ${mapRight}; return r === null || Math.abs(r - ${expectedRight}) < 4 || { r, want: ${expectedRight} }; })()`);
     await key('Escape');
     await shot('minimap-after-panel-close', `(() => { const r = ${mapRight}; return r === null || Math.abs(r - (innerWidth - 12)) < 4 || { r }; })()`);
   }

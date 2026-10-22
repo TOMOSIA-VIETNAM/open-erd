@@ -776,6 +776,13 @@ const ICONS = {
   caret: 'M4.5 6.5L8 10L11.5 6.5',
   check: 'M3.5 8.5L6.5 11.5L12.5 4.5',
   copy: 'M5.5 5.5H12.5V13.5H5.5ZM3.5 10.5V2.5H10.5',
+  // Swatches with their lines: the legend.
+  legend: 'M2.5 3H4.5V5H2.5ZM2.5 7H4.5V9H2.5ZM2.5 11H4.5V13H2.5ZM7 4H13.5M7 8H13.5M7 12H13.5',
+  // The three ways to see the schema: tables, the domain map, the matrix.
+  table: 'M2.5 3.5H13.5V12.5H2.5ZM2.5 6.5H13.5M2.5 9.5H13.5M6.5 6.5V12.5',
+  map: 'M2.5 4L6 2.5L10 4L13.5 2.5V12L10 13.5L6 12L2.5 13.5ZM6 2.5V12M10 4V13.5',
+  matrix: 'M2.5 2.5H13.5V13.5H2.5ZM6.2 2.5V13.5M9.8 2.5V13.5M2.5 6.2H13.5M2.5 9.8H13.5',
+  database: 'M3.5 4C3.5 2.6 12.5 2.6 12.5 4V12C12.5 13.4 3.5 13.4 3.5 12ZM3.5 4C3.5 5.4 12.5 5.4 12.5 4M3.5 8C3.5 9.4 12.5 9.4 12.5 8',
 };
 const iconSvg = (name, size = 16) =>
   svgEl('svg', { class: `oe-icon icon-${name}`, width: size, height: size, viewBox: '0 0 16 16', 'aria-hidden': 'true' }, [svgEl('path', { d: ICONS[name] })]);
@@ -794,13 +801,16 @@ const hopGroup = el('div', { class: 'oe-related', title: RELATED.title }, [el('s
 // The three ways to look at the whole schema, always on the toolbar: every
 // table, the domain cards (Map) and the domain matrix (Connections). A
 // schema too large for the view of all tables has no first one.
+// Narrow windows show the icons only (their tooltips name them).
 const viewTabs = [
-  [ALL_VIEW, 'All tables', `Every table of every domain (${MOD_KEY}A)`],
-  [OVERVIEW, 'Map', 'Domains as cards: what each holds and what it is related to'],
-  [CONNECTIONS, 'Connections', 'Domain × domain matrix: how many relations go from each domain to each other'],
+  [ALL_VIEW, 'table', 'All tables', `Every table of every domain (${MOD_KEY}A)`],
+  [OVERVIEW, 'map', 'Map', 'Domains as cards: what each holds and what it is related to'],
+  [CONNECTIONS, 'matrix', 'Connections', 'Domain × domain matrix: how many relations go from each domain to each other'],
 ]
   .filter(([name]) => views.has(name))
-  .map(([name, text, title]) => el('button', { class: 'oe-btn', text, title, 'data-view': name, on: { click: () => navigate(name) } }));
+  .map(([name, icon, text, title]) =>
+    el('button', { class: 'oe-btn oe-tab-view', title: `${text}: ${title}`, 'aria-label': text, 'data-view': name, on: { click: () => navigate(name) } }, [iconSvg(icon, 14), el('span', { class: 'label', text })]),
+  );
 const viewGroup = el('div', { class: 'oe-seg oe-view-tabs' }, viewTabs);
 
 const FIND_KEY = `${MOD_KEY}F`;
@@ -846,7 +856,7 @@ function menuItem(label, title, onClick, { checked = null, detail = null, disabl
 // Databases: each one's frame, in the view of all tables when it is on
 // screen, else on the overview. The views themselves are the toolbar tabs.
 const viewsMenu = dropdown(
-  el('button', { class: 'oe-btn oe-tool', title: 'Show one database', 'aria-label': 'Show one database' }, [iconSvg('views'), el('span', { class: 'label', text: 'Databases' }), iconSvg('caret', 12)]),
+  el('button', { class: 'oe-btn oe-tool', title: 'Show one database', 'aria-label': 'Show one database' }, [iconSvg('database'), el('span', { class: 'label', text: 'Databases' }), iconSvg('caret', 12)]),
   'oe-views-menu',
 );
 const DATABASES = [...views.get(OVERVIEW).querySelectorAll('.database')].map((g) => g.getAttribute('data-database'));
@@ -1353,6 +1363,11 @@ function openDeepLink(hash) {
 // ---------------------------------------------------------------- panel
 
 const panel = overlay('oe-panel');
+// The panel grows and shrinks with its content (a tab, an unfolded list):
+// the overlays around it follow.
+new ResizeObserver(() => {
+  if (panel.fo.style.display !== 'none') layoutOverlays();
+}).observe(panel.div);
 function showShortcuts() {
   showPanel([
     panelHeader({ name: 'Keyboard shortcuts' }),
@@ -2139,15 +2154,11 @@ function renderLegend() {
 }
 
 // Folded, the legend is a small card in the same corner, a pair with the
-// minimap across the bottom: a glimpse of the notation (a crow's-foot line
-// and a key), "Legend", and a chevron saying it opens upwards.
+// minimap across the bottom: the toolbar's legend icon, "Legend", and a
+// chevron saying it opens upwards.
 function legendPill() {
-  const preview = svgEl('svg', { class: 'oe-legend-glyph', width: 34, height: 14, viewBox: '0 0 34 14', 'aria-hidden': 'true' }, [
-    svgEl('g', { class: 'relation-group kind-db_fk review-reviewed' }, [svgEl('path', { class: 'relation', d: 'M1 7H20' }), svgEl('g', { class: 'marker' }, [markerGroup('many', 'translate(20 7) rotate(180)')])]),
-    ...parsed(keyIconSvg(28, 7)),
-  ]);
   return el('button', { class: 'oe-legend-pill', title: 'What the marks in this view mean (L)', 'aria-label': 'Show the legend', on: { click: () => setLegend(true) } }, [
-    preview,
+    iconSvg('legend'),
     el('span', { text: 'Legend' }),
     svgEl('svg', { class: 'oe-icon oe-chevron', width: 12, height: 12, viewBox: '0 0 16 16', 'aria-hidden': 'true' }, [svgEl('path', { d: 'M4.5 10L8 6.5L11.5 10' })]),
   ]);
@@ -2229,8 +2240,17 @@ function updateMinimap() {
   const h = map.size.h + 2 * MINIMAP_PAD + 2;
   minimap.fo.setAttribute('width', w);
   minimap.fo.setAttribute('height', h);
-  minimap.fo.setAttribute('x', vp.w - w - PANEL_MARGIN - panelRoom());
+  minimap.fo.setAttribute('x', vp.w - w - PANEL_MARGIN - (panelReaches(vp.h - h - PANEL_MARGIN) ? panelRoom() : 0));
   minimap.fo.setAttribute('y', vp.h - h - PANEL_MARGIN);
+}
+
+// Whether the open panel comes down to `top` (screen y, with a small gap):
+// a short panel leaves the minimap in its corner.
+const MINIMAP_PANEL_GAP = 8;
+function panelReaches(top) {
+  if (panel.fo.style.display === 'none') return false;
+  const bottom = Number(panel.fo.getAttribute('y')) + Number(panel.fo.getAttribute('height'));
+  return bottom + MINIMAP_PANEL_GAP > top;
 }
 
 // A press on the minimap centres the view on that point; dragging follows.

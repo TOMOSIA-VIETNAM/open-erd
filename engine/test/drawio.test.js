@@ -280,6 +280,56 @@ test('drawio: a table header carries the table\'s note as HTML (description, col
   assert.match(note, /<b>Referenced by<\/b><\/p>[^]*shop\._\.order_items\.order_id → id<br>/);
 });
 
+// Cell a column's link jumps to, from its draw.io action JSON.
+function jumpTarget(link) {
+  assert.ok(link.startsWith('data:action/json,'), link);
+  const { actions } = JSON.parse(link.slice('data:action/json,'.length));
+  const [cell] = actions[0].select.cells;
+  assert.deepEqual(actions, [{ select: { cells: [cell] } }, { scroll: { cells: [cell] } }, { highlight: { cells: [cell], color: '#2563eb' } }]);
+  return cell;
+}
+
+test('drawio: a referencing column links to what it references on the same page', async () => {
+  const base = await loadMulti();
+  // A composite reference: both of its columns go to the one table.
+  const pair = table('shop._.order_notes', 'Orders', [['order_id', 'bigint'], ['order_item_id', 'bigint']]);
+  const composite = { ...fk(pair.id, 'order_id', 'shop._.order_items'), from: { table: pair.id, columns: ['order_id', 'order_item_id'] }, to: { table: 'shop._.order_items', columns: ['order_id', 'id'] } };
+  const model = normalizeModel({ ...base, tables: [...base.tables, pair], relations: [...base.relations, composite] });
+  const { layout } = await computeLayout(model);
+  const xml = renderDrawio(model, layout);
+  const all = new Map(cellsOf(parseXml(xml).children.at(-1)).map((c) => [c.id, c]));
+  const link = (row) => all.get(`${row}|name`).link;
+  assert.equal(jumpTarget(link('n|shop._.orders|user_id')), 'n|auth.public.users');
+  assert.equal(jumpTarget(link(`n|${pair.id}|order_id`)), 'n|shop._.order_items');
+  assert.equal(jumpTarget(link(`n|${pair.id}|order_item_id`)), 'n|shop._.order_items');
+  // A polymorphic id column goes to the polymorphic node.
+  const poly = model.polymorphic[0];
+  const polyTarget = jumpTarget(link(`n|${poly.table}|${poly.id_column}`));
+  assert.ok(all.get(polyTarget) && polyTarget.includes(poly.name), polyTarget);
+  // Columns referencing nothing have no link; every target is a cell of the page.
+  assert.equal(link('n|shop._.orders|status'), undefined);
+  for (const c of all.values()) if (c.id.endsWith('|name') && c.link) assert.ok(all.has(jumpTarget(c.link)), c.id);
+  // A table header keeps its own (optional) link to the SVG.
+  const linked = cellsOf(parseXml(renderDrawio(model, layout, { svgUrl: 'https://example.com/erd.svg' })).children.at(-1));
+  assert.equal(linked.find((c) => c.id === 'n|shop._.orders').link, 'https://example.com/erd.svg#table=shop._.orders');
+  assert.equal(renderDrawio(model, layout), xml);
+});
+
+test('drawio: on a domain page, a column referencing a table outside goes to its stub or group', async () => {
+  const base = await loadMulti();
+  const sales = Array.from({ length: ALL_VIEW_MAX_TABLES }, (_, i) => table(`shop._.s${String(i).padStart(3, '0')}`, 'Sales', [['core_id', 'bigint']]));
+  const model = normalizeModel({ ...base, tables: [...base.tables, table('shop._.core', 'Core', []), ...sales], relations: [...base.relations, ...sales.slice(0, 3).map((t) => fk(t.id, 'core_id', 'shop._.core'))] });
+  const { layout } = await computeLayout(model);
+  const pages = parseXml(renderDrawio(model, layout)).children;
+  const salesPage = new Map(cellsOf(pages.find((d) => d.attrs.id === 'domain:shop/Sales')).map((c) => [c.id, c]));
+  assert.equal(jumpTarget(salesPage.get('n|shop._.s000|core_id|name').link), 'n|shop._.core');
+  assert.equal(salesPage.get('n|shop._.core').style.shape === 'table', false, 'core is a stub on the Sales page');
+  const orders = new Map(cellsOf(pages.find((d) => d.attrs.id === 'domain:shop/Orders')).map((c) => [c.id, c]));
+  // Another domain's table is a stub here; a hub table (users) is not drawn, so no link.
+  assert.equal(jumpTarget(orders.get('n|shop._.orders|organization_id|name').link), 'n|auth.public.organizations');
+  assert.equal(orders.get('n|shop._.orders|user_id|name').link, undefined);
+});
+
 test('drawio: hub and polymorphic target lines sit on their own hidden layers, attached to existing rows', async () => {
   const { model, layout, xml } = await multi();
   const diagram = buildDiagram(model);
