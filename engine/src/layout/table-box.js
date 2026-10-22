@@ -208,6 +208,33 @@ export function polyBox(association) {
   return rowsBox('poly', `«${association.name}»`, TITLE_FONT, lines, COLUMN_FONT);
 }
 
+// A group stub lists this many tables at most; the rest collapse into one
+// "+N more" row (the full list is in its tooltip).
+export const GROUP_VISIBLE_TABLES = 8;
+export const GROUP_DB_FONT = { size: 10, weight: 700 };
+const GROUP_DB_GAP = 8;
+
+/**
+ * Box standing for several tables of one other domain in a domain view:
+ * the domain's name (and its database, `db`, when that differs) over one
+ * row per table.
+ */
+export function groupBox(domain, tableIds, db = null) {
+  const names = tableIds.map((t) => t.split('.')[2]);
+  const lines = names.length > GROUP_VISIBLE_TABLES ? [...names.slice(0, GROUP_VISIBLE_TABLES), `+${names.length - GROUP_VISIBLE_TABLES} more`] : names;
+  const dbWidth = db ? Math.ceil(measureText(db, GROUP_DB_FONT)) + 10 + GROUP_DB_GAP : 0;
+  const box = rowsBox('group', domain, TITLE_FONT, lines, COLUMN_FONT);
+  const w = Math.min(MAX_WIDTH, ceilToGrid(Math.max(box.w, measureText(domain, TITLE_FONT) + dbWidth + 2 * PADDING_X)));
+  const inner = w - 2 * PADDING_X;
+  return {
+    ...box,
+    w,
+    title: { ...fit(domain, inner - dbWidth, TITLE_FONT), centerY: box.title.centerY },
+    rows: box.rows.map((r, i) => ({ ...r, name: fit(lines[i], inner, COLUMN_FONT), table: i < GROUP_VISIBLE_TABLES ? tableIds[i] : null })),
+    db,
+  };
+}
+
 /** Muted name-only box for a table outside the domain shown by a domain view. */
 export function stubBox(table) {
   return rowsBox('stub', table.id.split('.')[2], MUTED_TITLE_FONT, [], COLUMN_FONT);
@@ -285,14 +312,15 @@ export function rowCenter(box, column) {
 
 /**
  * Where a line attaches on a box side: the column's row for tables, the
- * header of a polymorphic node (it stands for the whole association) and of
- * a table when the line names no column (a view's line to its sources), the
+ * header of a polymorphic node (it stands for the whole association), of a
+ * group stub (it stands for several tables) and of a table when the line
+ * names no column (a view's line to its sources), the
  * middle of stubs and domain boxes.
  */
 export function attachOffset(box, column) {
   if (box.kind === 'table' && column !== null) return rowCenter(box, column);
   // The header centre (15 px) is off the grid; one grid step lower still
   // lands inside the header.
-  if (box.kind === 'poly' || box.kind === 'table') return roundToGrid(HEADER_HEIGHT / 2);
+  if (box.kind === 'poly' || box.kind === 'table' || box.kind === 'group') return roundToGrid(HEADER_HEIGHT / 2);
   return box.h / 2;
 }

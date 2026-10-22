@@ -9,6 +9,7 @@ import {
   CARD_TITLE_FONT,
   COLUMN_FONT,
   EMBED_INSET,
+  GROUP_DB_FONT,
   FACT_FONT,
   MUTED_TITLE_FONT,
   PADDING_X,
@@ -121,6 +122,11 @@ export function assertTextFits(scene) {
       for (const r of box.rows) fits(id, r.name.text, COLUMN_FONT, inner);
     } else if (box.kind === 'stub') {
       fits(id, box.title.text, MUTED_TITLE_FONT, inner);
+    } else if (box.kind === 'group') {
+      const tag = box.db ? measureText(box.db, GROUP_DB_FONT) + 10 + 8 : 0;
+      assert.ok(measureText(box.title.text, TITLE_FONT) + tag <= inner, `${scene.name}: ${id}: group title and db wider than ${inner}`);
+      for (const r of box.rows) fits(id, r.name.text, COLUMN_FONT, inner);
+      assert.ok(box.rows.length * 20 + 30 < box.h, `${scene.name}: ${id} rows overflow its height`);
     } else {
       // An overview card: name and count share the first line; every
       // related row keeps clear of the strength bar.

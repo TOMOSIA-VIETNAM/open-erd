@@ -48,7 +48,13 @@ function insertAll(boxes, newIds, sizes, pairs, gap, aspect) {
 // Domain view from scratch: the domain keeps its own arrangement and each
 // stub goes beside it, on the side and at the height of the domain node it is
 // most linked with, so every stub line is short and mostly straight. Stubs on
-// one side keep that order top to bottom.
+// one side keep that order top to bottom. A side holds stubs up to the
+// height of the domain (SIDE_STRETCH times, at least SIDE_MIN px); the
+// rest go in rows above or below the domain, on the half of their anchor,
+// left to right in anchor order, so many stubs keep the view compact.
+const SIDE_STRETCH = 1.2;
+const SIDE_MIN = 400;
+const ROWS_ASPECT = 16 / 9;
 function placeAround(children, links, group, boxes) {
   const [core, ...stubs] = children;
   const frame = { ...core.origin, w: core.extent.w, h: core.extent.h };
@@ -68,17 +74,71 @@ function placeAround(children, links, group, boxes) {
     const [node, column] = JSON.parse(anchor[0]);
     const leaf = core.leaves.get(node);
     const side = leaf.x + leaf.w / 2 < frame.x + frame.w / 2 ? -1 : 1;
-    sides.get(side).push({ stub, want: leaf.y + attachOffset(boxes.get(node), column) - stub.h / 2 });
+    sides.get(side).push({ stub, want: leaf.y + attachOffset(boxes.get(node), column) - stub.h / 2, wantX: leaf.x + leaf.w / 2, upper: leaf.y + leaf.h / 2 < frame.y + frame.h / 2 });
   }
+  const room = Math.max(SIDE_MIN, frame.h * SIDE_STRETCH);
+  const rows = new Map([[-1, []], [1, []]]);
+  let top = frame.y;
+  let bottom = frame.y + frame.h;
   for (const [side, list] of sides) {
     list.sort((a, b) => a.want - b.want || compareStrings(a.stub.id, b.stub.id));
+    // Keep the stubs nearest the middle of the domain on the side.
+    const middle = frame.y + frame.h / 2;
+    const byDistance = [...list].sort((a, b) => Math.abs(a.want + a.stub.h / 2 - middle) - Math.abs(b.want + b.stub.h / 2 - middle) || compareStrings(a.stub.id, b.stub.id));
+    const kept = new Set();
+    let used = 0;
+    for (const item of byDistance) {
+      if (used > 0 && used + item.stub.h > room) {
+        rows.get(item.upper ? -1 : 1).push(item);
+        continue;
+      }
+      kept.add(item);
+      used += item.stub.h + group.gap;
+    }
     const x = (stub) => (side < 0 ? frame.x - group.gap - stub.w : frame.x + frame.w + group.gap);
-    for (const block of stackAround(list, group.gap)) {
+    for (const block of stackAround(list.filter((i) => kept.has(i)), group.gap)) {
       let y = block.top;
+      top = Math.min(top, block.top);
       for (const { stub } of block.items) {
         positions.set(stub.id, { x: x(stub), y });
         y += stub.h + group.gap;
       }
+      bottom = Math.max(bottom, y - group.gap);
+    }
+  }
+  // Rows above and below: at least as wide as the domain and its side
+  // stubs, wider when that keeps the whole view near ROWS_ASPECT, wrapped.
+  const left = Math.min(frame.x, ...[...positions.values()].map((p) => p.x));
+  const right = Math.max(frame.x + frame.w, ...stubs.filter((s) => positions.has(s.id)).map((s) => positions.get(s.id).x + s.w));
+  const area = [...rows.values()].flat().reduce((n, i) => n + (i.stub.w + group.gap) * (i.stub.h + group.gap), (right - left) * (bottom - top));
+  const width = Math.max(right - left, SIDE_MIN, Math.sqrt(area * ROWS_ASPECT));
+  for (const [dir, list] of rows) {
+    list.sort((a, b) => a.wantX - b.wantX || compareStrings(a.stub.id, b.stub.id));
+    const lines = [];
+    let line = [];
+    let lineWidth = 0;
+    for (const item of list) {
+      if (line.length > 0 && lineWidth + item.stub.w > width) {
+        lines.push(line);
+        line = [];
+        lineWidth = 0;
+      }
+      line.push(item);
+      lineWidth += item.stub.w + group.gap;
+    }
+    if (line.length > 0) lines.push(line);
+    // Lines nearest the domain first.
+    let edge = dir < 0 ? top : bottom;
+    for (const items of lines) {
+      const height = Math.max(...items.map((i) => i.stub.h));
+      const y = dir < 0 ? edge - group.gap - height : edge + group.gap;
+      const total = items.reduce((n, i) => n + i.stub.w, 0) + group.gap * (items.length - 1);
+      let x = Math.round(left + (right - left - total) / 2);
+      for (const { stub } of items) {
+        positions.set(stub.id, { x, y: dir < 0 ? y + height - stub.h : y });
+        x += stub.w + group.gap;
+      }
+      edge = dir < 0 ? y : y + height;
     }
   }
   return positions;

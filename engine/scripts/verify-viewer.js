@@ -102,6 +102,8 @@ async function choose(menu, label) {
   if (!(await evaluate(menuOpen(menu)))) await click(menuButton(menu));
   await click(menuItem(menu, label));
 }
+// A tab of the side panel (columns, relations, indexes).
+const tab = (id) => click(`document.querySelector('.oe-panel .oe-tab[data-tab="${id}"]')`);
 const closeMenu = (menu) => evaluate(`${menuOpen(menu)} && ${menuButton(menu)}.click()`);
 const backButton = `document.querySelector('.oe-left > button')`;
 // Cmd+F on macOS (CDP modifier 4 = Meta), Ctrl+F elsewhere (2).
@@ -191,7 +193,7 @@ await shot(
 await mouse('mousePressed', onConnector);
 await mouse('mouseReleased', onConnector);
 await pause(150);
-await shot('overview-connector-panel', `document.querySelectorAll('.oe-panel .oe-chip').length === ${data}.domainLinks[${JSON.stringify(pairKey)}].length && document.querySelector('.oe-panel h3').textContent.includes('⇄')`);
+await shot('overview-connector-panel', `document.querySelectorAll('.oe-panel .oe-chip').length === ${data}.domainLinks[${JSON.stringify(pairKey)}].length && document.querySelector('.oe-panel .oe-ph-sep')?.textContent === '⇄' && document.querySelectorAll('.oe-panel .oe-domain-chip').length === 2`);
 await key('Escape');
 const relatedKey = await evaluate(`${hubCard}.querySelector('.card-related').getAttribute('data-domain')`);
 await click(`${hubCard}.querySelector('.card-related .card-related-name')`);
@@ -204,14 +206,29 @@ await pause(100);
 await shot('overview-card-keyboard-focus', `${ov}.querySelectorAll('.card-links .card-link').length === ${relatedOf(busiest)}.length`);
 await key('Enter');
 await shot('overview-card-enter-opens', viewIs(`domain:${busiest}`));
-await click(`document.querySelector('.oe-crumbs .oe-link')`);
+// A view reached by navigation names where Back goes, in a pill at the top
+// left; the pill, Backspace and Alt+← all go back.
+const backPill = `document.querySelector('.oe-back-pill')`;
+await shot('back-pill', `${backPill}?.textContent === '← Overview' && ${backPill}.closest('foreignObject').style.display !== 'none'`);
+await key('Backspace');
+await shot('backspace-goes-back', `${viewIs('overview')} && ${backPill}.closest('foreignObject').style.display === 'none'`);
+await evaluate(`${hubCard}.focus()`);
+await key('Enter');
+await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'ArrowLeft', code: 'ArrowLeft', windowsVirtualKeyCode: 37, modifiers: 1 });
+await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'ArrowLeft', code: 'ArrowLeft', windowsVirtualKeyCode: 37, modifiers: 1 });
+await pause(150);
+await shot('alt-left-goes-back', viewIs('overview'));
+await mouse('mouseMoved', { x: 5, y: 890 });
+await click(`document.querySelector('.domain[data-domain=${JSON.stringify(busiest)}] .card-box')`, { where: 'top' });
+await click(backPill);
+await shot('back-pill-click', viewIs('overview'));
 
 // Connections: the Map | Connections switch, a cell's tooltip names both
 // directions, a click lists its relations as chips, the header row and
 // column stay on screen while the matrix is panned.
 await click(`document.querySelector('.oe-map-tabs [data-view="connections"]')`);
 const cx = `document.querySelector('g.view[data-view="connections"]')`;
-await shot('connections', `${viewIs('connections')} && ${cx}.querySelectorAll('.mx-cell').length === ${cx}.querySelectorAll('.mx-rows .mx-head').length ** 2 && document.querySelector('.oe-map-tabs [data-view="connections"]').classList.contains('on')`);
+await shot('connections', `${backPill}?.textContent === '← Overview' && ${viewIs('connections')} && ${cx}.querySelectorAll('.mx-cell').length === ${cx}.querySelectorAll('.mx-rows .mx-head').length ** 2 && document.querySelector('.oe-map-tabs [data-view="connections"]').classList.contains('on')`);
 const cellSel = `${cx}.querySelector('.mx-cell[data-from=${JSON.stringify(pairEnds[0])}][data-to=${JSON.stringify(pairEnds[1])}]')`;
 await mouse('mouseMoved', await centre(cellSel));
 await pause(150);
@@ -257,7 +274,8 @@ if (longEnum) {
   );
   await click(row);
   // The panel holds the column grid with this column's values unfolded.
-  await shot('long-enum-panel', `document.querySelectorAll('.oe-panel .oe-grid details[open] .oe-enum tr').length === ${enumCount} && document.querySelector('.oe-panel .oe-grid tr.open').getAttribute('data-column') === ${JSON.stringify(enumColumn)} && ${row}.classList.contains('hl-column')`);
+  await shot('long-enum-panel', `(() => { const open = document.querySelector('.oe-panel .oe-col.open'); const list = open?.querySelector('.oe-enum-list');
+    return open?.getAttribute('data-column') === ${JSON.stringify(enumColumn)} && list && getComputedStyle(list).display !== 'none' && list.children.length === ${enumCount} && ${row}.classList.contains('hl-column'); })()`);
   await key('Escape');
   await click(`document.querySelector('.oe-crumbs .oe-link')`);
 }
@@ -278,7 +296,7 @@ if (warned) {
     `${row}.querySelector('.col-warn') !== null && [...document.querySelectorAll('.oe-tip .oe-warn')].some((t) => t.textContent.startsWith('Possibly missing relation: '))`,
   );
   await click(row);
-  await shot('missing-relation-panel', `document.querySelector('.oe-panel .oe-grid .oe-warn') !== null`);
+  await shot('missing-relation-panel', `document.querySelector('.oe-panel .oe-col .oe-warn') !== null`);
   await key('Escape');
   await click(`document.querySelector('.oe-crumbs .oe-link')`);
 }
@@ -287,7 +305,7 @@ if (warned) {
 // with an enum column so the tooltip step shows enum values.
 const domain = await evaluate(`(() => {
   const d = JSON.parse(document.getElementById('open-erd-data').textContent);
-  const usable = [...document.querySelectorAll('g.view')].filter((v) => v.getAttribute('data-view').startsWith('domain:') && v.querySelector('.stub') && v.querySelector('.table') && v.querySelector('.relation-group'));
+  const usable = [...document.querySelectorAll('g.view')].filter((v) => v.getAttribute('data-view').startsWith('domain:') && v.querySelector('.stub:not(.group-stub)') && v.querySelector('.table') && v.querySelector('.relation-group'));
   const withEnum = usable.find((v) => [...v.querySelectorAll('.table')].some((g) => d.nodes[g.getAttribute('data-id')].columns.some((c) => c.enum)));
   return (withEnum ?? usable[0]).getAttribute('data-view').slice(7);
 })()`);
@@ -324,11 +342,28 @@ await shot('database-crumb-name', `document.querySelectorAll('.oe-crumbs .oe-lin
 
 const table = await evaluate(`(() => { const g = ${visible}.querySelector('.relation-group'); return ${visible}.querySelector('.table[data-id="' + g.getAttribute('data-from') + '"]') ? g.getAttribute('data-from') : g.getAttribute('data-to'); })()`);
 await click(inView(`.table[data-id="${table}"]`), { where: 'top' });
-// The panel carries the table's column grid, one row per column.
+// The panel: name (full id in its tooltip), domain chip, compact actions,
+// tabs, one row per column.
 await shot(
   'table-highlight',
-  `${visible}.classList.contains('dimmed') && ${inView('.table.selected')} !== null && ${inView('.relation-group.hl')} !== null && document.querySelectorAll('.oe-panel .oe-grid tr[data-column]').length === ${data}.nodes[${JSON.stringify(table)}].columns.length`,
+  `${visible}.classList.contains('dimmed') && ${inView('.table.selected')} !== null && ${inView('.relation-group.hl')} !== null && document.querySelectorAll('.oe-panel .oe-col[data-column]').length === ${data}.nodes[${JSON.stringify(table)}].columns.length`,
 );
+await shot(
+  'table-panel-header',
+  `(() => { const p = document.querySelector('.oe-panel'); const n = ${data}.nodes[${JSON.stringify(table)}]; const tabs = [...p.querySelectorAll('.oe-tab')].map((t) => t.getAttribute('data-tab'));
+    return p.querySelector('.oe-ph-name').title.startsWith(${JSON.stringify(table)}) && p.querySelector('.oe-domain-chip').textContent === n.cluster.split('/').slice(1).join('/')
+      && p.querySelector('.oe-actions .oe-seg') && p.querySelector('.oe-actions .oe-join-from') && p.querySelector('.oe-actions .oe-copy-schema') && tabs[0] === 'columns' && tabs.includes('relations') === true
+      && tabs.includes('indexes') === Boolean(n.indexes) && !/Find join path from here|Copy schema ▾/.test(p.textContent) || tabs; })()`,
+);
+// Column rows: NULL only on nullable columns, "= default" when a default exists.
+await shot(
+  'column-null-default-chips',
+  `(() => { const n = ${data}.nodes[${JSON.stringify(table)}];
+    return [...document.querySelectorAll('.oe-panel .oe-col')].every((r) => { const c = n.columns.find((x) => x.name === r.getAttribute('data-column'));
+      return (r.querySelector('.oe-badge.null') !== null) === (c.nullable === true) && (r.querySelector('.oe-badge.default')?.textContent ?? null) === (c.default !== undefined ? '= ' + c.default : c.autoIncrement ? '= auto' : null)
+        && (r.querySelector('.name.pk') !== null) === Boolean(c.pk); }); })()`,
+);
+await tab('relations');
 // Its relations are chips by direction, a table name each, no kind words;
 // a not-confirmed one is dashed and says so in its tooltip; no evidence.
 await shot(
@@ -341,6 +376,7 @@ await shot(
     return count(group('References')) === out.size && count(group('Referenced by')) === into.size && !/\\b(n-1|1-n|db_fk|declared|inferred)\\b/.test([...panel.querySelectorAll('.oe-chip-group')].map((g) => g.textContent).join())
       && dashed.every((c) => c.title.endsWith('not confirmed') && getComputedStyle(c).borderStyle === 'dashed') && !/Evidence/.test(panel.textContent) || { out: out.size, into: into.size }; })()`,
 );
+await tab('columns');
 // Key icons in the box: a key on primary keys, a link on referencing columns, a table icon (star when central) in the header.
 await shot(
   'table-box-icons',
@@ -351,11 +387,11 @@ await shot(
 );
 // Copy schema: SQL (JSON for MongoDB) or Markdown, from a menu in the panel.
 await evaluate(stubClipboard);
-await click(`[...document.querySelectorAll('.oe-panel .oe-btn')].find((b) => b.textContent.startsWith('Copy schema'))`);
+await click(`document.querySelector('.oe-panel .oe-copy-schema')`);
 await shot('copy-schema-menu', `[...document.querySelectorAll('.oe-copy-menu .oe-item')].map((b) => b.textContent).join('|') === (${data}.databases[${JSON.stringify(table.split('.')[0])}].engine === 'mongodb' ? 'JSON schema (approximate)|Markdown table' : 'SQL (CREATE TABLE, approximate)|Markdown table')`);
 await click(`document.querySelector('.oe-copy-menu .oe-item')`);
-await shot('copy-schema-sql', `/^Copied (SQL|JSON schema)$/.test(document.querySelector('.oe-panel .row .muted').textContent) && (window.__copied.startsWith('-- Generated from the ERD; types as recorded, review before use') || JSON.parse(window.__copied).$comment !== undefined)`);
-await click(`[...document.querySelectorAll('.oe-panel .oe-btn')].find((b) => b.textContent.startsWith('Copy schema'))`);
+await shot('copy-schema-sql', `/^Copied (SQL|JSON schema)$/.test(document.querySelector('.oe-panel .oe-status-inline').textContent) && (window.__copied.startsWith('-- Generated from the ERD; types as recorded, review before use') || JSON.parse(window.__copied).$comment !== undefined)`);
+await click(`document.querySelector('.oe-panel .oe-copy-schema')`);
 await click(`[...document.querySelectorAll('.oe-copy-menu .oe-item')].find((b) => b.textContent === 'Markdown table')`);
 await shot('copy-schema-markdown', `window.__copied.startsWith('### ${table.split('.')[2]}') && window.__copied.includes('| # | Column | Type |')`);
 
@@ -433,7 +469,7 @@ if (offsets[0] === offsets[1]) failures.push(`flow does not move: ${offsets}`);
 await click(`${visible}.querySelector(':scope > rect')`, { where: 'top' });
 await shot('cleared', `!${visible}.classList.contains('dimmed') && ${inView('.flow')} === null`);
 
-const stub = await evaluate(`${inView('.stub')}.getAttribute('data-id')`);
+const stub = await evaluate(`${inView('.stub:not(.group-stub)')}.getAttribute('data-id')`);
 await click(inView(`.stub[data-id="${stub}"]`));
 await shot('stub-jump', `${visible}.getAttribute('data-view') !== ${JSON.stringify(`domain:${domain}`)} && ${inView(`.table.selected[data-id="${stub}"]`)} !== null`);
 
@@ -444,9 +480,10 @@ if (indexed) {
   await click(`document.querySelector('.oe-crumbs .oe-link')`);
   await click(`document.querySelector('.domain[data-domain=${JSON.stringify(indexDomain)}]')`);
   await click(inView(`.table[data-id="${indexTable}"]`), { where: 'top' });
+  await tab('indexes');
   await shot(
     'indexes-panel',
-    `(() => { const n = ${data}.nodes[${JSON.stringify(indexTable)}]; const rows = document.querySelectorAll('.oe-panel .oe-indexes tr').length - 1;
+    `(() => { const n = ${data}.nodes[${JSON.stringify(indexTable)}]; const rows = document.querySelectorAll('.oe-panel .oe-idx').length;
       const marked = [...${inView(`.table[data-id="${indexTable}"]`)}.querySelectorAll('.column')].filter((r) => r.querySelector('.icon-index')).map((r) => r.getAttribute('data-column')).sort();
       const expected = [...new Set(n.indexes.flatMap((i) => i.columns))].filter((c) => n.columns.some((x) => x.name === c)).sort();
       return rows === n.indexes.length && JSON.stringify(marked) === JSON.stringify(expected) || { rows, marked, expected }; })()`,
@@ -456,9 +493,9 @@ if (indexed) {
 
 // A clicked line's panel shows its review state as an icon with the words as tooltip.
 {
-  const anyLine = await evaluate(`[...${visible}.querySelectorAll('.relation-group:not(.kind-view_source):not(.kind-polymorphic) path.relation-hit')].find((e) => { const m = e.getPointAtLength(e.getTotalLength() / 2).matrixTransform(e.getScreenCTM()); return m.x < innerWidth - 470 && e.closest('.relation-group').contains(document.elementFromPoint(m.x, m.y)); }) ? true : false`);
+  const anyLine = await evaluate(`[...${visible}.querySelectorAll('.relation-group:not(.kind-view_source):not(.kind-polymorphic):not([data-group]) path.relation-hit')].find((e) => { const m = e.getPointAtLength(e.getTotalLength() / 2).matrixTransform(e.getScreenCTM()); return m.x < innerWidth - 470 && e.closest('.relation-group').contains(document.elementFromPoint(m.x, m.y)); }) ? true : false`);
   if (anyLine) {
-    await click(`[...${visible}.querySelectorAll('.relation-group:not(.kind-view_source):not(.kind-polymorphic) path.relation-hit')].find((e) => { const m = e.getPointAtLength(e.getTotalLength() / 2).matrixTransform(e.getScreenCTM()); return m.x < innerWidth - 470 && e.closest('.relation-group').contains(document.elementFromPoint(m.x, m.y)); })`);
+    await click(`[...${visible}.querySelectorAll('.relation-group:not(.kind-view_source):not(.kind-polymorphic):not([data-group]) path.relation-hit')].find((e) => { const m = e.getPointAtLength(e.getTotalLength() / 2).matrixTransform(e.getScreenCTM()); return m.x < innerWidth - 470 && e.closest('.relation-group').contains(document.elementFromPoint(m.x, m.y)); })`);
     await shot(
       'line-review-icon',
       `(() => { const f = document.querySelector('.oe-panel .oe-line-facts'); const icon = f?.querySelector('.oe-review');
@@ -527,6 +564,7 @@ if (await evaluate(`document.querySelector('g.view[data-view="all"]') !== null`)
   // The legend is open here, drawn with the diagram's own line and marker
   // classes, listing only what this view draws: no review colours outside
   // review mode, an end-marker entry per kind drawn.
+  await evaluate(`document.querySelector('.oe-legend-pill')?.click()`);
   const legendHost = `[...document.querySelectorAll('foreignObject')].find((x) => x.querySelector('.oe-legend'))`;
   const drawnEnds = `new Set([...${visible}.querySelectorAll('.marker[data-ends]')].flatMap((g) => g.getAttribute('data-ends').split(' ')).filter((k) => k !== 'none')).size`;
   await shot(
@@ -537,6 +575,13 @@ if (await evaluate(`document.querySelector('g.view[data-view="all"]') !== null`)
       return f.style.display !== 'none' && ends === ${drawnEnds} && ['.hint-enum', '.icon-pk', '.icon-fk', '.icon-index', '.icon-central'].every(same) && f.querySelector('.oe-legend .review-icon') === null
         && !subs.includes('Lines') && f.querySelector('.oe-legend .badge-arrow') === null && r.bottom <= innerHeight && r.left >= 0 || { ends, drawn: ${drawnEnds}, subs }; })()`,
   );
+  // Hide folds the legend to a small pill in the same corner, not in any
+  // menu; the pill opens it again.
+  await click(`[...document.querySelectorAll('.oe-legend .oe-link')].find((b) => b.textContent === 'Hide')`);
+  await shot('legend-pill', `(() => { const p = document.querySelector('.oe-legend-pill'); const r = p?.getBoundingClientRect();
+    return p && document.querySelector('.oe-legend') === null && r.left < 40 && r.bottom > innerHeight - 40 && ![...document.querySelectorAll('.oe-more-menu .oe-item')].some((b) => b.textContent.startsWith('Legend')); })()`);
+  await click(`document.querySelector('.oe-legend-pill')`);
+  await shot('legend-reopened', `document.querySelector('.oe-legend') !== null && document.querySelector('.oe-legend-pill') === null`);
   // Review mode, in the ⋯ menu with the counts, only when something waits
   // for review: pending lines turn amber, the legend shows the review icons
   // and a chip says the mode is on; its × turns it off.
@@ -592,8 +637,7 @@ if (await evaluate(`document.querySelector('g.view[data-view="all"]') !== null`)
   await evaluate(`window.dispatchEvent(new Event('resize'))`);
   await pause(100);
   await shot('minimap-hidden-when-fitted', `${minimapHost}.style.display === 'none'`);
-  await choose('more', 'Legend');
-  await closeMenu('more');
+  await evaluate(`document.querySelector('.oe-legend-pill')?.click()`);
 } else {
   await click(`document.querySelector('.oe-crumbs .oe-link')`);
   await click(`document.querySelector('.domain[data-domain=${JSON.stringify(domain)}]')`);
@@ -658,6 +702,7 @@ if (hub) {
   // The legend sits bottom left and may cover the hub table.
   await evaluate(`[...document.querySelectorAll('.oe-legend .oe-link')].find((b) => b.textContent === 'Hide')?.click()`);
   await click(inView(`.table[data-id="${hubTable}"]`), { where: 'top' });
+  await tab('relations');
   const referrers = await evaluate(`new Set(${data}.hubLinks.filter((l) => l.to === ${JSON.stringify(hubTable)} && l.from !== l.to).map((l) => l.from)).size`);
   await shot(
     'hub-table-selected',
@@ -669,6 +714,32 @@ if (hub) {
   await shot('hub-neighborhood', `${viewIs('neighborhood')} && ${visible}.querySelectorAll('.table').length >= ${referrers} + 1`);
   await key('Escape');
   await click(backButton);
+}
+
+// Group stubs: in a domain view, the tables of another domain that has
+// several of them are one box; a bundled line says how many tables it
+// stands for, a row opens its table, the name opens that domain.
+const grouped = await evaluate(`(() => { for (const v of document.querySelectorAll('g.view')) { const n = v.getAttribute('data-view'); const g = v.querySelector('.group-stub'); if (n.startsWith('domain:') && g) return [n.slice(7), g.getAttribute('data-id')]; } return null; })()`);
+if (grouped) {
+  const [groupHome, groupId] = grouped;
+  await key('Escape');
+  await click(`document.querySelector('.oe-crumbs .oe-link')`);
+  await click(`document.querySelector('.domain[data-domain=${JSON.stringify(groupHome)}] .card-box')`, { where: 'top' });
+  const groupBoxSel = inView(`.group-stub[data-id="${groupId}"]`);
+  const bundle = `[...${visible}.querySelectorAll('.relation-group[data-group]')].find((g) => g.getAttribute('data-from') === ${JSON.stringify(groupId)} || g.getAttribute('data-to') === ${JSON.stringify(groupId)})`;
+  const onLine = await evaluate(`(() => { const p = ${bundle}.querySelector('path.relation-hit'); for (const t of [0.5, 0.3, 0.7, 0.2, 0.8]) { const m = p.getPointAtLength(p.getTotalLength() * t).matrixTransform(p.getScreenCTM()); if (${bundle}.contains(document.elementFromPoint(m.x, m.y))) return { x: m.x, y: m.y }; } return null; })()`);
+  if (onLine) {
+    await mouse('mouseMoved', onLine);
+    await pause(150);
+    await shot('group-line-tooltip', `[...document.querySelectorAll('.oe-tip')].some((t) => t.textContent === ${bundle}.getAttribute('data-label') + JSON.parse(${bundle}.getAttribute('data-tables')).map((id) => id.split('.')[2]).join(', ')) && /^\\d+ tables? in .+ (reference|references)/.test(${bundle}.getAttribute('data-label'))`);
+  }
+  const rowTable = await evaluate(`${groupBoxSel}.querySelector('.group-row[data-table]').getAttribute('data-table')`);
+  await click(`${groupBoxSel}.querySelector('.group-row[data-table]')`);
+  await shot('group-row-opens-table', `${inView(`.table.selected[data-id="${rowTable}"]`)} !== null && document.querySelector('.oe-back-pill')?.textContent.startsWith('← ')`);
+  await click(backButton);
+  await click(`${groupBoxSel}.querySelector('.group-head')`);
+  await shot('group-head-opens-domain', viewIs(`domain:${groupId.slice('group:'.length)}`));
+  await click(`document.querySelector('.oe-crumbs .oe-link')`);
 }
 
 // Folding domains: a click on a domain's header folds it (tables and their
@@ -706,6 +777,7 @@ if (badgeOnly) {
   await click(`document.querySelector('.oe-crumbs .oe-link')`);
   await click(`document.querySelector('.domain[data-domain=${JSON.stringify(badgeOnly.split('.')[0])}]') ?? document.querySelector('.domain')`);
   await searchFor(badgeOnly.split('.')[2]);
+  await tab('relations');
   await shot(
     'badge-only-table',
     `(() => { const titles = [...document.querySelectorAll('.oe-panel .oe-chip-group .sub')].map((x) => x.textContent);
@@ -776,7 +848,7 @@ if (joinPair) {
   await key('Escape');
   await click(`document.querySelector('.oe-crumbs .oe-link')`);
   await searchFor(joinPair[0].split('.')[2]);
-  await click(`[...document.querySelectorAll('.oe-panel .oe-btn')].find((b) => b.textContent === 'Find join path from here')`);
+  await click(`document.querySelector('.oe-panel .oe-join-from')`);
   await shot('join-path-from-table', `document.querySelector('.oe-panel .oe-join-end b')?.getAttribute('title') === ${JSON.stringify(joinPair[0])} && document.querySelector('.oe-join-field input') !== null`);
   const other = await evaluate(`[...${visible}.querySelectorAll('.table')].map((g) => g.getAttribute('data-id')).find((id) => id !== ${JSON.stringify(joinPair[0])}) ?? null`);
   if (other) {

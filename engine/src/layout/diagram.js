@@ -13,7 +13,7 @@ import { polyBox, tableBox } from './table-box.js';
 // The review checklist walks them in the reverse order: least certain first.
 export const KIND_TRUST = ['db_fk', 'declared', 'cross_db', 'inferred'];
 export const REVIEW_TRUST = ['reviewed', 'pending', 'stale'];
-const leastTrusted = (values, order) => values.reduce((a, b) => (order.indexOf(b) > order.indexOf(a) ? b : a));
+export const leastTrusted = (values, order) => values.reduce((a, b) => (order.indexOf(b) > order.indexOf(a) ? b : a));
 
 /** Id of the line drawn for relation `r`. */
 export function relationId(r) {

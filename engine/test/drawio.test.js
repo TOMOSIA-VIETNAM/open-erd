@@ -13,7 +13,8 @@ import { applyProfile } from '../src/model/profile.js';
 import { HUB_LAYER, POLY_LAYER, pageName, renderDrawio } from '../src/render/drawio/render.js';
 import { buildScene } from '../src/render/svg/render.js';
 import { endMarkers } from '../src/render/svg/markers.js';
-import { MULTI, loadMulti, loadWorkspace, table } from './helpers/shop.js';
+import { normalizeModel } from '../src/model/load.js';
+import { MULTI, fk, loadMulti, loadWorkspace, table } from './helpers/shop.js';
 import { descendants, parseXml } from './helpers/xml.js';
 
 const CLI = fileURLToPath(new URL('../cli.js', import.meta.url));
@@ -231,4 +232,18 @@ test('CLI: render writes out/erd.drawio by default and none with outputs.drawio 
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test('drawio: a per-domain page draws group stubs as one box, their bundled lines as connectors', async () => {
+  const base = await loadMulti();
+  // Too many tables for the view of all tables: one page per domain. Sales
+  // tables all reference one Core table, so Core's page groups them.
+  const sales = Array.from({ length: ALL_VIEW_MAX_TABLES }, (_, i) => table(`shop._.s${String(i).padStart(3, '0')}`, 'Sales', [['core_id', 'bigint']]));
+  const model = normalizeModel({ ...base, tables: [...base.tables, table('shop._.core', 'Core', []), ...sales], relations: [...base.relations, ...sales.slice(0, 3).map((t) => fk(t.id, 'core_id', 'shop._.core'))] });
+  const { layout } = await computeLayout(model);
+  const page = parseXml(renderDrawio(model, layout)).children.find((d) => d.attrs.id === 'domain:shop/Core');
+  const cells = cellsOf(page);
+  const group = cells.find((c) => c.id === 'n|group:shop/Sales');
+  assert.ok(group && group.value.includes('Sales') && group.value.includes('s000'));
+  assert.ok(cells.some((c) => c.edge === '1' && (c.source === 'n|group:shop/Sales' || c.target === 'n|group:shop/Sales')));
 });

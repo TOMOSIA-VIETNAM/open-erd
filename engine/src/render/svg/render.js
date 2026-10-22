@@ -3,7 +3,7 @@ import { VIEW_SOURCE, buildDiagram, domainPairs, relationId } from '../../layout
 import { STRENGTH_SEGMENTS, connectionMatrix, domainSummary } from '../../layout/domains.js';
 import { resolveView } from '../../layout/index.js';
 import { STUB, routeEdges } from '../../layout/router.js';
-import { GRID, BADGE_ARROW_WIDTH, BADGE_FONT, CARD, CARD_DB_FONT, CARD_LABEL_FONT, CARD_TEXT_FONT, CARD_TITLE_FONT, EMBED_INSET, FACT_FONT, HEADER_HEIGHT, ICON_GUTTER, PADDING_X, ROW_HEIGHT, TAG_FONT, attachOffset } from '../../layout/table-box.js';
+import { GRID, GROUP_DB_FONT, BADGE_ARROW_WIDTH, BADGE_FONT, CARD, CARD_DB_FONT, CARD_LABEL_FONT, CARD_TEXT_FONT, CARD_TITLE_FONT, EMBED_INSET, FACT_FONT, HEADER_HEIGHT, ICON_GUTTER, PADDING_X, ROW_HEIGHT, TAG_FONT, attachOffset } from '../../layout/table-box.js';
 import { ALL_VIEW, OVERVIEW, hasAllView, viewNames } from '../../layout/views.js';
 import { columnEntries, enumMeaning } from '../../model/columns.js';
 import { compareStrings } from '../../model/load.js';
@@ -13,7 +13,7 @@ import { measureText } from '../../text/measure.js';
 import { FONT_FAMILY, TEXT_STYLE_CSS, fontFaceCss } from '../../text/font.js';
 import { PALETTE } from '../../palette.js';
 import { CONNECTIONS_STYLE, connectionsSvg } from './connections.js';
-import { UNCONFIRMED_DASH, endMarkers, enumIconSvg, indexIconSvg, isConfirmed, keyIconSvg, linkIconSvg, markerSvg, starIconSvg, tableIconSvg } from './markers.js';
+import { UNCONFIRMED_DASH, endMarkers, enumIconSvg, indexIconSvg, isConfirmed, keyIconSvg, linkIconSvg, markerSvg, overviewStrokeWidth, starIconSvg, tableIconSvg } from './markers.js';
 import viewerBundle from './viewer-bundle.json' with { type: 'json' };
 
 const CANVAS_MARGIN = 40;
@@ -128,11 +128,9 @@ const VIEWER_STYLE = `.row-hit { fill: transparent; }
 .oe-chip-close:hover { background: #fde3b4; }
 .oe-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.92em; color: #4c4f9e; background: #f1f1fa; border-radius: 3px; padding: 0 3px; overflow-wrap: anywhere; }
 .oe-tip .oe-code { color: #c8caff; background: #2c3650; }
-.oe-facts { list-style: none; padding-left: 0; }
 .oe-star { color: #d99a00; }
 .oe-copy-menu { position: static; width: max-content; max-width: 100%; margin-top: 4px; box-shadow: none; }
 .oe-panel .oe-drop { position: static; }
-.oe-grid .chip.idx { background: #dff3f0; color: #136e63; }
 .legend-central { fill: #fde7a8; stroke: #a87a00; }
 .oe-link { color: #1d4ed8; cursor: pointer; background: none; border: 0; padding: 0; font: inherit; }
 .oe-link:hover { text-decoration: underline; }
@@ -149,6 +147,51 @@ const VIEWER_STYLE = `.row-hit { fill: transparent; }
 .oe-join-picks .oe-result .where { color: #7a8597; font-size: 11px; margin: 0; max-width: none; }
 .oe-panel { background: #ffffff; border: 1px solid #c3cad5; border-radius: 8px; padding: 12px 14px; box-shadow: 0 6px 18px rgba(20, 30, 50, 0.12); overflow: auto; }
 .oe-panel h3 { margin: 0 0 4px; font-size: 14px; overflow-wrap: anywhere; }
+.oe-ph { margin-bottom: 10px; }
+.oe-ph-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.oe-ph-name { font-size: 15px; color: #172033; overflow-wrap: anywhere; }
+.oe-domain-chip { font: inherit; font-size: 11px; line-height: 18px; padding: 0 8px; border: 1px solid; border-radius: 9px; background: #ffffff; cursor: pointer; }
+.oe-domain-chip:hover { background: #f6f8fb; }
+.oe-ph-note { color: #3d4a5e; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.oe-ph-note.open, .oe-col .l2.open { white-space: normal; }
+.oe-ph-sub { color: #7a8597; font-size: 12px; margin-top: 3px; overflow-wrap: anywhere; }
+.oe-ph-facts { margin-top: 4px; font-size: 12px; color: #56627a; }
+.oe-actions { display: flex; align-items: center; gap: 6px; margin: 0 0 10px; flex-wrap: wrap; }
+.oe-actions .oe-tool { height: 28px; width: 28px; }
+.oe-actions-label { font-size: 12px; color: #7a8597; }
+.oe-ph-sep { color: #7a8597; }
+.oe-actions .oe-seg .oe-btn { height: 28px; font-size: 12px; }
+.oe-btn.oe-small { font-size: 12px; padding: 3px 8px; }
+.oe-status-inline { font-size: 12px; }
+.oe-tabs { display: flex; gap: 2px; border-bottom: 1px solid #e1e6ee; margin-bottom: 4px; }
+.oe-tab { font: inherit; font-size: 12px; padding: 6px 10px; border: 0; border-bottom: 2px solid transparent; background: none; color: #56627a; cursor: pointer; display: inline-flex; gap: 5px; }
+.oe-tab .n { color: #9aa4b5; }
+.oe-tab.on { color: #1f2a3d; border-bottom-color: #2563eb; font-weight: 700; }
+.oe-col { padding: 6px 2px 7px; border-bottom: 1px solid #f0f2f6; }
+.oe-col.open { background: #fff8db; }
+.oe-col .l1 { display: flex; align-items: center; gap: 5px; min-width: 0; }
+.oe-col .gutter { flex: none; width: 14px; height: 14px; display: inline-flex; }
+.oe-col .name { color: #1f2a3d; overflow-wrap: anywhere; }
+.oe-col .name.pk { font-weight: 700; }
+.oe-col .type { margin-left: auto; padding-left: 8px; flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: #8a94a6; }
+.oe-col .l2 { margin: 2px 0 0 19px; font-size: 11.5px; color: #7a8597; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.oe-badge { flex: none; font: inherit; font-size: 10px; line-height: 15px; padding: 0 5px; border-radius: 4px; background: #eef1f5; color: #56627a; border: 0; white-space: nowrap; max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
+.oe-badge.null { background: #f1f4f8; color: #7a8597; }
+.oe-badge.default { background: #eef4ff; color: #36569a; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.oe-badge.enum { background: #f1ecfb; color: #6a4bb0; cursor: pointer; }
+.oe-badge.enum:hover { background: #e6dcf8; }
+.oe-badge.pii { background: #ffe1d8; color: #a8341a; font-weight: 700; }
+.oe-badge.unique { background: #e6f4f1; color: #136e63; font-weight: 700; }
+.oe-enum-list { margin: 4px 0 0 19px; padding: 4px 8px; border-left: 2px solid #e6dcf8; font-size: 12px; color: #3d4a5e; }
+.oe-enum-list > div { margin: 2px 0; overflow-wrap: anywhere; }
+.oe-idx { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; padding: 6px 2px; border-bottom: 1px solid #f0f2f6; }
+.oe-idx .cols { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #1f2a3d; }
+.oe-idx .iname { font-size: 11px; color: #9aa4b5; overflow-wrap: anywhere; }
+.oe-idx .where { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: #7a8597; flex-basis: 100%; }
+.oe-legend-pill { font: inherit; font-size: 12px; padding: 4px 12px; border: 1px solid #c3cad5; border-radius: 14px; background: #ffffff; color: #3d4a5e; box-shadow: 0 2px 8px rgba(20, 30, 50, 0.12); cursor: pointer; }
+.oe-legend-pill:hover { background: #f1f4f8; }
+.oe-back-pill { font: inherit; font-size: 12px; padding: 4px 12px 4px 10px; border: 1px solid #c3cad5; border-radius: 14px; background: #ffffff; color: #1d4ed8; box-shadow: 0 2px 8px rgba(20, 30, 50, 0.12); cursor: pointer; white-space: nowrap; max-width: 360px; overflow: hidden; text-overflow: ellipsis; }
+.oe-back-pill:hover { background: #eef3fb; }
 .oe-panel .sub { color: #7a8597; font-size: 12px; margin-bottom: 8px; overflow-wrap: anywhere; }
 .oe-panel .row { display: flex; gap: 6px; align-items: center; margin: 8px 0; }
 .oe-panel ul { margin: 4px 0 0; padding-left: 16px; }
@@ -183,20 +226,6 @@ const VIEWER_STYLE = `.row-hit { fill: transparent; }
 .oe-legend .sub { color: #7a8597; font-size: 11px; margin: 6px 0 2px; }
 .oe-legend .item { display: flex; align-items: center; gap: 8px; min-height: 20px; padding: 1px 0; line-height: 1.3; }
 .oe-legend svg { flex: none; overflow: visible; }
-.oe-grid-wrap { overflow-x: auto; margin: 4px 0 10px; }
-.oe-grid { border-collapse: collapse; width: 100%; font-size: 11px; line-height: 1.35; }
-.oe-grid th { text-align: left; color: #7a8597; font-weight: 400; border-bottom: 1px solid #d5dbe4; padding: 2px 4px; }
-.oe-grid td { padding: 2px 4px; border-bottom: 1px solid #eef1f5; vertical-align: top; }
-.oe-grid td.num { color: #9aa4b5; text-align: right; }
-.oe-grid td.name { font-weight: 700; overflow-wrap: anywhere; }
-.oe-grid td.type { color: #56627a; white-space: nowrap; }
-.oe-grid .comment { color: #56627a; overflow-wrap: anywhere; }
-.oe-grid tr.open > td { background: #fff1b8; }
-.oe-grid tr[data-column] > td { border-bottom: 0; }
-.oe-grid tr.more > td { padding-top: 0; }
-.oe-grid details { margin: 0; }
-.oe-grid summary { font-size: 11px; color: #7c5cc4; }
-.oe-grid .chip { margin-left: 4px; font-size: 10px; padding: 0 4px; border-radius: 6px; font-weight: 700; background: #ffe1d8; color: #a8341a; }
 .cluster-label { cursor: pointer; }
 .fold-hit { fill: transparent; cursor: pointer; }
 .fold-toggle rect { fill: #ffffff; stroke: #8a94a6; stroke-width: 1; }
@@ -292,6 +321,15 @@ text { font-family: '${FONT_FAMILY}', sans-serif; ${TEXT_STYLE_CSS} }
 .poly-target { font-size: 12px; font-weight: 400; fill: #4a4236; }
 .stub-box { fill: #f3f5f8; stroke: #c3cad5; stroke-width: 1; stroke-dasharray: 3 3; }
 .stub-title { font-size: 12px; font-weight: 400; fill: #8a94a6; }
+.group-stub .stub-box { fill: #f7f8fa; }
+.group-title { font-size: 13px; font-weight: 700; }
+.group-table { font-size: 12px; font-weight: 400; fill: #56627a; }
+.group-row[data-table] { cursor: pointer; }
+.group-row[data-table]:hover .row-hit { fill: #eef3fb; }
+.group-row[data-table]:hover .group-table { fill: #1d4ed8; }
+.group-head { cursor: pointer; }
+.group-db-pill { fill: #eef1f5; }
+.group-db { font-size: ${GROUP_DB_FONT.size}px; font-weight: ${GROUP_DB_FONT.weight}; fill: #56627a; }
 .card-box { fill: #ffffff; stroke: #cfd6e0; stroke-width: 1; }
 .card-accent { fill: none; stroke-width: 4; stroke-linecap: round; }
 .card-title { font-size: ${CARD_TITLE_FONT.size}px; font-weight: ${CARD_TITLE_FONT.weight}; }
@@ -388,7 +426,8 @@ const nodeRect = (n) => ({ id: n.id, x: n.x, y: n.y, w: n.w, h: n.h });
 // direction of the reference ("billing → auth"), so a line touching one
 // database never reads as belonging to only the other.
 function labelText(link) {
-  return link.kind === 'cross_db' ? `${link.from.node.split('.')[0]} → ${link.to.node.split('.')[0]}` : null;
+  // A group stub names its database itself.
+  return link.kind === 'cross_db' && !link.group ? `${link.from.node.split('.')[0]} → ${link.to.node.split('.')[0]}` : null;
 }
 
 // Labels go where they read as part of their own line and cover nothing
@@ -566,7 +605,8 @@ export function buildScene(model, layout, name = ALL_VIEW, diagram = buildDiagra
   // and the viewer draws a card's connectors on hover.
   let relations = [];
   if (name !== OVERVIEW) {
-    const markers = view.links.map((l) => (l.kind === VIEW_SOURCE ? { from: 'none', to: 'none' } : endMarkers(l)));
+    // A line standing for relations of different cardinalities has no ends.
+    const markers = view.links.map((l) => (l.kind === VIEW_SOURCE || l.cardinality === null ? { from: 'none', to: 'none' } : endMarkers(l)));
     const edges = view.links.map((l, i) => ({ id: l.id, from: end(l, 'from', markers[i].from), to: end(l, 'to', markers[i].to) }));
     const routes = routeEdges(obstacles, view.groups.map((g) => g.frame), edges);
     const labelsOf = placeLabels(routes, view.links.map(labelText), obstacles);
@@ -726,6 +766,34 @@ function polySvg(n, marks) {
   ].join('');
 }
 
+// Tables of one other domain in a domain view, as one box: the domain's
+// name in its colour (with its database when that differs), one row per
+// table; a click on a row opens that table, on the header that domain.
+function groupStubSvg(n, colors) {
+  const { x, y, w, h, box } = n;
+  const { key, tables } = n.group;
+  const tip = `${clusterLabel(key)}${box.db ? ` (${box.db})` : ''}: ${tables.map((t) => t.split('.')[2]).join(', ')}`;
+  const pill = box.db
+    ? (() => {
+        const pw = Math.ceil(measureText(box.db, GROUP_DB_FONT)) + 10;
+        const px = x + w - PADDING_X - pw;
+        return `<rect class="group-db-pill" x="${px}" y="${y + box.title.centerY - 7}" width="${pw}" height="14" rx="7"/><text class="group-db" x="${px + pw / 2}" y="${y + box.title.centerY}" dominant-baseline="central" text-anchor="middle">${escapeXml(box.db)}</text>`;
+      })()
+    : '';
+  const rows = box.rows.map(
+    (r) =>
+      `<g class="group-row"${r.table ? ` data-table="${escapeXml(r.table)}"` : ''}><rect class="row-hit" x="${x}" y="${y + r.centerY - ROW_HEIGHT / 2}" width="${w}" height="${ROW_HEIGHT}"/>` +
+      `${textEl('group-table', x + PADDING_X, y + r.centerY, r.name)}</g>`,
+  );
+  return (
+    `<g class="stub group-stub" data-id="${escapeXml(n.id)}" data-domain="${escapeXml(key)}" data-tables="${json(tables)}"><title>${escapeXml(tip)}</title>` +
+    `<rect class="stub-box" x="${x}" y="${y}" width="${w}" height="${h}" rx="${CORNER}"/>` +
+    `<path d="M${x} ${y + HEADER_HEIGHT}H${x + w}" stroke="#d5dbe4"/>` +
+    `<g class="group-head"><text class="group-title" x="${x + PADDING_X}" y="${y + box.title.centerY}" dominant-baseline="central" fill="${colors.label}">${escapeXml(box.title.text)}</text>${pill}</g>` +
+    `${rows.join('')}</g>`
+  );
+}
+
 function stubSvg(n, marks) {
   const { x, y, w, h, box } = n;
   return (
@@ -838,6 +906,16 @@ function markersSvg(r) {
   return svg ? `<g class="marker" data-ends="${r.markers.from} ${r.markers.to}">${svg}</g>` : '';
 }
 
+/** "3 tables in Billing reference orders.id", or the other way round. */
+export function groupLinkText(link) {
+  const outwards = link.to.node.startsWith('group:');
+  const own = outwards ? link.from : link.to;
+  const ownText = `${own.node.split('.')[2]}${own.column ? `.${own.column}` : ''}`;
+  const n = link.tables.length;
+  const tables = `${n} ${n === 1 ? 'table' : 'tables'} in ${clusterLabel(link.group)}`;
+  return outwards ? `${ownText} references ${tables}` : `${tables} reference${n === 1 ? 's' : ''} ${ownText}`;
+}
+
 function relationSvg(r, marks) {
   const { link } = r;
   const d = pathData(r.points);
@@ -847,11 +925,12 @@ function relationSvg(r, marks) {
       `<text x="${r.label.cx}" y="${r.label.cy}" dominant-baseline="central" text-anchor="middle">${escapeXml(r.label.text)}</text></g>`
     : '';
   const via = link.via ? ` data-via="${escapeXml(link.via)}"` : '';
+  const grouped = link.group ? ` data-group="${escapeXml(link.group)}" data-tables="${json(link.tables)}" data-label="${escapeXml(groupLinkText(link))}"` : '';
   return (
     `<g class="relation-group kind-${link.kind} review-${link.review}${styleClass(link)}${linkDiffClass(marks, link.id)}" data-id="${escapeXml(link.id)}"` +
-    ` data-from="${escapeXml(link.from.node)}" data-to="${escapeXml(link.to.node)}" data-kind="${link.kind}" data-review="${link.review}"${via}>` +
-    `<title>${escapeXml(titleText(marks, link.id, link.via ? `${link.id} (n-n via ${link.via})` : link.id, 'links'))}</title>` +
-    `<path class="relation" d="${d}"/>${markers}${label}</g>`
+    ` data-from="${escapeXml(link.from.node)}" data-to="${escapeXml(link.to.node)}" data-kind="${link.kind}" data-review="${link.review}"${via}${grouped}>` +
+    `<title>${escapeXml(titleText(marks, link.id, link.group ? groupLinkText(link) : link.via ? `${link.id} (n-n via ${link.via})` : link.id, 'links'))}</title>` +
+    `<path class="relation" d="${d}"${link.group ? ` style="stroke-width:${overviewStrokeWidth(link.relations.length)}"` : ''}/>${markers}${label}</g>`
   );
 }
 
@@ -909,6 +988,7 @@ function viewSvg(scene, colorOf, visible, marks, banner, warnings) {
     if (n.kind === 'table') return tableSvg(n, colorOf(n.node.cluster), marks, warnings.get(n.id));
     if (n.kind === 'poly') return polySvg(n, marks);
     if (n.kind === 'stub') return stubSvg(n, marks);
+    if (n.kind === 'group') return groupStubSvg(n, colorOf(n.group.key));
     return cardSvg(n, colorOf(n.id), colorOf, marks);
   });
   return viewGroup(scene.name, scene.bounds, visible, [
