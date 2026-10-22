@@ -1,0 +1,92 @@
+# ERD preview: on each pull request that touches the schema files, the
+# open-erd extract script re-reads the database structure from the pull
+# request, the engine applies what changed to a copy of the ERD workspace,
+# and one comment on the pull request (updated on every push) shows the
+# changes and what is left for /open-erd:sync. Nothing is pushed anywhere.
+#
+# Needs the repository secret OPEN_ERD_WORKSPACE_TOKEN: a fine-grained
+# personal access token or GitHub App token with Contents: read-only on
+# __WORKSPACE_REPO__. Commenting uses this workflow's own GITHUB_TOKEN.
+name: ERD preview
+
+on:
+  pull_request:
+    paths: [__PATHS__]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: erd-preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  erd-preview:
+    # A pull request from a fork gets neither the secret nor a token that
+    # may comment.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the pull request
+        uses: actions/checkout@v4
+        with:
+          path: source
+      - name: Check out the ERD workspace
+        uses: actions/checkout@v4
+        with:
+          repository: __WORKSPACE_REPO__
+          ref: __WORKSPACE_REF__
+          token: ${{ secrets.OPEN_ERD_WORKSPACE_TOKEN }}
+          path: erd
+      - name: Check out the open-erd engine
+        uses: actions/checkout@v4
+        with:
+          repository: TOMOSIA-VIETNAM/open-erd
+          ref: __OPEN_ERD_REF__
+          path: open-erd
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Extract, apply and compare
+        env:
+          WS: erd/__WORKSPACE_DIR__
+          ENGINE: open-erd/dist/open-erd.mjs
+        run: |
+          # Facts of the other sources stay as the workspace last recorded them.
+          mkdir -p facts erd-diff
+          cp "$WS"/extract/facts/*.json facts/
+          node "$WS/extract/__SOURCE__.mjs" source > facts/__SOURCE__.json
+          node "$ENGINE" apply-facts --workspace "$WS" --facts facts --out preview --format markdown > needs-sync.md
+          node "$ENGINE" diff --workspace "$WS" --from HEAD --to-workspace preview --format markdown > changes.md
+          cp "$WS/out/diff.svg" "$WS/out/diff.xlsx" erd-diff/
+      - name: Upload diff.svg and diff.xlsx
+        id: artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: erd-diff
+          path: erd-diff/
+      - name: Comment on the pull request
+        uses: actions/github-script@v7
+        env:
+          ARTIFACT_URL: ${{ steps.artifact.outputs.artifact-url }}
+        with:
+          script: |
+            const fs = require('fs');
+            // Finds this workflow's comment again, so it is updated, not repeated.
+            const marker = '<!-- open-erd:erd-preview -->';
+            const body = [
+              marker,
+              '### ERD changes in this pull request',
+              '',
+              fs.readFileSync('changes.md', 'utf8'),
+              fs.readFileSync('needs-sync.md', 'utf8'),
+              `[Download diff.svg and diff.xlsx](${process.env.ARTIFACT_URL}) (open diff.svg in a browser). ` +
+                'Preview only: the ERD workspace is unchanged until someone runs `/open-erd:sync`.',
+            ].join('\n');
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number, per_page: 100 });
+            const previous = comments.find((c) => c.user?.type === 'Bot' && c.body?.includes(marker));
+            if (previous) await github.rest.issues.updateComment({ owner, repo, comment_id: previous.id, body });
+            else await github.rest.issues.createComment({ owner, repo, issue_number, body });

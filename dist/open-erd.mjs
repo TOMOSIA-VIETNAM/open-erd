@@ -62,11 +62,11 @@ var require_identity = __commonJS({
     var NODE_TYPE = /* @__PURE__ */ Symbol.for("yaml.node.type");
     var isAlias = (node) => !!node && typeof node === "object" && node[NODE_TYPE] === ALIAS;
     var isDocument = (node) => !!node && typeof node === "object" && node[NODE_TYPE] === DOC;
-    var isMap = (node) => !!node && typeof node === "object" && node[NODE_TYPE] === MAP;
+    var isMap2 = (node) => !!node && typeof node === "object" && node[NODE_TYPE] === MAP;
     var isPair = (node) => !!node && typeof node === "object" && node[NODE_TYPE] === PAIR;
     var isScalar = (node) => !!node && typeof node === "object" && node[NODE_TYPE] === SCALAR;
-    var isSeq = (node) => !!node && typeof node === "object" && node[NODE_TYPE] === SEQ;
-    function isCollection(node) {
+    var isSeq2 = (node) => !!node && typeof node === "object" && node[NODE_TYPE] === SEQ;
+    function isCollection2(node) {
       if (node && typeof node === "object")
         switch (node[NODE_TYPE]) {
           case MAP:
@@ -86,7 +86,7 @@ var require_identity = __commonJS({
         }
       return false;
     }
-    var hasAnchor = (node) => (isScalar(node) || isCollection(node)) && !!node.anchor;
+    var hasAnchor = (node) => (isScalar(node) || isCollection2(node)) && !!node.anchor;
     exports2.ALIAS = ALIAS;
     exports2.DOC = DOC;
     exports2.MAP = MAP;
@@ -96,13 +96,13 @@ var require_identity = __commonJS({
     exports2.SEQ = SEQ;
     exports2.hasAnchor = hasAnchor;
     exports2.isAlias = isAlias;
-    exports2.isCollection = isCollection;
+    exports2.isCollection = isCollection2;
     exports2.isDocument = isDocument;
-    exports2.isMap = isMap;
+    exports2.isMap = isMap2;
     exports2.isNode = isNode2;
     exports2.isPair = isPair;
     exports2.isScalar = isScalar;
-    exports2.isSeq = isSeq;
+    exports2.isSeq = isSeq2;
   }
 });
 
@@ -114,7 +114,7 @@ var require_visit = __commonJS({
     var BREAK = /* @__PURE__ */ Symbol("break visit");
     var SKIP = /* @__PURE__ */ Symbol("skip children");
     var REMOVE = /* @__PURE__ */ Symbol("remove node");
-    function visit(node, visitor) {
+    function visit2(node, visitor) {
       const visitor_ = initVisitor(visitor);
       if (identity.isDocument(node)) {
         const cd = visit_(null, node.contents, visitor_, Object.freeze([node]));
@@ -123,9 +123,9 @@ var require_visit = __commonJS({
       } else
         visit_(null, node, visitor_, Object.freeze([]));
     }
-    visit.BREAK = BREAK;
-    visit.SKIP = SKIP;
-    visit.REMOVE = REMOVE;
+    visit2.BREAK = BREAK;
+    visit2.SKIP = SKIP;
+    visit2.REMOVE = REMOVE;
     function visit_(key, node, visitor, path) {
       const ctrl = callVisitor(key, node, visitor, path);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
@@ -259,7 +259,7 @@ var require_visit = __commonJS({
         throw new Error(`Cannot replace node with ${pt} parent`);
       }
     }
-    exports2.visit = visit;
+    exports2.visit = visit2;
     exports2.visitAsync = visitAsync;
   }
 });
@@ -269,7 +269,7 @@ var require_directives = __commonJS({
   "node_modules/yaml/dist/doc/directives.js"(exports2) {
     "use strict";
     var identity = require_identity();
-    var visit = require_visit();
+    var visit2 = require_visit();
     var escapeChars = {
       "!": "%21",
       ",": "%2C",
@@ -413,7 +413,7 @@ var require_directives = __commonJS({
         let tagNames;
         if (doc && tagEntries.length > 0 && identity.isNode(doc.contents)) {
           const tags = {};
-          visit.visit(doc.contents, (_key, node) => {
+          visit2.visit(doc.contents, (_key, node) => {
             if (identity.isNode(node) && node.tag)
               tags[node.tag] = true;
           });
@@ -440,7 +440,7 @@ var require_anchors = __commonJS({
   "node_modules/yaml/dist/doc/anchors.js"(exports2) {
     "use strict";
     var identity = require_identity();
-    var visit = require_visit();
+    var visit2 = require_visit();
     function anchorIsValid(anchor) {
       if (/[\x00-\x19\s,[\]{}]/.test(anchor)) {
         const sa = JSON.stringify(anchor);
@@ -451,7 +451,7 @@ var require_anchors = __commonJS({
     }
     function anchorNames(root) {
       const anchors = /* @__PURE__ */ new Set();
-      visit.visit(root, {
+      visit2.visit(root, {
         Value(_key, node) {
           if (node.anchor)
             anchors.add(node.anchor);
@@ -631,7 +631,7 @@ var require_Alias = __commonJS({
   "node_modules/yaml/dist/nodes/Alias.js"(exports2) {
     "use strict";
     var anchors = require_anchors();
-    var visit = require_visit();
+    var visit2 = require_visit();
     var identity = require_identity();
     var Node = require_Node();
     var toJS = require_toJS();
@@ -657,7 +657,7 @@ var require_Alias = __commonJS({
           nodes = ctx.aliasResolveCache;
         } else {
           nodes = [];
-          visit.visit(doc, {
+          visit2.visit(doc, {
             Node: (_key, node) => {
               if (identity.isAlias(node) || identity.hasAnchor(node))
                 nodes.push(node);
@@ -4210,9 +4210,9 @@ var require_resolve_flow_collection = __commonJS({
     var blockMsg = "Block collections are not allowed within flow collections";
     var isBlock = (token) => token && (token.type === "block-map" || token.type === "block-seq");
     function resolveFlowCollection({ composeNode, composeEmptyNode }, ctx, fc, onError, tag) {
-      const isMap = fc.start.source === "{";
-      const fcName = isMap ? "flow map" : "flow sequence";
-      const NodeClass = tag?.nodeClass ?? (isMap ? YAMLMap.YAMLMap : YAMLSeq.YAMLSeq);
+      const isMap2 = fc.start.source === "{";
+      const fcName = isMap2 ? "flow map" : "flow sequence";
+      const NodeClass = tag?.nodeClass ?? (isMap2 ? YAMLMap.YAMLMap : YAMLSeq.YAMLSeq);
       const coll = new NodeClass(ctx.schema);
       coll.flow = true;
       const atRoot = ctx.atRoot;
@@ -4248,7 +4248,7 @@ var require_resolve_flow_collection = __commonJS({
             offset = props.end;
             continue;
           }
-          if (!isMap && ctx.options.strict && utilContainsNewline.containsNewline(key))
+          if (!isMap2 && ctx.options.strict && utilContainsNewline.containsNewline(key))
             onError(
               key,
               // checked by containsNewline()
@@ -4288,7 +4288,7 @@ var require_resolve_flow_collection = __commonJS({
             }
           }
         }
-        if (!isMap && !sep && !props.found) {
+        if (!isMap2 && !sep && !props.found) {
           const valueNode = value2 ? composeNode(ctx, value2, props, onError) : composeEmptyNode(ctx, props.end, sep, null, props, onError);
           coll.items.push(valueNode);
           offset = valueNode.range[2];
@@ -4311,7 +4311,7 @@ var require_resolve_flow_collection = __commonJS({
             startOnNewline: false
           });
           if (valueProps.found) {
-            if (!isMap && !props.found && ctx.options.strict) {
+            if (!isMap2 && !props.found && ctx.options.strict) {
               if (sep)
                 for (const st of sep) {
                   if (st === valueProps.found)
@@ -4343,7 +4343,7 @@ var require_resolve_flow_collection = __commonJS({
           const pair = new Pair.Pair(keyNode, valueNode);
           if (ctx.options.keepSourceTokens)
             pair.srcToken = collItem;
-          if (isMap) {
+          if (isMap2) {
             const map = coll;
             if (utilMapIncludes.mapIncludes(ctx, map.items, keyNode))
               onError(keyStart, "DUPLICATE_KEY", "Map keys must be unique");
@@ -4359,7 +4359,7 @@ var require_resolve_flow_collection = __commonJS({
           offset = valueNode ? valueNode.range[2] : valueProps.end;
         }
       }
-      const expectedEnd = isMap ? "}" : "]";
+      const expectedEnd = isMap2 ? "}" : "]";
       const [ce, ...ee] = fc.end;
       let cePos = offset;
       if (ce?.source === expectedEnd)
@@ -5579,15 +5579,15 @@ var require_cst_visit = __commonJS({
     var BREAK = /* @__PURE__ */ Symbol("break visit");
     var SKIP = /* @__PURE__ */ Symbol("skip children");
     var REMOVE = /* @__PURE__ */ Symbol("remove item");
-    function visit(cst, visitor) {
+    function visit2(cst, visitor) {
       if ("type" in cst && cst.type === "document")
         cst = { start: cst.start, value: cst.value };
       _visit(Object.freeze([]), cst, visitor);
     }
-    visit.BREAK = BREAK;
-    visit.SKIP = SKIP;
-    visit.REMOVE = REMOVE;
-    visit.itemAtPath = (cst, path) => {
+    visit2.BREAK = BREAK;
+    visit2.SKIP = SKIP;
+    visit2.REMOVE = REMOVE;
+    visit2.itemAtPath = (cst, path) => {
       let item = cst;
       for (const [field, index] of path) {
         const tok = item?.[field];
@@ -5598,8 +5598,8 @@ var require_cst_visit = __commonJS({
       }
       return item;
     };
-    visit.parentCollection = (cst, path) => {
-      const parent = visit.itemAtPath(cst, path.slice(0, -1));
+    visit2.parentCollection = (cst, path) => {
+      const parent = visit2.itemAtPath(cst, path.slice(0, -1));
       const field = path[path.length - 1][0];
       const coll = parent?.[field];
       if (coll && "items" in coll)
@@ -5630,7 +5630,7 @@ var require_cst_visit = __commonJS({
       }
       return typeof ctrl === "function" ? ctrl(item, path) : ctrl;
     }
-    exports2.visit = visit;
+    exports2.visit = visit2;
   }
 });
 
@@ -5645,7 +5645,7 @@ var require_cst = __commonJS({
     var DOCUMENT = "";
     var FLOW_END = "";
     var SCALAR = "";
-    var isCollection = (token) => !!token && "items" in token;
+    var isCollection2 = (token) => !!token && "items" in token;
     var isScalar = (token) => !!token && (token.type === "scalar" || token.type === "single-quoted-scalar" || token.type === "double-quoted-scalar" || token.type === "block-scalar");
     function prettyToken(token) {
       switch (token) {
@@ -5729,7 +5729,7 @@ var require_cst = __commonJS({
     exports2.DOCUMENT = DOCUMENT;
     exports2.FLOW_END = FLOW_END;
     exports2.SCALAR = SCALAR;
-    exports2.isCollection = isCollection;
+    exports2.isCollection = isCollection2;
     exports2.isScalar = isScalar;
     exports2.prettyToken = prettyToken;
     exports2.tokenType = tokenType;
@@ -7260,7 +7260,7 @@ var require_public_api = __commonJS({
         return docs;
       return Object.assign([], { empty: true }, composer$1.streamInfo());
     }
-    function parseDocument2(source, options = {}) {
+    function parseDocument3(source, options = {}) {
       const { lineCounter: lineCounter2, prettyErrors } = parseOptions(options);
       const parser$1 = new parser.Parser(lineCounter2?.addNewLine);
       const composer$1 = new composer.Composer(options);
@@ -7286,7 +7286,7 @@ var require_public_api = __commonJS({
       } else if (options === void 0 && reviver && typeof reviver === "object") {
         options = reviver;
       }
-      const doc = parseDocument2(src, options);
+      const doc = parseDocument3(src, options);
       if (!doc)
         return null;
       doc.warnings.forEach((warning) => log.warn(doc.options.logLevel, warning));
@@ -7322,7 +7322,7 @@ var require_public_api = __commonJS({
     }
     exports2.parse = parse2;
     exports2.parseAllDocuments = parseAllDocuments;
-    exports2.parseDocument = parseDocument2;
+    exports2.parseDocument = parseDocument3;
     exports2.stringify = stringify4;
   }
 });
@@ -7346,7 +7346,7 @@ var require_dist = __commonJS({
     var lineCounter = require_line_counter();
     var parser = require_parser();
     var publicApi = require_public_api();
-    var visit = require_visit();
+    var visit2 = require_visit();
     exports2.Composer = composer.Composer;
     exports2.Document = Document.Document;
     exports2.Schema = Schema.Schema;
@@ -7374,8 +7374,8 @@ var require_dist = __commonJS({
     exports2.parseAllDocuments = publicApi.parseAllDocuments;
     exports2.parseDocument = publicApi.parseDocument;
     exports2.stringify = publicApi.stringify;
-    exports2.visit = visit.visit;
-    exports2.visitAsync = visit.visitAsync;
+    exports2.visit = visit2.visit;
+    exports2.visitAsync = visit2.visitAsync;
   }
 });
 
@@ -10928,7 +10928,7 @@ var require_worksheet = __commonJS({
       // =========================================================================
       // Worksheet Protection
       protect(password, options) {
-        return new Promise((resolve) => {
+        return new Promise((resolve2) => {
           this.sheetProtection = {
             sheet: true
           };
@@ -10952,7 +10952,7 @@ var require_worksheet = __commonJS({
               delete this.sheetProtection.spinCount;
             }
           }
-          resolve();
+          resolve2();
         });
       }
       unprotect() {
@@ -13640,8 +13640,8 @@ var require_lib2 = __commonJS({
         return this;
       }
       var p = this.constructor;
-      return this.then(resolve2, reject2);
-      function resolve2(value2) {
+      return this.then(resolve3, reject2);
+      function resolve3(value2) {
         function yes() {
           return value2;
         }
@@ -13794,8 +13794,8 @@ var require_lib2 = __commonJS({
       }
       return out;
     }
-    Promise2.resolve = resolve;
-    function resolve(value2) {
+    Promise2.resolve = resolve2;
+    function resolve2(value2) {
       if (value2 instanceof this) {
         return value2;
       }
@@ -14330,10 +14330,10 @@ var require_utils = __commonJS({
           if (typeof Blob.prototype.arrayBuffer !== "undefined") {
             return data.arrayBuffer();
           } else if (typeof FileReader !== "undefined") {
-            return new external.Promise(function(resolve, reject) {
+            return new external.Promise(function(resolve2, reject) {
               var reader = new FileReader();
               reader.onload = function(e) {
-                resolve(e.target.result);
+                resolve2(e.target.result);
               };
               reader.onerror = function(e) {
                 reject(e.target.error);
@@ -14892,7 +14892,7 @@ var require_StreamHelper = __commonJS({
       }
     }
     function accumulate(helper, updateCallback) {
-      return new external.Promise(function(resolve, reject) {
+      return new external.Promise(function(resolve2, reject) {
         var dataArray = [];
         var chunkType = helper._internalType, resultType = helper._outputType, mimeType = helper._mimeType;
         helper.on("data", function(data, meta) {
@@ -14906,7 +14906,7 @@ var require_StreamHelper = __commonJS({
         }).on("end", function() {
           try {
             var result = transformZipOutput(resultType, concat(chunkType, dataArray), mimeType);
-            resolve(result);
+            resolve2(result);
           } catch (e) {
             reject(e);
           }
@@ -18141,7 +18141,7 @@ var require_inflate = __commonJS({
     var DONE = 29;
     var BAD = 30;
     var MEM = 31;
-    var SYNC = 32;
+    var SYNC2 = 32;
     var ENOUGH_LENS = 852;
     var ENOUGH_DISTS = 592;
     var MAX_WBITS = 15;
@@ -19229,7 +19229,7 @@ var require_inflate = __commonJS({
               break inf_leave;
             case MEM:
               return Z_MEM_ERROR;
-            case SYNC:
+            case SYNC2:
             /* falls through */
             default:
               return Z_STREAM_ERROR;
@@ -21019,7 +21019,7 @@ var require_load = __commonJS({
     var Crc32Probe = require_Crc32Probe();
     var nodejsUtils = require_nodejsUtils();
     function checkEntryCRC32(zipEntry) {
-      return new external.Promise(function(resolve, reject) {
+      return new external.Promise(function(resolve2, reject) {
         var worker = zipEntry.decompressed.getContentWorker().pipe(new Crc32Probe());
         worker.on("error", function(e) {
           reject(e);
@@ -21027,7 +21027,7 @@ var require_load = __commonJS({
           if (worker.streamInfo.crc32 !== zipEntry.decompressed.crc32) {
             reject(new Error("Corrupted zip : CRC32 mismatch"));
           } else {
-            resolve();
+            resolve2();
           }
         }).resume();
       });
@@ -22579,14 +22579,14 @@ var require_async_iterator = __commonJS({
       };
     }
     function readAndResolve(iter) {
-      var resolve = iter[kLastResolve];
-      if (resolve !== null) {
+      var resolve2 = iter[kLastResolve];
+      if (resolve2 !== null) {
         var data = iter[kStream].read();
         if (data !== null) {
           iter[kLastPromise] = null;
           iter[kLastResolve] = null;
           iter[kLastReject] = null;
-          resolve(createIterResult(data, false));
+          resolve2(createIterResult(data, false));
         }
       }
     }
@@ -22594,13 +22594,13 @@ var require_async_iterator = __commonJS({
       process.nextTick(readAndResolve, iter);
     }
     function wrapForNext(lastPromise, iter) {
-      return function(resolve, reject) {
+      return function(resolve2, reject) {
         lastPromise.then(function() {
           if (iter[kEnded]) {
-            resolve(createIterResult(void 0, true));
+            resolve2(createIterResult(void 0, true));
             return;
           }
-          iter[kHandlePromise](resolve, reject);
+          iter[kHandlePromise](resolve2, reject);
         }, reject);
       };
     }
@@ -22620,12 +22620,12 @@ var require_async_iterator = __commonJS({
           return Promise.resolve(createIterResult(void 0, true));
         }
         if (this[kStream].destroyed) {
-          return new Promise(function(resolve, reject) {
+          return new Promise(function(resolve2, reject) {
             process.nextTick(function() {
               if (_this[kError]) {
                 reject(_this[kError]);
               } else {
-                resolve(createIterResult(void 0, true));
+                resolve2(createIterResult(void 0, true));
               }
             });
           });
@@ -22648,13 +22648,13 @@ var require_async_iterator = __commonJS({
       return this;
     }), _defineProperty(_Object$setPrototypeO, "return", function _return() {
       var _this2 = this;
-      return new Promise(function(resolve, reject) {
+      return new Promise(function(resolve2, reject) {
         _this2[kStream].destroy(null, function(err) {
           if (err) {
             reject(err);
             return;
           }
-          resolve(createIterResult(void 0, true));
+          resolve2(createIterResult(void 0, true));
         });
       });
     }), _Object$setPrototypeO), AsyncIteratorPrototype);
@@ -22676,15 +22676,15 @@ var require_async_iterator = __commonJS({
         value: stream._readableState.endEmitted,
         writable: true
       }), _defineProperty(_Object$create, kHandlePromise, {
-        value: function value2(resolve, reject) {
+        value: function value2(resolve2, reject) {
           var data = iterator[kStream].read();
           if (data) {
             iterator[kLastPromise] = null;
             iterator[kLastResolve] = null;
             iterator[kLastReject] = null;
-            resolve(createIterResult(data, false));
+            resolve2(createIterResult(data, false));
           } else {
-            iterator[kLastResolve] = resolve;
+            iterator[kLastResolve] = resolve2;
             iterator[kLastReject] = reject;
           }
         },
@@ -22703,12 +22703,12 @@ var require_async_iterator = __commonJS({
           iterator[kError] = err;
           return;
         }
-        var resolve = iterator[kLastResolve];
-        if (resolve !== null) {
+        var resolve2 = iterator[kLastResolve];
+        if (resolve2 !== null) {
           iterator[kLastPromise] = null;
           iterator[kLastResolve] = null;
           iterator[kLastReject] = null;
-          resolve(createIterResult(void 0, true));
+          resolve2(createIterResult(void 0, true));
         }
         iterator[kEnded] = true;
       });
@@ -22723,7 +22723,7 @@ var require_async_iterator = __commonJS({
 var require_from = __commonJS({
   "node_modules/readable-stream/lib/internal/streams/from.js"(exports2, module2) {
     "use strict";
-    function asyncGeneratorStep(gen, resolve, reject, _next, _throw, key, arg) {
+    function asyncGeneratorStep(gen, resolve2, reject, _next, _throw, key, arg) {
       try {
         var info = gen[key](arg);
         var value2 = info.value;
@@ -22732,7 +22732,7 @@ var require_from = __commonJS({
         return;
       }
       if (info.done) {
-        resolve(value2);
+        resolve2(value2);
       } else {
         Promise.resolve(value2).then(_next, _throw);
       }
@@ -22740,13 +22740,13 @@ var require_from = __commonJS({
     function _asyncToGenerator(fn) {
       return function() {
         var self2 = this, args = arguments;
-        return new Promise(function(resolve, reject) {
+        return new Promise(function(resolve2, reject) {
           var gen = fn.apply(self2, args);
           function _next(value2) {
-            asyncGeneratorStep(gen, resolve, reject, _next, _throw, "next", value2);
+            asyncGeneratorStep(gen, resolve2, reject, _next, _throw, "next", value2);
           }
           function _throw(err) {
-            asyncGeneratorStep(gen, resolve, reject, _next, _throw, "throw", err);
+            asyncGeneratorStep(gen, resolve2, reject, _next, _throw, "throw", err);
           }
           _next(void 0);
         });
@@ -23833,14 +23833,14 @@ var require_utils2 = __commonJS({
       nop() {
       },
       promiseImmediate(value2) {
-        return new Promise((resolve) => {
+        return new Promise((resolve2) => {
           if (global.setImmediate) {
             setImmediate(() => {
-              resolve(value2);
+              resolve2(value2);
             });
           } else {
             setTimeout(() => {
-              resolve(value2);
+              resolve2(value2);
             }, 1);
           }
         });
@@ -23940,9 +23940,9 @@ var require_utils2 = __commonJS({
       },
       fs: {
         exists(path) {
-          return new Promise((resolve) => {
+          return new Promise((resolve2) => {
             fs.access(path, fs.constants.F_OK, (err) => {
-              resolve(!err);
+              resolve2(!err);
             });
           });
         }
@@ -24165,9 +24165,9 @@ var require_stream_buf = __commonJS({
       },
       async _pipe(chunk) {
         const write = function(pipe) {
-          return new Promise((resolve) => {
+          return new Promise((resolve2) => {
             pipe.write(chunk.toBuffer(), () => {
-              resolve();
+              resolve2();
             });
           });
         };
@@ -36044,12 +36044,12 @@ var require_xlsx = __commonJS({
     var VmlNotesXform = require_vml_notes_xform();
     var theme1Xml = require_theme1();
     function fsReadFileAsync(filename, options) {
-      return new Promise((resolve, reject) => {
+      return new Promise((resolve2, reject) => {
         fs.readFile(filename, options, (error, data) => {
           if (error) {
             reject(error);
           } else {
-            resolve(data);
+            resolve2(data);
           }
         });
       });
@@ -36176,7 +36176,7 @@ var require_xlsx = __commonJS({
         if (lastDot >= 1) {
           const extension = filename.substr(lastDot + 1);
           const name = filename.substr(0, lastDot);
-          await new Promise((resolve, reject) => {
+          await new Promise((resolve2, reject) => {
             const streamBuf = new StreamBuf();
             streamBuf.on("finish", () => {
               model.mediaIndex[filename] = model.media.length;
@@ -36188,7 +36188,7 @@ var require_xlsx = __commonJS({
                 buffer: streamBuf.toBuffer()
               };
               model.media.push(medium);
-              resolve();
+              resolve2();
             });
             entry.on("error", (error) => {
               reject(error);
@@ -36213,13 +36213,13 @@ var require_xlsx = __commonJS({
         model.vmlDrawings[`../drawings/${name}.vml`] = vmlDrawing;
       }
       async _processThemeEntry(entry, model, name) {
-        await new Promise((resolve, reject) => {
+        await new Promise((resolve2, reject) => {
           const stream = new StreamBuf();
           entry.on("error", reject);
           stream.on("error", reject);
           stream.on("finish", () => {
             model.themes[name] = stream.read().toString();
-            resolve();
+            resolve2();
           });
           entry.pipe(stream);
         });
@@ -36527,9 +36527,9 @@ var require_xlsx = __commonJS({
         });
       }
       _finalize(zip) {
-        return new Promise((resolve, reject) => {
+        return new Promise((resolve2, reject) => {
           zip.on("finish", () => {
-            resolve(this);
+            resolve2(this);
           });
           zip.on("error", reject);
           zip.finalize();
@@ -36589,9 +36589,9 @@ var require_xlsx = __commonJS({
       }
       writeFile(filename, options) {
         const stream = fs.createWriteStream(filename);
-        return new Promise((resolve, reject) => {
+        return new Promise((resolve2, reject) => {
           stream.on("finish", () => {
-            resolve();
+            resolve2();
           });
           stream.on("error", (error) => {
             reject(error);
@@ -40716,7 +40716,7 @@ var require_csv = __commonJS({
       }
       read(stream, options) {
         options = options || {};
-        return new Promise((resolve, reject) => {
+        return new Promise((resolve2, reject) => {
           const worksheet = this.workbook.addWorksheet(options.sheetName);
           const dateFormats = options.dateFormats || [
             "YYYY-MM-DD[T]HH:mm:ssZ",
@@ -40756,7 +40756,7 @@ var require_csv = __commonJS({
           }).on("end", () => {
             csvStream.emit("worksheet", worksheet);
           });
-          csvStream.on("worksheet", resolve).on("error", reject);
+          csvStream.on("worksheet", resolve2).on("error", reject);
           stream.pipe(csvStream);
         });
       }
@@ -40769,12 +40769,12 @@ var require_csv = __commonJS({
         );
       }
       write(stream, options) {
-        return new Promise((resolve, reject) => {
+        return new Promise((resolve2, reject) => {
           options = options || {};
           const worksheet = this.workbook.getWorksheet(options.sheetName || options.sheetId);
           const csvStream = fastCsv.format(options.formatterOptions);
           stream.on("finish", () => {
-            resolve();
+            resolve2();
           });
           csvStream.on("error", reject);
           csvStream.pipe(stream);
@@ -42013,9 +42013,9 @@ var require_readdir_glob = __commonJS({
     var fs = __require("fs");
     var { EventEmitter } = __require("events");
     var { Minimatch } = require_minimatch();
-    var { resolve } = __require("path");
+    var { resolve: resolve2 } = __require("path");
     function readdir2(dir, strict) {
-      return new Promise((resolve2, reject) => {
+      return new Promise((resolve3, reject) => {
         fs.readdir(dir, { withFileTypes: true }, (err, files) => {
           if (err) {
             switch (err.code) {
@@ -42023,7 +42023,7 @@ var require_readdir_glob = __commonJS({
                 if (strict) {
                   reject(err);
                 } else {
-                  resolve2([]);
+                  resolve3([]);
                 }
                 break;
               case "ENOTSUP":
@@ -42033,7 +42033,7 @@ var require_readdir_glob = __commonJS({
               case "ENAMETOOLONG":
               // Filename too long
               case "UNKNOWN":
-                resolve2([]);
+                resolve3([]);
                 break;
               case "ELOOP":
               // Too many levels of symbolic links
@@ -42042,30 +42042,30 @@ var require_readdir_glob = __commonJS({
                 break;
             }
           } else {
-            resolve2(files);
+            resolve3(files);
           }
         });
       });
     }
     function stat(file, followSymlinks) {
-      return new Promise((resolve2, reject) => {
+      return new Promise((resolve3, reject) => {
         const statFunc = followSymlinks ? fs.stat : fs.lstat;
         statFunc(file, (err, stats) => {
           if (err) {
             switch (err.code) {
               case "ENOENT":
                 if (followSymlinks) {
-                  resolve2(stat(file, false));
+                  resolve3(stat(file, false));
                 } else {
-                  resolve2(null);
+                  resolve3(null);
                 }
                 break;
               default:
-                resolve2(null);
+                resolve3(null);
                 break;
             }
           } else {
-            resolve2(stats);
+            resolve3(stats);
           }
         });
       });
@@ -42155,7 +42155,7 @@ var require_readdir_glob = __commonJS({
             (skip) => new Minimatch(skip, { dot: true })
           );
         }
-        this.iterator = explore(resolve(cwd || "."), this.options.follow, this.options.stat, this._shouldSkipDirectory.bind(this));
+        this.iterator = explore(resolve2(cwd || "."), this.options.follow, this.options.stat, this._shouldSkipDirectory.bind(this));
         this.paused = false;
         this.inactive = false;
         this.aborted = false;
@@ -42322,10 +42322,10 @@ var require_async = __commonJS({
           if (typeof args[arity - 1] === "function") {
             return asyncFn.apply(this, args);
           }
-          return new Promise((resolve, reject2) => {
+          return new Promise((resolve2, reject2) => {
             args[arity - 1] = (err, ...cbArgs) => {
               if (err) return reject2(err);
-              resolve(cbArgs.length > 1 ? cbArgs : cbArgs[0]);
+              resolve2(cbArgs.length > 1 ? cbArgs : cbArgs[0]);
             };
             asyncFn.apply(this, args);
           });
@@ -42571,13 +42571,13 @@ var require_async = __commonJS({
       var applyEachSeries = applyEach$1(mapSeries$1);
       const PROMISE_SYMBOL = /* @__PURE__ */ Symbol("promiseCallback");
       function promiseCallback() {
-        let resolve, reject2;
+        let resolve2, reject2;
         function callback(err, ...args) {
           if (err) return reject2(err);
-          resolve(args.length > 1 ? args : args[0]);
+          resolve2(args.length > 1 ? args : args[0]);
         }
         callback[PROMISE_SYMBOL] = new Promise((res, rej) => {
-          resolve = res, reject2 = rej;
+          resolve2 = res, reject2 = rej;
         });
         return callback;
       }
@@ -42924,8 +42924,8 @@ var require_async = __commonJS({
             });
           }
           if (rejectOnError || !callback) {
-            return new Promise((resolve, reject2) => {
-              res = resolve;
+            return new Promise((resolve2, reject2) => {
+              res = resolve2;
               rej = reject2;
             });
           }
@@ -42964,10 +42964,10 @@ var require_async = __commonJS({
         }
         const eventMethod = (name) => (handler) => {
           if (!handler) {
-            return new Promise((resolve, reject2) => {
+            return new Promise((resolve2, reject2) => {
               once2(name, (err, data) => {
                 if (err) return reject2(err);
-                resolve(data);
+                resolve2(data);
               });
             });
           }
@@ -52875,11 +52875,11 @@ var require_core = __commonJS({
         this._finalize();
       }
       var self2 = this;
-      return new Promise(function(resolve, reject) {
+      return new Promise(function(resolve2, reject) {
         var errored;
         self2._module.on("end", function() {
           if (!errored) {
-            resolve();
+            resolve2();
           }
         });
         self2._module.on("error", function(err) {
@@ -56621,7 +56621,7 @@ var require_worksheet_writer = __commonJS({
       // =========================================================================
       // Worksheet Protection
       protect(password, options) {
-        return new Promise((resolve) => {
+        return new Promise((resolve2) => {
           this.sheetProtection = {
             sheet: true
           };
@@ -56645,7 +56645,7 @@ var require_worksheet_writer = __commonJS({
               delete this.sheetProtection.spinCount;
             }
           }
-          resolve();
+          resolve2();
         });
       }
       unprotect() {
@@ -56863,9 +56863,9 @@ var require_workbook_writer = __commonJS({
       _commitWorksheets() {
         const commitWorksheet = function(worksheet) {
           if (!worksheet.committed) {
-            return new Promise((resolve) => {
+            return new Promise((resolve2) => {
               worksheet.stream.on("zipped", () => {
-                resolve();
+                resolve2();
               });
               worksheet.commit();
             });
@@ -56953,19 +56953,19 @@ var require_workbook_writer = __commonJS({
         return void 0;
       }
       addStyles() {
-        return new Promise((resolve) => {
+        return new Promise((resolve2) => {
           this.zip.append(this.styles.xml, { name: "xl/styles.xml" });
-          resolve();
+          resolve2();
         });
       }
       addThemes() {
-        return new Promise((resolve) => {
+        return new Promise((resolve2) => {
           this.zip.append(theme1Xml, { name: "xl/theme/theme1.xml" });
-          resolve();
+          resolve2();
         });
       }
       addOfficeRels() {
-        return new Promise((resolve) => {
+        return new Promise((resolve2) => {
           const xform = new RelationshipsXform();
           const xml = xform.toXml([
             { Id: "rId1", Type: RelType.OfficeDocument, Target: "xl/workbook.xml" },
@@ -56973,11 +56973,11 @@ var require_workbook_writer = __commonJS({
             { Id: "rId3", Type: RelType.ExtenderProperties, Target: "docProps/app.xml" }
           ]);
           this.zip.append(xml, { name: "/_rels/.rels" });
-          resolve();
+          resolve2();
         });
       }
       addContentTypes() {
-        return new Promise((resolve) => {
+        return new Promise((resolve2) => {
           const model = {
             worksheets: this._worksheets.filter(Boolean),
             sharedStrings: this.sharedStrings,
@@ -56987,7 +56987,7 @@ var require_workbook_writer = __commonJS({
           const xform = new ContentTypesXform();
           const xml = xform.toXml(model);
           this.zip.append(xml, { name: "[Content_Types].xml" });
-          resolve();
+          resolve2();
         });
       }
       addMedia() {
@@ -57012,31 +57012,31 @@ var require_workbook_writer = __commonJS({
         );
       }
       addApp() {
-        return new Promise((resolve) => {
+        return new Promise((resolve2) => {
           const model = {
             worksheets: this._worksheets.filter(Boolean)
           };
           const xform = new AppXform();
           const xml = xform.toXml(model);
           this.zip.append(xml, { name: "docProps/app.xml" });
-          resolve();
+          resolve2();
         });
       }
       addCore() {
-        return new Promise((resolve) => {
+        return new Promise((resolve2) => {
           const coreXform = new CoreXform();
           const xml = coreXform.toXml(this);
           this.zip.append(xml, { name: "docProps/core.xml" });
-          resolve();
+          resolve2();
         });
       }
       addSharedStrings() {
         if (this.sharedStrings.count) {
-          return new Promise((resolve) => {
+          return new Promise((resolve2) => {
             const sharedStringsXform = new SharedStringsXform();
             const xml = sharedStringsXform.toXml(this.sharedStrings);
             this.zip.append(xml, { name: "/xl/sharedStrings.xml" });
-            resolve();
+            resolve2();
           });
         }
         return Promise.resolve();
@@ -57064,11 +57064,11 @@ var require_workbook_writer = __commonJS({
             });
           }
         });
-        return new Promise((resolve) => {
+        return new Promise((resolve2) => {
           const xform = new RelationshipsXform();
           const xml = xform.toXml(relationships);
           this.zip.append(xml, { name: "/xl/_rels/workbook.xml.rels" });
-          resolve();
+          resolve2();
         });
       }
       addWorkbook() {
@@ -57080,18 +57080,18 @@ var require_workbook_writer = __commonJS({
           properties: {},
           calcProperties: {}
         };
-        return new Promise((resolve) => {
+        return new Promise((resolve2) => {
           const xform = new WorkbookXform();
           xform.prepare(model);
           zip.append(xform.toXml(model), { name: "/xl/workbook.xml" });
-          resolve();
+          resolve2();
         });
       }
       _finalize() {
-        return new Promise((resolve, reject) => {
+        return new Promise((resolve2, reject) => {
           this.stream.on("error", reject);
           this.stream.on("finish", () => {
-            resolve(this);
+            resolve2(this);
           });
           this.zip.on("error", reject);
           this.zip.finalize();
@@ -58952,7 +58952,7 @@ var require_object_inspect = __commonJS({
           return obj2.inspect();
         }
       }
-      if (isMap(obj2)) {
+      if (isMap2(obj2)) {
         var mapParts = [];
         if (mapForEach) {
           mapForEach.call(obj2, function(value2, key) {
@@ -59104,7 +59104,7 @@ var require_object_inspect = __commonJS({
       }
       return -1;
     }
-    function isMap(x) {
+    function isMap2(x) {
       if (!mapSize || !x || typeof x !== "object") {
         return false;
       }
@@ -61867,18 +61867,18 @@ var require_is_map = __commonJS({
     var $Set = typeof Set === "function" && Set.prototype ? Set : null;
     var exported;
     if (!$Map) {
-      exported = function isMap(x) {
+      exported = function isMap2(x) {
         return false;
       };
     }
     var $mapHas = $Map ? Map.prototype.has : null;
     var $setHas = $Set ? Set.prototype.has : null;
     if (!exported && !$mapHas) {
-      exported = function isMap(x) {
+      exported = function isMap2(x) {
         return false;
       };
     }
-    module2.exports = exported || function isMap(x) {
+    module2.exports = exported || function isMap2(x) {
       if (!x || typeof x !== "object") {
         return false;
       }
@@ -62020,13 +62020,13 @@ var require_is_weakset = __commonJS({
 var require_which_collection = __commonJS({
   "node_modules/which-collection/index.js"(exports2, module2) {
     "use strict";
-    var isMap = require_is_map();
+    var isMap2 = require_is_map();
     var isSet = require_is_set();
     var isWeakMap = require_is_weakmap();
     var isWeakSet = require_is_weakset();
     module2.exports = function whichCollection(value2) {
       if (value2 && typeof value2 === "object") {
-        if (isMap(value2)) {
+        if (isMap2(value2)) {
           return "Map";
         }
         if (isSet(value2)) {
@@ -65183,13 +65183,13 @@ var require_thenables = __commonJS({
         promise._captureStackTrace();
         if (context) context._popContext();
         var synchronous = true;
-        var result = util.tryCatch(then).call(x, resolve, reject);
+        var result = util.tryCatch(then).call(x, resolve2, reject);
         synchronous = false;
         if (promise && result === errorObj2) {
           promise._rejectCallback(result.e, true, true);
           promise = null;
         }
-        function resolve(value2) {
+        function resolve2(value2) {
           if (!promise) return;
           promise._resolveCallback(value2);
           promise = null;
@@ -65724,9 +65724,9 @@ var require_debuggability = __commonJS({
         return false;
       }
       Promise2.prototype._fireEvent = defaultFireEvent;
-      Promise2.prototype._execute = function(executor, resolve, reject) {
+      Promise2.prototype._execute = function(executor, resolve2, reject) {
         try {
-          executor(resolve, reject);
+          executor(resolve2, reject);
         } catch (e) {
           return e;
         }
@@ -65749,10 +65749,10 @@ var require_debuggability = __commonJS({
         ;
         ;
       };
-      function cancellationExecute(executor, resolve, reject) {
+      function cancellationExecute(executor, resolve2, reject) {
         var promise = this;
         try {
-          executor(resolve, reject, function(onCancel) {
+          executor(resolve2, reject, function(onCancel) {
             if (typeof onCancel !== "function") {
               throw new TypeError("onCancel must be a function, got: " + util.toString(onCancel));
             }
@@ -68171,11 +68171,11 @@ var require_props = __commonJS({
         return ret2;
       };
       function PropertiesPromiseArray(obj2) {
-        var isMap = false;
+        var isMap2 = false;
         var entries;
         if (Es6Map !== void 0 && obj2 instanceof Es6Map) {
           entries = mapToEntries(obj2);
-          isMap = true;
+          isMap2 = true;
         } else {
           var keys = es52.keys(obj2);
           var len = keys.length;
@@ -68187,7 +68187,7 @@ var require_props = __commonJS({
           }
         }
         this.constructor$(entries);
-        this._isMap = isMap;
+        this._isMap = isMap2;
         this._init$(void 0, -3);
       }
       util.inherits(PropertiesPromiseArray, PromiseArray);
@@ -71307,7 +71307,7 @@ var require_PullStream = __commonJS({
       };
       var rejectHandler;
       var pullStreamRejectHandler;
-      return new Promise2(function(resolve, reject) {
+      return new Promise2(function(resolve2, reject) {
         rejectHandler = reject;
         pullStreamRejectHandler = function(e) {
           self2.__emittedError = e;
@@ -71317,7 +71317,7 @@ var require_PullStream = __commonJS({
           return reject(new Error("FILE_ENDED"));
         self2.once("error", pullStreamRejectHandler);
         self2.stream(eof, includeEof).on("error", reject).pipe(concatStream).on("finish", function() {
-          resolve(buffer);
+          resolve2(buffer);
         }).on("error", reject);
       }).finally(function() {
         self2.removeListener("error", rejectHandler);
@@ -71360,10 +71360,10 @@ var require_BufferStream = __commonJS({
     if (!Stream.Writable || !Stream.Writable.prototype.destroy)
       Stream = require_readable5();
     module2.exports = function(entry) {
-      return new Promise2(function(resolve, reject) {
+      return new Promise2(function(resolve2, reject) {
         var chunks = [];
         var bufferStream = Stream.Transform().on("finish", function() {
-          resolve(Buffer2.concat(chunks));
+          resolve2(Buffer2.concat(chunks));
         }).on("error", reject);
         bufferStream._transform = function(d, e, cb) {
           chunks.push(d);
@@ -71502,8 +71502,8 @@ var require_parse = __commonJS({
             __autodraining = true;
             var draining = entry.pipe(NoopStream());
             draining.promise = function() {
-              return new Promise2(function(resolve, reject) {
-                draining.on("finish", resolve);
+              return new Promise2(function(resolve2, reject) {
+                draining.on("finish", resolve2);
                 draining.on("error", reject);
               });
             };
@@ -71558,11 +71558,11 @@ var require_parse = __commonJS({
               eof = Buffer2.alloc(4);
               eof.writeUInt32LE(134695760, 0);
             }
-            return new Promise2(function(resolve, reject) {
+            return new Promise2(function(resolve2, reject) {
               self2.stream(eof).pipe(inflater).on("error", function(err) {
                 self2.emit("error", err);
               }).pipe(entry).on("finish", function() {
-                return fileSizeKnown ? self2._readRecord().then(resolve).catch(reject) : self2._processDataDescriptor(entry).then(resolve).catch(reject);
+                return fileSizeKnown ? self2._readRecord().then(resolve2).catch(reject) : self2._processDataDescriptor(entry).then(resolve2).catch(reject);
               });
             });
           });
@@ -71604,8 +71604,8 @@ var require_parse = __commonJS({
     };
     Parse.prototype.promise = function() {
       var self2 = this;
-      return new Promise2(function(resolve, reject) {
-        self2.on("finish", resolve);
+      return new Promise2(function(resolve2, reject) {
+        self2.on("finish", resolve2);
         self2.on("error", reject);
       });
     };
@@ -75400,8 +75400,8 @@ var require_extract2 = __commonJS({
         extract.emit("close");
       });
       extract.promise = function() {
-        return new Promise2(function(resolve, reject) {
-          extract.on("close", resolve);
+        return new Promise2(function(resolve2, reject) {
+          extract.on("close", resolve2);
           extract.on("error", reject);
         });
       };
@@ -76908,8 +76908,8 @@ var require_directory = __commonJS({
                 return;
               }
               var writer = opts.getWriter ? opts.getWriter({ path: extractPath }) : Writer({ path: extractPath });
-              return new Promise2(function(resolve, reject) {
-                entry.stream(opts.password).on("error", reject).pipe(writer).on("close", resolve).on("error", reject);
+              return new Promise2(function(resolve2, reject) {
+                entry.stream(opts.password).on("error", reject).pipe(writer).on("close", resolve2).on("error", reject);
               });
             }, { concurrency: opts.concurrency > 1 ? opts.concurrency : 1 });
           });
@@ -76975,12 +76975,12 @@ var require_Open = __commonJS({
             return fs.createReadStream(filename, { start: offset, end: length && offset + length });
           },
           size: function() {
-            return new Promise2(function(resolve, reject) {
+            return new Promise2(function(resolve2, reject) {
               fs.stat(filename, function(err, d) {
                 if (err)
                   reject(err);
                 else
-                  resolve(d.size);
+                  resolve2(d.size);
               });
             });
           }
@@ -77001,14 +77001,14 @@ var require_Open = __commonJS({
             return request(options2);
           },
           size: function() {
-            return new Promise2(function(resolve, reject) {
+            return new Promise2(function(resolve2, reject) {
               var req = request(params);
               req.on("response", function(d) {
                 req.abort();
                 if (!d.headers["content-length"])
                   reject(new Error("Missing content length header"));
                 else
-                  resolve(d.headers["content-length"]);
+                  resolve2(d.headers["content-length"]);
               }).on("error", reject);
             });
           }
@@ -77018,12 +77018,12 @@ var require_Open = __commonJS({
       s3: function(client, params, options) {
         var source = {
           size: function() {
-            return new Promise2(function(resolve, reject) {
+            return new Promise2(function(resolve2, reject) {
               client.headObject(params, function(err, d) {
                 if (err)
                   reject(err);
                 else
-                  resolve(d.ContentLength);
+                  resolve2(d.ContentLength);
               });
             });
           },
@@ -77323,8 +77323,8 @@ var require_tmp = __commonJS({
       if (!_isUndefined(options.name)) {
         const name = options.name;
         if (path.isAbsolute(name)) throw new Error(`name option must not contain an absolute path, found "${name}".`);
-        const basename = path.basename(name);
-        if (basename === ".." || basename === "." || basename !== name) {
+        const basename2 = path.basename(name);
+        if (basename2 === ".." || basename2 === "." || basename2 !== name) {
           throw new Error(`name option must not contain a path, found "${name}".`);
         }
       }
@@ -77439,7 +77439,7 @@ var require_iterate_stream = __commonJS({
       const contents = [];
       stream.on("data", (data) => contents.push(data));
       let resolveStreamEndedPromise;
-      const streamEndedPromise = new Promise((resolve) => resolveStreamEndedPromise = resolve);
+      const streamEndedPromise = new Promise((resolve2) => resolveStreamEndedPromise = resolve2);
       let ended = false;
       stream.on("end", () => {
         ended = true;
@@ -77464,13 +77464,13 @@ var require_iterate_stream = __commonJS({
       resolveStreamEndedPromise();
     };
     function once(eventEmitter, type) {
-      return new Promise((resolve) => {
+      return new Promise((resolve2) => {
         let fired = false;
         const handler = () => {
           if (!fired) {
             fired = true;
             eventEmitter.removeListener(type, handler);
-            resolve();
+            resolve2();
           }
         };
         eventEmitter.addListener(type, handler);
@@ -77994,7 +77994,7 @@ var require_workbook_reader = __commonJS({
                 if (this.sharedStrings && this.workbookRels) {
                   yield* this._parseWorksheet(iterateStream(entry), sheetNo);
                 } else {
-                  await new Promise((resolve, reject) => {
+                  await new Promise((resolve2, reject) => {
                     tmp.file((err, path, fd, tempFileCleanupCallback) => {
                       if (err) {
                         return reject(err);
@@ -78004,7 +78004,7 @@ var require_workbook_reader = __commonJS({
                       tempStream.on("error", reject);
                       entry.pipe(tempStream);
                       return tempStream.on("finish", () => {
-                        return resolve();
+                        return resolve2();
                       });
                     });
                   });
@@ -78412,13 +78412,13 @@ var require_elk_bundled = __commonJS({
               this.id = id + 1;
               msg.id = id;
               var self2 = this;
-              return new Promise(function(resolve, reject) {
+              return new Promise(function(resolve2, reject) {
                 self2.resolvers[id] = function(err, res) {
                   if (err) {
                     self2.convertGwtStyleError(err);
                     reject(err);
                   } else {
-                    resolve(res);
+                    resolve2(res);
                   }
                 };
                 self2.worker.postMessage(msg);
@@ -170337,7 +170337,7 @@ var require_elk_bundled = __commonJS({
 // cli.js
 import { execFile } from "node:child_process";
 import { mkdir, readFile, readdir, realpath, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs, promisify } from "node:util";
 
@@ -172051,8 +172051,605 @@ function describeDelta(d) {
   return `${d.scope} ${d.path}: ${where}`;
 }
 
-// src/model/verification.js
+// src/model/apply-facts.js
 var import_yaml3 = __toESM(require_dist(), 1);
+
+// src/diff/changes.js
+var POSSIBLE_RENAME_SIMILARITY = 0.6;
+var TABLE_FIELDS = ["domain", "kind", ...NOTE_FIELDS, "sources", "sti", "partition", "indexes", "generated_by"];
+var COLUMN_FIELDS2 = ["type", "nullable", "pk", "unique", "pii", "default", "auto_increment", "generated", ...NOTE_FIELDS];
+var ENTITY_FIELDS = ["array", "note", "internal_note"];
+var DATABASE_FIELDS = ["engine", "tenant_schemas", "topology"];
+var RELATION_FIELDS = ["cardinality", "optional", "kind", "review"];
+var POLYMORPHIC_FIELDS = ["type_column", "id_column", "optional", "review"];
+var CHANGE_KINDS = [
+  "database_added",
+  "database_removed",
+  "database_changed",
+  "table_added",
+  "table_removed",
+  "table_renamed",
+  "table_changed",
+  "entity_added",
+  "entity_removed",
+  "entity_changed",
+  "column_added",
+  "column_removed",
+  "column_renamed",
+  "column_changed",
+  "enum_value_added",
+  "enum_value_removed",
+  "enum_meaning_changed",
+  "relation_added",
+  "relation_removed",
+  "relation_changed",
+  "polymorphic_added",
+  "polymorphic_removed",
+  "polymorphic_changed",
+  "polymorphic_target_added",
+  "polymorphic_target_removed"
+];
+function showValue(value2) {
+  if (value2 === void 0 || value2 === null) return "";
+  if (typeof value2 === "boolean") return value2 ? "yes" : "no";
+  if (Array.isArray(value2)) return value2.map(showValue).join(typeof value2[0] === "object" ? "; " : ", ");
+  if (typeof value2 === "object") return Object.entries(value2).map(([k, v]) => `${k}: ${showValue(v)}`).join(", ");
+  return String(value2);
+}
+var differs = (a, b) => showValue(a) !== showValue(b);
+var nameOf = (id) => id.split(".")[2];
+var dbOf = (id) => id.split(".")[0];
+var endText3 = (end, tableName = nameOf) => `${tableName(end.table)}.${end.columns.join(", ")}`;
+var relationText = (r) => `${endText3(r.from)} \u2192 ${endText3(r.to)}`;
+var relationKey2 = (r) => `${r.from.table}(${r.from.columns.join(",")})\0${r.to.table}(${r.to.columns.join(",")})`;
+function fieldChanges(before, after, fields, base) {
+  return fields.filter((f) => differs(before[f], after[f])).map((field) => ({ ...base, field, before: before[field], after: after[field] }));
+}
+function matchByName(fromItems, toItems, key, renamedKey) {
+  const fromByKey = new Map(fromItems.map((x) => [key(x), x]));
+  const toKeys = new Set(toItems.map(key));
+  const used = /* @__PURE__ */ new Set();
+  const pairs = [];
+  const added = [];
+  const deferred = [];
+  for (const t of toItems) {
+    if (fromByKey.has(key(t))) {
+      pairs.push({ from: fromByKey.get(key(t)), to: t, renamed: false });
+      used.add(key(t));
+    } else deferred.push(t);
+  }
+  for (const t of deferred) {
+    const old = renamedKey(t);
+    if (old !== void 0 && fromByKey.has(old) && !toKeys.has(old) && !used.has(old)) {
+      pairs.push({ from: fromByKey.get(old), to: t, renamed: true });
+      used.add(old);
+    } else added.push(t);
+  }
+  return { pairs, added, removed: fromItems.filter((x) => !used.has(key(x))) };
+}
+function possibleRenames(removed, added) {
+  const names = (t) => new Set(columnEntries(t).map((e) => e.path));
+  const candidates = [];
+  for (const a of added) {
+    const an = names(a);
+    for (const r of removed) {
+      const rn = names(r);
+      const shared = [...an].filter((n) => rn.has(n)).length;
+      const score = shared / (an.size + rn.size - shared);
+      if (score >= POSSIBLE_RENAME_SIMILARITY) candidates.push({ added: a.id, removed: r.id, shared, total: (/* @__PURE__ */ new Set([...an, ...rn])).size, score });
+    }
+  }
+  candidates.sort((x, y) => y.score - x.score || compareStrings(x.added, y.added) || compareStrings(x.removed, y.removed));
+  const taken = /* @__PURE__ */ new Set();
+  const result = [];
+  for (const c of candidates) {
+    if (taken.has(c.added) || taken.has(c.removed)) continue;
+    taken.add(c.added).add(c.removed);
+    result.push(c);
+  }
+  return result;
+}
+function enumChanges(before, after, base) {
+  const a = before.enum ?? {};
+  const b = after.enum ?? {};
+  const out = [];
+  for (const value2 of Object.keys(b)) {
+    if (!(value2 in a)) out.push({ ...base, kind: "enum_value_added", value: value2, after: b[value2] });
+    else if (a[value2] !== b[value2]) out.push({ ...base, kind: "enum_meaning_changed", value: value2, before: a[value2], after: b[value2] });
+  }
+  for (const value2 of Object.keys(a)) if (!(value2 in b)) out.push({ ...base, kind: "enum_value_removed", value: value2, before: a[value2] });
+  return out;
+}
+function tableChanges(from, to, base) {
+  const changes = fieldChanges(from, to, TABLE_FIELDS, { ...base, kind: "table_changed" });
+  const entities = matchByName(from.embedded ?? [], to.embedded ?? [], (e) => e.name, () => void 0);
+  for (const e of entities.added) changes.push({ ...base, kind: "entity_added", column: e.name });
+  for (const e of entities.removed) changes.push({ ...base, kind: "entity_removed", column: e.name });
+  for (const { from: a, to: b } of entities.pairs) changes.push(...fieldChanges(a, b, ENTITY_FIELDS, { ...base, kind: "entity_changed", column: a.name }));
+  const columns = /* @__PURE__ */ new Map();
+  const entries = (t) => columnEntries(t).map((e) => ({ ...e, old: e.column.renamed_from === void 0 ? void 0 : e.entity ? `${e.entity.name}.${e.column.renamed_from}` : e.column.renamed_from }));
+  const cols = matchByName(entries(from), entries(to), (e) => e.path, (e) => e.old);
+  const goneEntity = new Set(entities.removed.map((e) => e.name));
+  const newEntity = new Set(entities.added.map((e) => e.name));
+  for (const e of cols.added) if (!newEntity.has(e.entity?.name)) changes.push({ ...base, kind: "column_added", column: e.path, after: e.column.type });
+  for (const e of cols.removed) if (!goneEntity.has(e.entity?.name)) changes.push({ ...base, kind: "column_removed", column: e.path, before: e.column.type });
+  for (const { from: a, to: b, renamed } of cols.pairs) {
+    columns.set(a.path, b.path);
+    const at = { ...base, column: b.path };
+    if (renamed) changes.push({ ...at, kind: "column_renamed", before: a.path, after: b.path });
+    changes.push(...fieldChanges(a.column, b.column, COLUMN_FIELDS2, { ...at, kind: "column_changed" }));
+    changes.push(...enumChanges(a.column, b.column, at));
+  }
+  return { changes, columns };
+}
+function compareChanges(a, b) {
+  return compareStrings(a.database, b.database) || compareStrings(a.table ?? "", b.table ?? "") || CHANGE_KINDS.indexOf(a.kind) - CHANGE_KINDS.indexOf(b.kind) || compareStrings(a.subject ?? "", b.subject ?? "") || compareStrings(a.column ?? "", b.column ?? "") || compareStrings(a.value ?? "", b.value ?? "") || compareStrings(a.field ?? "", b.field ?? "");
+}
+function diffModels(from, to) {
+  const changes = [];
+  const dbs = matchByName(from.databases, to.databases, (d) => d.database, () => void 0);
+  for (const d of dbs.added) changes.push({ kind: "database_added", database: d.database, table: null, after: d.engine });
+  for (const d of dbs.removed) changes.push({ kind: "database_removed", database: d.database, table: null, before: d.engine });
+  for (const { from: a, to: b } of dbs.pairs) changes.push(...fieldChanges(a, b, DATABASE_FIELDS, { kind: "database_changed", database: a.database, table: null }));
+  const tables = matchByName(from.tables, to.tables, (t) => t.id, (t) => t.renamed_from);
+  const tableMap = /* @__PURE__ */ new Map();
+  const columnMap = /* @__PURE__ */ new Map();
+  for (const { from: a, to: b, renamed } of tables.pairs) {
+    tableMap.set(a.id, b.id);
+    const base = { database: dbOf(b.id), table: b.id };
+    if (renamed) changes.push({ ...base, kind: "table_renamed", before: a.id, after: b.id });
+    const inner = tableChanges(a, b, base);
+    changes.push(...inner.changes);
+    columnMap.set(b.id, inner.columns);
+  }
+  const guesses = possibleRenames(tables.removed, tables.added);
+  const guessFor = (id, side) => guesses.find((g) => g[side] === id);
+  for (const t of tables.added) {
+    const g = guessFor(t.id, "added");
+    changes.push({ kind: "table_added", database: dbOf(t.id), table: t.id, after: t.domain, ...g ? { possibly: { table: g.removed, shared: g.shared, total: g.total } } : {} });
+  }
+  for (const t of tables.removed) {
+    const g = guessFor(t.id, "removed");
+    changes.push({ kind: "table_removed", database: dbOf(t.id), table: t.id, before: t.domain, ...g ? { possibly: { table: g.added, shared: g.shared, total: g.total } } : {} });
+  }
+  const table2 = (id) => tableMap.get(id) ?? id;
+  const column2 = (tableId2, path) => columnMap.get(table2(tableId2))?.get(path) ?? path;
+  const end = (e) => ({ table: table2(e.table), columns: e.columns.map((c) => column2(e.table, c)) });
+  const mapped = (r) => ({ ...r, from: end(r.from), to: end(r.to) });
+  const rels = matchByName(from.relations.map(mapped), to.relations, relationKey2, () => void 0);
+  const relBase = (r) => ({ database: dbOf(r.from.table), table: r.from.table, subject: relationText(r), relation: r });
+  for (const r of rels.added) changes.push({ ...relBase(r), kind: "relation_added" });
+  for (const r of rels.removed) changes.push({ ...relBase(r), kind: "relation_removed" });
+  for (const { from: a, to: b } of rels.pairs) changes.push(...fieldChanges(a, b, RELATION_FIELDS, { ...relBase(b), kind: "relation_changed" }));
+  const polyMapped = (a) => ({
+    ...a,
+    table: table2(a.table),
+    type_column: column2(a.table, a.type_column),
+    id_column: column2(a.table, a.id_column),
+    targets: a.targets.map(table2).sort(compareStrings)
+  });
+  const polys = matchByName(from.polymorphic.map(polyMapped), to.polymorphic, (a) => `${a.table}\0${a.name}`, () => void 0);
+  const polyBase = (a) => ({ database: dbOf(a.table), table: a.table, subject: `\xAB${a.name}\xBB`, association: a });
+  for (const a of polys.added) changes.push({ ...polyBase(a), kind: "polymorphic_added" });
+  for (const a of polys.removed) changes.push({ ...polyBase(a), kind: "polymorphic_removed" });
+  for (const { from: a, to: b } of polys.pairs) {
+    changes.push(...fieldChanges(a, b, POLYMORPHIC_FIELDS, { ...polyBase(b), kind: "polymorphic_changed" }));
+    for (const t of b.targets.filter((x) => !a.targets.includes(x))) changes.push({ ...polyBase(b), kind: "polymorphic_target_added", value: t });
+    for (const t of a.targets.filter((x) => !b.targets.includes(x))) changes.push({ ...polyBase(b), kind: "polymorphic_target_removed", value: t });
+  }
+  return { changes: changes.sort(compareChanges), tables: tableMap, columns: columnMap };
+}
+var FIELD_WORDS = {
+  domain: "domain",
+  kind: "kind",
+  note: "note",
+  note_source: "original note",
+  internal_note: "internal note",
+  sources: "source tables",
+  sti: "single-table inheritance",
+  partition: "partitioning",
+  indexes: "indexes",
+  unique: "unique",
+  generated_by: "generated by",
+  type: "type",
+  nullable: "nullable",
+  pk: "primary key",
+  pii: "personal data (PII)",
+  default: "default",
+  auto_increment: "auto-increment",
+  generated: "generated expression",
+  array: "list of documents",
+  engine: "engine",
+  tenant_schemas: "tenant schemas",
+  topology: "replicas and shards",
+  cardinality: "cardinality",
+  optional: "optional",
+  review: "review state",
+  type_column: "type column",
+  id_column: "id column"
+};
+var quoted = (value2) => `\u201C${showValue(value2)}\u201D`;
+var fieldWord = (c) => FIELD_WORDS[c.field];
+var FLAGS = /* @__PURE__ */ new Set(["pk", "unique", "pii", "auto_increment", "array", "optional"]);
+var fromTo = (c) => {
+  const word = fieldWord(c);
+  if (FLAGS.has(c.field)) return c.after ? `now ${word}` : `no longer ${word}`;
+  if (c.field === "nullable" && c.after !== void 0) return c.after ? "now nullable" : "now NOT NULL";
+  if (c.before === void 0) return `${word} set to ${quoted(c.after)}`;
+  if (c.after === void 0) return `${word} ${quoted(c.before)} removed`;
+  return `${word} changed from ${quoted(c.before)} to ${quoted(c.after)}`;
+};
+var guess = (c, direction) => c.possibly ? ` (possibly renamed ${direction} ${nameOf(c.possibly.table)}: ${c.possibly.shared} of ${c.possibly.total} columns match)` : "";
+var relationSummary = (r) => `${r.cardinality}${r.optional ? ", optional" : ""}, ${r.kind}`;
+function describeChange(c) {
+  const t = c.table ? nameOf(c.table) : "";
+  switch (c.kind) {
+    case "database_added":
+      return `Database ${c.database} added (${c.after})`;
+    case "database_removed":
+      return `Database ${c.database} removed`;
+    case "database_changed":
+      return `Database ${c.database}: ${fromTo(c)}`;
+    case "table_added":
+      return `Table ${t} added in domain ${c.after}${guess(c, "from")}`;
+    case "table_removed":
+      return `Table ${t} removed${guess(c, "to")}`;
+    case "table_renamed":
+      return `Table renamed from ${c.before} to ${c.after}`;
+    case "table_changed":
+      return `Table ${t}: ${fromTo(c)}`;
+    case "entity_added":
+      return `Embedded document ${c.column} added`;
+    case "entity_removed":
+      return `Embedded document ${c.column} removed`;
+    case "entity_changed":
+      return `Embedded document ${c.column}: ${fromTo(c)}`;
+    case "column_added":
+      return `Column ${c.column} added (${c.after})`;
+    case "column_removed":
+      return `Column ${c.column} removed`;
+    case "column_renamed":
+      return `Column renamed from ${c.before} to ${c.after}`;
+    case "column_changed":
+      return `Column ${c.column}: ${fromTo(c)}`;
+    case "enum_value_added":
+      return `Enum ${c.column}: added value ${quoted(c.value)} (${c.after})`;
+    case "enum_value_removed":
+      return `Enum ${c.column}: removed value ${quoted(c.value)}`;
+    case "enum_meaning_changed":
+      return `Enum ${c.column}: meaning of ${quoted(c.value)} changed from ${quoted(c.before)} to ${quoted(c.after)}`;
+    case "relation_added":
+      return `Relation ${c.subject} added (${relationSummary(c.relation)})`;
+    case "relation_removed":
+      return `Relation ${c.subject} removed`;
+    case "relation_changed":
+      return `Relation ${c.subject}: ${fromTo(c)}`;
+    case "polymorphic_added":
+      return `Polymorphic ${c.subject} on ${t} added (targets: ${c.association.targets.map(nameOf).join(", ")})`;
+    case "polymorphic_removed":
+      return `Polymorphic ${c.subject} on ${t} removed`;
+    case "polymorphic_changed":
+      return `Polymorphic ${c.subject} on ${t}: ${fromTo(c)}`;
+    case "polymorphic_target_added":
+      return `Polymorphic ${c.subject} on ${t}: added target ${nameOf(c.value)}`;
+    case "polymorphic_target_removed":
+      return `Polymorphic ${c.subject} on ${t}: removed target ${nameOf(c.value)}`;
+    default:
+      throw new Error(`unknown change kind ${c.kind}`);
+  }
+}
+function changeLabel(kind) {
+  const [scope, ...rest] = kind.split("_");
+  const words = { polymorphic: "Polymorphic", entity: "Embedded document", enum: "Enum" };
+  return `${words[scope] ?? scope[0].toUpperCase() + scope.slice(1)} ${rest.join(" ")}`;
+}
+function summarize(changes) {
+  const count2 = (kind) => changes.filter((c) => c.kind === kind).length;
+  const distinct = (kinds, key) => new Set(changes.filter((c) => kinds.some((k) => c.kind.startsWith(k))).map(key)).size;
+  return {
+    tablesAdded: count2("table_added"),
+    tablesRemoved: count2("table_removed"),
+    tablesRenamed: count2("table_renamed"),
+    columnsChanged: distinct(["column_", "enum_", "entity_"], (c) => `${c.table}\0${c.column}`),
+    relationsChanged: distinct(["relation_", "polymorphic_"], (c) => c.relation ? relationKey2(c.relation) : `${c.table}\0${c.subject}`)
+  };
+}
+function summaryLine(s) {
+  return `+${s.tablesAdded} tables \xB7 \u2212${s.tablesRemoved} tables \xB7 ${s.tablesRenamed} renamed \xB7 ${s.columnsChanged} columns changed \xB7 ${s.relationsChanged} relations changed`;
+}
+var MARKDOWN_ROWS = 200;
+function changesMarkdown(changes) {
+  if (changes.length === 0) return "No changes to the ERD.\n";
+  const cell2 = (s) => s.replaceAll("|", "\\|").replaceAll("\n", " ");
+  const rows = changes.slice(0, MARKDOWN_ROWS).map((c) => `| \`${c.table ?? c.database}\` | ${cell2(describeChange(c))} |`);
+  const more = changes.length - rows.length;
+  return [
+    `**${summaryLine(summarize(changes))}**`,
+    "",
+    "| Table | Change |",
+    "|---|---|",
+    ...rows,
+    ...more > 0 ? ["", `\u2026and ${more} more: see the Changes sheet of diff.xlsx.`] : [],
+    ""
+  ].join("\n");
+}
+
+// src/model/apply-facts.js
+var UNASSIGNED_DOMAIN = "Unassigned";
+var SYNC = "/open-erd:sync";
+var COLUMN_ORDER = ["name", "type", "nullable", "pk", "unique", "default", "auto_increment"];
+var FLAG_FIELDS = /* @__PURE__ */ new Set(["pk", "unique", "auto_increment"]);
+var modelIndex = (i) => ({ ...i.name ? { name: i.name } : {}, columns: i.columns, ...i.unique ? { unique: true } : {}, ...i.where ? { where: i.where } : {}, ...i.using ? { using: i.using } : {} });
+var usesColumn = (end, table2, column2) => end.table === table2 && end.columns.includes(column2);
+var touches = (r, table2) => r.from.table === table2 || r.to.table === table2;
+var reviewed = (x) => x.review === "reviewed";
+function applyFacts(files, model, deltas) {
+  const needsSync = [];
+  const defer = (path, reason) => needsSync.push({ path, reason });
+  const applied = [];
+  const scoped = (change, scope) => deltas.filter((d) => d.change === change && d.scope === scope);
+  const fileOf = new Map(model.databases.map((d) => [d.database, d.file]));
+  const tablesById = new Map(model.tables.map((t) => [t.id, t]));
+  for (const d of deltas.filter((x) => x.change === "error")) defer(d.path, d.message);
+  const goneRelations = /* @__PURE__ */ new Set();
+  for (const d of scoped("removed", "relation")) {
+    if (reviewed(d.before)) {
+      defer(d.path, `reviewed relation no longer backed by a constraint: ${SYNC} marks it stale`);
+      continue;
+    }
+    goneRelations.add(d.path);
+    applied.push(d);
+  }
+  for (const d of scoped("changed", "relation")) defer(d.path, `kind ${d.before} in the model, ${d.after} in the facts: ${SYNC} decides`);
+  const staying = (r) => !goneRelations.has(relationPath(r.from, r.to));
+  const protectedBy = (table2, column2) => model.relations.some((r) => reviewed(r) && (usesColumn(r.from, table2, column2) || usesColumn(r.to, table2, column2))) || model.polymorphic.some((a) => reviewed(a) && a.table === table2 && (a.type_column === column2 || a.id_column === column2));
+  const guesses = possibleRenames(scoped("removed", "table").map((d) => d.before), scoped("added", "table").map((d) => d.after));
+  const renamePartner = new Map(guesses.flatMap((g) => [[g.added, g.removed], [g.removed, g.added]]));
+  const addedTables = /* @__PURE__ */ new Map();
+  for (const d of scoped("added", "table")) {
+    const [db, schema] = d.table.split(".");
+    if (renamePartner.has(d.table)) defer(d.path, `possibly renamed from ${renamePartner.get(d.table)}: ${SYNC} asks`);
+    else if (schema === "?") defer(d.path, "database has several schemas: give the schema of this table in the facts");
+    else if (!fileOf.has(db)) defer(d.path, `database ${db} is not in the model: ${SYNC} adds it`);
+    else {
+      const { columns, indexes } = d.after;
+      addedTables.set(d.table, { id: d.table, domain: UNASSIGNED_DOMAIN, columns, ...indexes ? { indexes: indexes.map(modelIndex) } : {} });
+      applied.push(d);
+      defer(d.path, `new table, put in domain ${UNASSIGNED_DOMAIN}: ${SYNC} picks its domain and writes notes`);
+    }
+  }
+  const goneTables = /* @__PURE__ */ new Set();
+  for (const d of scoped("removed", "table")) {
+    if (renamePartner.has(d.table)) {
+      defer(d.path, `possibly renamed to ${renamePartner.get(d.table)}: ${SYNC} asks`);
+      continue;
+    }
+    const relations = model.relations.filter((r) => touches(r, d.table) && staying(r));
+    const cascade = relations.filter((r) => r.kind === "db_fk" && !reviewed(r));
+    const users = [...relations.filter((r) => !cascade.includes(r)).map((r) => `relation ${relationPath(r.from, r.to)}`), ...tableUsers(model, d.table, goneTables)];
+    if (users.length > 0) {
+      defer(d.path, `removed from the facts but still used by ${users.join("; ")}: ${SYNC} decides`);
+      continue;
+    }
+    for (const r of cascade) goneRelations.add(relationPath(r.from, r.to));
+    goneTables.add(d.table);
+    applied.push(d);
+  }
+  const removedColumns = /* @__PURE__ */ new Map();
+  const addedColumns = /* @__PURE__ */ new Map();
+  const columnEdits = [];
+  const indexRemovals = /* @__PURE__ */ new Map();
+  const indexAdds = [];
+  const embedded2 = (d) => d.path.slice(d.table.length + 1).includes(".");
+  for (const d of deltas.filter((x) => x.scope === "column")) {
+    const column2 = d.path.slice(d.table.length + 1);
+    if (embedded2(d)) defer(d.path, `column of an embedded document: ${SYNC} updates it`);
+    else if (d.change === "added") {
+      addedColumns.set(d.table, [...addedColumns.get(d.table) ?? [], d.after]);
+      applied.push(d);
+    } else if (d.change === "changed") {
+      if (protectedBy(d.table, column2)) defer(d.path, `${d.field} changed on a column a reviewed relation uses: ${SYNC} marks it stale`);
+      else {
+        columnEdits.push(d);
+        applied.push(d);
+      }
+    } else {
+      const users = columnUsers(model, d.table, column2, staying);
+      if (protectedBy(d.table, column2)) users.push("a reviewed relation");
+      if (users.length > 0) defer(d.path, `removed from the facts but still used by ${users.join("; ")}: ${SYNC} decides`);
+      else {
+        removedColumns.set(d.table, [...removedColumns.get(d.table) ?? [], column2]);
+        applied.push(d);
+      }
+    }
+  }
+  for (const [id, columns] of removedColumns) {
+    for (const i of tablesById.get(id).indexes ?? []) if (i.columns.some((c) => columns.includes(c))) indexRemovals.set(`${id}\0${indexKey2(i)}`, { table: id, index: i });
+  }
+  for (const d of deltas.filter((x) => x.scope === "index")) {
+    if (d.change === "removed") indexRemovals.set(`${d.table}\0${indexKey2(d.before)}`, { table: d.table, index: d.before });
+    else if (d.change === "added") indexAdds.push(d);
+    else columnEdits.push(d);
+    applied.push(d);
+  }
+  const columnsAfter = (id) => {
+    const t = addedTables.get(id) ?? (goneTables.has(id) ? null : tablesById.get(id));
+    if (!t) return null;
+    const gone = removedColumns.get(id) ?? [];
+    return [...columnEntries(t).map((e) => e.column).filter((c) => !gone.includes(c.name)), ...addedColumns.get(id) ?? []];
+  };
+  const addedRelations = [];
+  for (const d of scoped("added", "relation")) {
+    const ends = [d.after.from, d.after.to].map((e) => ({ e, columns: columnsAfter(e.table) }));
+    if (ends.some(({ e, columns }) => !columns || !e.columns.every((c) => columns.some((x) => x.name === c)))) {
+      defer(d.path, `constraint on a table or column not applied here: ${SYNC} adds it`);
+    } else if (d.after.evidence.length === 0) defer(d.path, `constraint without evidence in the facts: ${SYNC} adds it`);
+    else {
+      addedRelations.push(dbFkRelation(d.after, ends[0].columns, addedTables.get(d.after.from.table) ?? tablesById.get(d.after.from.table)));
+      applied.push(d);
+    }
+  }
+  const docs = /* @__PURE__ */ new Map();
+  const edit = (path) => {
+    if (!docs.has(path)) docs.set(path, (0, import_yaml3.parseDocument)(files[path]));
+    return docs.get(path);
+  };
+  const fileOfTable = (id) => fileOf.get(id.split(".")[0]);
+  const tableNode2 = (id) => edit(fileOfTable(id)).get("tables").items.find((n) => n.get("id") === id);
+  const sample = (path, key) => edit(path).get("tables").items.map((t) => t.get(key)?.items?.[0]).find(Boolean) ?? null;
+  for (const id of goneTables) removeItems(edit(fileOfTable(id)), "tables", (n) => n.get("id") === id);
+  for (const t of [...addedTables.values()].sort((a, b) => compareStrings(a.id, b.id))) {
+    const path = fileOfTable(t.id);
+    const node = edit(path).createNode(t);
+    for (const key of ["columns", "indexes"]) for (const item of node.get(key)?.items ?? []) flowUnless(item, sample(path, key));
+    const tables = edit(path).get("tables");
+    const at = tables.items.findIndex((n) => compareStrings(String(n.get("id")), t.id) > 0);
+    tables.items.splice(at === -1 ? tables.items.length : at, 0, node);
+  }
+  for (const [id, columns] of removedColumns) removeItems(tableNode2(id), "columns", (n) => columns.includes(n.get("name")));
+  for (const [id, columns] of addedColumns) {
+    const seq = tableNode2(id).get("columns");
+    for (const c of columns) seq.items.push(styled(edit(fileOfTable(id)).createNode(c), seq.items[0]));
+  }
+  for (const d of columnEdits) {
+    const node = d.scope === "column" ? tableNode2(d.table).get("columns").items.find((n) => n.get("name") === d.path.slice(d.table.length + 1)) : tableNode2(d.table).get("indexes").items.find((n) => `${d.table} index ${indexPath(n.toJSON())}` === d.path);
+    setField(node, d.field, d.after);
+  }
+  for (const { table: table2, index } of indexRemovals.values()) removeItems(tableNode2(table2), "indexes", (n) => indexKey2(n.toJSON()) === indexKey2(index));
+  for (const d of indexAdds) {
+    const path = fileOfTable(d.table);
+    const node = tableNode2(d.table);
+    if (!(0, import_yaml3.isSeq)(node.get("indexes"))) node.set("indexes", edit(path).createNode([]));
+    const seq = node.get("indexes");
+    seq.items.push(flowUnless(edit(path).createNode(modelIndex(d.after)), seq.items[0] ?? sample(path, "indexes")));
+  }
+  if (goneRelations.size > 0) {
+    for (const path of [...model.databases.map((d) => d.file), CROSS_DB_FILE].filter((p) => files[p] !== void 0)) {
+      const gone = (n) => goneRelations.has(relationPath(n.get("from").toJSON(), n.get("to").toJSON()));
+      if ((0, import_yaml3.parseDocument)(files[path]).get("relations")?.items?.some(gone)) removeItems(edit(path), "relations", gone);
+    }
+  }
+  for (const r of addedRelations) {
+    const doc = edit(fileOfTable(r.from.table));
+    if (!(0, import_yaml3.isSeq)(doc.get("relations"))) doc.set("relations", doc.createNode([]));
+    const seq = doc.get("relations");
+    seq.items.push(flowUnless(doc.createNode(r), seq.items[0]));
+  }
+  dropEmptyDomains(model, docs, goneTables, fileOf);
+  const changed = {};
+  for (const [path, doc] of docs) changed[path] = serialize(doc, files[path]);
+  needsSync.sort((a, b) => compareStrings(a.path, b.path) || compareStrings(a.reason, b.reason));
+  return { files: changed, applied, needsSync };
+}
+function dbFkRelation(after, fromColumns, fromTable) {
+  const columns = after.from.columns.map((name) => fromColumns.find((c) => c.name === name));
+  const same2 = (list2) => list2.length === after.from.columns.length && list2.every((c) => after.from.columns.includes(c));
+  const pk = fromColumns.filter((c) => c.pk).map((c) => c.name);
+  const unique = columns.length === 1 && (columns[0].unique || columns[0].pk) || same2(pk) || (fromTable.indexes ?? []).some((i) => i.unique && !i.where && same2(i.columns));
+  return {
+    from: after.from,
+    to: after.to,
+    cardinality: unique ? "1-1" : "n-1",
+    optional: columns.some((c) => c.nullable === true),
+    kind: "db_fk",
+    evidence: [...after.evidence].sort(compareStrings),
+    review: "pending"
+  };
+}
+function tableUsers(model, id, goneTables) {
+  const users = [];
+  for (const a of model.polymorphic) if (a.table === id || a.targets.includes(id)) users.push(`polymorphic \xAB${a.name}\xBB on ${a.table}`);
+  for (const t of model.tables) if (!goneTables.has(t.id) && t.sources?.includes(id)) users.push(`view ${t.id}`);
+  const c = model.config;
+  const lists = [["hub", c.hub], ["hidden", c.hidden], ["ignore_missing", c.ignore_missing], ...Object.entries(c.profiles ?? {}).map(([name, p]) => [`profiles.${name}.hide`, p.hide])];
+  for (const [name, list2] of lists) if (list2?.tables?.includes(id)) users.push(`${name}.tables in open-erd.yaml`);
+  const table2 = model.tables.find((t) => t.id === id);
+  const view = `${DOMAIN_VIEW_PREFIX}${id.split(".")[0]}/${table2.domain}`;
+  if (c.default_view === view && !model.tables.some((t) => t.id !== id && !goneTables.has(t.id) && `${DOMAIN_VIEW_PREFIX}${t.id.split(".")[0]}/${t.domain}` === view)) users.push("default_view in open-erd.yaml");
+  return users;
+}
+function columnUsers(model, table2, column2, staying) {
+  const users = [];
+  for (const r of model.relations) if (staying(r) && (usesColumn(r.from, table2, column2) || usesColumn(r.to, table2, column2))) users.push(`relation ${relationPath(r.from, r.to)}`);
+  for (const a of model.polymorphic) if (a.table === table2 && (a.type_column === column2 || a.id_column === column2)) users.push(`polymorphic \xAB${a.name}\xBB`);
+  const t = model.tables.find((x) => x.id === table2);
+  if (t.sti?.column === column2) users.push("sti");
+  if (t.partition?.columns.includes(column2)) users.push("partition");
+  const ref = `${table2}.${column2}`;
+  const c = model.config;
+  const lists = [["hidden", c.hidden], ["ignore_missing", c.ignore_missing], ...Object.entries(c.profiles ?? {}).map(([name, p]) => [`profiles.${name}.hide`, p.hide])];
+  for (const [name, list2] of lists) if (list2?.columns?.includes(ref)) users.push(`${name}.columns in open-erd.yaml`);
+  return users;
+}
+function removeItems(parent, key, match2) {
+  const seq = parent.get(key);
+  if (!(0, import_yaml3.isSeq)(seq)) return;
+  seq.items = seq.items.filter((n) => !match2(n));
+  if (seq.items.length === 0 && (key === "indexes" || key === "relations")) parent.delete(key);
+}
+function styled(node, sample) {
+  if (!(0, import_yaml3.isCollection)(node) || !(0, import_yaml3.isCollection)(sample)) return node;
+  if (sample.flow) node.flow = true;
+  if ((0, import_yaml3.isMap)(node) && (0, import_yaml3.isMap)(sample)) for (const pair of node.items) styled(pair.value, sample.get(pair.key, true));
+  return node;
+}
+function flowUnless(node, sample) {
+  if (sample) return styled(node, sample);
+  node.flow = true;
+  return node;
+}
+function setField(node, field, value2) {
+  if (value2 === void 0 || FLAG_FIELDS.has(field) && value2 === false) {
+    node.delete(field);
+    return;
+  }
+  if (node.has(field)) {
+    node.set(field, value2);
+    return;
+  }
+  const rank = (k) => COLUMN_ORDER.includes(k) ? COLUMN_ORDER.indexOf(k) : COLUMN_ORDER.length;
+  const pair = node.items.find((p) => rank(String(p.key)) > rank(field));
+  node.set(field, value2);
+  if (pair) {
+    const added = node.items.pop();
+    node.items.splice(node.items.indexOf(pair), 0, added);
+  }
+}
+function dropEmptyDomains(model, docs, goneTables, fileOf) {
+  for (const db of model.databases) {
+    const doc = docs.get(fileOf.get(db.database));
+    if (!doc || !db.domains) continue;
+    const used = new Set(model.tables.filter((t) => t.id.startsWith(`${db.database}.`) && !goneTables.has(t.id)).map((t) => t.domain));
+    for (const name of Object.keys(db.domains)) if (!used.has(name)) doc.deleteIn(["domains", name]);
+    if (doc.get("domains")?.items?.length === 0) doc.delete("domains");
+  }
+}
+function serialize(doc, original) {
+  const padded = { Map: null, Seq: null };
+  const look = (type) => (_2, n) => {
+    if (!n.flow || padded[type] !== null || !n.items.length || !n.range) return;
+    padded[type] = original[n.range[0] + 1] === " ";
+  };
+  (0, import_yaml3.visit)((0, import_yaml3.parseDocument)(original), { Map: look("Map"), Seq: look("Seq") });
+  const text2 = doc.toString({ lineWidth: 0 });
+  const cuts = [];
+  (0, import_yaml3.visit)((0, import_yaml3.parseDocument)(text2), {
+    Map: (_2, n) => n.flow && n.items.length && padded.Map === false && cuts.push(n.range[0] + 1, n.range[1] - 2),
+    Seq: (_2, n) => n.flow && n.items.length && padded.Seq === false && cuts.push(n.range[0] + 1, n.range[1] - 2)
+  });
+  let out = text2;
+  for (const at of cuts.sort((a, b) => b - a)) if (out[at] === " ") out = out.slice(0, at) + out.slice(at + 1);
+  return out;
+}
+function needsSyncMarkdown(needsSync) {
+  if (needsSync.length === 0) return `Nothing left for \`${SYNC}\`.
+`;
+  const cell2 = (s) => s.replaceAll("|", "\\|").replaceAll("\n", " ");
+  return [`**Left for \`${SYNC}\`** (${needsSync.length}):`, "", ...needsSync.map((n) => `- \`${cell2(n.path)}\`: ${cell2(n.reason)}`), ""].join("\n");
+}
+
+// src/model/verification.js
+var import_yaml4 = __toESM(require_dist(), 1);
 function parseVerification(text2) {
   const errors = [];
   const data = parseYaml(VERIFICATION_FILE, text2, errors);
@@ -172071,7 +172668,7 @@ function sortedFacts(verification) {
   return [...verification.facts].sort((a, b) => VERIFY_RESULTS.indexOf(a.result) - VERIFY_RESULTS.indexOf(b.result) || compareStrings(a.fact, b.fact));
 }
 function serializeVerification(verification) {
-  return '# Last verification of the facts an AI wrote into the model (see skills/_shared/rules.md, "Verification").\n' + (0, import_yaml3.stringify)({ schema_version: SCHEMA_VERSION, facts: sortedFacts(verification) });
+  return '# Last verification of the facts an AI wrote into the model (see skills/_shared/rules.md, "Verification").\n' + (0, import_yaml4.stringify)({ schema_version: SCHEMA_VERSION, facts: sortedFacts(verification) });
 }
 function verificationSummary(verification) {
   const count2 = (result) => verification.facts.filter((f) => f.result === result).length;
@@ -172651,310 +173248,6 @@ function domainPairs(diagram) {
 }
 function domainLinks(diagram) {
   return domainPairs(diagram).filter((p) => p.from.node !== p.to.node);
-}
-
-// src/diff/changes.js
-var POSSIBLE_RENAME_SIMILARITY = 0.6;
-var TABLE_FIELDS = ["domain", "kind", ...NOTE_FIELDS, "sources", "sti", "partition", "indexes", "generated_by"];
-var COLUMN_FIELDS2 = ["type", "nullable", "pk", "unique", "pii", "default", "auto_increment", "generated", ...NOTE_FIELDS];
-var ENTITY_FIELDS = ["array", "note", "internal_note"];
-var DATABASE_FIELDS = ["engine", "tenant_schemas", "topology"];
-var RELATION_FIELDS = ["cardinality", "optional", "kind", "review"];
-var POLYMORPHIC_FIELDS = ["type_column", "id_column", "optional", "review"];
-var CHANGE_KINDS = [
-  "database_added",
-  "database_removed",
-  "database_changed",
-  "table_added",
-  "table_removed",
-  "table_renamed",
-  "table_changed",
-  "entity_added",
-  "entity_removed",
-  "entity_changed",
-  "column_added",
-  "column_removed",
-  "column_renamed",
-  "column_changed",
-  "enum_value_added",
-  "enum_value_removed",
-  "enum_meaning_changed",
-  "relation_added",
-  "relation_removed",
-  "relation_changed",
-  "polymorphic_added",
-  "polymorphic_removed",
-  "polymorphic_changed",
-  "polymorphic_target_added",
-  "polymorphic_target_removed"
-];
-function showValue(value2) {
-  if (value2 === void 0 || value2 === null) return "";
-  if (typeof value2 === "boolean") return value2 ? "yes" : "no";
-  if (Array.isArray(value2)) return value2.map(showValue).join(typeof value2[0] === "object" ? "; " : ", ");
-  if (typeof value2 === "object") return Object.entries(value2).map(([k, v]) => `${k}: ${showValue(v)}`).join(", ");
-  return String(value2);
-}
-var differs = (a, b) => showValue(a) !== showValue(b);
-var nameOf = (id) => id.split(".")[2];
-var dbOf = (id) => id.split(".")[0];
-var endText3 = (end, tableName = nameOf) => `${tableName(end.table)}.${end.columns.join(", ")}`;
-var relationText = (r) => `${endText3(r.from)} \u2192 ${endText3(r.to)}`;
-var relationKey2 = (r) => `${r.from.table}(${r.from.columns.join(",")})\0${r.to.table}(${r.to.columns.join(",")})`;
-function fieldChanges(before, after, fields, base) {
-  return fields.filter((f) => differs(before[f], after[f])).map((field) => ({ ...base, field, before: before[field], after: after[field] }));
-}
-function matchByName(fromItems, toItems, key, renamedKey) {
-  const fromByKey = new Map(fromItems.map((x) => [key(x), x]));
-  const toKeys = new Set(toItems.map(key));
-  const used = /* @__PURE__ */ new Set();
-  const pairs = [];
-  const added = [];
-  const deferred = [];
-  for (const t of toItems) {
-    if (fromByKey.has(key(t))) {
-      pairs.push({ from: fromByKey.get(key(t)), to: t, renamed: false });
-      used.add(key(t));
-    } else deferred.push(t);
-  }
-  for (const t of deferred) {
-    const old = renamedKey(t);
-    if (old !== void 0 && fromByKey.has(old) && !toKeys.has(old) && !used.has(old)) {
-      pairs.push({ from: fromByKey.get(old), to: t, renamed: true });
-      used.add(old);
-    } else added.push(t);
-  }
-  return { pairs, added, removed: fromItems.filter((x) => !used.has(key(x))) };
-}
-function possibleRenames(removed, added) {
-  const names = (t) => new Set(columnEntries(t).map((e) => e.path));
-  const candidates = [];
-  for (const a of added) {
-    const an = names(a);
-    for (const r of removed) {
-      const rn = names(r);
-      const shared = [...an].filter((n) => rn.has(n)).length;
-      const score = shared / (an.size + rn.size - shared);
-      if (score >= POSSIBLE_RENAME_SIMILARITY) candidates.push({ added: a.id, removed: r.id, shared, total: (/* @__PURE__ */ new Set([...an, ...rn])).size, score });
-    }
-  }
-  candidates.sort((x, y) => y.score - x.score || compareStrings(x.added, y.added) || compareStrings(x.removed, y.removed));
-  const taken = /* @__PURE__ */ new Set();
-  const result = [];
-  for (const c of candidates) {
-    if (taken.has(c.added) || taken.has(c.removed)) continue;
-    taken.add(c.added).add(c.removed);
-    result.push(c);
-  }
-  return result;
-}
-function enumChanges(before, after, base) {
-  const a = before.enum ?? {};
-  const b = after.enum ?? {};
-  const out = [];
-  for (const value2 of Object.keys(b)) {
-    if (!(value2 in a)) out.push({ ...base, kind: "enum_value_added", value: value2, after: b[value2] });
-    else if (a[value2] !== b[value2]) out.push({ ...base, kind: "enum_meaning_changed", value: value2, before: a[value2], after: b[value2] });
-  }
-  for (const value2 of Object.keys(a)) if (!(value2 in b)) out.push({ ...base, kind: "enum_value_removed", value: value2, before: a[value2] });
-  return out;
-}
-function tableChanges(from, to, base) {
-  const changes = fieldChanges(from, to, TABLE_FIELDS, { ...base, kind: "table_changed" });
-  const entities = matchByName(from.embedded ?? [], to.embedded ?? [], (e) => e.name, () => void 0);
-  for (const e of entities.added) changes.push({ ...base, kind: "entity_added", column: e.name });
-  for (const e of entities.removed) changes.push({ ...base, kind: "entity_removed", column: e.name });
-  for (const { from: a, to: b } of entities.pairs) changes.push(...fieldChanges(a, b, ENTITY_FIELDS, { ...base, kind: "entity_changed", column: a.name }));
-  const columns = /* @__PURE__ */ new Map();
-  const entries = (t) => columnEntries(t).map((e) => ({ ...e, old: e.column.renamed_from === void 0 ? void 0 : e.entity ? `${e.entity.name}.${e.column.renamed_from}` : e.column.renamed_from }));
-  const cols = matchByName(entries(from), entries(to), (e) => e.path, (e) => e.old);
-  const goneEntity = new Set(entities.removed.map((e) => e.name));
-  const newEntity = new Set(entities.added.map((e) => e.name));
-  for (const e of cols.added) if (!newEntity.has(e.entity?.name)) changes.push({ ...base, kind: "column_added", column: e.path, after: e.column.type });
-  for (const e of cols.removed) if (!goneEntity.has(e.entity?.name)) changes.push({ ...base, kind: "column_removed", column: e.path, before: e.column.type });
-  for (const { from: a, to: b, renamed } of cols.pairs) {
-    columns.set(a.path, b.path);
-    const at = { ...base, column: b.path };
-    if (renamed) changes.push({ ...at, kind: "column_renamed", before: a.path, after: b.path });
-    changes.push(...fieldChanges(a.column, b.column, COLUMN_FIELDS2, { ...at, kind: "column_changed" }));
-    changes.push(...enumChanges(a.column, b.column, at));
-  }
-  return { changes, columns };
-}
-function compareChanges(a, b) {
-  return compareStrings(a.database, b.database) || compareStrings(a.table ?? "", b.table ?? "") || CHANGE_KINDS.indexOf(a.kind) - CHANGE_KINDS.indexOf(b.kind) || compareStrings(a.subject ?? "", b.subject ?? "") || compareStrings(a.column ?? "", b.column ?? "") || compareStrings(a.value ?? "", b.value ?? "") || compareStrings(a.field ?? "", b.field ?? "");
-}
-function diffModels(from, to) {
-  const changes = [];
-  const dbs = matchByName(from.databases, to.databases, (d) => d.database, () => void 0);
-  for (const d of dbs.added) changes.push({ kind: "database_added", database: d.database, table: null, after: d.engine });
-  for (const d of dbs.removed) changes.push({ kind: "database_removed", database: d.database, table: null, before: d.engine });
-  for (const { from: a, to: b } of dbs.pairs) changes.push(...fieldChanges(a, b, DATABASE_FIELDS, { kind: "database_changed", database: a.database, table: null }));
-  const tables = matchByName(from.tables, to.tables, (t) => t.id, (t) => t.renamed_from);
-  const tableMap = /* @__PURE__ */ new Map();
-  const columnMap = /* @__PURE__ */ new Map();
-  for (const { from: a, to: b, renamed } of tables.pairs) {
-    tableMap.set(a.id, b.id);
-    const base = { database: dbOf(b.id), table: b.id };
-    if (renamed) changes.push({ ...base, kind: "table_renamed", before: a.id, after: b.id });
-    const inner = tableChanges(a, b, base);
-    changes.push(...inner.changes);
-    columnMap.set(b.id, inner.columns);
-  }
-  const guesses = possibleRenames(tables.removed, tables.added);
-  const guessFor = (id, side) => guesses.find((g) => g[side] === id);
-  for (const t of tables.added) {
-    const g = guessFor(t.id, "added");
-    changes.push({ kind: "table_added", database: dbOf(t.id), table: t.id, after: t.domain, ...g ? { possibly: { table: g.removed, shared: g.shared, total: g.total } } : {} });
-  }
-  for (const t of tables.removed) {
-    const g = guessFor(t.id, "removed");
-    changes.push({ kind: "table_removed", database: dbOf(t.id), table: t.id, before: t.domain, ...g ? { possibly: { table: g.added, shared: g.shared, total: g.total } } : {} });
-  }
-  const table2 = (id) => tableMap.get(id) ?? id;
-  const column2 = (tableId2, path) => columnMap.get(table2(tableId2))?.get(path) ?? path;
-  const end = (e) => ({ table: table2(e.table), columns: e.columns.map((c) => column2(e.table, c)) });
-  const mapped = (r) => ({ ...r, from: end(r.from), to: end(r.to) });
-  const rels = matchByName(from.relations.map(mapped), to.relations, relationKey2, () => void 0);
-  const relBase = (r) => ({ database: dbOf(r.from.table), table: r.from.table, subject: relationText(r), relation: r });
-  for (const r of rels.added) changes.push({ ...relBase(r), kind: "relation_added" });
-  for (const r of rels.removed) changes.push({ ...relBase(r), kind: "relation_removed" });
-  for (const { from: a, to: b } of rels.pairs) changes.push(...fieldChanges(a, b, RELATION_FIELDS, { ...relBase(b), kind: "relation_changed" }));
-  const polyMapped = (a) => ({
-    ...a,
-    table: table2(a.table),
-    type_column: column2(a.table, a.type_column),
-    id_column: column2(a.table, a.id_column),
-    targets: a.targets.map(table2).sort(compareStrings)
-  });
-  const polys = matchByName(from.polymorphic.map(polyMapped), to.polymorphic, (a) => `${a.table}\0${a.name}`, () => void 0);
-  const polyBase = (a) => ({ database: dbOf(a.table), table: a.table, subject: `\xAB${a.name}\xBB`, association: a });
-  for (const a of polys.added) changes.push({ ...polyBase(a), kind: "polymorphic_added" });
-  for (const a of polys.removed) changes.push({ ...polyBase(a), kind: "polymorphic_removed" });
-  for (const { from: a, to: b } of polys.pairs) {
-    changes.push(...fieldChanges(a, b, POLYMORPHIC_FIELDS, { ...polyBase(b), kind: "polymorphic_changed" }));
-    for (const t of b.targets.filter((x) => !a.targets.includes(x))) changes.push({ ...polyBase(b), kind: "polymorphic_target_added", value: t });
-    for (const t of a.targets.filter((x) => !b.targets.includes(x))) changes.push({ ...polyBase(b), kind: "polymorphic_target_removed", value: t });
-  }
-  return { changes: changes.sort(compareChanges), tables: tableMap, columns: columnMap };
-}
-var FIELD_WORDS = {
-  domain: "domain",
-  kind: "kind",
-  note: "note",
-  note_source: "original note",
-  internal_note: "internal note",
-  sources: "source tables",
-  sti: "single-table inheritance",
-  partition: "partitioning",
-  indexes: "indexes",
-  unique: "unique",
-  generated_by: "generated by",
-  type: "type",
-  nullable: "nullable",
-  pk: "primary key",
-  pii: "personal data (PII)",
-  default: "default",
-  auto_increment: "auto-increment",
-  generated: "generated expression",
-  array: "list of documents",
-  engine: "engine",
-  tenant_schemas: "tenant schemas",
-  topology: "replicas and shards",
-  cardinality: "cardinality",
-  optional: "optional",
-  review: "review state",
-  type_column: "type column",
-  id_column: "id column"
-};
-var quoted = (value2) => `\u201C${showValue(value2)}\u201D`;
-var fieldWord = (c) => FIELD_WORDS[c.field];
-var FLAGS = /* @__PURE__ */ new Set(["pk", "unique", "pii", "auto_increment", "array", "optional"]);
-var fromTo = (c) => {
-  const word = fieldWord(c);
-  if (FLAGS.has(c.field)) return c.after ? `now ${word}` : `no longer ${word}`;
-  if (c.field === "nullable" && c.after !== void 0) return c.after ? "now nullable" : "now NOT NULL";
-  if (c.before === void 0) return `${word} set to ${quoted(c.after)}`;
-  if (c.after === void 0) return `${word} ${quoted(c.before)} removed`;
-  return `${word} changed from ${quoted(c.before)} to ${quoted(c.after)}`;
-};
-var guess = (c, direction) => c.possibly ? ` (possibly renamed ${direction} ${nameOf(c.possibly.table)}: ${c.possibly.shared} of ${c.possibly.total} columns match)` : "";
-var relationSummary = (r) => `${r.cardinality}${r.optional ? ", optional" : ""}, ${r.kind}`;
-function describeChange(c) {
-  const t = c.table ? nameOf(c.table) : "";
-  switch (c.kind) {
-    case "database_added":
-      return `Database ${c.database} added (${c.after})`;
-    case "database_removed":
-      return `Database ${c.database} removed`;
-    case "database_changed":
-      return `Database ${c.database}: ${fromTo(c)}`;
-    case "table_added":
-      return `Table ${t} added in domain ${c.after}${guess(c, "from")}`;
-    case "table_removed":
-      return `Table ${t} removed${guess(c, "to")}`;
-    case "table_renamed":
-      return `Table renamed from ${c.before} to ${c.after}`;
-    case "table_changed":
-      return `Table ${t}: ${fromTo(c)}`;
-    case "entity_added":
-      return `Embedded document ${c.column} added`;
-    case "entity_removed":
-      return `Embedded document ${c.column} removed`;
-    case "entity_changed":
-      return `Embedded document ${c.column}: ${fromTo(c)}`;
-    case "column_added":
-      return `Column ${c.column} added (${c.after})`;
-    case "column_removed":
-      return `Column ${c.column} removed`;
-    case "column_renamed":
-      return `Column renamed from ${c.before} to ${c.after}`;
-    case "column_changed":
-      return `Column ${c.column}: ${fromTo(c)}`;
-    case "enum_value_added":
-      return `Enum ${c.column}: added value ${quoted(c.value)} (${c.after})`;
-    case "enum_value_removed":
-      return `Enum ${c.column}: removed value ${quoted(c.value)}`;
-    case "enum_meaning_changed":
-      return `Enum ${c.column}: meaning of ${quoted(c.value)} changed from ${quoted(c.before)} to ${quoted(c.after)}`;
-    case "relation_added":
-      return `Relation ${c.subject} added (${relationSummary(c.relation)})`;
-    case "relation_removed":
-      return `Relation ${c.subject} removed`;
-    case "relation_changed":
-      return `Relation ${c.subject}: ${fromTo(c)}`;
-    case "polymorphic_added":
-      return `Polymorphic ${c.subject} on ${t} added (targets: ${c.association.targets.map(nameOf).join(", ")})`;
-    case "polymorphic_removed":
-      return `Polymorphic ${c.subject} on ${t} removed`;
-    case "polymorphic_changed":
-      return `Polymorphic ${c.subject} on ${t}: ${fromTo(c)}`;
-    case "polymorphic_target_added":
-      return `Polymorphic ${c.subject} on ${t}: added target ${nameOf(c.value)}`;
-    case "polymorphic_target_removed":
-      return `Polymorphic ${c.subject} on ${t}: removed target ${nameOf(c.value)}`;
-    default:
-      throw new Error(`unknown change kind ${c.kind}`);
-  }
-}
-function changeLabel(kind) {
-  const [scope, ...rest] = kind.split("_");
-  const words = { polymorphic: "Polymorphic", entity: "Embedded document", enum: "Enum" };
-  return `${words[scope] ?? scope[0].toUpperCase() + scope.slice(1)} ${rest.join(" ")}`;
-}
-function summarize(changes) {
-  const count2 = (kind) => changes.filter((c) => c.kind === kind).length;
-  const distinct = (kinds, key) => new Set(changes.filter((c) => kinds.some((k) => c.kind.startsWith(k))).map(key)).size;
-  return {
-    tablesAdded: count2("table_added"),
-    tablesRemoved: count2("table_removed"),
-    tablesRenamed: count2("table_renamed"),
-    columnsChanged: distinct(["column_", "enum_", "entity_"], (c) => `${c.table}\0${c.column}`),
-    relationsChanged: distinct(["relation_", "polymorphic_"], (c) => c.relation ? relationKey2(c.relation) : `${c.table}\0${c.subject}`)
-  };
-}
-function summaryLine(s) {
-  return `+${s.tablesAdded} tables \xB7 \u2212${s.tablesRemoved} tables \xB7 ${s.tablesRenamed} renamed \xB7 ${s.columnsChanged} columns changed \xB7 ${s.relationsChanged} relations changed`;
 }
 
 // src/render/xlsx/zip.js
@@ -176436,6 +176729,7 @@ function renderDrawio(model, layout, { svgUrl, ...options } = {}) {
 // cli.js
 var WORKTREE = "WORKTREE";
 var SNAPSHOT_FILE = (path) => path === CONFIG_FILE || path === LAYOUT_FILE || /^model\/[^/]+\.yaml$/.test(path);
+var FORMATS = ["text", "markdown"];
 var git = (workspace, ...args) => promisify(execFile)("git", ["-C", workspace, ...args], { maxBuffer: 256 * 1024 * 1024 }).then((r) => r.stdout);
 var COMMANDS = {
   validate: {
@@ -176456,6 +176750,12 @@ var COMMANDS = {
     options: { workspace: { type: "string" }, facts: { type: "string" } },
     run: runVerify
   },
+  "apply-facts": {
+    usage: "apply-facts --workspace <dir> [--facts <dir>] --out <dir> [--format text|markdown]",
+    summary: "write a copy of the workspace into --out with the mechanical differences from the extract facts applied (tables, columns, indexes, constraint-backed relations; new tables in domain Unassigned) and list what is left for /open-erd:sync (renames, notes, relations without a constraint, anything a reviewed fact uses); never writes the workspace itself",
+    options: { workspace: { type: "string" }, facts: { type: "string" }, out: { type: "string" }, format: { type: "string" } },
+    run: runApplyFacts
+  },
   layout: {
     usage: `layout --workspace <dir> [--relayout <view>]... [--relayout '${EVERY_VIEW}']`,
     summary: `write coordinates for new nodes into layout.json, report moved nodes; --relayout (repeatable) places the named view (overview = the domain cards, all = the view of all tables, domain:<db>/<domain>; '${EVERY_VIEW}' = every view) from scratch, dropping their kept positions`,
@@ -176469,9 +176769,16 @@ var COMMANDS = {
     run: runRender
   },
   diff: {
-    usage: `diff --workspace <dir> --from <ref> --to <ref|${WORKTREE}> [--profile <name>]`,
-    summary: `compare two snapshots of the workspace (git refs such as a tag or HEAD; ${WORKTREE} = the files on disk), print the changes, write out/diff.svg and out/diff.xlsx (the "to" side plus a Changes sheet; out/diff.<profile>.* with a sharing profile, applied to both sides as the "to" side declares it)`,
-    options: { workspace: { type: "string" }, from: { type: "string" }, to: { type: "string" }, profile: { type: "string" } },
+    usage: `diff --workspace <dir> --from <ref> (--to <ref|${WORKTREE}> | --to-workspace <dir>) [--profile <name>] [--format text|markdown]`,
+    summary: `compare two snapshots of the workspace (git refs such as a tag or HEAD; ${WORKTREE} = the files on disk; --to-workspace = the files of another workspace directory, such as the copy apply-facts writes), print the changes (--format markdown: a summary and a table for a pull request comment), write out/diff.svg and out/diff.xlsx into --workspace (the "to" side plus a Changes sheet; out/diff.<profile>.* with a sharing profile, applied to both sides as the "to" side declares it)`,
+    options: {
+      workspace: { type: "string" },
+      from: { type: "string" },
+      to: { type: "string" },
+      "to-workspace": { type: "string" },
+      profile: { type: "string" },
+      format: { type: "string" }
+    },
     run: runDiff
   }
 };
@@ -176613,6 +176920,57 @@ async function runVerify({ workspace, facts: factsDir }) {
   console.log(`${workspace}: model matches the extract facts (${files.length} file(s), ${facts.tables.length} table(s))`);
   return 0;
 }
+var COPIED_FILES = [LAYOUT_FILE, LOCKED_FILE, VERIFICATION_FILE];
+function checkFormat(format) {
+  if (format === void 0 || FORMATS.includes(format)) return true;
+  console.error(`--format must be one of ${FORMATS.join(", ")}`);
+  return false;
+}
+async function runApplyFacts({ workspace, facts: factsDir, out, format = "text" }) {
+  if (!out) {
+    console.error(`Missing --out
+Usage: open-erd ${COMMANDS["apply-facts"].usage}`);
+    return 1;
+  }
+  if (!checkFormat(format)) return 1;
+  if (resolve(out) === resolve(workspace)) {
+    console.error("--out must be another directory: apply-facts never writes the workspace itself");
+    return 1;
+  }
+  const files = await readWorkspaceFiles(workspace);
+  const { model, errors } = parseWorkspace(files);
+  for (const e of errors) console.error(formatError(e));
+  if (!model) return 1;
+  const factsFiles = await readFactsFiles(factsDir ?? join(workspace, "extract", "facts"));
+  if (!factsFiles) return 1;
+  const facts = readFacts(factsFiles);
+  for (const e of facts.errors) console.error(formatError(e));
+  if (facts.errors.length > 0) return 1;
+  const result = applyFacts(files, model, compareFacts(model, facts));
+  const copy = { ...files, ...result.files };
+  const check = parseWorkspace(copy);
+  for (const e of check.errors) console.error(`${out}: ${formatError(e)}`);
+  if (!check.model) return 1;
+  await mkdir(join(out, "model"), { recursive: true });
+  for (const [path, text2] of Object.entries(copy)) await writeFile(join(out, path), text2);
+  for (const path of COPIED_FILES) {
+    let bytes;
+    try {
+      bytes = await readFile(join(workspace, path));
+    } catch (e) {
+      if (e.code === "ENOENT") continue;
+      throw e;
+    }
+    await mkdir(dirname(join(out, path)), { recursive: true });
+    await writeFile(join(out, path), bytes);
+  }
+  const report = format === "markdown" ? console.error : console.log;
+  report(`wrote ${out}: ${result.applied.length} change(s) from the extract facts applied, ${result.needsSync.length} left for /open-erd:sync`);
+  for (const d of result.applied) report(`  applied: ${describeDelta(d)}`);
+  if (format === "markdown") console.log(needsSyncMarkdown(result.needsSync));
+  else for (const n of result.needsSync) console.log(`  needs sync: ${n.path}: ${n.reason}`);
+  return 0;
+}
 var NO_HISTORY_DATE = /* @__PURE__ */ new Date("1980-01-01T00:00:00Z");
 async function workspaceDate(workspace, ref = "HEAD") {
   const run = async (...args) => (await git(workspace, ...args)).trim();
@@ -176711,12 +177069,17 @@ async function readSnapshot(workspace, ref) {
   if (!model) return null;
   return { model, layout: layoutText === void 0 ? void 0 : parseLayout(layoutText) };
 }
-async function runDiff({ workspace, from, to, profile }) {
-  if (!from || !to) {
+async function runDiff({ workspace, from, to, "to-workspace": toWorkspace, profile, format = "text" }) {
+  if (!from || !to && !toWorkspace) {
     console.error(`Missing --from or --to
 Usage: open-erd ${COMMANDS.diff.usage}`);
     return 1;
   }
+  if (to && toWorkspace) {
+    console.error("Give one of --to or --to-workspace, not both");
+    return 1;
+  }
+  if (!checkFormat(format)) return 1;
   if (from === WORKTREE) {
     console.error(`--from must be a git ref; ${WORKTREE} is only allowed as --to`);
     return 1;
@@ -176726,7 +177089,8 @@ Usage: open-erd ${COMMANDS.diff.usage}`);
     if (dirty.trim()) console.error(`warning: uncommitted changes in ${workspace} are not part of HEAD; use --to ${WORKTREE} to include them`);
   }
   const before = await readSnapshot(workspace, from);
-  const after = await readSnapshot(workspace, to);
+  const after = toWorkspace ? await readSnapshot(toWorkspace, WORKTREE) : await readSnapshot(workspace, to);
+  const toLabel = toWorkspace ? basename(resolve(toWorkspace)) : to;
   if (!before || !after) return 1;
   const filter = (side) => profile === void 0 ? side.model : applyProfile({ ...side.model, config: after.model.config }, profile);
   const [fromModel, toModel] = [filter(before), filter(after)];
@@ -176734,17 +177098,23 @@ Usage: open-erd ${COMMANDS.diff.usage}`);
   const summary = summaryLine(summarize(result.changes));
   const union = unionModel(fromModel, toModel, result);
   const { layout } = await computeLayout(union, mergeLayouts(before.layout, after.layout));
-  const svg = renderSvg(union, layout, { diff: { from, to, summary, marks: diffMarks(union, result.changes) }, warnings: [] });
+  const svg = renderSvg(union, layout, { diff: { from, to: toLabel, summary, marks: diffMarks(union, result.changes) }, warnings: [] });
   const workbook = buildWorkbook(toModel, { warnings: warningsFor(missingRelations(after.model), toModel) });
   addChangesSheet(workbook, toModel, result.changes);
-  const xlsx = await serializeWorkbook(workbook, { date: await workspaceDate(workspace, to === WORKTREE ? "HEAD" : to) });
+  const xlsx = await serializeWorkbook(workbook, { date: toWorkspace ? await workspaceDate(toWorkspace) : await workspaceDate(workspace, to === WORKTREE ? "HEAD" : to) });
   const base = join(workspace, "out", profile === void 0 ? "diff" : `diff.${profile}`);
   await mkdir(join(workspace, "out"), { recursive: true });
   await writeFile(`${base}.svg`, svg);
   await writeFile(`${base}.xlsx`, xlsx);
-  console.log(`${from} \u2192 ${to}: ${summary}`);
+  const wrote = `wrote ${base}.svg and ${base}.xlsx${profile === void 0 ? "" : ` (profile ${profile})`}`;
+  if (format === "markdown") {
+    console.log(changesMarkdown(result.changes));
+    console.error(wrote);
+    return 0;
+  }
+  console.log(`${from} \u2192 ${toLabel}: ${summary}`);
   for (const c of result.changes) console.log(`  ${c.table ?? c.database}: ${describeChange(c)}`);
-  console.log(`wrote ${base}.svg and ${base}.xlsx${profile === void 0 ? "" : ` (profile ${profile})`}`);
+  console.log(wrote);
   return 0;
 }
 async function main(argv) {

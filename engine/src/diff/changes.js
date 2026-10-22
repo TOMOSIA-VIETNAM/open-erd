@@ -107,7 +107,7 @@ function matchByName(fromItems, toItems, key, renamedKey) {
 // Removed and added tables that look like one renamed table: column-name
 // Jaccard index at least POSSIBLE_RENAME_SIMILARITY, best score first, ties
 // broken by the added id then the removed id, each table used once.
-function possibleRenames(removed, added) {
+export function possibleRenames(removed, added) {
   const names = (t) => new Set(columnEntries(t).map((e) => e.path));
   const candidates = [];
   for (const a of added) {
@@ -380,4 +380,25 @@ export function summarize(changes) {
 
 export function summaryLine(s) {
   return `+${s.tablesAdded} tables · −${s.tablesRemoved} tables · ${s.tablesRenamed} renamed · ${s.columnsChanged} columns changed · ${s.relationsChanged} relations changed`;
+}
+
+// Rows of the Markdown table; a pull request comment is capped at 65536
+// characters, and the full list is in diff.xlsx anyway.
+export const MARKDOWN_ROWS = 200;
+
+/** Summary line and one table row per change, as Markdown for a pull request comment. */
+export function changesMarkdown(changes) {
+  if (changes.length === 0) return 'No changes to the ERD.\n';
+  const cell = (s) => s.replaceAll('|', '\\|').replaceAll('\n', ' ');
+  const rows = changes.slice(0, MARKDOWN_ROWS).map((c) => `| \`${c.table ?? c.database}\` | ${cell(describeChange(c))} |`);
+  const more = changes.length - rows.length;
+  return [
+    `**${summaryLine(summarize(changes))}**`,
+    '',
+    '| Table | Change |',
+    '|---|---|',
+    ...rows,
+    ...(more > 0 ? ['', `…and ${more} more: see the Changes sheet of diff.xlsx.`] : []),
+    '',
+  ].join('\n');
 }

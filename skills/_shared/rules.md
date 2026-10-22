@@ -33,6 +33,7 @@ node <plugin root>/dist/open-erd.mjs verify   --workspace <ws>
 node <plugin root>/dist/open-erd.mjs layout   --workspace <ws>
 node <plugin root>/dist/open-erd.mjs render   --workspace <ws> [--profile <name>]
 node <plugin root>/dist/open-erd.mjs diff     --workspace <ws> --from <ref> --to <ref|HEAD|WORKTREE> [--profile <name>]
+node <plugin root>/dist/open-erd.mjs apply-facts --workspace <ws> --out <dir>   # CI preview copy; never writes <ws>
 ```
 
 Exit code 0 = success. Non-zero: show the engine's message, fix the cause in
@@ -66,8 +67,9 @@ location, and never create a workspace outside `/open-erd:init`.
 
 ## Safety (no exceptions)
 
-- Never write, create, delete or `git` anything in a source repository. Allowed
-  there: reading files and read-only git (`rev-parse`, `status --porcelain`,
+- Never write, create, delete or `git` anything in a source repository (one
+  exception: the workflow file `/open-erd:ci-setup` writes after the user
+  agreed). Allowed there: reading files and read-only git (`rev-parse`, `status --porcelain`,
   `log`, `show`).
 - Never boot a source app (`rails runner`, `artisan`, `manage.py`, `node app`,
   `npm install`, …). Extract scripts read static files only.
@@ -239,7 +241,7 @@ plus untracked files from `git -C <ws> status --porcelain -- model`. In
    adds it as the Verification sheet of `out/erd.xlsx`, never to a sharing
    profile that drops evidence or internal notes.
 
-## Last line of init, sync, review, render, diff
+## Last line of init, sync, review, render, diff, ci-setup
 
 After the command finishes (success or not), end with exactly one line in the
 user's language inviting feedback on open-erd, containing the literal command

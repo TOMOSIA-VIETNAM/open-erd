@@ -62,6 +62,20 @@ models; `evals/` scores Claude's extraction against them.
   the record; `verify` rewrites it sorted.
 - `render` appends the Verification sheet only without a profile, or with a
   profile that keeps both evidence and `internal_note`.
+- `engine/src/model/apply-facts.js`: `applyFacts(files, model, deltas)`
+  is pure (workspace texts in, edited texts out) and applies the mechanical
+  deltas of `compareFacts` through the `yaml` Document API, so comments and
+  each node's flow or block style survive; untouched files are copied byte
+  for byte. The yaml library may still drop alignment spaces after a key
+  (`to:   {` becomes `to: {`) in an edited file. Removed tables and columns
+  something else uses, possible renames (`possibleRenames` of the diff),
+  reviewed facts and relation kind changes go to `needsSync` instead. The
+  CLI loads the result before writing `--out` and fails if it does not.
+- `diff --to-workspace <dir>` reads the "to" side from another directory's
+  files; `--format markdown` prints `changesMarkdown` (summary and a table
+  capped at `MARKDOWN_ROWS`) on stdout. `skills/ci-setup/workflow.yml` is the
+  workflow template; `engine/test/ci-workflow.test.js` checks its
+  placeholders and runs its shell step and comment script locally.
 - `evals/verify.test.mjs` slips wrong facts into every fixture's expected
   model and checks which ones the comparison reports; `node evals/run.mjs
   --task verify` runs the agent side (costs API usage).
