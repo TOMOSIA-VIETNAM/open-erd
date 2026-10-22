@@ -94,7 +94,7 @@ Chi tiết từng task: `plan.md`. Đánh dấu `[x]` khi task pass verify.
 
 ## Tính năng tiếp theo (spec: `next-features.md`)
 
-- [ ] 31. ERD tự cập nhật trong CI (`/open-erd:ci-setup`, `apply-facts`, comment diff vào PR)
+- [x] 31. ERD tự cập nhật trong CI (`/open-erd:ci-setup`, `apply-facts`, comment diff vào PR)
 - [ ] 32. Tour (chế độ trình chiếu theo domain)
 - [ ] 33. Bản đồ PII (toggle, panel tổng kết, sheet PII)
 - [ ] 34. Sức khoẻ schema (danh sách phát hiện, không chấm điểm, `health.ignore`)

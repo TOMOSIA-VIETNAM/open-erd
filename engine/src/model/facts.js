@@ -94,9 +94,10 @@ export function readFacts(files) {
 }
 
 const endText = (end) => `${end.table}.${end.columns.join(', ')}`;
-const relationPath = (from, to) => `${endText(from)} -> ${endText(to)}`;
-const indexKey = (i) => [i.columns.join(','), i.unique ? 'unique' : '', i.where ?? '', i.using ?? ''].join('\u0000');
-const indexPath = (i) => `(${i.columns.join(', ')})${i.unique ? ' unique' : ''}${i.where ? ` where ${i.where}` : ''}${i.using ? ` using ${i.using}` : ''}`;
+export const relationPath = (from, to) => `${endText(from)} -> ${endText(to)}`;
+// Identity of an index: what it covers and how, not its name.
+export const indexKey = (i) => [i.columns.join(','), i.unique ? 'unique' : '', i.where ?? '', i.using ?? ''].join('\u0000');
+export const indexPath = (i) => `(${i.columns.join(', ')})${i.unique ? ' unique' : ''}${i.where ? ` where ${i.where}` : ''}${i.using ? ` using ${i.using}` : ''}`;
 
 /** A facts column in model form (only the fields the model writes). */
 function modelColumn(c, reported) {

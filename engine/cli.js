@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { execFile } from 'node:child_process';
 import { mkdir, readFile, readdir, realpath, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseArgs, promisify } from 'node:util';
 import pkg from './package.json' with { type: 'json' };
@@ -10,10 +10,11 @@ import { compareStrings, formatError, parseWorkspace } from './src/model/load.js
 import { checkLocked, lockFacts, parseLocked, serializeLocked } from './src/model/lock.js';
 import { applyProfile, resolveProfile } from './src/model/profile.js';
 import { compareFacts, describeDelta, readFacts } from './src/model/facts.js';
+import { applyFacts, needsSyncMarkdown } from './src/model/apply-facts.js';
 import { parseVerification, serializeVerification, verificationSummary } from './src/model/verification.js';
 import { formatWarning, missingRelations, warningsFor } from './src/model/missing.js';
 import { addChangesSheet, addVerificationSheet, buildWorkbook, serializeWorkbook } from './src/render/xlsx/workbook.js';
-import { describeChange, diffModels, summarize, summaryLine } from './src/diff/changes.js';
+import { changesMarkdown, describeChange, diffModels, summarize, summaryLine } from './src/diff/changes.js';
 import { diffMarks, mergeLayouts, unionModel } from './src/diff/union.js';
 import { EVERY_VIEW, checkLayout, computeLayout, formatReport } from './src/layout/index.js';
 import { LAYOUT_FILE, parseLayout, serializeLayout } from './src/layout/layout-file.js';
@@ -24,6 +25,9 @@ import { renderDrawio } from './src/render/drawio/render.js';
 const WORKTREE = 'WORKTREE';
 // Workspace files a snapshot is made of.
 const SNAPSHOT_FILE = (path) => path === CONFIG_FILE || path === LAYOUT_FILE || /^model\/[^/]+\.yaml$/.test(path);
+// What `--format` accepts: plain lines for a terminal, or Markdown (for a
+// pull request comment) on stdout with progress lines on stderr.
+const FORMATS = ['text', 'markdown'];
 
 const git = (workspace, ...args) =>
   promisify(execFile)('git', ['-C', workspace, ...args], { maxBuffer: 256 * 1024 * 1024 }).then((r) => r.stdout);
@@ -49,6 +53,15 @@ const COMMANDS = {
     options: { workspace: { type: 'string' }, facts: { type: 'string' } },
     run: runVerify,
   },
+  'apply-facts': {
+    usage: 'apply-facts --workspace <dir> [--facts <dir>] --out <dir> [--format text|markdown]',
+    summary:
+      'write a copy of the workspace into --out with the mechanical differences from the extract facts applied (tables, columns, indexes, ' +
+      'constraint-backed relations; new tables in domain Unassigned) and list what is left for /open-erd:sync (renames, notes, relations without a constraint, ' +
+      'anything a reviewed fact uses); never writes the workspace itself',
+    options: { workspace: { type: 'string' }, facts: { type: 'string' }, out: { type: 'string' }, format: { type: 'string' } },
+    run: runApplyFacts,
+  },
   layout: {
     usage: `layout --workspace <dir> [--relayout <view>]... [--relayout '${EVERY_VIEW}']`,
     summary:
@@ -64,11 +77,19 @@ const COMMANDS = {
     run: runRender,
   },
   diff: {
-    usage: `diff --workspace <dir> --from <ref> --to <ref|${WORKTREE}> [--profile <name>]`,
+    usage: `diff --workspace <dir> --from <ref> (--to <ref|${WORKTREE}> | --to-workspace <dir>) [--profile <name>] [--format text|markdown]`,
     summary:
-      `compare two snapshots of the workspace (git refs such as a tag or HEAD; ${WORKTREE} = the files on disk), print the changes, ` +
-      'write out/diff.svg and out/diff.xlsx (the "to" side plus a Changes sheet; out/diff.<profile>.* with a sharing profile, applied to both sides as the "to" side declares it)',
-    options: { workspace: { type: 'string' }, from: { type: 'string' }, to: { type: 'string' }, profile: { type: 'string' } },
+      `compare two snapshots of the workspace (git refs such as a tag or HEAD; ${WORKTREE} = the files on disk; --to-workspace = the files of another ` +
+      'workspace directory, such as the copy apply-facts writes), print the changes (--format markdown: a summary and a table for a pull request comment), ' +
+      'write out/diff.svg and out/diff.xlsx into --workspace (the "to" side plus a Changes sheet; out/diff.<profile>.* with a sharing profile, applied to both sides as the "to" side declares it)',
+    options: {
+      workspace: { type: 'string' },
+      from: { type: 'string' },
+      to: { type: 'string' },
+      'to-workspace': { type: 'string' },
+      profile: { type: 'string' },
+      format: { type: 'string' },
+    },
     run: runDiff,
   },
 };
@@ -234,6 +255,65 @@ async function runVerify({ workspace, facts: factsDir }) {
   return 0;
 }
 
+// Workspace files apply-facts copies as they are, besides open-erd.yaml and
+// the model files: enough for validate, layout, render and diff on the copy.
+const COPIED_FILES = [LAYOUT_FILE, LOCKED_FILE, VERIFICATION_FILE];
+
+function checkFormat(format) {
+  if (format === undefined || FORMATS.includes(format)) return true;
+  console.error(`--format must be one of ${FORMATS.join(', ')}`);
+  return false;
+}
+
+async function runApplyFacts({ workspace, facts: factsDir, out, format = 'text' }) {
+  if (!out) {
+    console.error(`Missing --out\nUsage: open-erd ${COMMANDS['apply-facts'].usage}`);
+    return 1;
+  }
+  if (!checkFormat(format)) return 1;
+  if (resolve(out) === resolve(workspace)) {
+    console.error('--out must be another directory: apply-facts never writes the workspace itself');
+    return 1;
+  }
+  const files = await readWorkspaceFiles(workspace);
+  const { model, errors } = parseWorkspace(files);
+  for (const e of errors) console.error(formatError(e));
+  if (!model) return 1;
+  const factsFiles = await readFactsFiles(factsDir ?? join(workspace, 'extract', 'facts'));
+  if (!factsFiles) return 1;
+  const facts = readFacts(factsFiles);
+  for (const e of facts.errors) console.error(formatError(e));
+  if (facts.errors.length > 0) return 1;
+  const result = applyFacts(files, model, compareFacts(model, facts));
+
+  // The copy must load: a broken copy would make every later step fail
+  // with an error about a file nobody wrote by hand.
+  const copy = { ...files, ...result.files };
+  const check = parseWorkspace(copy);
+  for (const e of check.errors) console.error(`${out}: ${formatError(e)}`);
+  if (!check.model) return 1;
+  await mkdir(join(out, 'model'), { recursive: true });
+  for (const [path, text] of Object.entries(copy)) await writeFile(join(out, path), text);
+  for (const path of COPIED_FILES) {
+    let bytes;
+    try {
+      bytes = await readFile(join(workspace, path));
+    } catch (e) {
+      if (e.code === 'ENOENT') continue;
+      throw e;
+    }
+    await mkdir(dirname(join(out, path)), { recursive: true });
+    await writeFile(join(out, path), bytes);
+  }
+
+  const report = format === 'markdown' ? console.error : console.log;
+  report(`wrote ${out}: ${result.applied.length} change(s) from the extract facts applied, ${result.needsSync.length} left for /open-erd:sync`);
+  for (const d of result.applied) report(`  applied: ${describeDelta(d)}`);
+  if (format === 'markdown') console.log(needsSyncMarkdown(result.needsSync));
+  else for (const n of result.needsSync) console.log(`  needs sync: ${n.path}: ${n.reason}`);
+  return 0;
+}
+
 // Fixed date for a workspace without its own git history (zip's own epoch).
 const NO_HISTORY_DATE = new Date('1980-01-01T00:00:00Z');
 
@@ -366,11 +446,16 @@ async function readSnapshot(workspace, ref) {
   return { model, layout: layoutText === undefined ? undefined : parseLayout(layoutText) };
 }
 
-async function runDiff({ workspace, from, to, profile }) {
-  if (!from || !to) {
+async function runDiff({ workspace, from, to, 'to-workspace': toWorkspace, profile, format = 'text' }) {
+  if (!from || (!to && !toWorkspace)) {
     console.error(`Missing --from or --to\nUsage: open-erd ${COMMANDS.diff.usage}`);
     return 1;
   }
+  if (to && toWorkspace) {
+    console.error('Give one of --to or --to-workspace, not both');
+    return 1;
+  }
+  if (!checkFormat(format)) return 1;
   if (from === WORKTREE) {
     console.error(`--from must be a git ref; ${WORKTREE} is only allowed as --to`);
     return 1;
@@ -380,7 +465,9 @@ async function runDiff({ workspace, from, to, profile }) {
     if (dirty.trim()) console.error(`warning: uncommitted changes in ${workspace} are not part of HEAD; use --to ${WORKTREE} to include them`);
   }
   const before = await readSnapshot(workspace, from);
-  const after = await readSnapshot(workspace, to);
+  // The other directory is read as its files on disk and labelled by its path.
+  const after = toWorkspace ? await readSnapshot(toWorkspace, WORKTREE) : await readSnapshot(workspace, to);
+  const toLabel = toWorkspace ? basename(resolve(toWorkspace)) : to;
   if (!before || !after) return 1;
   // Both sides are filtered by the profile as the newer snapshot declares
   // it: the result is shared today, so today's hidden list applies.
@@ -393,18 +480,24 @@ async function runDiff({ workspace, from, to, profile }) {
   const { layout } = await computeLayout(union, mergeLayouts(before.layout, after.layout));
   // Change colours only on the drawing; the workbook is the "to" side's,
   // with its To review checklist.
-  const svg = renderSvg(union, layout, { diff: { from, to, summary, marks: diffMarks(union, result.changes) }, warnings: [] });
+  const svg = renderSvg(union, layout, { diff: { from, to: toLabel, summary, marks: diffMarks(union, result.changes) }, warnings: [] });
   const workbook = buildWorkbook(toModel, { warnings: warningsFor(missingRelations(after.model), toModel) });
   addChangesSheet(workbook, toModel, result.changes);
-  const xlsx = await serializeWorkbook(workbook, { date: await workspaceDate(workspace, to === WORKTREE ? 'HEAD' : to) });
+  const xlsx = await serializeWorkbook(workbook, { date: toWorkspace ? await workspaceDate(toWorkspace) : await workspaceDate(workspace, to === WORKTREE ? 'HEAD' : to) });
 
   const base = join(workspace, 'out', profile === undefined ? 'diff' : `diff.${profile}`);
   await mkdir(join(workspace, 'out'), { recursive: true });
   await writeFile(`${base}.svg`, svg);
   await writeFile(`${base}.xlsx`, xlsx);
-  console.log(`${from} → ${to}: ${summary}`);
+  const wrote = `wrote ${base}.svg and ${base}.xlsx${profile === undefined ? '' : ` (profile ${profile})`}`;
+  if (format === 'markdown') {
+    console.log(changesMarkdown(result.changes));
+    console.error(wrote);
+    return 0;
+  }
+  console.log(`${from} → ${toLabel}: ${summary}`);
   for (const c of result.changes) console.log(`  ${c.table ?? c.database}: ${describeChange(c)}`);
-  console.log(`wrote ${base}.svg and ${base}.xlsx${profile === undefined ? '' : ` (profile ${profile})`}`);
+  console.log(wrote);
   return 0;
 }
 

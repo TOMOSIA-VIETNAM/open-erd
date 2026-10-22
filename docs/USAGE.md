@@ -66,6 +66,7 @@ After building the model, `init` and `sync` have a second agent, with a fresh co
 | `/open-erd:render` | Re-renders the outputs; `--profile public` drops evidence, PII columns, internal notes and hidden tables for sharing outside the team. |
 | `/open-erd:snapshot` | Tags the workspace (e.g. `v1.0-handover`). |
 | `/open-erd:diff` | Compares two snapshots (or a snapshot and the current state). |
+| `/open-erd:ci-setup` | Writes a GitHub Actions workflow for a source repository (after you agree) that comments the ERD changes on each pull request; see [Pull request preview](#pull-request-preview). |
 | `/open-erd:feedback <text>` | Opens a GitHub issue on this repository with your feedback, after showing you the draft. Never attaches your project's data. |
 
 To change the diagram, just say it: "orders.status: refunded means money
@@ -103,9 +104,53 @@ Choose how much runs with `verify` in `open-erd.yaml`:
 | `full` | yes | every changed fact, also those copied from the code's schema | about 30–50% more tokens per sync |
 | `off` | no | no | none |
 
+## Pull request preview
+
+`/open-erd:ci-setup` sets up a workflow in a source repository so a pull
+request that changes the schema files gets one comment with how the ERD
+would change. No AI runs in CI:
+
+1. The workflow checks out the pull request, the ERD workspace repository
+   and the open-erd engine (pinned to the commit of the plugin you run).
+2. It runs the workspace's extract script on the pull request's code, then
+   `apply-facts` copies the workspace and applies the mechanical changes:
+   tables, columns, indexes and foreign-key (`db_fk`) relations added or
+   removed, column type, nullable, default and similar attributes. New
+   tables go into a domain named `Unassigned`.
+3. `diff` compares the workspace with that copy. The comment shows the
+   summary line, a table of changes, what is left for `/open-erd:sync`
+   (possible renames, the domain and notes of new tables, relation kinds,
+   anything a reviewed fact uses) and a link to `diff.svg` and `diff.xlsx`
+   in the run's artifacts. Every new push updates the same comment.
+
+The workflow only comments: the workspace is not changed. Run
+`/open-erd:sync` after merging as usual.
+
+Paths that trigger it are the files and folders the extract script reads;
+the skill shows them before writing. It writes
+`.github/workflows/open-erd.yml` only after you agree, and never commits it.
+
+Token setup, once per source repository:
+
+- The workspace is its own repository, so the workflow needs to read it:
+  create a fine-grained personal access token (or a GitHub App installed on
+  the workspace repository) limited to that repository, with
+  **Contents: Read-only**. Add it to the source repository as the Actions
+  secret `OPEN_ERD_WORKSPACE_TOKEN` (Settings → Secrets and variables →
+  Actions).
+- Commenting uses the workflow's own `GITHUB_TOKEN`; the workflow asks
+  `pull-requests: write` for it. Pull requests from forks are skipped.
+
+Run the same steps by hand:
+
+```
+node <plugin root>/dist/open-erd.mjs apply-facts --workspace <ws> --facts <facts dir> --out <copy>
+node <plugin root>/dist/open-erd.mjs diff --workspace <ws> --from HEAD --to-workspace <copy> --format markdown
+```
+
 ## Safety
 
-- Nothing is written to your source repositories; extract scripts only read files and never boot your app.
+- Nothing is written to your source repositories (except the workflow file `/open-erd:ci-setup` writes after you agree); extract scripts only read files and never boot your app.
 - Database access happens only when you approve it each time, read-only, metadata only; credentials are never stored.
 - The workspace is never pushed unless you ask.
 
