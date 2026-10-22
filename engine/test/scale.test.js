@@ -28,8 +28,12 @@ async function measure(preset) {
   const t0 = performance.now();
   const { layout } = await computeLayout(model);
   const t1 = performance.now();
+  // CPU time, not wall clock: node --test runs test files in parallel, and a
+  // busy machine would otherwise make this budget fail at random.
+  const cpu0 = process.cpuUsage();
   const svg = renderSvg(model, layout);
-  const t2 = performance.now();
+  const cpu = process.cpuUsage(cpu0);
+  const t2 = t1 + (cpu.user + cpu.system) / 1000;
   const xlsx = await serializeWorkbook(buildWorkbook(model), { date: new Date('1980-01-01T00:00:00Z') });
   const result = { model, layout, svg, layoutMs: t1 - t0, renderMs: t2 - t1, svgBytes: Buffer.byteLength(svg), xlsxBytes: xlsx.length };
   console.log(
