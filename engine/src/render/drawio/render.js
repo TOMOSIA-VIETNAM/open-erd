@@ -1,5 +1,5 @@
 import { clusterLabel, engineName } from '../../layout/clusters.js';
-import { VIEW_SOURCE, buildDiagram, keyColumns } from '../../layout/diagram.js';
+import { VIEW_SOURCE, buildDiagram, keyColumns, polyNodeId } from '../../layout/diagram.js';
 import { EMBED_INSET, HEADER_HEIGHT, HINT_OFFSET, ICON_GUTTER, PADDING_X, ROW_HEIGHT } from '../../layout/table-box.js';
 import { ALL_VIEW, DOMAIN_VIEW_PREFIX, OVERVIEW, hasAllView, viewNames } from '../../layout/views.js';
 import { STRENGTH_SEGMENTS } from '../../layout/domains.js';
@@ -164,14 +164,20 @@ function columnData(path, c, references) {
 // Relations by table, as text: `column` what each column references, by
 // `<table id>|<column path>` (the other end of every relation it starts, the
 // targets of a polymorphic id column); `out` and `in` one line per relation
-// a table starts or receives, for its note.
+// a table starts or receives, for its note. `target`: the node a click on a
+// referencing column goes to, by the same key: the referenced table (the
+// first relation's, for a column in several), or the polymorphic node.
 function relationsOf(model) {
   const column = new Map();
+  const target = new Map();
   const out = new Map();
   const into = new Map();
   const add = (map, key, text) => map.set(key, [...(map.get(key) ?? []), text]);
   for (const r of model.relations) {
-    r.from.columns.forEach((c, i) => add(column, `${r.from.table}|${c}`, `${r.to.table}.${r.to.columns[i]}`));
+    r.from.columns.forEach((c, i) => {
+      add(column, `${r.from.table}|${c}`, `${r.to.table}.${r.to.columns[i]}`);
+      if (!target.has(`${r.from.table}|${c}`)) target.set(`${r.from.table}|${c}`, r.to.table);
+    });
     add(out, r.from.table, `${r.from.columns.join(', ')} → ${r.to.table}.${r.to.columns.join(', ')}`);
     add(into, r.to.table, `${r.from.table}.${r.from.columns.join(', ')} → ${r.to.columns.join(', ')}`);
   }
@@ -181,8 +187,9 @@ function relationsOf(model) {
       add(into, target, `${a.table}.${a.id_column} (polymorphic «${a.name}»)`);
     }
     add(out, a.table, `${a.id_column} → ${a.targets.join(', ')} (polymorphic «${a.name}»)`);
+    target.set(`${a.table}|${a.id_column}`, polyNodeId(a));
   }
-  return { column, out, in: into };
+  return { column, out, in: into, target };
 }
 
 // Marks before a column name in a table's note: text in the colour of the
@@ -353,6 +360,7 @@ function tableCells({ id, parent, x, y, w, title, header, stroke, strokeWidth, d
         // the next click the text under the mouse, so this is the cell a
         // reader has selected when opening Edit Data.
         data: r.data,
+        link: r.link,
         parent: rowId,
         geometry: box(0, 0, w, ROW_HEIGHT),
         styles: { ...CELL_STYLE, ...r.style },
@@ -390,6 +398,7 @@ function tableNode(n, parent, x, y, ctx) {
       id: rowId(t.id, row.column),
       label: rowHtml(row, n.w - 2 * pad(row.depth)),
       data: columnData(row.column, column, ctx.relations.column.get(`${t.id}|${row.column}`)),
+      link: ctx.jumpTo(ctx.relations.target.get(`${t.id}|${row.column}`)),
       fill: row.depth > 0 ? insetFill : undefined,
       style: inset(row.depth),
     };
@@ -636,8 +645,22 @@ function hiddenLayers(scene, byId, heights, origin) {
   return [...layer(HUB_LAYER, hub), ...layer(POLY_LAYER, poly)];
 }
 
-function pageXml(scene, ctx) {
+// draw.io link that runs actions on this page (see Graph.handleCustomLink):
+// select, scroll to and flash the cell with id `cell`. The JSON follows the
+// prefix as is; draw.io parses it without decoding.
+const jumpLink = (cell) =>
+  `data:action/json,${JSON.stringify({ actions: [{ select: { cells: [cell] } }, { scroll: { cells: [cell] } }, { highlight: { cells: [cell], color: '#2563eb' } }] })}`;
+
+function pageXml(scene, pageCtx) {
   const origin = { x: scene.bounds.x, y: scene.bounds.y };
+  // Where a referenced table is on this page: its own box (a table, or the
+  // stub of a table of another domain), else the group stub holding it.
+  const onPage = new Map();
+  for (const n of scene.nodes) {
+    if (n.kind === 'group') for (const t of n.group.tables) onPage.set(t, nodeId(n.id));
+  }
+  for (const n of scene.nodes) onPage.set(n.id, nodeId(n.id));
+  const ctx = { ...pageCtx, jumpTo: (target) => (target === undefined || !onPage.has(target) ? undefined : jumpLink(onPage.get(target))) };
   // Each cell sits inside the innermost frame around it (database, then
   // domain), with coordinates relative to that frame, so a frame dragged in
   // draw.io carries its tables along.
