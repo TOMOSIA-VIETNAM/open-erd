@@ -816,6 +816,9 @@ svg.addEventListener(
     // cmd with a mouse wheel zooms too. Anything else scrolls the drawing,
     // as two-finger scrolling does everywhere on a Mac.
     if (e.ctrlKey || e.metaKey) {
+      // Some Safari versions send ctrl+wheel alongside the gesture events of
+      // the same pinch; the gesture handlers already zoom, so skip these.
+      if (inGesture) return;
       const delta = Math.max(-ZOOM_MAX_PIXELS, Math.min(ZOOM_MAX_PIXELS, e.deltaY * unit));
       zoomAt(e.clientX, e.clientY, Math.exp(-delta * ZOOM_PER_PIXEL));
     } else {
@@ -825,12 +828,16 @@ svg.addEventListener(
   { passive: false },
 );
 
-// Safari reports a trackpad pinch as gesture events with a cumulative scale
-// instead of ctrl+wheel.
+// Safari reports a trackpad pinch as gesture events with a cumulative scale.
 let gestureScale = 1;
+let inGesture = false;
 svg.addEventListener('gesturestart', (e) => {
   e.preventDefault();
   gestureScale = 1;
+  inGesture = true;
+});
+svg.addEventListener('gestureend', () => {
+  inGesture = false;
 });
 svg.addEventListener('gesturechange', (e) => {
   e.preventDefault();
