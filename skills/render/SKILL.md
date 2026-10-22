@@ -1,6 +1,6 @@
 ---
 name: render
-description: Regenerate the ERD outputs (out/erd.svg, out/erd.xlsx) of an open-erd workspace from its model, without re-reading source code. Optional sharing profile such as public, which drops evidence, PII columns and hidden tables. Use when the user wants to re-export, rebuild or share the ERD files, or after editing the model or layout by hand.
+description: Regenerate the ERD outputs (out/erd.svg, out/erd.xlsx, out/erd.drawio) of an open-erd workspace from its model, without re-reading source code. Optional sharing profile such as public, which drops evidence, PII columns and hidden tables. Use when the user wants to re-export, rebuild or share the ERD files, or after editing the model or layout by hand.
 ---
 
 # render

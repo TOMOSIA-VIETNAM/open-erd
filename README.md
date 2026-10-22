@@ -15,8 +15,9 @@ files.
 
 | File | What it is |
 |---|---|
-| `out/erd.svg` | One self-contained file. Overview (database → domain), domain views, neighborhood of a table. Click a table to highlight its links, click a line to animate it, search tables/columns, hover a column for type/enum meanings/notes, Business/Technical mode. Without JavaScript it still shows the static overview. |
-| `out/erd.xlsx` | Overview sheet first (one row per table), then one sheet per table with its column grid (`# · Name · Type · Nullable · Default · Generated · Expression · Primary Key · Auto Inc · Comment`), then Relations, Polymorphic and a "To review" checklist, cross-linked. |
+| `out/erd.svg` | One self-contained file. Overview (database → domain), domain views, neighborhood of a table. Click a table to highlight its links, click a line to animate it, search tables/columns, hover a column for type/enum meanings/notes, Business/Technical mode. **Join path**: pick two tables and get up to three ways to join them, each hop's condition (`orders.user_id = users.id`) with warnings (unconfirmed, cross-DB, polymorphic type filter, row multiplication), lit hop by hop on the diagram, copyable as text (no SQL is generated). **Download** the view on screen as a static SVG, PNG or JPEG. Columns that look like a missing relation carry an amber mark. Without JavaScript it still shows a static view (the overview, or `default_view` from `open-erd.yaml`). |
+| `out/erd.xlsx` | Overview sheet first (one row per table), then one sheet per table with its column grid (`# · Name · Type · Nullable · Default · Generated · Expression · Primary Key · Auto Inc · Comment`), then Relations, Polymorphic and a "To review" checklist (pending and stale facts, then possibly missing relations), cross-linked. |
+| `out/erd.drawio` | Every view as one draw.io page: tables as draw.io table shapes (one row per column, notes and enum meanings in tooltips), relations as crow's foot connectors attached to the column rows, so tables can be dragged and edited in draw.io. Turn off with `outputs: { drawio: false }` in `open-erd.yaml`. |
 | `out/diff.svg`, `out/diff.xlsx` | What changed between two snapshots, colored on the diagram and written as plain sentences, plus a Changes sheet. |
 
 ![Diff panel for a changed table](docs/images/diff.png)
@@ -45,6 +46,8 @@ Requires Claude Code and Node.js 20 or later.
 |---|---|
 | `/open-erd:init` | Asks where to put the ERD workspace (outside your code repo, its own git repo), writes a read-only extract script per source repo and runs it after you approve, proposes domains, draws the first ERD. |
 | `/open-erd:sync` | Re-reads the code, updates the model, asks you to confirm renames, marks facts that no longer match as `stale` instead of deleting them, commits. |
+
+After building the model, `init` and `sync` have a second agent, with a fresh context, re-read the code for relations the model missed, starting from the warnings of `validate` (a `*_id` column nothing uses, a table nothing connects to). What it finds is added as `pending` for you to review; columns that are not references go into `ignore_missing` in `open-erd.yaml`.
 | `/open-erd:review` | Walks through inferred and stale relations one by one; you confirm or correct in plain words. Reviewed facts are locked. |
 | `/open-erd:render` | Re-renders the outputs; `--profile public` drops evidence, PII columns, internal notes and hidden tables for sharing outside the team. |
 | `/open-erd:snapshot` | Tags the workspace (e.g. `v1.0-handover`). |

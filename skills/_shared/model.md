@@ -31,9 +31,16 @@ hub:                         # cross-cutting references, drawn as badges instead
   columns: [created_by, updated_by, tenant_id]
   tables: [billing.public.users]
 collapse_join_tables: false  # true draws a pure join table as one n-n line
+outputs: { drawio: true }    # default true: render also writes out/erd.drawio (one page per view)
 hidden:                      # left out of every profile render
   tables: [billing.public.audit_logs]
   columns: [billing.public.users.password_digest]   # embedded: <table id>.<entity>.<column> or <table id>.<entity>
+ignore_missing:              # possibly missing relations `validate` stops reporting
+  columns:
+    - billing.public.payments.stripe_charge_id   # not a FK: Stripe charge id
+  tables:
+    - billing.public.settings                    # standalone key/value store
+default_view: overview       # overview | all | domain:<db>/<domain>; the view the SVG opens on
 profiles:                    # render --profile <name> writes out/erd.<name>.svg
   partner:                   # name: letters, digits, - and _
     drop_evidence: false     # default true
@@ -46,6 +53,22 @@ Only `schema_version` is required. Profile `public` exists without being
 declared (all defaults). A profile render filters the model first, then draws
 it at the positions of the full layout: hidden tables leave gaps, nothing
 moves. Run `layout` before a profile render as for a normal one.
+
+`validate` warns (exit code stays 0) about possibly missing relations: a
+column of a table named like a reference (`*_id`, `*Id`, `*_ids`) that no
+relation, hub or polymorphic entry uses (with a `*_type` column beside it:
+"looks like a polymorphic association"), and a table that no relation,
+polymorphic entry or view source touches. The same warnings show in the
+SVG (amber triangle on the column) and in the To review sheet. When a
+warned column is not a reference (external provider id, a value from a
+static file) or a table stands alone on purpose, add it to
+`ignore_missing` with the reason as a YAML comment on the same line.
+`ignore_missing.columns` silences column warnings only,
+`ignore_missing.tables` only the "nothing connects this table" warning.
+
+`default_view` falls back to the overview, with a warning from `render`, when
+the render has no such view (the view of all tables is left out above 300
+tables; a profile may hide a whole domain).
 
 A hub is only for references that cut across every domain: audit columns
 (`created_by`, `updated_by`), tenant or company scoping (`tenant_id`,

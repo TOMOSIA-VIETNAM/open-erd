@@ -38,8 +38,8 @@ Exit code 0 = success. Non-zero: show the engine's message, fix the cause in
 the workspace (never in the engine), run again. An option the engine
 rejects: tell the user this engine build does not support it and stop that
 step. `render` never writes `layout.json`; a render error about missing or
-stale positions means run `layout` first. `render` writes `out/erd.svg` and
-`out/erd.xlsx` (`out/erd.<profile>.*` with `--profile`). `diff` writes
+stale positions means run `layout` first. `render` writes `out/erd.svg`,
+`out/erd.xlsx` and `out/erd.drawio` (unless `outputs.drawio: false`) (`out/erd.<profile>.*` with `--profile`). `diff` writes
 `out/diff.svg` and `out/diff.xlsx` (`out/diff.<profile>.*` with `--profile`)
 and never writes `layout.json` either.
 
@@ -107,6 +107,40 @@ For each source, record its revision:
 git -C <source path> rev-parse HEAD           # "not a git repo" if this fails
 git -C <source path> status --porcelain | head -1   # non-empty -> append "+dirty"
 ```
+
+## Missing-relation review
+
+`init` and `sync` run this after the model passes `validate`, before
+`layout`. Its goal: relations the model left out, found by a second reader
+who did not write the model.
+
+1. Collect the `warning: possibly missing relation: ...` lines `validate`
+   printed (may be none).
+2. Start one reviewer subagent with a fresh context (Claude Code `Agent`
+   tool, general-purpose; not a fork of this conversation). Give it only:
+   the source names and paths from `open-erd.local.yaml`, the workspace path,
+   the absolute `<plugin root>`, the warning lines verbatim, and this task:
+   - Read `<ws>/model/*.yaml` and `<plugin root>/skills/_shared/model.md`
+     ("Writing facts").
+   - For each warning, read the code that writes or reads that column or
+     table, and decide: a relation (or polymorphic association) the model
+     misses, or not a reference.
+   - Then scan the sources on its own for associations, joins, lookups by
+     id and foreign keys the model does not have (ORM associations, raw SQL
+     `JOIN`, `where(x_id: ...)`, `findBy...Id`, cross-service id fields).
+   - Read only; write nothing; run no app.
+   - Return two lists, every item with `evidence` as
+     `<source>:<path>#<symbol>` and a one-line `why`:
+     `proposals` (from table + columns, to table + columns, cardinality,
+     optional, kind, or a polymorphic entry) and `not_references`
+     (`<table id>.<column>` or `<table id>`).
+3. Check each item against the code it cites (open the file, find the
+   symbol). Drop what you cannot confirm.
+4. Add each confirmed proposal to the model with its evidence and
+   `review: pending`, never `reviewed`. Add each confirmed non-reference to
+   `ignore_missing` in `open-erd.yaml` with the reason as a YAML comment.
+5. Run `validate` again. Tell the user how many relations were added from
+   the review and which warnings remain.
 
 ## Last line of init, sync, review, render, diff
 

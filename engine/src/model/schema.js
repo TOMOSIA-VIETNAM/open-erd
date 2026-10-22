@@ -36,6 +36,9 @@ export const PARTITION_METHODS = ['range', 'list', 'hash'];
 // untranslated text (often an internal DB comment).
 export const NOTE_FIELDS = ['note', 'note_source', 'internal_note'];
 export const PROFILE_NAME = /^[A-Za-z0-9_-]+$/;
+// Name of the view of one domain: domain:<db>/<domain>.
+export const DOMAIN_VIEW_PREFIX = 'domain:';
+export const DEFAULT_VIEW_PATTERN = new RegExp(`^(overview|all|${DOMAIN_VIEW_PREFIX}[^/\\s]+/.+)$`);
 
 // Older files must go through a migration before the engine reads them.
 const schemaVersion = { type: 'integer', oneOf: [SCHEMA_VERSION], required: true };
@@ -277,8 +280,26 @@ export const configSchema = {
     // timestamp columns) as one n-n line between the tables it joins.
     // Off by default: the join table often matters to readers.
     collapse_join_tables: { type: 'boolean' },
+    // Extra files `render` writes next to erd.svg and erd.xlsx; a field
+    // left out takes its value from OUTPUT_DEFAULTS.
+    outputs: {
+      type: 'object',
+      fields: {
+        // out/erd.drawio: one draw.io page per view, editable in draw.io.
+        drawio: { type: 'boolean' },
+      },
+    },
     // Left out of every profile render.
     hidden: hideSpec,
+    // Possibly missing relations `validate` should stop reporting: columns
+    // named like a reference that are none (an external provider id), and
+    // tables that stand alone on purpose. Same shape as `hidden`.
+    ignore_missing: hideSpec,
+    // View the file opens on, also the one drawn without script:
+    // overview | all | domain:<db>/<domain>. A view the render does not
+    // have (the view of all tables of a very large schema, a domain a
+    // profile hides) falls back to the overview with a warning.
+    default_view: { type: 'string', pattern: DEFAULT_VIEW_PATTERN, hint: 'overview, all or domain:<db>/<domain>' },
     // Sharing profiles by name, used by `render --profile <name>`. Fields left
     // out take their value from PROFILE_DEFAULTS; `public` exists even when
     // not declared here.
@@ -296,6 +317,9 @@ export const configSchema = {
  * sharing outside the team, so the defaults are the safe ones; a profile
  * that wants evidence or PII kept says so explicitly.
  */
+/** Output files written when `outputs` in open-erd.yaml does not say otherwise. */
+export const OUTPUT_DEFAULTS = { drawio: true };
+
 export const PROFILE_DEFAULTS = {
   drop_evidence: true,
   drop_pii: true,

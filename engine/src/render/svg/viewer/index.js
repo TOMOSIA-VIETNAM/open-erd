@@ -3,6 +3,8 @@
 // into an explorable diagram. Everything it adds is created here at runtime,
 // so a viewer without script still shows the plain overview.
 import { endMarkers, markerSvg } from '../markers.js';
+import { CANVAS_LIMITS, PIXEL_RATIO, canvasScale, exportBaseName } from './download.js';
+import { conditionsText, findJoinPaths, hopCondition, pathNames } from './join-path.js';
 import { endTransforms, radialLayout, straightLink } from './radial.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -11,6 +13,8 @@ const OVERVIEW = 'overview';
 const ALL_VIEW = 'all';
 const DOMAIN_PREFIX = 'domain:';
 const NEIGHBORHOOD = 'neighborhood';
+// View the viewer builds for a join path no drawn view holds.
+const JOIN_VIEW = 'join-path';
 const TOOLBAR_HEIGHT = 44;
 // Wide enough for a table's column grid.
 const PANEL_WIDTH = 440;
@@ -148,7 +152,7 @@ function overlay(cls) {
   return { fo, div };
 }
 
-const state = { view: OVERVIEW, hops: 1, center: null, history: [], cam: { x: 0, y: 0, s: 1 } };
+const state = { view: OVERVIEW, hops: 1, center: null, joinPath: null, history: [], cam: { x: 0, y: 0, s: 1 } };
 
 // ---------------------------------------------------------------- camera
 
@@ -213,7 +217,7 @@ function showView(name) {
 }
 
 function snapshot() {
-  return { view: state.view, center: state.center, hops: state.hops };
+  return { view: state.view, center: state.center, hops: state.hops, joinPath: state.joinPath };
 }
 
 /** Switches view, remembering where we came from; then focuses `focus`. */
@@ -229,6 +233,7 @@ function back() {
   const prev = state.history.pop();
   if (!prev) return;
   if (prev.view === NEIGHBORHOOD) buildNeighborhood(prev.center, prev.hops);
+  if (prev.view === JOIN_VIEW) buildJoinView(prev.joinPath);
   showView(prev.view);
 }
 
@@ -339,6 +344,7 @@ function headerClick(e) {
 // ---------------------------------------------------------------- selection
 
 function clearSelection() {
+  stopFlows();
   for (const v of views.values()) {
     v.classList.remove('dimmed', 'center-selected');
     for (const e of v.querySelectorAll('.hl, .selected, .flow-target, .flowing, .hl-column')) {
@@ -475,6 +481,25 @@ function rings(center, hops) {
   return result;
 }
 
+const linePath = (points) => points.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x} ${y}`).join('');
+
+/**
+ * A straight line between the boxes of `from` and `to` (in `boxes`), with
+ * the crow's feet of its cardinality as in the drawn views (a view's line to
+ * its source has none), for the views the viewer builds itself.
+ */
+function straightRelation(l, from, to, boxes, extraClass = '') {
+  const points = straightLink(boxes.get(from), boxes.get(to));
+  const d = linePath(points);
+  const children = [svgEl('path', { class: 'relation-hit', d }), svgEl('path', { class: 'relation', d })];
+  if (l.cardinality) {
+    const kinds = endMarkers(l);
+    const [at, back] = endTransforms(points);
+    children.push(svgEl('g', { class: 'marker' }, [markerGroup(kinds.from, at), markerGroup(kinds.to, back)]));
+  }
+  return svgEl('g', { class: `relation-group kind-${l.kind} review-${l.review}${extraClass}`, 'data-id': l.id, 'data-from': from, 'data-to': to }, children);
+}
+
 /**
  * (Re)builds the neighborhood view around `center` from copies of the boxes
  * drawn in the full view, placed by radialLayout with straight lines.
@@ -505,21 +530,7 @@ function buildNeighborhood(center, hops) {
   }
   const relations = svgEl('g', { class: 'relations' });
   const ends = (a, b) => straightLink(boxes.get(a), boxes.get(b));
-  const line = (points) => `M${points[0][0]} ${points[0][1]}L${points[1][0]} ${points[1][1]}`;
-  // One line with the crow's feet of its cardinality, as in the drawn views
-  // (a view's line to its source has none).
-  const relationLine = (l, from, to) => {
-    const points = ends(from, to);
-    const d = line(points);
-    const children = [svgEl('path', { class: 'relation-hit', d }), svgEl('path', { class: 'relation', d })];
-    if (l.cardinality) {
-      const kinds = endMarkers(l);
-      const [at, back] = endTransforms(points);
-      children.push(svgEl('g', { class: 'marker' }, [markerGroup(kinds.from, at), markerGroup(kinds.to, back)]));
-    }
-    const hop2 = outer.has(from) || outer.has(to) ? ' hop-2' : '';
-    return svgEl('g', { class: `relation-group kind-${l.kind} review-${l.review}${hop2}`, 'data-id': l.id, 'data-from': from, 'data-to': to }, children);
-  };
+  const relationLine = (l, from, to) => straightRelation(l, from, to, boxes, outer.has(from) || outer.has(to) ? ' hop-2' : '');
   for (const l of data.links) {
     if (l.from === l.to || !shown.has(l.from) || !shown.has(l.to)) continue;
     relations.append(relationLine(l, l.from, l.to));
@@ -540,7 +551,7 @@ function buildNeighborhood(center, hops) {
       svgEl(
         'g',
         { class: 'poly-routes', 'data-poly': id, style: 'display:none' },
-        targets.map((t) => svgEl('path', { class: 'poly-route', 'data-target': t, d: line(ends(id, t)) })),
+        targets.map((t) => svgEl('path', { class: 'poly-route', 'data-target': t, d: linePath(ends(id, t)) })),
       ),
     );
   }
@@ -598,6 +609,7 @@ const foldButtons = [
   ['Expand all', false],
 ].map(([text, fold]) => el('button', { class: 'oe-btn', text, title: `${fold ? 'Fold' : 'Unfold'} every domain in this view; a click on a domain's header folds just that one`, on: { click: () => setCollapsed(state.view, clusterGroups(currentView()).map(keyOf), fold) } }));
 const foldGroup = el('div', { class: 'oe-seg' }, foldButtons);
+const joinButton = el('button', { class: 'oe-btn', text: 'Join path', title: 'How to join two tables: the condition of each hop', on: { click: () => (join.open ? clearSelection() : openJoin()) } });
 const legendButton = el('button', { class: 'oe-btn', text: 'Legend', title: 'What the line ends, line styles and marks mean', on: { click: () => setLegend(!legendOpen) } });
 if (!views.has(ALL_VIEW)) allButton.style.display = 'none';
 const searchInput = el('input', { type: 'search', placeholder: 'Search tables and columns', 'aria-label': 'Search tables and columns' });
@@ -605,15 +617,29 @@ const results = el('div', { class: 'oe-results', style: 'display:none' });
 const modeButtons = ['Business', 'Technical'].map((label) =>
   el('button', { class: 'oe-btn', text: label, on: { click: () => setBusiness(label === 'Business') } }),
 );
+const downloadButton = el('button', { class: 'oe-btn', text: 'Download ▾', title: 'Save the view on screen as a file', on: { click: () => setMenu(menu.style.display === 'none') } });
+const keepHighlight = el('input', { type: 'checkbox' });
+const downloadStatus = el('div', { class: 'oe-status' });
+const menu = el('div', { class: 'oe-menu', style: 'display:none' }, [
+  ...[
+    ['This view as SVG', 'svg', 'Vector drawing of this view only, without the interactive viewer'],
+    ['This view as PNG', 'png', 'Image at twice the screen resolution, transparent outside the drawing'],
+    ['This view as JPEG', 'jpg', 'Smaller image on a white background'],
+  ].map(([text, format, title]) => el('button', { class: 'oe-result', text, title, on: { click: () => download(format) } })),
+  el('label', { class: 'oe-check' }, [keepHighlight, el('span', { text: 'Keep highlight and selection' })]),
+  downloadStatus,
+]);
 toolbar.div.append(
   backButton,
   crumbs,
   hopGroup,
   foldGroup,
+  joinButton,
   legendButton,
   allButton,
   el('div', { class: 'oe-search' }, [searchInput, results]),
   el('div', { class: 'oe-seg' }, modeButtons),
+  el('div', { class: 'oe-download' }, [downloadButton, menu]),
 );
 
 function setBusiness(on) {
@@ -645,6 +671,7 @@ function renderToolbar() {
     );
   }
   if (state.view === NEIGHBORHOOD) parts.push(crumb(`Tables related to ${short(state.center)}`));
+  if (state.view === JOIN_VIEW) parts.push(crumb(`Join path: ${short(state.joinPath.nodes[0])} → ${short(state.joinPath.nodes.at(-1))}`));
   crumbs.replaceChildren(...parts.flatMap((p, i) => (i === 0 ? [p] : [el('span', { class: 'sep', text: '›' }), p])));
   backButton.disabled = state.history.length === 0;
   hopGroup.style.display = state.view === NEIGHBORHOOD ? '' : 'none';
@@ -660,6 +687,103 @@ function showDatabase(db) {
   for (const g of views.get(OVERVIEW).querySelectorAll('.database')) {
     if (g.getAttribute('data-database') === db) zoomToRect(boxOf(g), MAX_FIT_SCALE);
   }
+}
+
+// ---------------------------------------------------------------- download
+
+function setMenu(open) {
+  if (open) closeResults();
+  menu.style.display = open ? '' : 'none';
+  if (!open) downloadStatus.textContent = '';
+  downloadButton.classList.toggle('on', open);
+  layoutOverlays();
+}
+
+const HIGHLIGHT_CLASSES = ['hl', 'selected', 'flow-target', 'flowing', 'hl-column', 'dimmed', 'center-selected'];
+const isHidden = (e) => e.classList.contains('oe-hidden') || /display:\s*none/.test(e.getAttribute('style') ?? '');
+
+/**
+ * The view on screen as a standalone static SVG: that view only, in its own
+ * coordinates, with the stylesheet (and so the embedded font) but no viewer
+ * script, no data and no overlays. Folded domains stay folded; the
+ * highlight and selection are kept only when asked.
+ */
+function viewAsSvg(keep) {
+  const { x, y, w, h } = viewBounds(state.view);
+  const view = currentView().cloneNode(true);
+  view.removeAttribute('style');
+  if (!keep) {
+    for (const e of [view, ...view.querySelectorAll('*')]) e.classList.remove(...HIGHLIGHT_CLASSES);
+    for (const e of view.querySelectorAll('.flow')) e.remove();
+    for (const e of view.querySelectorAll('.poly-routes, .hub-routes')) e.style.display = 'none';
+  }
+  for (const e of [...view.querySelectorAll('*')].filter(isHidden)) e.remove();
+  for (const e of view.querySelectorAll('.relation-hit')) e.remove();
+  const root = svgEl('svg', { width: w, height: h, viewBox: `${x} ${y} ${w} ${h}` }, [svg.querySelector('style').cloneNode(true), view]);
+  // Business mode and diff colours are classes on the root.
+  const cls = ['business', 'diff-mode'].filter((c) => svg.classList.contains(c));
+  if (cls.length > 0) root.setAttribute('class', cls.join(' '));
+  return { text: `<?xml version="1.0" encoding="UTF-8"?>\n${new XMLSerializer().serializeToString(root)}\n`, w, h };
+}
+
+function saveBlob(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const a = el('a', { href: url, download: name });
+  toolbar.div.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
+// Safari's canvas allows far fewer pixels than Chrome's; only WebKit has GestureEvent.
+const canvasLimits = () => ('GestureEvent' in window ? CANVAS_LIMITS.webkit : CANVAS_LIMITS.other);
+
+/** Draws the static SVG on a canvas and encodes it; resolves to { blob, size }. */
+async function rasterize({ text, w, h }, type) {
+  const size = canvasScale(w, h, canvasLimits());
+  const url = URL.createObjectURL(new Blob([text], { type: 'image/svg+xml' }));
+  try {
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    const canvas = el('canvas', { width: size.width, height: size.height });
+    const ctx = canvas.getContext('2d');
+    // JPEG has no transparency: without a fill the empty parts turn black.
+    if (type === 'image/jpeg') {
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, size.width, size.height);
+    }
+    ctx.drawImage(img, 0, 0, size.width, size.height);
+    const blob = await new Promise((done) => canvas.toBlob(done, type, 0.92));
+    if (!blob) throw new Error(`the browser could not encode a ${size.width} × ${size.height} px image`);
+    return { blob, size };
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+async function download(format) {
+  const join = state.view === JOIN_VIEW ? `${short(state.joinPath.nodes[0])}-to-${short(state.joinPath.nodes.at(-1))}` : state.center;
+  const name = `${exportBaseName(data.project, state.view, join)}.${format}`;
+  const svgFile = viewAsSvg(keepHighlight.checked);
+  if (format === 'svg') {
+    saveBlob(new Blob([svgFile.text], { type: 'image/svg+xml' }), name);
+    downloadStatus.textContent = `Saved ${name}`;
+    return layoutOverlays();
+  }
+  downloadStatus.textContent = `Drawing ${name}…`;
+  layoutOverlays();
+  try {
+    const { blob, size } = await rasterize(svgFile, format === 'png' ? 'image/png' : 'image/jpeg');
+    saveBlob(blob, name);
+    const px = `${size.width} × ${size.height} px`;
+    downloadStatus.textContent = size.downscaled
+      ? `Saved ${name} (${px}), downscaled to ${Math.round((size.scale / PIXEL_RATIO) * 100)}% of the usual size to stay within this browser's image size limit. Download the SVG for full detail.`
+      : `Saved ${name} (${px})`;
+  } catch (e) {
+    downloadStatus.textContent = `Could not save ${name}: ${e.message}`;
+  }
+  layoutOverlays();
 }
 
 // ---------------------------------------------------------------- search
@@ -710,6 +834,7 @@ function renderResults() {
     ]),
   );
   results.replaceChildren(...(resultItems.length > 0 ? resultItems : [el('div', { class: 'oe-result', text: 'No match' })]));
+  setMenu(false);
   results.style.display = '';
   resultHits = hits;
   layoutOverlays();
@@ -735,6 +860,8 @@ panel.fo.style.display = 'none';
 
 function hidePanel() {
   panel.fo.style.display = 'none';
+  join.open = false;
+  joinButton.classList.remove('on');
 }
 
 function showPanel(children) {
@@ -772,8 +899,11 @@ function columnChips(c) {
   ].filter(([text]) => text);
   return el('div', { class: 'oe-chips' }, chips.map(([text, extra]) => el('span', { class: `chip${extra ? ` ${extra}` : ''}`, text })));
 }
+// A possibly missing relation found by `validate`, for a column or a table.
+const MISSING = 'Possibly missing relation';
+const warningLine = (text) => (text ? el('div', { class: 'oe-warn', text: `${MISSING}: ${text}` }) : null);
 // A generated column's expression, then the notes.
-const columnText = (c) => [c.generated === undefined ? null : el('div', { class: 'muted', text: `generated as ${c.generated}` }), ...noteLines(c)];
+const columnText = (c) => [c.generated === undefined ? null : el('div', { class: 'muted', text: `generated as ${c.generated}` }), ...noteLines(c), warningLine(c.warning)];
 // Enum values as value | meaning; a value whose meaning only restated it has none.
 const enumTable = (values) =>
   el('table', { class: 'oe-enum' }, values.map(([v, meaning]) => el('tr', {}, [el('td', { class: 'value', text: v }), el('td', { text: meaning })])));
@@ -797,9 +927,9 @@ function columnGrid(n, open) {
     ]);
     const comment = [c.note, c.internalNote && `Internal: ${c.internalNote}`].filter(Boolean).join(' · ');
     const details = values.length > 0 ? el('details', c.name === open ? { open: '' } : {}, [el('summary', { text: plural(values.length, 'value') }), enumTable(values)]) : null;
-    if (!comment && !details) return [row];
+    if (!comment && !details && !c.warning) return [row];
     const cls = `more${c.name === open ? ' open' : ''}`;
-    return [row, el('tr', { class: cls }, [el('td', {}), el('td', { colspan: '5' }, [comment ? el('div', { class: 'comment', text: comment }) : null, details])])];
+    return [row, el('tr', { class: cls }, [el('td', {}), el('td', { colspan: '5' }, [comment ? el('div', { class: 'comment', text: comment }) : null, warningLine(c.warning), details])])];
   });
   return el('div', { class: 'oe-grid-wrap' }, [el('table', { class: 'oe-grid' }, [head, ...rows])]);
 }
@@ -814,9 +944,11 @@ function nodePanel(id, column = null) {
     el('div', { class: 'sub', text: `${id} · ${n.cluster.split('/').slice(1).join('/')}${n.tableKind ? ` · ${n.tableKind.replace('_', ' ')}` : ''}` }),
     changeList('nodes', id),
     ...noteLines(n),
+    warningLine(n.warning),
     n.facts ? el('ul', {}, n.facts.map((f) => el('li', { text: f }))) : null,
     n.sources ? el('p', {}, [el('span', { text: 'Reads from ' }), ...n.sources.flatMap((t, i) => [i > 0 ? el('span', { text: ', ' }) : null, link(short(t), () => goToNode(t))])]) : null,
     relatedRow(id),
+    el('div', { class: 'row' }, [el('button', { class: 'oe-btn', text: 'Find join path from here', on: { click: () => openJoin(id) } })]),
     el('div', { class: 'sub', text: plural(n.columns.length, 'column') }),
     columnGrid(n, column),
     // Hub relations count too: a table whose only link is a badge is not unrelated.
@@ -930,6 +1062,307 @@ function changeList(kind, id) {
   ]);
 }
 
+// ---------------------------------------------------------------- join path
+
+// Pick two tables, see up to three ways to join them: each hop's condition
+// (`a.x_id = b.id`), what to watch out for, and the path lit up on the
+// diagram, hop after hop. Conditions only; the viewer never writes SQL.
+const join = { open: false, from: null, to: null, paths: [], index: 0 };
+const JOIN_STEP_MS = 450;
+const JOIN_PICKS = 8;
+// Below this scale a path drawn across a large view is too small to read.
+const JOIN_MIN_SCALE = 0.45;
+let flowTimers = [];
+
+function stopFlows() {
+  for (const t of flowTimers) clearTimeout(t);
+  flowTimers = [];
+}
+
+function openJoin(from = null) {
+  join.from = data.nodes[from]?.kind === 'table' ? from : null;
+  join.to = null;
+  join.paths = [];
+  showJoin();
+}
+
+function showJoin() {
+  showPanel(joinPanel());
+  join.open = true;
+  joinButton.classList.add('on');
+  panel.div.querySelector('.oe-join-field input')?.focus();
+}
+
+function setJoinEnd(slot, id) {
+  // Changing an end drops the old path's highlight.
+  if (id === null) clearSelection();
+  join[slot] = id;
+  join.paths = join.from && join.to ? findJoinPaths(data, join.from, join.to) : [];
+  join.index = 0;
+  if (join.paths.length > 0) showJoinPath(0);
+  else showJoin();
+}
+
+// Steps of a path as the diagram draws them: the two hops through a
+// collapsed join table are one line.
+function joinSteps(path) {
+  const steps = [];
+  for (const hop of path.hops) {
+    const last = steps.at(-1);
+    if (last && hop.edge.line.type === 'link' && last.line.id === hop.edge.line.id) last.to = hop.to;
+    else steps.push({ line: hop.edge.line, from: hop.from, to: hop.to });
+  }
+  return steps;
+}
+
+const findAttr = (root, selector, attr, value) => [...root.querySelectorAll(selector)].find((e) => e.getAttribute(attr) === value) ?? null;
+
+/**
+ * Where step `step` is drawn in view `name`: the line groups to light and
+ * the path each flow follows, in walking order, or null when the view lacks
+ * part of it.
+ */
+function stepSegments(name, step, i) {
+  const view = views.get(name);
+  const along = (g, reverse) => ({ g, d: g.querySelector('path.relation').getAttribute('d'), reverse });
+  if (name === JOIN_VIEW) {
+    const g = findAttr(view, '.relation-group', 'data-step', String(i));
+    return g ? [along(g, g.getAttribute('data-from') !== step.from)] : null;
+  }
+  if (step.line.type === 'poly') {
+    const g = findAttr(view, '.relation-group', 'data-id', step.line.id);
+    const routes = findAttr(view, '.poly-routes', 'data-poly', step.line.poly);
+    const route = routes && findAttr(routes, '.poly-route', 'data-target', step.line.target);
+    if (!g || !route) return null;
+    const toTarget = step.to === step.line.target;
+    const owner = along(g, !toTarget);
+    const target = { g: routes, d: route.getAttribute('d'), reverse: !toTarget, show: routes };
+    return toTarget ? [owner, target] : [target, owner];
+  }
+  const g = findAttr(view, step.line.type === 'hub' ? '.hub-route' : '.relation-group', 'data-id', step.line.id);
+  if (!g) return null;
+  return [{ ...along(g, g.getAttribute('data-from') !== step.from), ...(step.line.type === 'hub' ? { show: g.parentNode } : {}) }];
+}
+
+// Diagram nodes a path lights: its tables (a collapsed join table is part of
+// its line) and the polymorphic nodes its lines run through.
+const stepNodes = (steps) => [...new Set(steps.flatMap((s) => [s.from, s.to, ...(s.line.type === 'poly' ? [s.line.poly] : [])]))];
+
+// Box around the path's nodes in a view, with room around it.
+function joinBounds(index, steps) {
+  const boxes = stepNodes(steps).map((id) => index.get(id)?.box).filter(Boolean);
+  const x0 = Math.min(...boxes.map((b) => b.x)) - FOCUS_MARGIN / 2;
+  const y0 = Math.min(...boxes.map((b) => b.y)) - FOCUS_MARGIN / 2;
+  return { x: x0, y: y0, w: Math.max(...boxes.map((b) => b.x + b.w)) - x0 + FOCUS_MARGIN / 2, h: Math.max(...boxes.map((b) => b.y + b.h)) - y0 + FOCUS_MARGIN / 2 };
+}
+
+/**
+ * A drawn view showing every step of the path, preferring the one on
+ * screen, and only where the path, fitted beside the panel, stays large
+ * enough to read; else none (the path gets a view of its own).
+ */
+function joinViewFor(steps) {
+  const clusters = stepNodes(steps).map(clusterOf).filter(Boolean).map(domainView);
+  const names = [state.view, ALL_VIEW, ...clusters, ...[...views.keys()].filter((n) => n.startsWith(DOMAIN_PREFIX))];
+  const { w, h } = viewport();
+  return names.find((name) => {
+    if (!views.has(name) || name === OVERVIEW || name === NEIGHBORHOOD) return false;
+    if (name === JOIN_VIEW && state.joinPath !== join.paths[join.index]) return false;
+    if (!stepNodes(steps).every((id) => indexes.get(name).has(id)) || !steps.every((s, i) => stepSegments(name, s, i))) return false;
+    const b = joinBounds(indexes.get(name), steps);
+    return name === JOIN_VIEW || Math.min((w - PANEL_WIDTH - 2 * PANEL_MARGIN) / b.w, (h - TOOLBAR_HEIGHT) / b.h) >= JOIN_MIN_SCALE;
+  });
+}
+
+/**
+ * The fallback view of a path no drawn view holds (tables of several
+ * domains in a schema too large for the view of all tables): its tables
+ * in a row, joined by straight lines, one per step.
+ */
+function buildJoinView(path) {
+  views.get(JOIN_VIEW)?.remove();
+  const steps = joinSteps(path);
+  const ids = [...new Set(steps.flatMap((s) => [s.from, s.to]))].filter((id) => fullBoxes.has(id));
+  const boxes = new Map();
+  const offsets = new Map();
+  const nodes = svgEl('g', { class: 'nodes' });
+  let x = 0;
+  for (const id of ids) {
+    const { el: g, box } = fullBoxes.get(id);
+    boxes.set(id, { x, y: 0, w: box.w, h: box.h });
+    offsets.set(id, { dx: x - box.x, dy: -box.y });
+    const copy = g.cloneNode(true);
+    copy.classList.remove('hl', 'selected', 'flow-target', 'oe-hidden');
+    nodes.append(svgEl('g', { transform: `translate(${x - box.x} ${-box.y})` }, [copy]));
+    x += box.w + 2 * RING_GAP + 40;
+  }
+  const relations = svgEl('g', { class: 'relations' });
+  steps.forEach((s, i) => {
+    const l = s.line.type === 'poly'
+      ? { id: `${s.line.poly}->${s.line.target}`, cardinality: 'n-1', optional: true, kind: 'polymorphic', review: 'reviewed', from: data.nodes[s.line.poly].table, to: s.line.target }
+      : [...data.links, ...data.hubLinks].find((x) => x.id === s.line.id);
+    // Drawn as the relation points, so its crow's feet stay right.
+    const g = straightRelation(l, l.from, l.to, boxes);
+    g.setAttribute('data-step', String(i));
+    relations.append(g);
+  });
+  const all = [...boxes.values()];
+  const x0 = -NEIGHBORHOOD_MARGIN;
+  const y1 = Math.max(...all.map((b) => b.h)) + NEIGHBORHOOD_MARGIN;
+  const x1 = Math.max(...all.map((b) => b.x + b.w)) + NEIGHBORHOOD_MARGIN;
+  const view = svgEl('g', { class: 'view', 'data-view': JOIN_VIEW, 'data-bounds': `${x0} ${-NEIGHBORHOOD_MARGIN} ${x1 - x0} ${y1 + NEIGHBORHOOD_MARGIN}`, style: 'display:none' }, [
+    svgEl('rect', { x: x0, y: -NEIGHBORHOOD_MARGIN, width: x1 - x0, height: y1 + NEIGHBORHOOD_MARGIN, fill: '#ffffff' }),
+    relations,
+    nodes,
+  ]);
+  camera.append(view);
+  views.set(JOIN_VIEW, view);
+  indexes.set(JOIN_VIEW, indexView(view, offsets));
+  state.joinPath = path;
+}
+
+// "M1 2L3 4" walked backwards, for a flow against the line's direction.
+const reversed = (d) => {
+  const points = [...d.matchAll(/[ML]\s*(-?[\d.e]+)[ ,](-?[\d.e]+)/g)].map((m) => [m[1], m[2]]);
+  return linePath(points.reverse());
+};
+
+/** Shows path `i`: on a view that holds it, lit hop after hop. */
+function showJoinPath(i) {
+  join.index = i;
+  const path = join.paths[i];
+  const steps = joinSteps(path);
+  let name = joinViewFor(steps);
+  if (!name) {
+    if (state.view !== JOIN_VIEW) state.history.push(snapshot());
+    buildJoinView(path);
+    name = JOIN_VIEW;
+    showView(JOIN_VIEW);
+  } else if (name !== state.view) {
+    state.history.push(snapshot());
+    showView(name);
+  }
+  clearSelection();
+  for (const id of stepNodes(steps)) unfoldFor(id);
+  const index = currentIndex();
+  const view = currentView();
+  view.classList.add('dimmed');
+  for (const id of stepNodes(steps)) index.get(id)?.el.classList.add('hl');
+  for (const id of [join.from, join.to]) index.get(id)?.el.classList.add('selected');
+  const segments = steps.map((s, k) => stepSegments(name, s, k));
+  for (const seg of segments.flat()) {
+    seg.g.classList.add('hl', 'flowing');
+    if (seg.show) seg.show.style.display = '';
+  }
+  // Each step's dashes start once the previous step's have set off.
+  segments.forEach((list, k) => {
+    flowTimers.push(
+      setTimeout(() => {
+        for (const seg of list) seg.g.append(svgEl('path', { class: 'flow', d: seg.reverse ? reversed(seg.d) : seg.d }));
+        if (k === segments.length - 1) index.get(join.to)?.el.classList.add('flow-target');
+      }, k * JOIN_STEP_MS),
+    );
+  });
+  showJoin();
+  // The legend sits bottom left, where the fitted path would run under it.
+  setLegend(false);
+  zoomToRect(joinBounds(index, steps), FOCUS_MAX_SCALE);
+}
+
+// A table field of the join panel: the chosen table, or a search box over
+// table names (the toolbar's search, tables only).
+function joinField(slot, label) {
+  const chosen = join[slot];
+  if (chosen) {
+    return el('div', { class: 'row oe-join-end' }, [
+      el('span', { class: 'label-inline', text: label }),
+      el('b', { text: short(chosen), title: chosen }),
+      link('change', () => setJoinEnd(slot, null)),
+    ]);
+  }
+  const list = el('div', { class: 'oe-join-picks' });
+  const input = el('input', { type: 'search', placeholder: 'Table name', 'aria-label': `${label} table` });
+  const hits = () => [...new Set(search(input.value).filter((h) => !h.column).map((h) => h.id))].slice(0, JOIN_PICKS);
+  input.addEventListener('input', () => {
+    list.replaceChildren(...hits().map((id) => el('button', { class: 'oe-result', on: { click: () => setJoinEnd(slot, id) } }, [el('div', { text: short(id) }), el('div', { class: 'where', text: id })])));
+    layoutOverlays();
+  });
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && hits()[0]) setJoinEnd(slot, hits()[0]);
+    e.stopPropagation();
+  });
+  return el('div', { class: 'oe-join-field' }, [el('div', { class: 'row' }, [el('span', { class: 'label-inline', text: label }), input]), list]);
+}
+
+const FLAG_TEXT = {
+  trust: (f) => f.text,
+  cross_db: () => 'cross-DB',
+  polymorphic: (f) => `filter by ${f.column}`,
+  multiplies: () => 'repeats rows (1 → many)',
+};
+
+function joinPanel() {
+  const path = join.paths[join.index];
+  const parts = [
+    el('h3', { text: 'Join path' }),
+    el('div', { class: 'sub', text: 'How two tables join: the condition of each hop. No SQL is written for you.' }),
+    joinField('from', 'From'),
+    joinField('to', 'To'),
+    !join.from || !join.to ? el('p', { class: 'muted', text: 'Type a name, or click a table on the diagram.' }) : null,
+  ];
+  if (join.from && join.to && !path) parts.push(el('p', { text: 'No path joins these tables through the relations in this diagram.' }));
+  if (!path) return parts;
+  const name = pathNames(path.nodes);
+  parts.push(
+    el('div', { class: 'muted', text: 'Shortest first; unconfirmed relations and hub tables count as longer.' }),
+    el('div', { class: 'oe-seg oe-paths' }, join.paths.map((p, i) => el('button', { class: `oe-btn${i === join.index ? ' on' : ''}`, text: `Path ${i + 1} · ${plural(p.hops.length, 'hop')}`, on: { click: () => showJoinPath(i) } }))),
+    el(
+      'ol',
+      { class: 'oe-hops' },
+      path.hops.map((h) =>
+        el('li', {}, [
+          el('code', { text: hopCondition(h, name) }),
+          h.flags.length > 0 ? el('div', { class: 'oe-chips' }, h.flags.map((f) => el('span', { class: `chip flag-${f.type}`, text: FLAG_TEXT[f.type](f) }))) : null,
+        ]),
+      ),
+    ),
+  );
+  const dbs = [...new Set(path.nodes.map((id) => id.split('.')[0]))];
+  const hubs = path.hops.filter((h, i) => h.hub && i < path.hops.length - 1).map((h) => short(h.to));
+  const warnings = [
+    dbs.length > 1 ? `Spans ${dbs.length} databases (${dbs.join(', ')}): this cannot be one query; join the results in the application.` : null,
+    path.hops.some((h) => h.flags.some((f) => f.type === 'trust')) ? 'Some hops are not confirmed yet (inferred or pending review): check them in the code first.' : null,
+    path.hops.some((h) => h.flags.some((f) => f.type === 'multiplies')) ? 'A hop going from one row to many repeats the rows before it: count or deduplicate with care.' : null,
+    hubs.length > 0 ? `Passes through ${hubs.join(', ')}, a table shared by everything: rows meet only because they share it.` : null,
+  ].filter(Boolean);
+  const status = el('span', { class: 'muted' });
+  parts.push(
+    ...warnings.map((w) => el('p', { class: 'oe-warn', text: w })),
+    el('div', { class: 'row' }, [el('button', { class: 'oe-btn', text: 'Copy conditions', on: { click: () => copyText(conditionsText(path), status, plural(path.hops.length, 'condition')) } }), status]),
+  );
+  return parts;
+}
+
+function copyText(text, status, what) {
+  const done = () => {
+    status.textContent = `Copied ${what}`;
+  };
+  // A page opened from disk may have no clipboard API: select the text in a
+  // field and copy that instead.
+  const fallback = () => {
+    const area = el('textarea', { style: 'position:absolute;left:-9999px' });
+    area.value = text;
+    panel.div.append(area);
+    area.select();
+    const ok = document.execCommand('copy');
+    area.remove();
+    if (ok) done();
+    else status.textContent = 'Copy is blocked here; select the conditions above instead.';
+  };
+  if (navigator.clipboard?.writeText) navigator.clipboard.writeText(text).then(done, fallback);
+  else fallback();
+}
+
 // ---------------------------------------------------------------- legend
 
 // Samples drawn with the diagram's own classes and marker shapes, so the
@@ -974,6 +1407,7 @@ const LEGEND = [
     [sample([svgEl('path', { class: 'badge-arrow', d: 'M2 9H12M8 6L12 9L8 12' }), svgEl('text', { class: 'badge-text', x: 16, y: 9, 'dominant-baseline': 'central', text: 'users ×3' })]), 'hub reference (badge)'],
     [sample([svgEl('circle', { class: 'hint-note', cx: 8, cy: 9, r: 2.5 })]), 'column has a note'],
     [sample([svgEl('rect', { class: 'hint-enum', x: 5.5, y: 6.5, width: 5, height: 5, rx: 1 })]), 'column has enum values'],
+    [sample([svgEl('path', { class: 'col-warn', d: 'M4 13L8 5L12 13Z' })]), 'possibly missing relation'],
     [sample([svgEl('rect', { class: 'stub-box', x: 1, y: 1, width: 62, height: 16, rx: 4 }), svgEl('text', { class: 'stub-title', x: 6, y: 9, 'dominant-baseline': 'central', text: 'orders' })]), 'table of another domain'],
   ]],
 ];
@@ -1058,6 +1492,7 @@ function tipLines(target) {
     el('b', { text: id }),
     n?.note ? el('div', { text: n.note }) : null,
     ...(n?.facts ?? []).map((f) => el('div', { class: 'muted', text: f })),
+    warningLine(n?.warning),
     el('div', { class: 'muted', text: 'Click to highlight · double-click for its neighborhood' }),
   ];
 }
@@ -1096,7 +1531,8 @@ function layoutOverlays() {
   const { w, h } = viewport();
   toolbar.fo.setAttribute('width', w);
   toolbar.fo.setAttribute('height', h);
-  toolbar.fo.setAttribute('height', results.style.display === 'none' ? TOOLBAR_HEIGHT : Math.ceil(TOOLBAR_HEIGHT + results.getBoundingClientRect().height + 8));
+  const drop = [results, menu].find((d) => d.style.display !== 'none');
+  toolbar.fo.setAttribute('height', drop ? Math.ceil(TOOLBAR_HEIGHT + drop.getBoundingClientRect().height + 8) : TOOLBAR_HEIGHT);
   if (legend.fo.style.display !== 'none') {
     legend.fo.setAttribute('width', 260);
     legend.fo.setAttribute('height', h);
@@ -1162,7 +1598,11 @@ svg.addEventListener('click', (e) => {
     return;
   }
   closeResults();
+  setMenu(false);
   const t = e.target;
+  // With the join panel waiting for a table, a click on one picks it.
+  const picked = t.closest('.table, .stub')?.getAttribute('data-id');
+  if (join.open && (!join.from || !join.to) && data.nodes[picked]?.kind === 'table') return setJoinEnd(join.from ? 'to' : 'from', picked);
   const domain = t.closest('.domain');
   if (domain) return navigate(domainView(domain.getAttribute('data-domain')));
   const stub = t.closest('.stub');
@@ -1233,8 +1673,9 @@ svg.addEventListener('gesturechange', (e) => {
 
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
-  if (results.style.display !== 'none') {
+  if (results.style.display !== 'none' || menu.style.display !== 'none') {
     closeResults();
+    setMenu(false);
     return;
   }
   clearSelection();

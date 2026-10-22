@@ -1,5 +1,6 @@
 import { parseDocument } from 'yaml';
-import { CONFIG_FILE, CROSS_DB_FILE, configSchema, crossDbFileSchema, modelFileSchema } from './schema.js';
+import { clusterKey } from '../layout/clusters.js';
+import { CONFIG_FILE, CROSS_DB_FILE, DOMAIN_VIEW_PREFIX, configSchema, crossDbFileSchema, modelFileSchema } from './schema.js';
 import { columnEntries } from './columns.js';
 import { joinPath, validateNode } from './validate.js';
 
@@ -184,6 +185,7 @@ export function parseWorkspace(files) {
     const lists = [
       ['hub', config.hub],
       ['hidden', config.hidden],
+      ['ignore_missing', config.ignore_missing],
       ...Object.keys(config.profiles ?? {})
         .sort(compareStrings)
         .map((name) => [joinPath(joinPath('profiles', name), 'hide'), config.profiles[name].hide]),
@@ -203,6 +205,10 @@ export function parseWorkspace(files) {
         const known = table && (columnsOf.get(tableId).has(name) || (table.embedded ?? []).some((e) => e.name === name));
         if (!known) errors.push({ file: CONFIG_FILE, path: `${section}.columns[${i}]`, message: `unknown column ${JSON.stringify(ref)}` });
       });
+    }
+    const view = config.default_view ?? '';
+    if (view.startsWith(DOMAIN_VIEW_PREFIX) && !tables.some(({ table: t }) => clusterKey(t) === view.slice(DOMAIN_VIEW_PREFIX.length))) {
+      errors.push({ file: CONFIG_FILE, path: 'default_view', message: `no domain ${JSON.stringify(view.slice(DOMAIN_VIEW_PREFIX.length))} (expected domain:<db>/<domain> of a table)` });
     }
   }
 
@@ -227,7 +233,7 @@ export function normalizeModel(model) {
   const sortedLists = (section) =>
     Object.fromEntries(Object.keys(section).sort(compareStrings).map((k) => [k, sortedList(section[k])]));
   const config = { ...model.config };
-  for (const section of ['hub', 'hidden']) {
+  for (const section of ['hub', 'hidden', 'ignore_missing']) {
     if (config[section]) config[section] = sortedLists(config[section]);
   }
   if (config.profiles) {

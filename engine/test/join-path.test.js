@@ -1,0 +1,111 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { buildDiagram } from '../src/layout/diagram.js';
+import { applyProfile } from '../src/model/profile.js';
+import { viewerData } from '../src/render/svg/render.js';
+import { HUB_COST, conditionsText, findJoinPaths } from '../src/render/svg/viewer/join-path.js';
+import { fk, loadMulti } from './helpers/shop.js';
+
+const dataOf = (model) => viewerData(model, buildDiagram(model));
+const route = (p) => p.nodes.join(' > ');
+const flagTypes = (hop) => hop.flags.map((f) => f.text ?? f.type);
+
+test('a join table collapsed into one line is walked as two hops, with its key columns', async () => {
+  const data = dataOf(await loadMulti());
+  const [best] = findJoinPaths(data, 'shop._.tags', 'shop._.order_items');
+  assert.equal(route(best), 'shop._.tags > shop._.product_tags > shop._.products > shop._.order_items');
+  assert.equal(conditionsText(best), ['tags.id = product_tags.tag_id', 'product_tags.product_id = products.id', 'products.id = order_items.product_id'].join('\n'));
+  // tags -> product_tags is one tag to many rows, and pending inference.
+  assert.deepEqual(flagTypes(best.hops[0]), ['inferred', 'multiplies']);
+  assert.deepEqual(flagTypes(best.hops[1]), []);
+});
+
+test('at most three paths, cheapest first, the same list on every call', async () => {
+  const data = dataOf(await loadMulti());
+  const a = findJoinPaths(data, 'shop._.refunds', 'auth.public.users');
+  assert.equal(a.length, 3);
+  assert.ok(a.every((p, i) => i === 0 || a[i - 1].cost <= p.cost));
+  assert.deepEqual(findJoinPaths(data, 'shop._.refunds', 'auth.public.users'), a);
+  assert.deepEqual(findJoinPaths(data, 'shop._.refunds', 'shop._.refunds'), []);
+});
+
+test('equal costs are ordered by table ids, whatever order the data lists them in', async () => {
+  const data = dataOf(await loadMulti());
+  // comments reaches order_items through orders or products, both two
+  // trusted-free polymorphic + db_fk hops: orders sorts first.
+  const paths = findJoinPaths(data, 'shop._.comments', 'shop._.order_items');
+  assert.equal(paths[0].cost, paths[1].cost);
+  assert.deepEqual(paths.slice(0, 2).map(route), ['shop._.comments > shop._.orders > shop._.order_items', 'shop._.comments > shop._.products > shop._.order_items']);
+  const shuffled = { ...data, links: [...data.links].reverse(), hubLinks: [...data.hubLinks].reverse() };
+  assert.deepEqual(findJoinPaths(shuffled, 'shop._.comments', 'shop._.order_items').map(route), paths.map(route));
+  assert.deepEqual(flagTypes(paths[0].hops[0]), ['polymorphic']);
+  assert.match(conditionsText(paths[0]), /^comments\.commentable_id = orders\.id \(filter by comments\.commentable_type\)$/m);
+});
+
+test('never through a polymorphic owner from one of its targets to another', async () => {
+  const data = dataOf(await loadMulti());
+  for (const p of findJoinPaths(data, 'shop._.products', 'shop._.orders')) {
+    for (let i = 1; i < p.hops.length; i++) {
+      const [x, y] = [p.hops[i - 1].edge.line, p.hops[i].edge.line];
+      assert.ok(!(x.type === 'poly' && x.id === y.id), route(p));
+    }
+  }
+});
+
+test('trust ranks paths of equal length; a hub table costs several hops', async () => {
+  const multi = await loadMulti();
+  // roles -> organizations: through memberships (inferred role_id) or, one
+  // hop longer, through the hub table users.
+  const paths = findJoinPaths(dataOf(multi), 'auth.public.roles', 'auth.public.organizations');
+  assert.equal(route(paths[0]), 'auth.public.roles > auth.public.memberships > auth.public.organizations');
+  assert.ok(paths.slice(1).every((p) => p.nodes.includes('auth.public.users') && p.cost >= HUB_COST));
+  // Two routes of two hops between categories and brands: the reviewed
+  // foreign keys win over the pending inference.
+  const t = (id) => ({ id, domain: 'Catalog', columns: [{ name: 'id', type: 'bigint', pk: true }, { name: 'category_id', type: 'bigint' }, { name: 'brand_id', type: 'bigint' }] });
+  const guess = { ...fk('shop._.zz_guess', 'brand_id', 'shop._.brands'), kind: 'inferred', review: 'pending' };
+  const model = {
+    ...multi,
+    tables: [...multi.tables, t('shop._.aa_link'), t('shop._.zz_guess')],
+    relations: [...multi.relations, fk('shop._.aa_link', 'category_id', 'shop._.categories'), fk('shop._.aa_link', 'brand_id', 'shop._.brands'), fk('shop._.zz_guess', 'category_id', 'shop._.categories'), guess],
+  };
+  const found = findJoinPaths(dataOf(model), 'shop._.categories', 'shop._.brands').map(route);
+  const [sure, guessed] = ['aa_link', 'zz_guess'].map((t) => found.indexOf(`shop._.categories > shop._.${t} > shop._.brands`));
+  assert.ok(sure === 0 && (guessed === -1 || guessed > sure), JSON.stringify(found));
+});
+
+test('composite keys keep their column order; tables of the same name print their full ids', async () => {
+  const multi = await loadMulti();
+  const lines = { id: 'shop._.order_lines', domain: 'Orders', columns: [{ name: 'id', type: 'bigint', pk: true }, { name: 'org_id', type: 'bigint' }, { name: 'order_no', type: 'bigint' }] };
+  const orders = multi.tables.find((t) => t.id === 'shop._.orders');
+  const users = { id: 'shop._.users', domain: 'Orders', columns: [{ name: 'id', type: 'bigint', pk: true }] };
+  const model = {
+    ...multi,
+    tables: [...multi.tables.map((t) => (t === orders ? { ...t, columns: [...t.columns, { name: 'number', type: 'bigint' }] } : t)), lines, users],
+    relations: [
+      ...multi.relations,
+      { ...fk('shop._.order_lines', 'org_id', 'shop._.orders'), from: { table: 'shop._.order_lines', columns: ['order_no', 'org_id'] }, to: { table: 'shop._.orders', columns: ['number', 'organization_id'] } },
+      fk('shop._.users', 'id', 'auth.public.users'),
+    ],
+  };
+  const [p] = findJoinPaths(dataOf(model), 'shop._.order_lines', 'shop._.orders');
+  assert.equal(conditionsText(p), 'order_lines.order_no = orders.number AND order_lines.org_id = orders.organization_id');
+  const [q] = findJoinPaths(dataOf(model), 'shop._.users', 'auth.public.memberships');
+  assert.equal(conditionsText(q).split('\n')[0], 'shop._.users.id = auth.public.users.id');
+  assert.ok(q.hops[0].flags.some((f) => f.type === 'cross_db'));
+});
+
+test('profile public: paths never use a hidden table or a pii column', async () => {
+  const multi = await loadMulti();
+  const model = { ...multi, config: { ...multi.config, hidden: { tables: ['shop._.payments'] } } };
+  const full = findJoinPaths(dataOf(multi), 'shop._.refunds', 'shop._.orders');
+  assert.ok(full[0].nodes.includes('shop._.payments'));
+  const shared = dataOf(applyProfile(model, 'public'));
+  // refunds reached orders only through payments (attachments joins its
+  // targets to each other never), so there is no path left.
+  assert.deepEqual(findJoinPaths(shared, 'shop._.refunds', 'shop._.orders'), []);
+  assert.ok(findJoinPaths(shared, 'shop._.order_items', 'auth.public.users').every((p) => !p.nodes.includes('shop._.payments')));
+  // A relation over a pii column is gone with the column.
+  const pii = { ...multi, tables: multi.tables.map((t) => (t.id === 'shop._.orders' ? { ...t, columns: t.columns.map((c) => (c.name === 'user_id' ? { ...c, pii: true } : c)) } : t)) };
+  const text = findJoinPaths(dataOf(applyProfile(pii, 'public')), 'shop._.orders', 'auth.public.users').map(conditionsText).join('\n');
+  assert.doesNotMatch(text, /user_id/);
+});

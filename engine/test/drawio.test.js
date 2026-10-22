@@ -1,0 +1,206 @@
+import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process';
+import { cp, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { test } from 'node:test';
+import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
+import { VIEW_SOURCE, buildDiagram, domainLinks } from '../src/layout/diagram.js';
+import { computeLayout } from '../src/layout/index.js';
+import { ALL_VIEW, OVERVIEW, viewNames, viewTree } from '../src/layout/views.js';
+import { applyProfile } from '../src/model/profile.js';
+import { HUB_LAYER, POLY_LAYER, pageName, renderDrawio } from '../src/render/drawio/render.js';
+import { buildScene } from '../src/render/svg/render.js';
+import { endMarkers } from '../src/render/svg/markers.js';
+import { MULTI, loadMulti, loadWorkspace } from './helpers/shop.js';
+import { descendants, parseXml } from './helpers/xml.js';
+
+const CLI = fileURLToPath(new URL('../cli.js', import.meta.url));
+const PATTERNS = fileURLToPath(new URL('./fixtures/workspace-patterns', import.meta.url));
+const ER = { one: 'ERmandOne', zeroOrOne: 'ERzeroToOne', many: 'ERoneToMany', zeroOrMany: 'ERzeroToMany' };
+
+const parseStyle = (text) => Object.fromEntries(text.split(';').filter(Boolean).map((kv) => kv.split('=')));
+
+// Cells of one <diagram>, by id: a plain mxCell, or an mxCell wrapped in an
+// <object> that carries the id, label and tooltip.
+function cellsOf(diagram) {
+  const root = descendants(diagram).find((e) => e.name === 'root');
+  return root.children.map((el) => {
+    const mx = el.name === 'object' ? el.children[0] : el;
+    assert.equal(mx.name, 'mxCell');
+    if (el.name === 'object') assert.equal(mx.attrs.id, undefined, 'a wrapped mxCell must not carry its own id');
+    return { ...mx.attrs, id: el.attrs.id ?? mx.attrs.id, value: el.attrs.label ?? mx.attrs.value, tooltip: el.attrs.tooltip, style: parseStyle(mx.attrs.style ?? ''), geometry: mx.children[0] };
+  });
+}
+
+async function multi() {
+  const model = await loadMulti();
+  const { layout } = await computeLayout(model);
+  return { model, layout, xml: renderDrawio(model, layout) };
+}
+
+test('the test XML parser rejects malformed input', () => {
+  assert.throws(() => parseXml('<a><b></a>'));
+  assert.throws(() => parseXml('<a x="1 & 2"/>'));
+  assert.throws(() => parseXml('<a x="1" x="2"/>'));
+  assert.throws(() => parseXml('<a>'));
+});
+
+test('drawio: well-formed plain XML, one page per view in reading order, no timestamps', async () => {
+  const { model, xml } = await multi();
+  const file = parseXml(xml);
+  assert.equal(file.name, 'mxfile');
+  assert.equal(file.attrs.compressed, 'false');
+  assert.equal(file.attrs.modified, undefined);
+  const diagram = buildDiagram(model);
+  const views = viewNames(diagram);
+  const expected = [OVERVIEW, ...views.filter((v) => v !== OVERVIEW && v !== ALL_VIEW), ALL_VIEW];
+  assert.deepEqual(file.children.map((d) => d.attrs.id), expected);
+  assert.deepEqual(file.children.map((d) => d.attrs.name).slice(0, 2), ['Overview', 'Audit (activity)']);
+  assert.equal(file.children.at(-1).attrs.name, 'All tables');
+  assert.deepEqual(file.children.map((d) => d.attrs.name), expected.map(pageName));
+});
+
+test('drawio: ids are unique per page and every parent, source and target exists', async () => {
+  const { xml } = await multi();
+  for (const page of parseXml(xml).children) {
+    const cells = cellsOf(page);
+    const ids = new Set(cells.map((c) => c.id));
+    assert.equal(ids.size, cells.length, `duplicate ids on page ${page.attrs.name}`);
+    for (const c of cells) {
+      if (c.parent !== undefined) assert.ok(ids.has(c.parent), `${c.id}: unknown parent ${c.parent}`);
+      for (const end of [c.source, c.target]) if (end !== undefined) assert.ok(ids.has(end), `${c.id}: unknown end ${end}`);
+    }
+  }
+});
+
+test('drawio: every relation is a connector on its column rows with crow\'s foot ends and the routed waypoints', async () => {
+  const { model, xml } = await multi();
+  const diagram = buildDiagram(model);
+  for (const page of parseXml(xml).children) {
+    const name = page.attrs.id;
+    const cells = new Map(cellsOf(page).map((c) => [c.id, c]));
+    const { links } = viewTree(model, diagram, name);
+    assert.ok(links.length > 0);
+    for (const link of links) {
+      const edge = cells.get(`e|${link.id}`);
+      assert.ok(edge, `${name}: no connector for ${link.id}`);
+      assert.equal(edge.edge, '1');
+      assert.equal(edge.style.edgeStyle, 'orthogonalEdgeStyle');
+      assert.ok(descendants(edge.geometry).some((e) => e.name === 'Array'), 'waypoints from the router');
+      if (name === OVERVIEW) {
+        assert.equal(edge.style.endArrow, 'block');
+        continue;
+      }
+      for (const [side, end] of [['from', edge.source], ['to', edge.target]]) {
+        const node = diagram.nodes.get(link[side].node);
+        const onRow = node?.kind === 'table' && link[side].column !== null && cells.get(`n|${node.id}`)?.style.shape === 'table';
+        if (onRow) {
+          assert.equal(end, `n|${node.id}|${link[side].column}`);
+          assert.equal(cells.get(end).style.shape, 'tableRow');
+          assert.equal(cells.get(end).parent, `n|${node.id}`);
+        } else {
+          assert.equal(end, `n|${link[side].node}`);
+        }
+      }
+      if (link.kind === VIEW_SOURCE) continue;
+      const markers = endMarkers(link);
+      assert.equal(edge.style.startArrow, ER[markers.from], link.id);
+      assert.equal(edge.style.endArrow, ER[markers.to], link.id);
+    }
+  }
+  // Overview lines are the domain links, labelled with their count.
+  const overview = new Map(cellsOf(parseXml(xml).children[0]).map((c) => [c.id, c]));
+  for (const d of domainLinks(diagram)) assert.match(overview.get(`e|${d.id}`).value, new RegExp(`^${d.count} relations?`));
+});
+
+test('drawio: kinds and review states carry the SVG dash patterns and colours; notes go to tooltips', async () => {
+  const { xml } = await multi();
+  const all = new Map(cellsOf(parseXml(xml).children.at(-1)).map((c) => [c.id, c]));
+  const edge = (id) => all.get(`e|${id}`).style;
+  const crossDb = edge('activity._.page_views(product_id)->shop._.products(id)');
+  assert.equal(crossDb.dashPattern, '10 3 2 3 2 3');
+  const pending = edge('auth.public.memberships(role_id)->auth.public.roles(id)');
+  assert.equal(pending.dashPattern, '6 4');
+  assert.equal(pending.strokeColor, '#c27c0e');
+  assert.match(all.get('e|activity._.page_views(product_id)->shop._.products(id)').value, /cross-DB → shop/);
+  const poly = [...all.values()].find((c) => c.id.startsWith('e|') && c.id.includes('->«'));
+  assert.equal(poly.style.dashPattern, '2 3');
+  assert.match(all.get('n|shop._.orders').tooltip, /One order per checkout/);
+  assert.match(all.get('n|auth.public.users|email').tooltip, /PII/);
+});
+
+test('drawio: hub and polymorphic target lines sit on their own hidden layers, attached to existing rows', async () => {
+  const { model, layout, xml } = await multi();
+  const diagram = buildDiagram(model);
+  const seen = { hub: 0, poly: 0 };
+  for (const page of parseXml(xml).children) {
+    const scene = buildScene(model, layout, page.attrs.id, diagram);
+    const cells = new Map(cellsOf(page).map((c) => [c.id, c]));
+    const expected = [
+      [HUB_LAYER, scene.hubRoutes.map((r) => `hub|${r.link.id}`), 'hub'],
+      [POLY_LAYER, scene.polyRoutes.map((r) => `poly|${r.poly}->${r.target}`), 'poly'],
+    ];
+    for (const [layer, ids, kind] of expected) {
+      const cell = cells.get(layer.id);
+      if (ids.length === 0) {
+        assert.equal(cell, undefined, `${page.attrs.id}: empty layer ${layer.name}`);
+        continue;
+      }
+      assert.equal(cell.parent, '0');
+      assert.equal(cell.visible, '0', `${layer.name} must start hidden`);
+      assert.equal(cell.value, layer.name);
+      for (const id of ids) {
+        const edge = cells.get(id);
+        assert.ok(edge, `${page.attrs.id}: missing ${id}`);
+        assert.equal(edge.parent, layer.id);
+        for (const end of [edge.source, edge.target]) {
+          const target = cells.get(end);
+          assert.ok(target && target.vertex === '1', `${id}: end ${end} is not a drawn cell`);
+          if (end.split('|').length > 2) assert.equal(target.style.shape, 'tableRow');
+        }
+        seen[kind] += 1;
+      }
+    }
+  }
+  assert.ok(seen.hub > 0 && seen.poly > 0, 'the fixture must exercise both layers');
+});
+
+test('drawio: two renders are byte-identical', async () => {
+  const { model, layout, xml } = await multi();
+  assert.equal(renderDrawio(model, layout), xml);
+});
+
+test('drawio: a public profile render holds no hidden table, hidden or PII column, evidence or internal note', async () => {
+  const model = await loadWorkspace(PATTERNS);
+  const { layout } = await computeLayout(model);
+  const full = renderDrawio(model, layout);
+  const shared = renderDrawio(applyProfile(model, 'public'), layout, { fitStored: true });
+  parseXml(shared);
+  const secrets = ['audit_secrets', 'tax_number', 'email_address', 'ship_line1', 'Ask the billing team before changing this.', '納税者番号'];
+  for (const text of secrets) {
+    assert.ok(full.includes(text), `full render lacks ${text}, so the check below proves nothing`);
+    assert.ok(!shared.includes(text), `public render leaks ${text}`);
+  }
+  for (const e of new Set([...model.relations, ...model.polymorphic].flatMap((f) => f.evidence))) assert.ok(!shared.includes(e), `public render leaks evidence ${e}`);
+});
+
+test('CLI: render writes out/erd.drawio by default and none with outputs.drawio false', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'open-erd-'));
+  const run = (...args) => promisify(execFile)(process.execPath, [CLI, ...args]);
+  try {
+    await cp(MULTI, dir, { recursive: true });
+    await run('layout', '--workspace', dir);
+    await run('render', '--workspace', dir);
+    parseXml(await readFile(join(dir, 'out', 'erd.drawio'), 'utf8'));
+    await rm(join(dir, 'out'), { recursive: true });
+    const config = join(dir, 'open-erd.yaml');
+    await writeFile(config, `${await readFile(config, 'utf8')}outputs: { drawio: false }\n`);
+    const { stdout } = await run('render', '--workspace', dir);
+    assert.doesNotMatch(stdout, /drawio/);
+    assert.deepEqual((await readdir(join(dir, 'out'))).sort(), ['erd.svg', 'erd.xlsx']);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
