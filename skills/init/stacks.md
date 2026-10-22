@@ -59,6 +59,11 @@ Script rules:
   `generated` (the expression of a generated/computed column). They fill the
   Default, Auto Inc, Generated and Expression columns of the Excel table
   sheets. Per-stack idioms below; never guess one the file does not show.
+- For every table record its declared indexes as `indexes: [{ name?, columns,
+  unique, where?, using? }]` (shape and rules in `../_shared/model.md`,
+  "indexes"): one entry per index statement, columns in index order, the
+  name only when the source gives one (Rails `name:`, an explicit Laravel
+  index name, Prisma `map:`, `CREATE INDEX <name>`). Per-stack idioms below.
 
 ## Detecting the stack
 
@@ -95,7 +100,10 @@ column (`default: -> { "now()" }` is the expression `now()`); the implicit
 `id` of `create_table` is `auto_increment` (unless `id: false` or
 `id: :uuid`, whose default is shown as `default: -> { "gen_random_uuid()" }`);
 `t.virtual "x", as: "expr"` is `generated`. Mongoid documents: `field :x,
-default:`.
+default:`. Indexes: `t.index [cols], name:, unique:, where:, using:` inside
+`create_table` and `add_index :table, [cols], ...` (later `remove_index`
+drops one); in `structure.sql`, `CREATE [UNIQUE] INDEX`. Mongoid: `index({ x:
+1 }, { unique: true })`.
 
 **Laravel** — tables from `database/migrations/*.php` in filename order,
 applying `Schema::table` alterations and drops. `foreignId('x')->constrained()`
@@ -110,6 +118,11 @@ Enums: PHP backed enums in `$casts` (read the enum file for values) and DB
 `enum(...)` columns. Defaults: `->default(...)`, `->useCurrent()` (`CURRENT_TIMESTAMP`);
 `$table->id()`, `increments`/`bigIncrements` and `->autoIncrement()` are
 `auto_increment`; `->storedAs('expr')` / `->virtualAs('expr')` are `generated`.
+Indexes: `->index()` on a column, `$table->index([cols], 'name')`,
+`$table->unique([cols], 'name')`, `$table->fullText(...)` (`using: fulltext`),
+`$table->spatialIndex(...)` (`using: spatial`); `dropIndex`/`dropUnique` in a
+later migration remove one. `->unique()` on one column is the column's
+`unique: true`, not an index.
 
 **Django** — `*/models.py`. Table = `<app_label>_<model lowercased>` unless
 `Meta.db_table`. `ForeignKey` → column `<field>_id` unless `db_column`;
@@ -124,7 +137,12 @@ the stored value. `null=True` is nullable; `blank` is not. Defaults:
 the implicit `id` (`DEFAULT_AUTO_FIELD`, `AutoField`, `BigAutoField`) is
 `auto_increment`; `GeneratedField(expression=...)` is `generated`.
 `auto_now`/`auto_now_add` are set by Django, not by the database: say so in
-the column note, not in `default`.
+the column note, not in `default`. Indexes: `Meta.indexes = [models.Index(
+fields=[...], name=..., condition=Q(...))]` (`condition` is `where`, written
+as the SQL it becomes), `Meta.unique_together`, `Meta.constraints =
+[UniqueConstraint(fields=..., name=..., condition=...)]` (unique),
+`db_index=True` on a field (one column, no name). `ForeignKey` gets an index
+from Django without declaring one: do not list it.
 
 **Prisma** — `schema.prisma`. `@@map` renames tables, `@map` renames columns
 (a field without `@map` keeps its own name, camelCase included). `@relation
@@ -137,7 +155,10 @@ string. `relationMode = "prisma"` means `declared`, otherwise `db_fk`.
 `?` is nullable. `@default(x)` is `default` (`now()`, `uuid()`, `cuid()`, a
 literal, an enum value as stored); `@default(autoincrement())` is
 `auto_increment`; `@default(dbgenerated("expr"))` is `default: expr`.
-`@updatedAt` is set by Prisma: say so in the column note.
+`@updatedAt` is set by Prisma: say so in the column note. Indexes:
+`@@index([a, b], map: "name", type: Hash)` (`type` is `using`) and
+`@@unique([a, b], map: "name")`; `@unique` on a field is the column's
+`unique: true`.
 
 **TypeORM** — `@Entity('name')`/`@Entity({ name, schema })`, `@Column`,
 `@PrimaryGeneratedColumn`, `@PrimaryColumn`, `@ManyToOne` + `@JoinColumn
@@ -149,14 +170,21 @@ look for code setting it. `@Column({ default })` is `default`;
 `@PrimaryGeneratedColumn()` / `('increment')` / `('identity')` and
 `@Generated('increment')` are `auto_increment`, `('uuid')` is a uuid default
 (take the expression from the migration when there is one);
-`generatedType` + `asExpression` is `generated`.
+`generatedType` + `asExpression` is `generated`. Indexes: `@Index('name',
+['a', 'b'], { unique: true, where: '...' })` on the entity class and
+`@Index()` on a property (one column), `@Unique('name', ['a', 'b'])`; in
+migrations, `new TableIndex({ name, columnNames, isUnique, where })` and
+`CREATE INDEX` in `queryRunner.query`.
 
 **Sequelize** — migrations `queryInterface.createTable` with `references:
 { model, key }` (constraint) and `addConstraint`; models `sequelize.define` or
 `Model.init` with `tableName`, `belongsTo`/`hasMany`/`belongsToMany({ through })`.
 `belongsTo` without `references` is `declared`. `DataTypes.ENUM(...)` values.
 `allowNull: false`. `defaultValue` (`Sequelize.NOW`/`fn('now')` is `now()`) is
-`default`; `autoIncrement: true` is `auto_increment`.
+`default`; `autoIncrement: true` is `auto_increment`. Indexes: model option
+`indexes: [{ name, fields, unique, where, using }]`, migrations
+`queryInterface.addIndex('table', [cols], { name, unique, where })`
+(`removeIndex` drops one).
 
 **Mongoose** — `new Schema({...})` / `mongoose.Schema`, `mongoose.model
 ('Name', schema, 'collection')`. Collection = third argument, else
@@ -168,7 +196,10 @@ Nested objects and subschemas (single or in arrays) are `embedded` entities,
 not columns; a `ref` inside one is a relation from the embedded path
 (`../_shared/model.md`, "Special patterns"). `enum: [...]` on paths. Schema is `_`.
 `unique: true` on a ref makes it `1-1`. `default:` on a path is `default`
-(a function as written, e.g. `Date.now`).
+(a function as written, e.g. `Date.now`). Indexes: `index: true` on a path
+(one column; `unique: true` alone stays the column's flag),
+`schema.index({ a: 1, b: -1 }, { unique: true, name, partialFilterExpression })`
+(`partialFilterExpression` as `where`, written as the JSON it is).
 
 **Raw SQL** — `CREATE TABLE`, `ALTER TABLE ... ADD CONSTRAINT ... FOREIGN KEY`,
 inline `REFERENCES`, `CREATE TYPE ... AS ENUM`, `CHECK (col IN (...))`,
@@ -179,6 +210,9 @@ in version order; later `DROP`/`RENAME` win. `DEFAULT <expr>` is `default`;
 `AUTOINCREMENT` and `IDENTITY(1,1)` are `auto_increment`; `GENERATED ALWAYS
 AS (<expr>) [STORED]` and `AS (<expr>)` computed columns are `generated`.
 `ALTER COLUMN ... SET DEFAULT` / `DROP DEFAULT` update it.
+`CREATE [UNIQUE] INDEX <name> ON <table> [USING <method>] (cols) [WHERE ...]`
+and `ALTER TABLE ... ADD CONSTRAINT <name> UNIQUE (cols)` are indexes;
+`DROP INDEX` removes one.
 
 ## Traps to check in every repo
 

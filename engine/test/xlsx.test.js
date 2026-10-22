@@ -28,8 +28,8 @@ async function loadBack(model) {
 
 const rowValues = (sheet, n) => sheet.getRow(n).values.slice(1).map((v) => v?.text ?? v);
 
-const TABLE_GRID = ['#', 'Name', 'Type', 'Nullable', 'Default', 'Generated', 'Expression', 'Primary Key', 'Auto Inc', 'Comment'];
-const FIXED_TAIL = ['Relations', 'Polymorphic', 'To review'];
+const TABLE_GRID = ['#', 'Name', 'Type', 'Nullable', 'Default', 'Generated', 'Expression', 'Primary Key', 'Auto Inc', 'Index', 'Comment'];
+const FIXED_TAIL = ['Relations', 'Polymorphic', 'Indexes', 'To review'];
 const rowOf = (location) => Number(/!A(\d+)$/.exec(location)[1]);
 const sheetOf = (location) => /^'([^']+)'!A\d+$/.exec(location)[1];
 const browseKey = (id, domain) => [id.split('.')[0], domain, id.split('.')[2]].join(' ');
@@ -39,8 +39,8 @@ test('Overview first, then one sheet per table by database, domain and table, th
   const { workbook } = await loadBack(model);
   const names = workbook.worksheets.map((s) => s.name);
   assert.equal(names[0], 'Overview');
-  assert.deepEqual(names.slice(-3), FIXED_TAIL);
-  const tableSheets = workbook.worksheets.slice(1, -3);
+  assert.deepEqual(names.slice(-FIXED_TAIL.length), FIXED_TAIL);
+  const tableSheets = workbook.worksheets.slice(1, -FIXED_TAIL.length);
   assert.equal(tableSheets.length, model.tables.length);
   const ids = tableSheets.map((s) => s.getCell('B1').text);
   const domainOf = new Map(model.tables.map((t) => [t.id, t.domain]));
@@ -82,7 +82,20 @@ test('a table sheet is its column grid; Comment holds the note, enum meanings an
     status.Comment,
     ['Lifecycle of the order; only paid orders are shipped.', 'pending: Created, waiting for payment', 'paid: Payment confirmed by the gateway', 'cancelled: Cancelled by the customer or by timeout'].join('\n'),
   );
-  assert.deepEqual(grid('orders').id, { '#': 1, Name: 'id', Type: 'bigint', Nullable: '', Default: '', Generated: '', Expression: '', 'Primary Key': 'yes', 'Auto Inc': 'yes', Comment: '' });
+  assert.deepEqual(grid('orders').id, { '#': 1, Name: 'id', Type: 'bigint', Nullable: '', Default: '', Generated: '', Expression: '', 'Primary Key': 'yes', 'Auto Inc': 'yes', Index: '', Comment: '' });
+  // The Index column names each index a column is in.
+  assert.equal(grid('orders').status.Index, 'index_orders_on_user_id_and_status');
+  assert.equal(grid('users').email.Index, 'index_users_on_email (unique)');
+  // The Indexes sheet lists every index, linked to its table.
+  const indexes = workbook.getWorksheet('Indexes');
+  assert.deepEqual(rowValues(indexes, 1), ['Table', 'Index', 'Columns', 'Unique', 'Where', 'Using']);
+  const rows = [...Array(indexes.rowCount - 1).keys()].map((i) => rowValues(indexes, i + 2).map((v) => v?.text ?? v ?? ''));
+  assert.deepEqual(rows, [
+    ['auth.public.users', 'index_users_on_email', 'email', 'yes', '', ''],
+    ['auth.public.users', 'index_users_on_status', 'status', 'no', '', 'btree'],
+    ['shop._.orders', 'index_orders_on_placed_at', 'placed_at', 'no', "status = 'paid'", ''],
+    ['shop._.orders', 'index_orders_on_user_id_and_status', 'user_id, status', 'no', '', ''],
+  ]);
   assert.deepEqual([grid('payments').amount.Generated, grid('payments').amount.Expression], ['yes', 'amount_cents / 100.0']);
   assert.equal(grid('users').email.Comment, 'Unique · Personal data (PII)');
   assert.equal(grid('users').created_at.Default, 'now()');

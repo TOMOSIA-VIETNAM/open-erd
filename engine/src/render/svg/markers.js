@@ -95,3 +95,61 @@ export function enumIconSvg(cx, cy) {
   const d = [-3, 0, 3].map((dy) => `M${round2(cx - 4)} ${round2(cy + dy)}h1.2M${round2(cx - 1)} ${round2(cy + dy)}H${round2(cx + 4)}`).join('');
   return `<path class="hint-enum" d="${d}"/>`;
 }
+
+// Small icons drawn in table boxes and the viewer's legend, each centred at
+// (cx, cy) and about 10 px across, as paths with a CSS class (colours live
+// in the stylesheet). Paths only: a table group's last <rect> is its border,
+// which highlighting and the viewer read.
+const icon = (cls, d) => `<path class="${cls}" d="${d}"/>`;
+// Absolute point, x and y of offsets from the icon's centre.
+const offsets = (cx, cy) => ({ p: (dx, dy) => `${round2(cx + dx)} ${round2(cy + dy)}`, x: (dx) => round2(cx + dx), y: (dy) => round2(cy + dy) });
+
+/** Primary key: a key, ring on the left, bit to the right. */
+export function keyIconSvg(cx, cy) {
+  const { p, x } = offsets(cx, cy);
+  return icon('icon-pk', `M${p(-1.5, 0)}A2.5 2.5 0 1 1 ${p(-6.5, 0)}A2.5 2.5 0 1 1 ${p(-1.5, 0)}H${x(5)}M${p(3, 0)}V${round2(cy + 2.5)}M${p(5, 0)}V${round2(cy + 2)}`);
+}
+
+/** Column referencing another table: two chain links. */
+export function linkIconSvg(cx, cy) {
+  const { p, x } = offsets(cx, cy);
+  return icon('icon-fk', `M${p(-1, -2.5)}H${x(-3)}A2.5 2.5 0 0 0 ${p(-3, 2.5)}H${x(-1)}M${p(1, -2.5)}H${x(3)}A2.5 2.5 0 0 1 ${p(3, 2.5)}H${x(1)}M${p(-2, 0)}H${x(2)}`);
+}
+
+/** Column in an index: a small lightning bolt (fast lookup). */
+export function indexIconSvg(cx, cy) {
+  const { p, x } = offsets(cx, cy);
+  return icon('icon-index', `M${p(1, -5)}L${p(-3, 1)}H${x(0)}L${p(-1, 5)}L${p(3, -1)}H${x(0)}Z`);
+}
+
+/** A table: a box with a header line and one column line. */
+export function tableIconSvg(cx, cy) {
+  const { p, x, y } = offsets(cx, cy);
+  return icon('icon-table', `M${p(-5, -4)}H${x(5)}V${y(4)}H${x(-5)}ZM${p(-5, -1.5)}H${x(5)}M${p(-1, -1.5)}V${y(4)}`);
+}
+
+/** A central table: a five-pointed star. */
+export function starIconSvg(cx, cy) {
+  const points = [];
+  for (let i = 0; i < 10; i++) {
+    const r = i % 2 === 0 ? 5.5 : 2.4;
+    const a = -Math.PI / 2 + (i * Math.PI) / 5;
+    points.push(`${round2(cx + r * Math.cos(a))} ${round2(cy + r * Math.sin(a))}`);
+  }
+  return icon('icon-central', `M${points.join('L')}Z`);
+}
+
+/**
+ * Review state of a fact as an icon (CSS classes review-icon-<state>):
+ * reviewed a check, pending a hollow clock, stale a warning triangle.
+ * REVIEW_WORDS has the words for each, for tooltips.
+ */
+export function reviewIconSvg(state, cx, cy) {
+  const { p, x, y } = offsets(cx, cy);
+  if (state === 'reviewed') return icon('review-icon review-icon-reviewed', `M${p(-4, 0)}L${p(-1.2, 3)}L${p(4.5, -3.5)}`);
+  if (state === 'stale') return icon('review-icon review-icon-stale', `M${p(0, -5)}L${p(5.2, 4)}H${x(-5.2)}ZM${p(0, -1.5)}V${y(1.2)}M${p(0, 2.4)}V${y(2.6)}`);
+  return icon('review-icon review-icon-pending', `M${p(4.5, 0)}A4.5 4.5 0 1 1 ${p(-4.5, 0)}A4.5 4.5 0 1 1 ${p(4.5, 0)}M${p(0, -2.5)}V${y(0)}H${x(2)}`);
+}
+
+/** What each review state means to a reader, for tooltips. */
+export const REVIEW_WORDS = { reviewed: 'Confirmed', pending: 'Not confirmed yet', stale: 'Code changed since confirmed' };

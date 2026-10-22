@@ -18,8 +18,12 @@ node <plugin root>/dist/open-erd.mjs validate --workspace <ws>
 node <plugin root>/dist/open-erd.mjs render   --workspace <ws> [--profile <name>]
 ```
 
-If render reports nodes without positions or stale sizes, run `layout` and
-render again; tell the user which nodes `layout` moved.
+If render reports nodes without positions or stale sizes ("layout.json is out
+of date ... (run layout)"), run `layout` and render again; tell the user which
+nodes `layout` moved. This is expected once after a plugin upgrade (boxes may
+grow). When `layout` prints a hint that central tables sit off-centre, pass it
+on with the command it names (`layout --relayout '<view>'`) and run it only if
+the user wants that view placed from scratch.
 
 4. Report the absolute paths of every file the engine says it wrote, and the
    profile used. Do not commit: rendering changes nothing in the model; the

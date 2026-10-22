@@ -88,3 +88,6 @@ Chi tiết từng task: `plan.md`. Đánh dấu `[x]` khi task pass verify.
 - [x] 27. Export `.drawio` (mỗi view 1 page, bảng = shape table, quan hệ = connector ER), bật/tắt bằng `outputs.drawio` trong open-erd.yaml, mặc định bật
   - Acceptance: `render` ghi `out/erd.drawio` (`out/erd.<profile>.drawio` với `--profile`) khi `outputs.drawio` (mặc định true); page Overview → từng domain → All tables; bảng = `shape=table` + `tableRow`, connector gắn vào row cột, waypoint lấy từ router, đầu ER theo `endMarkers`; tooltip note/enum; byte-identical giữa 2 lần render
   - Verify: `node --test test/drawio.test.js` + mở bằng viewer.diagrams.net (`#R` + deflateRaw) chụp màn hình Overview / domain / All tables
+- [ ] 28. Overview dạng thẻ (A): mỗi domain 1 thẻ (tên, số bảng, mô tả nghiệp vụ `domain note`, bảng chính, 2–3 domain liên quan nhất dạng thanh đậm nhạt), không line mặc định; hover thẻ → line cong dày theo số quan hệ; domain trung tâm nổi bật; không hiện số trên sơ đồ (chỉ tooltip/panel)
+- [ ] 29. Tab "Connections" (B): ma trận domain × domain tô đậm nhạt theo số quan hệ, hover ô → câu đầy đủ, click ô → danh sách quan hệ
+- [ ] 30. Mặc định mở All tables, zoom sẵn vào vùng bảng trung tâm (chữ đọc được) + minimap; tự về overview khi không có view all; `default_view` vẫn ghi đè được

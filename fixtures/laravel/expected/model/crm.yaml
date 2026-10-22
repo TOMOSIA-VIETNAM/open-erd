@@ -42,6 +42,8 @@ tables:
       - { name: owner_id, type: bigint unsigned, nullable: false }
       - { name: created_at, type: timestamp, nullable: true }
       - { name: updated_at, type: timestamp, nullable: true }
+    indexes:
+      - { columns: [owner_id] }
   - id: crm._.team_members
     domain: Identity
     note: Membership of users in teams (pivot of Team::members).
@@ -67,6 +69,8 @@ tables:
       - { name: owner_user_id, type: bigint unsigned, nullable: false }
       - { name: created_at, type: timestamp, nullable: true }
       - { name: updated_at, type: timestamp, nullable: true }
+    indexes:
+      - { columns: [owner_user_id] }
   - id: crm._.contacts
     domain: Accounts
     note: People at companies the sales team talks to.
@@ -174,7 +178,8 @@ tables:
   - id: crm._.taggables
     domain: Engagement
     note: Polymorphic many-to-many between tags and contacts or deals.
-    unique: [[tag_id, taggable_type, taggable_id]]
+    indexes:
+      - { columns: [tag_id, taggable_type, taggable_id], unique: true }
     columns:
       - { name: tag_id, type: bigint unsigned, nullable: false }
       - name: taggable_type
@@ -203,6 +208,8 @@ tables:
       - { name: contact_id, type: bigint unsigned, nullable: false }
       - { name: sent_at, type: timestamp, nullable: true }
       - { name: opened_at, type: timestamp, nullable: true }
+    indexes:
+      - { columns: [contact_id] }
 relations:
   - { from: { table: crm._.users, columns: [manager_id] }, to: { table: crm._.users, columns: [id] }, cardinality: n-1, optional: true, kind: db_fk, evidence: ["crm-laravel:database/migrations/2024_01_01_000001_create_users_table.php#users", "crm-laravel:app/Models/User.php#manager"], review: pending }
   - { from: { table: crm._.user_profiles, columns: [user_id] }, to: { table: crm._.users, columns: [id] }, cardinality: 1-1, optional: false, kind: db_fk, evidence: ["crm-laravel:database/migrations/2024_01_01_000002_create_user_profiles_table.php#user_profiles", "crm-laravel:app/Models/User.php#profile"], review: pending }

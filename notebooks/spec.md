@@ -39,7 +39,7 @@ Mọi người trong dự án: dev, tester, PM, BrSE, khách hàng, đối tác.
 
 **Model (single source of truth)**
 - Định danh bảng: `<db>.<schema>.<table>`. Engine không có schema (MySQL, SQLite, Mongo) dùng `_` ở vị trí schema. Segment không được chứa dấu `.`.
-- Mỗi bảng: domain, note, cột (type, nullable, pk, unique, default, auto_increment, generated, enum + nghĩa từng giá trị, note ngắn cho mọi cột, cờ `pii`).
+- Mỗi bảng: domain, note, cột (type, nullable, pk, unique, default, auto_increment, generated, enum + nghĩa từng giá trị, note ngắn cho mọi cột, cờ `pii`), index (`indexes`: columns, unique, where, using, name).
 - Mỗi quan hệ:
   - `from: { table, columns: [..] }`, `to: { table, columns: [..] }` (hỗ trợ composite key)
   - `cardinality: 1-1 | 1-n | n-1 | n-n`, `optional` (suy từ NOT NULL)
@@ -76,9 +76,9 @@ Mọi người trong dự án: dev, tester, PM, BrSE, khách hàng, đối tác.
 - **1 file SVG tự chứa** (style + script + data nhúng):
   - Click bảng → highlight bảng và các line nối vào, phần còn lại mờ đi.
   - Click line → animation chạy tới bảng đích.
-  - Search bảng/cột, hover cột → chi tiết, chuyển view, chế độ Business (ẩn type/cột kỹ thuật) / Technical.
+  - Search bảng/cột (⌘F / Ctrl+F mở ô tìm giữa màn hình), hover cột → chi tiết, chuyển view; bảng trung tâm (nhiều liên kết nhất) của mỗi domain được tô đậm và đặt giữa cụm khi layout mới.
   - Không có JS → vẫn hiện Overview tĩnh. Viewer nào không chạy JS thì mở bằng browser.
-- **Excel**: Overview (sheet đầu, mỗi bảng 1 dòng), mỗi bảng 1 sheet dạng lưới cột như DB client (`# | Name | Type | Nullable | Default | Generated | Expression | Primary Key | Auto Inc | Comment`, Comment = note cột + nghĩa enum), Relations, Polymorphic, To review (`pending` + `stale`), Changes (khi có diff); hyperlink giữa các sheet.
+- **Excel**: Overview (sheet đầu, mỗi bảng 1 dòng), mỗi bảng 1 sheet dạng lưới cột như DB client (`# | Name | Type | Nullable | Default | Generated | Expression | Primary Key | Auto Inc | Index | Comment`, Comment = note cột + nghĩa enum), Relations, Polymorphic, Indexes, To review (`pending` + `stale`), Changes (khi có diff); hyperlink giữa các sheet.
 - **Diff ngữ nghĩa** giữa 2 snapshot:
   - Tóm tắt 1 dòng; SVG tô màu thêm/xoá/đổi/rename; click bảng → panel câu tiếng Anh; sheet Changes.
   - Rename đọc từ `renamed_from`. Heuristic (độ giống tập cột, ngưỡng cố định) chỉ gắn nhãn "Possibly renamed".

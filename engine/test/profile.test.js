@@ -53,8 +53,10 @@ for (const output of ['svg', 'xlsx']) {
       assert.ok(full.includes(text), `full render lacks ${what}, so the check below proves nothing`);
       assert.ok(!shared.includes(text), `public render leaks ${what}: ${text}`);
     }
+    // Evidence is for reviewers: the workbook keeps it (To review), the
+    // diagram never carries it, not even in a full render.
     for (const e of evidence) {
-      assert.ok(full.includes(e), `full render lacks evidence ${e}`);
+      assert.equal(full.includes(e), output === 'xlsx', `full ${output} ${output === 'xlsx' ? 'lacks' : 'carries'} evidence ${e}`);
       assert.ok(!shared.includes(e), `public render leaks evidence ${e}`);
     }
     // Business notes and enum meanings are what the shared file is for.
@@ -92,7 +94,7 @@ test('hiding cascades to relations, polymorphic targets, view sources and keys',
   };
   const p = applyProfile(hideKey, 'p');
   const lines = p.tables.find((t) => t.id === 'store.tenant.order_lines');
-  assert.equal(lines.unique, undefined, 'a unique key over a hidden column goes');
+  assert.equal(lines.indexes, undefined, 'a unique key (index) over a hidden column goes');
   assert.ok(!lines.columns.some((c) => c.name === 'position'));
   assert.deepEqual(p.tables.find((t) => t.id === 'store.public.sales_by_month').sources, ['store.tenant.order_lines']);
   const reviews = p.tables.find((t) => t.id === 'docs._.reviews');

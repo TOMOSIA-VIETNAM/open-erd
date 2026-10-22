@@ -34,7 +34,7 @@ function withoutFields(object, fields) {
  *     left without targets goes) and view sources;
  *   - columns in `hidden.columns` / `hide.columns`, and `pii` columns when
  *     `drop_pii`, with every relation, polymorphic association, STI,
- *     partition and unique key that uses them; an embedded entity listed by
+ *     partition and index that uses them; an embedded entity listed by
  *     name, or left without columns, goes whole;
  *   - the note fields in `drop_notes`, everywhere they occur;
  *   - evidence when `drop_evidence`.
@@ -58,15 +58,15 @@ export function applyProfile(model, name) {
       .filter((e) => e.columns.length > 0);
     const paths = new Set([...columns.map((c) => c.name), ...embedded.flatMap((e) => e.columns.map((c) => `${e.name}.${c.name}`))]);
     const has = (names) => names.every((n) => paths.has(n));
-    const table = withoutFields(strip(t), ['columns', 'embedded', 'sources', 'sti', 'partition', 'unique']);
+    const table = withoutFields(strip(t), ['columns', 'embedded', 'sources', 'sti', 'partition', 'indexes']);
     table.columns = columns;
     if (embedded.length > 0) table.embedded = embedded;
     const sources = (t.sources ?? []).filter((id) => !hiddenTables.has(id));
     if (sources.length > 0) table.sources = sources;
     if (t.sti && paths.has(t.sti.column)) table.sti = t.sti;
     if (t.partition && has(t.partition.columns)) table.partition = t.partition;
-    const unique = (t.unique ?? []).filter(has);
-    if (unique.length > 0) table.unique = unique;
+    const indexes = (t.indexes ?? []).filter((i) => has(i.columns));
+    if (indexes.length > 0) table.indexes = indexes;
     kept.set(t.id, { table, paths });
   }
   const endOk = (end) => kept.has(end.table) && end.columns.every((c) => kept.get(end.table).paths.has(c));

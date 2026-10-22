@@ -4,8 +4,10 @@ import { test } from 'node:test';
 import { OUTPUT, bundleViewer, serializeBundle } from '../scripts/bundle-viewer.js';
 import { buildDiagram, polyNodeId } from '../src/layout/diagram.js';
 import { computeLayout } from '../src/layout/index.js';
-import { enumMeaning, technicalColumns } from '../src/model/columns.js';
-import { HINT_OFFSET, HINT_SIZE, tableBox } from '../src/layout/table-box.js';
+import * as columnsModule from '../src/model/columns.js';
+import { HINT_OFFSET, HINT_SIZE, HINT_STEP, ICON_GUTTER, tableBox } from '../src/layout/table-box.js';
+
+const { enumMeaning } = columnsModule;
 import { buildScene, renderSvg, viewerData } from '../src/render/svg/render.js';
 import { applyProfile } from '../src/model/profile.js';
 import { centreOn, fitsInside, minimapSize, visibleRect } from '../src/render/svg/viewer/minimap.js';
@@ -57,24 +59,34 @@ test('embedded data holds every node, column detail and drawn relation', async (
   assert.equal(orders.note, 'One order per checkout; the basket becomes order items.');
   const status = orders.columns.find((c) => c.name === 'status');
   assert.deepEqual(Object.keys(status.enum), ['pending', 'paid', 'cancelled']);
-  assert.ok(status.note && !status.technical);
+  assert.ok(status.note);
   assert.ok(data.nodes['auth.public.users'].columns.find((c) => c.name === 'email').pii);
   const commentable = polyNodeId(model.polymorphic.find((a) => a.name === 'commentable'));
   assert.deepEqual(data.nodes[commentable].targets, ['shop._.orders', 'shop._.posts', 'shop._.products']);
 });
 
-test('technical columns: keys and timestamps, unless documented', async () => {
-  const { model, svg } = await multi();
-  const technical = technicalColumns(model);
-  // pk, foreign key, hub key, timestamp; status has an enum, title is plain data.
-  assert.deepEqual([...technical.get('shop._.orders')], ['id', 'user_id', 'organization_id', 'placed_at']);
-  assert.deepEqual([...technical.get('shop._.products')], ['id', 'category_id', 'brand_id', 'created_by', 'updated_by']);
-  assert.deepEqual([...technical.get('shop._.comments')].sort(), ['commentable_id', 'commentable_type', 'created_by', 'id']);
-  assert.match(svg, /<g class="column technical" data-column="placed_at">/);
-  // Every column has a note, so a note does not make a key or timestamp a business column.
-  const noted = { ...model, tables: model.tables.map((t) => ({ ...t, columns: t.columns.map((c) => ({ ...c, note: 'Documented.' })) })) };
-  assert.deepEqual([...technicalColumns(noted).get('shop._.orders')], ['id', 'user_id', 'organization_id', 'placed_at']);
+test('Business/Technical mode is gone: no technical classes, data flags or toolbar mode', async () => {
+  const { svg } = await multi();
+  assert.equal(columnsModule.technicalColumns, undefined);
+  assert.doesNotMatch(svg, /class="column technical"|"technical":|\.business /);
+  assert.doesNotMatch(scriptBlock(svg), /'Business'|'Technical'|setBusiness/);
   assert.match(svg, /<g class="column" data-column="status">/);
+});
+
+test('key columns get a gutter icon: PK a key, a referencing column (hub and polymorphic id included) a link', async () => {
+  const { model, diagram, svg } = await multi();
+  const rows = (id) => Object.fromEntries(diagram.nodes.get(id).box.rows.map((r) => [r.column, r.key]));
+  const orders = rows('shop._.orders');
+  assert.equal(orders.id, 'pk');
+  assert.equal(orders.user_id, 'fk', 'hub relation to users');
+  assert.equal(orders.status, null);
+  assert.equal(rows('shop._.comments').commentable_id, 'fk', 'polymorphic id column');
+  assert.match(svg, /<path class="icon-pk" d="M/);
+  assert.match(svg, /<path class="icon-fk" d="M/);
+  // The data marks the same columns for the panel.
+  const data = viewerData(model, diagram);
+  assert.ok(data.nodes['shop._.orders'].columns.find((c) => c.name === 'user_id').fk);
+  assert.ok(!data.nodes['shop._.orders'].columns.find((c) => c.name === 'status').fk);
 });
 
 test('polymorphic target lines are routed per view and hidden until clicked', async () => {
@@ -111,8 +123,23 @@ test('viewer data: overview line relations, hub relations, link optionality, pol
   const created = data.hubLinks.find((l) => l.id === 'shop._.products(created_by)->auth.public.users(id)');
   assert.deepEqual([created.from, created.to, created.column, created.cardinality], ['shop._.products', 'auth.public.users', 'created_by', 'n-1']);
   for (const l of data.links) assert.equal(typeof l.optional, 'boolean', l.id);
-  // Engines by database, as the frames print them, for cross-DB panels.
-  assert.deepEqual(data.databases, { activity: 'MongoDB', auth: 'PostgreSQL', shop: 'MySQL' });
+  // Engines by database: as written (schema copy) and as the frames print them (cross-DB panels).
+  assert.deepEqual(data.databases, {
+    activity: { engine: 'mongodb', label: 'MongoDB' },
+    auth: { engine: 'postgresql', label: 'PostgreSQL' },
+    shop: { engine: 'mysql', label: 'MySQL' },
+  });
+  // Facts waiting for review, for the review mode entry; evidence stays out of the drawing.
+  const facts = [...model.relations, ...model.polymorphic];
+  assert.deepEqual(data.review, { pending: facts.filter((f) => f.review === 'pending').length, stale: facts.filter((f) => f.review === 'stale').length });
+  assert.ok(data.review.pending > 0 && data.review.stale > 0, 'the multi fixture has both');
+  assert.ok([...data.links, ...data.hubLinks].every((l) => l.evidence === undefined));
+  assert.ok(Object.values(data.nodes).every((n) => n.evidence === undefined));
+  // Indexes as declared; facts as parts with identifiers marked as code.
+  assert.deepEqual(data.nodes['auth.public.users'].indexes, [
+    { name: 'index_users_on_email', columns: ['email'], unique: true },
+    { name: 'index_users_on_status', columns: ['status'], unique: false, using: 'btree' },
+  ]);
   const commentable = data.nodes[polyNodeId(model.polymorphic.find((a) => a.name === 'commentable'))];
   assert.equal(commentable.note, 'Customers discuss a post, product or order; support staff answer in the same thread.');
   assert.equal(commentable.internalNote, 'CommentsController#create sets the type from the route.');
@@ -143,7 +170,7 @@ test('enum meanings that only restate their value are left out', () => {
   assert.equal(enumMeaning('0', 'Hidden from customers'), 'Hidden from customers');
 });
 
-test('only columns with enum values get a mark after the name, inside the row budget', async () => {
+test('marks after a column name: enum values and index membership, each inside the row budget', async () => {
   const columns = [
     { name: 'id', type: 'bigint', pk: true },
     { name: 'title', type: 'varchar', note: 'Shown in lists.' },
@@ -151,14 +178,19 @@ test('only columns with enum values get a mark after the name, inside the row bu
   ];
   const plain = tableBox({ id: 'db._.posts', columns: columns.map(({ name, type, pk }) => ({ name, type, pk })) });
   const box = tableBox({ id: 'db._.posts', columns });
-  // Same size with or without marks: no stored layout goes stale.
+  // One mark fits in the gap a row keeps anyway: same size with or without.
   assert.deepEqual([box.w, box.h], [plain.w, plain.h]);
   // Every column has a note, so a note gets no mark.
-  assert.deepEqual(box.rows.map((r) => r.hint), [null, null, 'enum']);
-  for (const r of box.rows.filter((x) => x.hint)) {
-    assert.equal(r.hintX, r.name.width + HINT_OFFSET);
-    // The mark ends before the right-aligned type starts.
-    assert.ok(12 + r.hintX + HINT_SIZE / 2 < box.w - 12 - r.type.width, r.column);
+  assert.deepEqual(box.rows.map((r) => r.hints.map((h) => h.kind)), [[], [], ['enum']]);
+  const indexed = tableBox({ id: 'db._.posts', columns }, [], [], { indexed: new Set(['status', 'title']) });
+  assert.deepEqual(indexed.rows.map((r) => r.hints.map((h) => h.kind)), [[], ['index'], ['enum', 'index']]);
+  for (const b of [box, indexed]) {
+    for (const r of b.rows) {
+      r.hints.forEach((h, i) => assert.equal(h.x, r.name.width + HINT_OFFSET + i * HINT_STEP));
+      // The last mark ends before the right-aligned type starts.
+      const last = r.hints.at(-1);
+      if (last) assert.ok(12 + ICON_GUTTER + last.x + HINT_SIZE / 2 < b.w - 12 - r.type.width, r.column);
+    }
   }
   const { svg, model } = await multi();
   assert.match(svg, /<path class="hint-enum" d="M[^"]+h1\.2M/);

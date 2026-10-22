@@ -2,9 +2,11 @@
 // browser; it turns the static drawing (overview visible, other views hidden)
 // into an explorable diagram. Everything it adds is created here at runtime,
 // so a viewer without script still shows the plain overview.
-import { endMarkers, enumIconSvg, isConfirmed, markerSvg } from '../markers.js';
+import { dbDisplayName } from '../../../display-name.js';
+import { REVIEW_WORDS, endMarkers, enumIconSvg, indexIconSvg, isConfirmed, keyIconSvg, linkIconSvg, markerSvg, reviewIconSvg, starIconSvg } from '../markers.js';
 import { CANVAS_LIMITS, PIXEL_RATIO, canvasScale, exportBaseName } from './download.js';
-import { conditionsText, findJoinPaths, hopCondition, pathNames, sqlSkeleton } from './join-path.js';
+import { findJoinPaths, hopCondition, pathNames, sqlSkeleton } from './join-path.js';
+import { collectionDocument, createTableSql, isDocumentStore, markdownTable } from './schema-copy.js';
 import { centreOn, fitsInside, minimapSize, visibleRect } from './minimap.js';
 import { endTransforms, radialLayout, straightLink } from './radial.js';
 
@@ -83,7 +85,7 @@ const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 // "qlear (PostgreSQL) → qlear_mongo (MongoDB)" for the databases of two
 // names; `⇄` for an overview line, which stands for both directions.
 const dbOf = (name) => name.split(/[./]/)[0];
-const crossing = (from, to, arrow = '→') => `${dbOf(from)} (${data.databases[dbOf(from)]}) ${arrow} ${dbOf(to)} (${data.databases[dbOf(to)]})`;
+const crossing = (from, to, arrow = '→') => `${dbDisplayName(dbOf(from))} (${data.databases[dbOf(from)].label}) ${arrow} ${dbDisplayName(dbOf(to))} (${data.databases[dbOf(to)].label})`;
 const domainName = (cluster) => cluster.split('/').slice(1).join('/');
 // Table nodes per domain, for the counts in the breadcrumb.
 const tableCount = (cluster) => Object.values(data.nodes).filter((n) => n.kind === 'table' && (cluster === null || n.cluster === cluster)).length;
@@ -658,84 +660,161 @@ function openNeighborhood(id, hops = state.hops) {
 
 // ---------------------------------------------------------------- toolbar
 
+// Left: Back and the breadcrumb, which gets whatever width is left. Right,
+// never shrinking: the search trigger, Join path, the view switcher, the ⋯
+// menu (folding, legend, minimap, review mode, weak links) and Download.
+// Icons are inline SVG paths drawn with the text colour; every control has
+// a tooltip.
+const ICONS = {
+  back: 'M10 3L5 8L10 13',
+  search: 'M7 2.5A4.5 4.5 0 1 1 7 11.5A4.5 4.5 0 1 1 7 2.5ZM10.3 10.3L14 14',
+  join: 'M3 4.5A1.5 1.5 0 1 1 3 4.49ZM13 11.5A1.5 1.5 0 1 1 13 11.49ZM4.5 4.5H9A2.5 2.5 0 0 1 9 9.5H7A2.5 2.5 0 0 0 7 14.5',
+  views: 'M2.5 2.5H7V7H2.5ZM9 2.5H13.5V7H9ZM2.5 9H7V13.5H2.5ZM9 9H13.5V13.5H9Z',
+  more: 'M3.5 8H3.6M8 8H8.1M12.5 8H12.6',
+  download: 'M8 2.5V10.5M4.5 7L8 10.5L11.5 7M3 13.5H13',
+  caret: 'M4.5 6.5L8 10L11.5 6.5',
+  check: 'M3.5 8.5L6.5 11.5L12.5 4.5',
+};
+const iconSvg = (name, size = 16) =>
+  svgEl('svg', { class: `oe-icon icon-${name}`, width: size, height: size, viewBox: '0 0 16 16', 'aria-hidden': 'true' }, [svgEl('path', { d: ICONS[name] })]);
+// A toolbar button: icon, optional label, tooltip.
+const toolButton = (iconName, label, title, onClick, extra = '') =>
+  el('button', { class: `oe-btn oe-tool${label ? '' : ' icon-only'}${extra}`, title, 'aria-label': title, on: { click: onClick } }, [iconSvg(iconName), label ? el('span', { class: 'label', text: label }) : null]);
+
 const toolbar = overlay('oe-toolbar');
 const crumbs = el('div', { class: 'oe-crumbs' });
-const backButton = el('button', { class: 'oe-btn', text: '‹ Back', title: 'Previous view', on: { click: back } });
+const backButton = toolButton('back', '', 'Back to the previous view', back);
 function relatedButtons(open) {
   return RELATED.options.map((o) => el('button', { class: 'oe-btn', text: o.text, title: o.title, on: { click: () => open(o.hops) } }));
 }
 const hopButtons = relatedButtons((hops) => openNeighborhood(state.center, hops));
 const hopGroup = el('div', { class: 'oe-related', title: RELATED.title }, [el('span', { text: RELATED.label }), el('div', { class: 'oe-seg' }, hopButtons)]);
-const allButton = el('button', { class: 'oe-btn', text: 'All tables', on: { click: () => navigate(ALL_VIEW) } });
-const foldButtons = [
-  ['Collapse all', true],
-  ['Expand all', false],
-].map(([text, fold]) => el('button', { class: 'oe-btn', text, title: `${fold ? 'Fold' : 'Unfold'} every domain in this view; a click on a domain's header folds just that one`, on: { click: () => setCollapsed(state.view, clusterGroups(currentView()).map(keyOf), fold) } }));
-const foldGroup = el('div', { class: 'oe-seg' }, foldButtons);
-const joinButton = el('button', { class: 'oe-btn', text: 'Join path', title: 'How to join two tables: the condition of each hop', on: { click: () => (join.open ? clearSelection() : openJoin()) } });
-const legendButton = el('button', { class: 'oe-btn', text: 'Legend', title: 'What the lines and marks in this view mean', on: { click: () => setLegend(!legendOpen) } });
-// Review colours are for reviewers: off by default, so every line has one
-// neutral colour and only solid (confirmed) or dashed (not confirmed).
-// Overview lines standing for few relations are hidden at first (see
-// overview.min_relations); this button shows or hides them all, and
-// hovering a domain shows its own.
-const weakCount = views.get(OVERVIEW).querySelectorAll('.overview-link.weak').length;
-const weakButton = el('button', { class: 'oe-btn', title: `Lines standing for fewer than ${data.overviewMinRelations} relations`, on: { click: () => setWeak(!svg.classList.contains('show-weak')) } });
-function setWeak(on) {
-  svg.classList.toggle('show-weak', on);
-  weakButton.classList.toggle('on', on);
-  weakButton.textContent = on ? 'Hide weak links' : `${plural(weakCount, 'weak link')} hidden · Show all`;
-  if (legendOpen) setLegend(true);
+
+const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+const FIND_KEY = IS_MAC ? '⌘F' : 'Ctrl+F';
+const searchButton = el('button', { class: 'oe-btn oe-tool oe-search-trigger', title: `Search tables and columns (${FIND_KEY} or /)`, 'aria-label': 'Search tables and columns', on: { click: () => openSpotlight() } }, [
+  iconSvg('search'),
+  el('span', { class: 'label', text: 'Search' }),
+  el('kbd', { text: FIND_KEY }),
+]);
+const joinButton = toolButton('join', 'Join path', 'How to join two tables: the condition of each hop', () => (join.open ? clearSelection() : openJoin()));
+
+// Dropdown menus of the toolbar; one open at a time.
+const menus = [];
+function dropdown(button, cls) {
+  const menu = el('div', { class: `oe-menu ${cls}`, role: 'menu', style: 'display:none' });
+  const wrap = el('div', { class: 'oe-drop' }, [button, menu]);
+  const entry = { button, menu, wrap, onOpen: null };
+  menus.push(entry);
+  button.addEventListener('click', () => setMenu(entry, menu.style.display === 'none'));
+  return entry;
 }
-const minimapButton = el('button', { class: 'oe-btn', text: 'Minimap', title: 'Small map of the whole view, shown while it does not fit on screen', on: { click: () => setMinimap(!map.on) } });
-const reviewButton = el('button', {
-  class: 'oe-btn',
-  text: 'Review mode',
-  title: 'Colour lines by review state: amber waits for review, red changed in the code since it was reviewed',
-  on: { click: () => setReviewMode(!svg.classList.contains('review-mode')) },
-});
-if (!views.has(ALL_VIEW)) allButton.style.display = 'none';
-const searchInput = el('input', { type: 'search', placeholder: 'Search tables and columns', 'aria-label': 'Search tables and columns' });
-const results = el('div', { class: 'oe-results', style: 'display:none' });
-const modeButtons = ['Business', 'Technical'].map((label) =>
-  el('button', { class: 'oe-btn', text: label, on: { click: () => setBusiness(label === 'Business') } }),
+const openMenu = () => menus.find((m) => m.menu.style.display !== 'none') ?? null;
+function setMenu(entry, open) {
+  for (const m of menus) {
+    const on = m === entry && open;
+    if (on && m.onOpen) m.onOpen();
+    m.menu.style.display = on ? '' : 'none';
+    m.button.classList.toggle('on', on);
+  }
+  if (!(entry === downloadMenu && open)) downloadStatus.textContent = '';
+  layoutOverlays();
+}
+const closeMenus = () => setMenu(null, false);
+// A menu row: a check mark column (shown for toggles that are on), label,
+// optional second line.
+function menuItem(label, title, onClick, { checked = null, detail = null, disabled = false } = {}) {
+  return el('button', { class: `oe-item${checked ? ' checked' : ''}`, role: checked === null ? 'menuitem' : 'menuitemcheckbox', title, ...(disabled ? { disabled: '' } : {}), on: { click: onClick } }, [
+    el('span', { class: 'mark' }, [checked ? iconSvg('check', 14) : null]),
+    el('span', { class: 'text' }, [el('span', { text: label }), detail ? el('span', { class: 'detail', text: detail }) : null]),
+  ]);
+}
+
+// The view switcher: Overview, All tables, then each database, which shows
+// that database's frame (in the view of all tables when it is on screen,
+// else on the overview).
+const viewsMenu = dropdown(
+  el('button', { class: 'oe-btn oe-tool', title: 'Switch view: the overview, all tables, or one database', 'aria-label': 'Switch view' }, [iconSvg('views'), el('span', { class: 'label', text: 'Views' }), iconSvg('caret', 12)]),
+  'oe-views-menu',
 );
-const downloadButton = el('button', { class: 'oe-btn', text: 'Download ▾', title: 'Save the view on screen as a file', on: { click: () => setMenu(menu.style.display === 'none') } });
-const keepHighlight = el('input', { type: 'checkbox' });
+const DATABASES = [...views.get(OVERVIEW).querySelectorAll('.database')].map((g) => g.getAttribute('data-database'));
+// replaceChildren would print a null as text: optional entries are filtered.
+const fillMenu = (menu, items) => menu.replaceChildren(...items.filter(Boolean));
+viewsMenu.onOpen = () =>
+  fillMenu(viewsMenu.menu, [
+    menuItem('Overview', 'Databases and their domains', () => (closeMenus(), navigate(OVERVIEW)), { checked: state.view === OVERVIEW }),
+    views.has(ALL_VIEW) ? menuItem(`All tables · ${plural(tableCount(null), 'table')}`, 'Every table of every domain', () => (closeMenus(), navigate(ALL_VIEW)), { checked: state.view === ALL_VIEW }) : null,
+    DATABASES.length > 0 ? el('div', { class: 'oe-menu-sub', text: 'Databases' }) : null,
+    ...DATABASES.map((db) => menuItem(dbDisplayName(db), `Show the ${dbDisplayName(db)} database (${data.databases[db].label})`, () => (closeMenus(), showDatabase(db)), { detail: data.databases[db].label })),
+  ]);
+
+// The ⋯ menu: view and display settings, rebuilt on every open so labels
+// and checks reflect the current state.
+const moreMenu = dropdown(toolButton('more', '', 'More: collapse or expand domains, legend, minimap, review mode'), 'oe-more-menu');
+const REVIEW_TOTAL = data.review.pending + data.review.stale;
+const reviewCounts = () => `${data.review.pending} to confirm · ${data.review.stale} changed in code`;
+moreMenu.onOpen = () => {
+  const foldable = clusterGroups(currentView()).length > 0;
+  const fold = (on) => () => {
+    closeMenus();
+    setCollapsed(state.view, clusterGroups(currentView()).map(keyOf), on);
+  };
+  const toggle = (fn) => () => {
+    fn();
+    moreMenu.onOpen();
+    layoutOverlays();
+  };
+  fillMenu(moreMenu.menu, [
+    menuItem('Collapse all', foldable ? 'Fold every domain in this view; a click on a domain header folds just that one' : 'Nothing to fold in this view', fold(true), { disabled: !foldable }),
+    menuItem('Expand all', foldable ? 'Unfold every domain in this view' : 'Nothing to fold in this view', fold(false), { disabled: !foldable }),
+    el('div', { class: 'oe-menu-sep' }),
+    menuItem('Legend', 'What the marks in this view mean', toggle(() => setLegend(!legendOpen)), { checked: legendOpen }),
+    menuItem('Minimap', 'Small map of the whole view, shown while it does not fit on screen', toggle(() => setMinimap(!map.on)), { checked: map.on }),
+    // Nothing to review: the entry would switch on a mode that changes nothing.
+    // Overview lines stand for many relations and carry no review colour.
+    REVIEW_TOTAL > 0 && state.view !== OVERVIEW
+      ? menuItem(`Review mode · ${reviewCounts()}`, 'Color lines by review status: amber = not confirmed yet, red = code changed since review', toggle(() => setReviewMode(!reviewing())), {
+          checked: reviewing(),
+          detail: 'Color lines by review status: amber = not confirmed yet, red = code changed since review',
+        })
+      : null,
+    state.view === OVERVIEW && weakCount > 0
+      ? menuItem(`Show weak links (${weakCount} hidden)`, `Lines standing for fewer than ${data.overviewMinRelations} relations; hovering a domain shows its own`, toggle(() => setWeak(!svg.classList.contains('show-weak'))), {
+          checked: svg.classList.contains('show-weak'),
+        })
+      : null,
+  ]);
+};
+
 const downloadStatus = el('div', { class: 'oe-status' });
-const menu = el('div', { class: 'oe-menu', style: 'display:none' }, [
+const keepHighlight = el('input', { type: 'checkbox' });
+const downloadMenu = dropdown(toolButton('download', '', 'Download the view on screen as SVG, PNG or JPEG'), 'oe-download-menu');
+downloadMenu.menu.append(
   ...[
     ['This view as SVG', 'svg', 'Vector drawing of this view only, without the interactive viewer'],
     ['This view as PNG', 'png', 'Image at twice the screen resolution, transparent outside the drawing'],
     ['This view as JPEG', 'jpg', 'Smaller image on a white background'],
-  ].map(([text, format, title]) => el('button', { class: 'oe-result', text, title, on: { click: () => download(format) } })),
-  el('label', { class: 'oe-check' }, [keepHighlight, el('span', { text: 'Keep highlight and selection' })]),
+  ].map(([text, format, title]) => menuItem(text, title, () => download(format))),
+  el('label', { class: 'oe-check', title: 'Keep the highlighted tables and lines in the file' }, [keepHighlight, el('span', { text: 'Keep highlight and selection' })]),
   downloadStatus,
-]);
-toolbar.div.append(
-  backButton,
-  crumbs,
-  hopGroup,
-  foldGroup,
-  weakButton,
-  joinButton,
-  legendButton,
-  reviewButton,
-  minimapButton,
-  allButton,
-  el('div', { class: 'oe-search' }, [searchInput, results]),
-  el('div', { class: 'oe-seg' }, modeButtons),
-  el('div', { class: 'oe-download' }, [downloadButton, menu]),
 );
 
-function setBusiness(on) {
-  svg.classList.toggle('business', on);
-  modeButtons[0].classList.toggle('on', on);
-  modeButtons[1].classList.toggle('on', !on);
+// Overview lines standing for few relations are hidden at first (see
+// overview.min_relations); the ⋯ menu shows or hides them all, and hovering
+// a domain shows its own.
+const weakCount = views.get(OVERVIEW).querySelectorAll('.overview-link.weak').length;
+function setWeak(on) {
+  svg.classList.toggle('show-weak', on);
+  if (legendOpen) setLegend(true);
 }
 
+toolbar.div.append(
+  el('div', { class: 'oe-left' }, [backButton, crumbs]),
+  el('div', { class: 'oe-right' }, [hopGroup, searchButton, joinButton, viewsMenu.wrap, moreMenu.wrap, downloadMenu.wrap]),
+);
+
 function crumb(text, onClick) {
-  return onClick ? el('button', { class: 'oe-link', text, on: { click: onClick } }) : el('span', { class: 'here', text });
+  return onClick ? el('button', { class: 'oe-link', text, title: text, on: { click: onClick } }) : el('span', { class: 'here', text, title: text });
 }
 
 function renderToolbar() {
@@ -749,7 +828,7 @@ function renderToolbar() {
   if (cluster) {
     const db = cluster.split('/')[0];
     // There is no database-level view; the database crumb shows its frame on the overview.
-    parts.push(crumb(db, () => showDatabase(db)));
+    parts.push(crumb(dbDisplayName(db), () => showDatabase(db)));
     parts.push(
       state.view === NEIGHBORHOOD
         ? crumb(domainName(cluster), () => navigate(domainView(cluster), { focus: state.center }))
@@ -762,30 +841,19 @@ function renderToolbar() {
   backButton.disabled = state.history.length === 0;
   hopGroup.style.display = state.view === NEIGHBORHOOD ? '' : 'none';
   hopButtons.forEach((b, i) => b.classList.toggle('on', state.hops === RELATED.options[i].hops));
-  allButton.classList.toggle('on', state.view === ALL_VIEW);
-  foldGroup.style.display = clusterGroups(currentView()).length > 0 ? '' : 'none';
-  // Overview lines stand for many relations and carry no review colour.
-  reviewButton.style.display = state.view === OVERVIEW ? 'none' : '';
-  weakButton.style.display = state.view === OVERVIEW && weakCount > 0 ? '' : 'none';
   layoutOverlays();
 }
 
+/** Shows database `db`'s frame: in the view of all tables when on it, else on the overview. */
 function showDatabase(db) {
-  navigate(OVERVIEW);
-  for (const g of views.get(OVERVIEW).querySelectorAll('.database')) {
+  const name = state.view === ALL_VIEW ? ALL_VIEW : OVERVIEW;
+  navigate(name);
+  for (const g of views.get(name).querySelectorAll('.database')) {
     if (g.getAttribute('data-database') === db) zoomToRect(boxOf(g), MAX_FIT_SCALE);
   }
 }
 
 // ---------------------------------------------------------------- download
-
-function setMenu(open) {
-  if (open) closeResults();
-  menu.style.display = open ? '' : 'none';
-  if (!open) downloadStatus.textContent = '';
-  downloadButton.classList.toggle('on', open);
-  layoutOverlays();
-}
 
 const HIGHLIGHT_CLASSES = ['hl', 'selected', 'flow-target', 'flowing', 'hl-column', 'dimmed', 'center-selected'];
 const isHidden = (e) => e.classList.contains('oe-hidden') || /display:\s*none/.test(e.getAttribute('style') ?? '');
@@ -812,8 +880,8 @@ function viewAsSvg(keep) {
   for (const e of [...view.querySelectorAll('*')].filter(isHidden)) e.remove();
   for (const e of view.querySelectorAll('.relation-hit')) e.remove();
   const root = svgEl('svg', { width: w, height: h, viewBox: `${x} ${y} ${w} ${h}` }, [svg.querySelector('style').cloneNode(true), view]);
-  // Business mode, review colours and diff colours are classes on the root.
-  const cls = ['business', 'review-mode', 'diff-mode'].filter((c) => svg.classList.contains(c));
+  // Review colours and diff colours are classes on the root.
+  const cls = ['review-mode', 'diff-mode'].filter((c) => svg.classList.contains(c));
   if (cls.length > 0) root.setAttribute('class', cls.join(' '));
   return { text: `<?xml version="1.0" encoding="UTF-8"?>\n${new XMLSerializer().serializeToString(root)}\n`, w, h };
 }
@@ -881,7 +949,8 @@ async function download(format) {
 // ---------------------------------------------------------------- search
 
 // Every table and column, matched by substring. Table hits rank before
-// column hits, a match at the start of a name before one inside it.
+// column hits; an exact name first, then a match at the start of a name,
+// then one inside it.
 function search(query) {
   const q = query.trim().toLowerCase();
   if (!q) return [];
@@ -889,59 +958,88 @@ function search(query) {
   for (const [id, n] of Object.entries(data.nodes)) {
     if (n.kind !== 'table') continue;
     const name = short(id).toLowerCase();
-    if (id.toLowerCase().includes(q)) hits.push({ id, rank: name.startsWith(q) ? 0 : 1 });
+    if (id.toLowerCase().includes(q)) hits.push({ id, rank: name === q ? 0 : name.startsWith(q) ? 1 : 2 });
     for (const c of n.columns) {
       const cn = c.name.toLowerCase();
-      if (cn.includes(q)) hits.push({ id, column: c.name, rank: cn.startsWith(q) ? 2 : 3 });
+      if (cn.includes(q)) hits.push({ id, column: c.name, rank: cn === q ? 3 : cn.startsWith(q) ? 4 : 5 });
     }
   }
   return hits.sort((a, b) => a.rank - b.rank || byId(a.id, b.id) || byId(a.column ?? '', b.column ?? '')).slice(0, SEARCH_LIMIT);
 }
 
+// Spotlight: Cmd+F / Ctrl+F (or "/") opens a search box in the middle of
+// the screen over a dimmed drawing, with tables and columns listed as you
+// type. Arrow keys move through the list, Enter jumps, Escape closes. The
+// browser's own find bar would search the toolbar's text only, so the
+// shortcut is taken over.
+const spotlight = overlay('oe-spotlight-host');
+spotlight.fo.style.display = 'none';
+const spotlightInput = el('input', { type: 'search', class: 'oe-spotlight-input', placeholder: 'Search tables and columns', 'aria-label': 'Search tables and columns', autocomplete: 'off', spellcheck: 'false' });
+const spotlightList = el('div', { class: 'oe-spotlight-list', role: 'listbox' });
+const spotlightHint = el('div', { class: 'oe-spotlight-hint', text: '↑ ↓ to move · Enter to open · Esc to close' });
+spotlight.div.append(
+  el('div', { class: 'oe-spotlight-backdrop', on: { pointerdown: () => closeSpotlight() } }),
+  el('div', { class: 'oe-spotlight', role: 'dialog', 'aria-label': 'Search' }, [el('div', { class: 'oe-spotlight-field' }, [iconSvg('search', 18), spotlightInput]), spotlightList, spotlightHint]),
+);
 let resultHits = [];
 let resultItems = [];
 let activeResult = 0;
+const spotlightOpen = () => spotlight.fo.style.display !== 'none';
 
-function closeResults() {
-  results.style.display = 'none';
-  resultHits = [];
-  resultItems = [];
+function openSpotlight() {
+  closeMenus();
+  hideTip();
+  spotlight.fo.style.display = '';
   layoutOverlays();
+  spotlightInput.focus();
+  spotlightInput.select();
+  renderResults();
+}
+
+function closeSpotlight() {
+  if (!spotlightOpen()) return;
+  spotlight.fo.style.display = 'none';
+  spotlightInput.blur();
 }
 
 function pick(hit) {
-  closeResults();
-  searchInput.blur();
+  closeSpotlight();
   goToNode(hit.id, hit.column);
 }
 
-function renderResults() {
-  const hits = search(searchInput.value);
-  activeResult = 0;
-  if (!searchInput.value.trim()) return closeResults();
-  resultItems = hits.map((hit, i) =>
-    el('button', { class: `oe-result${i === 0 ? ' active' : ''}`, on: { click: () => pick(hit) } }, [
-      el('div', { text: hit.column ? `${short(hit.id)}.${hit.column}` : short(hit.id) }),
-      el('div', { class: 'where', text: `${hit.column ? 'column' : 'table'} · ${hit.id}` }),
-    ]),
-  );
-  results.replaceChildren(...(resultItems.length > 0 ? resultItems : [el('div', { class: 'oe-result', text: 'No match' })]));
-  setMenu(false);
-  results.style.display = '';
-  resultHits = hits;
-  layoutOverlays();
+function setActive(i) {
+  resultItems[activeResult]?.classList.remove('active');
+  activeResult = i;
+  resultItems[activeResult]?.classList.add('active');
+  resultItems[activeResult]?.scrollIntoView({ block: 'nearest' });
 }
 
-searchInput.addEventListener('input', renderResults);
-searchInput.addEventListener('keydown', (e) => {
+// One row per hit: a table or column icon, the name, then where it is.
+function renderResults() {
+  const hits = search(spotlightInput.value);
+  activeResult = 0;
+  resultHits = hits;
+  resultItems = hits.map((hit, i) => {
+    const n = data.nodes[hit.id];
+    const where = hit.column ? `column of ${short(hit.id)} · ${domainName(n.cluster)}` : `${dbDisplayName(dbOf(hit.id))} › ${domainName(n.cluster)}`;
+    return el('button', { class: `oe-result${i === 0 ? ' active' : ''}`, role: 'option', title: hit.column ? `${hit.id}.${hit.column}` : hit.id, on: { click: () => pick(hit), pointermove: () => activeResult !== i && setActive(i) } }, [
+      el('span', { class: `kind ${hit.column ? 'is-column' : 'is-table'}`, text: hit.column ? 'col' : 'table' }),
+      el('span', { class: 'name', text: hit.column ? `${short(hit.id)}.${hit.column}` : short(hit.id) }),
+      el('span', { class: 'where', text: where }),
+    ]);
+  });
+  const empty = spotlightInput.value.trim() ? 'No table or column matches' : 'Type a table or column name';
+  spotlightList.replaceChildren(...(resultItems.length > 0 ? resultItems : [el('div', { class: 'oe-spotlight-empty', text: empty })]));
+}
+
+spotlightInput.addEventListener('input', renderResults);
+spotlightInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && resultHits[activeResult]) pick(resultHits[activeResult]);
   else if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && resultItems.length > 0) {
     e.preventDefault();
-    resultItems[activeResult].classList.remove('active');
-    activeResult = (activeResult + (e.key === 'ArrowDown' ? 1 : resultItems.length - 1)) % resultItems.length;
-    resultItems[activeResult].classList.add('active');
-    resultItems[activeResult].scrollIntoView({ block: 'nearest' });
-  } else return;
+    setActive((activeResult + (e.key === 'ArrowDown' ? 1 : resultItems.length - 1)) % resultItems.length);
+  } else if (e.key === 'Escape') closeSpotlight();
+  else return;
   e.stopPropagation();
 });
 
@@ -965,12 +1063,13 @@ function showPanel(children) {
 const link = (text, onClick) => el('button', { class: 'oe-link', text, on: { click: onClick } });
 // A view's line to its source has no cardinality.
 const linkSummary = (l) => (l.kind === 'view_source' ? 'view reads this table' : `${l.cardinality} · ${l.kind}`);
-// Evidence is for reviewers; it stays folded so the business facts lead.
-const evidenceList = (evidence) =>
-  evidence ? el('details', { class: 'oe-evidence' }, [el('summary', { text: `Evidence (${evidence.length})` }), el('ul', {}, evidence.map((e) => el('li', { text: e })))]) : null;
+// Review state as an icon whose tooltip says it in words.
+const reviewIcon = (state) =>
+  el('span', { class: `oe-review review-${state}`, title: REVIEW_WORDS[state], 'aria-label': REVIEW_WORDS[state], role: 'img' }, [svgEl('svg', { width: 14, height: 14, viewBox: '0 0 14 14' }, parsed(reviewIconSvg(state, 7, 7)))]);
+// A fact line: identifiers and values as code, the words around as text.
+const factLine = (parts, tag = 'li') => el(tag, { class: 'oe-fact' }, parts.map((p) => el(p.code ? 'code' : 'span', { class: p.code ? 'oe-code' : '', text: p.text })));
 const relatedRow = (id) =>
   el('div', { class: 'row', title: RELATED.title }, [el('span', { class: 'label', text: RELATED.label }), ...relatedButtons((hops) => openNeighborhood(id, hops))]);
-const linkItem = (arrow, other, detail) => el('li', {}, [el('span', { text: `${arrow} ` }), link(short(other), () => goToNode(other)), el('span', { class: 'where', text: ` ${detail}` })]);
 // Business note, then the team-only note and the untranslated original.
 const noteLines = (n) => [
   n.note ? el('p', { text: n.note }) : null,
@@ -1006,16 +1105,16 @@ const enumTable = (values) =>
 // Enum values fold under their column as "N values"; the column `open` (the
 // one clicked) starts unfolded.
 function columnGrid(n, open) {
-  const head = el('tr', {}, ['#', 'Name / Comment', 'Type', 'Null', 'Default', 'PK'].map((h) => el('th', { text: h })));
+  const head = el('tr', {}, ['#', 'Name / Comment', 'Type', 'Null', 'Default', 'Key'].map((h) => el('th', { text: h })));
   const rows = n.columns.flatMap((c, i) => {
     const values = Object.entries(c.enum ?? {});
-    const row = el('tr', { class: `${c.name === open ? 'open' : ''}${c.technical ? ' technical' : ''}`, 'data-column': c.name }, [
+    const row = el('tr', { class: c.name === open ? 'open' : '', 'data-column': c.name }, [
       el('td', { class: 'num', text: String(i + 1) }),
-      el('td', { class: 'name' }, [el('span', { text: c.name }), c.pii ? el('span', { class: 'chip pii', text: 'PII' }) : null]),
+      el('td', { class: 'name' }, [el('span', { text: c.name }), c.pii ? el('span', { class: 'chip pii', text: 'PII' }) : null, indexedColumns(n).has(c.name) ? el('span', { class: 'chip idx', text: 'idx', title: 'In an index (see Indexes below)' }) : null]),
       el('td', { class: 'type', text: c.type }),
       el('td', { text: c.nullable === true ? 'yes' : c.nullable === false ? 'no' : '' }),
       el('td', { text: c.default ?? (c.autoIncrement ? 'auto' : c.generated !== undefined ? 'generated' : '') }),
-      el('td', { text: c.pk ? 'PK' : '' }),
+      el('td', { text: c.pk ? 'PK' : c.fk ? 'FK' : '' }),
     ]);
     const comment = [c.note, c.internalNote && `Internal: ${c.internalNote}`].filter(Boolean).join(' · ');
     const details = values.length > 0 ? el('details', c.name === open ? { open: '' } : {}, [el('summary', { text: plural(values.length, 'value') }), enumTable(values)]) : null;
@@ -1026,57 +1125,132 @@ function columnGrid(n, open) {
   return el('div', { class: 'oe-grid-wrap' }, [el('table', { class: 'oe-grid' }, [head, ...rows])]);
 }
 
-function nodePanel(id, column = null) {
-  const n = data.nodes[id];
-  if (!n) return [el('h3', { text: id })];
-  const lines = data.links.filter((l) => l.from === id || l.to === id);
-  const shared = data.hubLinks.filter((l) => l.from === id || l.to === id).length;
+const indexedColumns = (n) => new Set((n.indexes ?? []).flatMap((i) => i.columns));
+
+// Chips for related tables, one per table: a click goes to it. A relation
+// not confirmed yet (see isConfirmed) has a dashed chip; a table in another
+// database carries that database's name. More than CHIP_LIMIT collapse
+// behind "Show all".
+const CHIP_LIMIT = 12;
+function chipGroup(title, entries, cls = '') {
+  if (entries.length === 0) return null;
+  const chips = entries.map(({ id, confirmed, db, tip }) =>
+    el('button', { class: `oe-chip${confirmed ? '' : ' unconfirmed'}`, title: tip ?? (confirmed ? id : `${id} · not confirmed`), on: { click: () => goToNode(id) } }, [
+      el('span', { text: short(id) }),
+      db ? el('span', { class: 'db', text: dbDisplayName(db) }) : null,
+    ]),
+  );
+  const box = el('div', { class: `oe-chipbox ${cls}` }, chips.slice(0, CHIP_LIMIT));
+  const more =
+    chips.length > CHIP_LIMIT
+      ? el('button', {
+          class: 'oe-link oe-more',
+          text: `Show all (${chips.length})`,
+          on: {
+            click: (e) => {
+              box.replaceChildren(...chips);
+              e.currentTarget.remove();
+              layoutOverlays();
+            },
+          },
+        })
+      : null;
+  return el('div', { class: 'oe-chip-group' }, [el('div', { class: 'sub', text: `${title} (${entries.length})` }), box, more]);
+}
+
+// One chip per other table; a table linked several ways is confirmed when
+// any of those links is.
+function chipEntries(id, links, otherEnd) {
+  const byTable = new Map();
+  for (const l of links) {
+    const other = otherEnd(l);
+    const confirmed = l.kind === 'view_source' || isConfirmed(l.kind, l.review);
+    byTable.set(other, (byTable.get(other) ?? false) || confirmed);
+  }
+  return [...byTable]
+    .sort(([a], [b]) => byId(short(a), short(b)) || byId(a, b))
+    .map(([other, confirmed]) => ({ id: other, confirmed, db: dbOf(other) !== dbOf(id) ? dbOf(other) : null }));
+}
+
+// Copy the table as SQL (a JSON schema-like document for MongoDB) or as a
+// Markdown table, from a small menu under the button.
+function copySchemaRow(id, n) {
+  const engine = data.databases[dbOf(id)].engine;
+  const foreignKeys = [...data.links, ...data.hubLinks]
+    .filter((l) => l.from === id && l.kind === 'db_fk' && l.fromColumns)
+    .map((l) => ({ columns: l.fromColumns, to: l.to, toColumns: l.toColumns }));
+  const status = el('span', { class: 'muted' });
+  const options = isDocumentStore(engine)
+    ? [['JSON schema (approximate)', 'Fields, required list, enum values and indexes as a JSON document', () => collectionDocument(id, n), 'JSON schema']]
+    : [['SQL (CREATE TABLE, approximate)', 'Types as recorded in the ERD, NOT NULL, DEFAULT, keys, unique constraints, database foreign keys and indexes', () => createTableSql(id, n, engine, foreignKeys), 'SQL']];
+  options.push(['Markdown table', 'The column grid as a Markdown table', () => markdownTable(id, n), 'Markdown table']);
+  const menu = el('div', { class: 'oe-menu oe-copy-menu', style: 'display:none' });
+  const toggle = el('button', { class: 'oe-btn', text: 'Copy schema ▾', title: 'Copy this table as SQL or Markdown', on: { click: () => {
+    menu.style.display = menu.style.display === 'none' ? '' : 'none';
+    layoutOverlays();
+  } } });
+  menu.append(...options.map(([label, title, make, what]) => menuItem(label, title, () => {
+    menu.style.display = 'none';
+    copyText(make(), status, what);
+    layoutOverlays();
+  })));
+  return el('div', { class: 'row' }, [el('button', { class: 'oe-btn', text: 'Find join path from here', on: { click: () => openJoin(id) } }), el('div', { class: 'oe-drop' }, [toggle, menu]), status]);
+}
+
+// Indexes of a table: name, columns, unique, partial-index condition.
+function indexSection(n) {
+  if (!n.indexes) return [];
   return [
-    el('h3', { text: short(id) }),
-    el('div', { class: 'sub', text: `${id} · ${n.cluster.split('/').slice(1).join('/')}${n.tableKind ? ` · ${n.tableKind.replace('_', ' ')}` : ''}` }),
-    changeList('nodes', id),
-    ...noteLines(n),
-    warningLine(n.warning),
-    n.facts ? el('ul', {}, n.facts.map((f) => el('li', { text: f }))) : null,
-    n.sources ? el('p', {}, [el('span', { text: 'Reads from ' }), ...n.sources.flatMap((t, i) => [i > 0 ? el('span', { text: ', ' }) : null, link(short(t), () => goToNode(t))])]) : null,
-    relatedRow(id),
-    el('div', { class: 'row' }, [el('button', { class: 'oe-btn', text: 'Find join path from here', on: { click: () => openJoin(id) } })]),
-    el('div', { class: 'sub', text: plural(n.columns.length, 'column') }),
-    columnGrid(n, column),
-    // Hub relations count too: a table whose only link is a badge is not unrelated.
-    el('div', { class: 'sub', text: `${plural(lines.length, 'relation')}${lines.length > 0 ? ' drawn as lines' : ''}${shared > 0 ? ` · ${plural(shared, 'shared link')} (badges)` : ''}` }),
-    lines.length > 0
-      ? el(
-          'ul',
-          {},
-          lines.map((l) => (l.from === id ? linkItem('→', l.to, linkSummary(l)) : linkItem('←', l.from, linkSummary(l)))),
-        )
-      : null,
-    ...hubSections(id),
+    el('div', { class: 'sub', text: `${n.indexes.length} ${n.indexes.length === 1 ? 'index' : 'indexes'}` }),
+    el('div', { class: 'oe-grid-wrap' }, [
+      el('table', { class: 'oe-grid oe-indexes' }, [
+        el('tr', {}, ['Name', 'Columns', 'Unique', 'Where'].map((h) => el('th', { text: h }))),
+        ...n.indexes.map((i) =>
+          el('tr', {}, [
+            el('td', { class: 'name', text: i.name ?? '—', title: i.using ? `using ${i.using}` : '' }),
+            el('td', {}, [el('code', { class: 'oe-code', text: i.columns.join(', ') })]),
+            el('td', { text: i.unique ? 'yes' : '' }),
+            el('td', {}, [i.where ? el('code', { class: 'oe-code', text: i.where }) : null]),
+          ]),
+        ),
+      ]),
+    ]),
   ];
 }
 
-// Hub relations of a table: the ones pointing at it (it is a hub table) and
-// the ones it holds (its badges). Drawn as badges, so listed here in full.
-function hubSections(id) {
-  const into = data.hubLinks.filter((l) => l.to === id);
-  const out = data.hubLinks.filter((l) => l.from === id);
-  const sections = [];
-  if (into.length > 0) {
-    const tables = new Set(into.map((l) => l.from)).size;
-    const drawn = [...currentView().querySelectorAll('.hub-routes')].some((g) => g.getAttribute('data-hub') === id);
-    sections.push(
-      el('div', { class: 'sub', text: `Referenced by ${plural(tables, 'table')} (shown as badges${drawn ? '; lines in this view while selected' : ''})` }),
-      el('ul', {}, into.map((l) => linkItem('←', l.from, `${l.column} · ${linkSummary(l)}`))),
-    );
-  }
-  if (out.length > 0) {
-    sections.push(
-      el('div', { class: 'sub', text: `${plural(out.length, 'hub reference')} (shown as badges)` }),
-      el('ul', {}, out.map((l) => linkItem('→', l.to, `${l.column} · ${linkSummary(l)}`))),
-    );
-  }
-  return sections;
+function nodePanel(id, column = null) {
+  const n = data.nodes[id];
+  if (!n) return [el('h3', { text: id })];
+  const out = data.links.filter((l) => l.from === id && l.to !== id);
+  const into = data.links.filter((l) => l.to === id && l.from !== id);
+  const self = data.links.filter((l) => l.from === id && l.to === id);
+  const sharedOut = data.hubLinks.filter((l) => l.from === id && l.to !== id);
+  const sharedIn = data.hubLinks.filter((l) => l.to === id && l.from !== id);
+  const drawnHub = [...currentView().querySelectorAll('.hub-routes')].some((g) => g.getAttribute('data-hub') === id);
+  const none = out.length + into.length + self.length + sharedOut.length + sharedIn.length === 0;
+  return [
+    el('h3', {}, [n.central ? el('span', { class: 'oe-star', title: 'Central table: the most connected table of its domain', text: '★ ' }) : null, el('span', { text: short(id) })]),
+    el('div', { class: 'sub', text: `${id} · ${n.cluster.split('/').slice(1).join('/')}${n.tableKind ? ` · ${n.tableKind.replace('_', ' ')}` : ''}${n.central ? ' · central table' : ''}` }),
+    changeList('nodes', id),
+    ...noteLines(n),
+    warningLine(n.warning),
+    n.facts ? el('ul', { class: 'oe-facts' }, n.facts.map((f) => factLine(f))) : null,
+    n.sources ? el('p', {}, [el('span', { text: 'Reads from ' }), ...n.sources.flatMap((t, i) => [i > 0 ? el('span', { text: ', ' }) : null, link(short(t), () => goToNode(t))])]) : null,
+    relatedRow(id),
+    copySchemaRow(id, n),
+    el('div', { class: 'sub', text: plural(n.columns.length, 'column') }),
+    columnGrid(n, column),
+    ...indexSection(n),
+    none ? el('div', { class: 'sub', text: 'No relations' }) : null,
+    chipGroup('References', chipEntries(id, out, (l) => l.to)),
+    chipGroup('Referenced by', chipEntries(id, into, (l) => l.from)),
+    self.length > 0 ? el('div', { class: 'muted', text: `Also references itself (${self.map((l) => l.fromColumns?.join(', ') ?? '').filter(Boolean).join('; ') || 'self'})` }) : null,
+    // Hub relations are badges on the diagram, listed here in full.
+    chipGroup('Shared references', chipEntries(id, sharedOut, (l) => l.to)),
+    sharedIn.length > 0
+      ? chipGroup(`Referenced as a shared table${drawnHub ? ', lines shown while selected' : ''}`, chipEntries(id, sharedIn, (l) => l.from), 'shared-in')
+      : null,
+  ];
 }
 
 function polyPanel(id, poly) {
@@ -1085,16 +1259,11 @@ function polyPanel(id, poly) {
     el('div', { class: 'sub', text: `${poly.table}.${poly.typeColumn} / ${poly.idColumn}` }),
     changeList('nodes', id),
     ...noteLines(poly),
-    el('div', { class: 'sub', text: `${plural(poly.targets.length, 'target')}` }),
-    el(
-      'ul',
-      {},
-      poly.targets.map((t) => el('li', {}, [link(t, () => navigate(homeView(t), { focus: t }))])),
-    ),
+    chipGroup('Owner', [{ id: poly.table, confirmed: true, db: null }]),
+    chipGroup('Targets', poly.targets.map((t) => ({ id: t, confirmed: isConfirmed('polymorphic', poly.review), db: dbOf(t) !== dbOf(poly.table) ? dbOf(t) : null }))),
     state.view === NEIGHBORHOOD && state.center === id
       ? null
       : el('div', { class: 'row' }, [el('button', { class: 'oe-btn', text: 'Show with owner and all targets', on: { click: () => openNeighborhood(id, 1) } })]),
-    evidenceList(poly.evidence),
   ];
 }
 
@@ -1147,10 +1316,9 @@ function relationPanel(g) {
   return [
     el('h3', { text: `${short(from)} → ${short(to)}` }),
     el('div', { class: 'sub', text: id }),
-    l ? el('p', { text: `${linkSummary(l)} · ${l.review}${l.via ? ` · via ${l.via}` : ''}` }) : null,
+    l ? el('p', { class: 'oe-line-facts' }, [el('span', { text: `${linkSummary(l)}${l.via ? ` · via ${l.via}` : ''}` }), l.kind === 'view_source' ? null : reviewIcon(l.review)]) : null,
     dbOf(from) !== dbOf(to) ? el('p', { text: `Cross-DB: ${crossing(from, to)}` }) : null,
     changeList('links', id),
-    evidenceList(l?.evidence),
     el('div', { class: 'row' }, [link(`Go to ${short(to)}`, () => goToNode(to))]),
   ];
 }
@@ -1427,7 +1595,9 @@ function joinPanel() {
       path.hops.map((h) =>
         el('li', {}, [
           el('code', { text: hopCondition(h, name) }),
-          h.flags.length > 0 ? el('div', { class: 'oe-chips' }, h.flags.map((f) => el('span', { class: `chip flag-${f.type}`, text: FLAG_TEXT[f.type](f) }))) : null,
+          h.flags.length > 0
+            ? el('div', { class: 'oe-chips' }, h.flags.map((f) => (f.review ? reviewIcon(f.review) : el('span', { class: `chip flag-${f.type}`, text: FLAG_TEXT[f.type](f) }))))
+            : null,
         ]),
       ),
     ),
@@ -1444,15 +1614,15 @@ function joinPanel() {
   const skeleton = sqlSkeleton(path);
   const sqlButton = el('button', {
     class: 'oe-btn',
-    text: 'Copy as SQL skeleton',
+    text: 'Copy SQL',
     title: skeleton.blocked ?? 'SELECT * with one JOIN per hop and a comment above each hop to check; review it before running',
     ...(skeleton.blocked ? { disabled: '' } : {}),
-    on: { click: () => copyText(skeleton.sql, status, 'SQL skeleton') },
+    on: { click: () => copyText(skeleton.sql, status, 'SQL') },
   });
   parts.push(
     ...warnings.map((w) => el('p', { class: 'oe-warn', text: w })),
-    el('div', { class: 'row' }, [el('button', { class: 'oe-btn', text: 'Copy conditions', on: { click: () => copyText(conditionsText(path), status, plural(path.hops.length, 'condition')) } }), sqlButton, status]),
-    skeleton.blocked ? el('p', { class: 'muted', text: `No SQL skeleton: ${skeleton.blocked}` }) : null,
+    el('div', { class: 'row' }, [sqlButton, status]),
+    skeleton.blocked ? el('p', { class: 'muted', text: `No SQL: ${skeleton.blocked}` }) : null,
   );
   return parts;
 }
@@ -1471,7 +1641,7 @@ function copyText(text, status, what) {
     const ok = document.execCommand('copy');
     area.remove();
     if (ok) done();
-    else status.textContent = 'Copy is blocked here; select the conditions above instead.';
+    else status.textContent = 'Copy is blocked in this browser.';
   };
   if (navigator.clipboard?.writeText) navigator.clipboard.writeText(text).then(done, fallback);
   else fallback();
@@ -1499,24 +1669,28 @@ const endSample = (kind) =>
     svgEl('rect', { class: 'table-box', x: 52, y: 1, width: 10, height: 16 }),
   ]);
 const lineSample = (classes, width) =>
-  sample([svgEl('g', { class: `relation-group ${classes}` }, [svgEl('path', { class: 'relation', d: 'M2 9H62', ...(width ? { style: `stroke-width:${width}` } : {}) })])]);
+  sample([svgEl('g', { class: `relation-group ${classes}` }, [svgEl('path', { class: 'relation', d: 'M2 9H44', ...(width ? { style: `stroke-width:${width}` } : {}) })])]);
+// A review-mode line sample followed by the review state's icon.
+const reviewSample = (classes, state) => sample([...lineSample(classes).childNodes, svgEl('g', {}, parsed(reviewIconSvg(state, 54, 9)))]);
+const iconSample = (markup) => sample(parsed(markup));
 const has = (view, selector) => view.querySelector(selector) !== null;
 // End marker kinds the view draws, as its marker groups list them.
 const endKinds = (view) => new Set([...view.querySelectorAll('.marker[data-ends]')].flatMap((g) => g.getAttribute('data-ends').split(' ')));
 const reviewing = () => svg.classList.contains('review-mode');
+// What lines and boxes mean. Solid and dashed lines explain themselves;
+// the legend covers what a reader cannot guess: overview line widths and
+// counts, line ends, the icons in boxes, and, in review mode only, the
+// review colours and icons.
 const LEGEND = [
-  ['Lines', [
+  ['Overview lines', [
     [() => lineSample('overview-link kind-domain', 3), 'Relations between two domains; the thicker, the more', (v) => has(v, '.overview-link')],
     [() => sample([svgEl('g', { class: 'count-badge' }, [svgEl('rect', { x: 2, y: 1, width: 16, height: 16, rx: 8 }), svgEl('text', { x: 10, y: 9, 'dominant-baseline': 'central', 'text-anchor': 'middle', text: '4' })])]), 'Number of relations the line stands for', (v) => has(v, '.count-badge')],
     [() => lineSample('overview-link kind-cross_db', 2), 'Domains in different databases', (v) => has(v, '.overview-link.kind-cross_db')],
-    [() => lineSample('overview-link kind-domain', 1.2), `Lines of fewer than ${data.overviewMinRelations} relations are hidden: hover a domain to see its own, or Show all`, (v) => has(v, '.overview-link.weak') && !svg.classList.contains('show-weak')],
-    [() => lineSample(''), 'Confirmed: database foreign key or declared in code', (v) => has(v, '.relation-group:not(.overview-link, .unconfirmed, .kind-view_source)')],
-    [() => lineSample('unconfirmed'), 'Found in code, not confirmed', (v) => has(v, '.relation-group.unconfirmed')],
-    [() => lineSample('kind-view_source review-reviewed'), 'A view reads this table', (v) => has(v, '.relation-group.kind-view_source')],
   ]],
   ['Review mode', [
-    [() => lineSample('kind-declared review-pending'), 'Waiting for review', (v) => reviewing() && has(v, '.relation-group.review-pending:not(.overview-link)')],
-    [() => lineSample('kind-declared review-stale unconfirmed'), 'Changed in the code since it was reviewed', (v) => reviewing() && has(v, '.relation-group.review-stale')],
+    [() => reviewSample('kind-db_fk review-reviewed', 'reviewed'), REVIEW_WORDS.reviewed, (v) => reviewing() && has(v, '.relation-group.review-reviewed:not(.overview-link)')],
+    [() => reviewSample('kind-declared review-pending', 'pending'), REVIEW_WORDS.pending, (v) => reviewing() && has(v, '.relation-group.review-pending:not(.overview-link)')],
+    [() => reviewSample('kind-declared review-stale unconfirmed', 'stale'), REVIEW_WORDS.stale, (v) => reviewing() && has(v, '.relation-group.review-stale')],
   ]],
   ['Line ends', [
     ['one', 'Exactly one'],
@@ -1525,10 +1699,13 @@ const LEGEND = [
     ['zeroOrMany', 'Zero or more'],
   ].map(([kind, text]) => [() => endSample(kind), text, (v) => endKinds(v).has(kind)])],
   ['In boxes', [
-    [() => sample(parsed(enumIconSvg(8, 9))), 'Column with listed values', (v) => has(v, '.hint-enum')],
+    [() => sample([svgEl('rect', { class: 'legend-central', x: 1, y: 2, width: 62, height: 14, rx: 3 }), ...parsed(starIconSvg(9, 9))]), 'Central table (most connected)', (v) => has(v, '.table.central')],
+    [() => iconSample(keyIconSvg(10, 9)), 'Primary key', (v) => has(v, '.icon-pk')],
+    [() => iconSample(linkIconSvg(9, 9)), 'References another table', (v) => has(v, '.icon-fk')],
+    [() => iconSample(indexIconSvg(8, 9)), 'Column in an index', (v) => has(v, '.icon-index')],
+    [() => iconSample(enumIconSvg(8, 9)), 'Column with listed values', (v) => has(v, '.hint-enum')],
     [() => sample([svgEl('path', { class: 'col-warn', d: 'M4 13L8 5L12 13Z' })]), 'Possible missing relation', (v) => has(v, '.col-warn')],
     [() => sample([svgEl('rect', { class: 'stub-box', x: 1, y: 1, width: 62, height: 16, rx: 4 }), svgEl('text', { class: 'stub-title', x: 6, y: 9, 'dominant-baseline': 'central', text: 'orders' })]), 'Linked table in another domain: click to open', (v) => has(v, '.stub')],
-    [() => sample([svgEl('path', { class: 'badge-arrow', d: 'M2 9H12M8 6L12 9L8 12' }), svgEl('text', { class: 'badge-text', x: 16, y: 9, 'dominant-baseline': 'central', text: 'users ×3' })]), 'Reference to a common table, shown as text instead of a line', (v) => has(v, '.hub-badge')],
     [() => sample([svgEl('rect', { class: 'poly-box', x: 1, y: 1, width: 62, height: 16, rx: 4 }), svgEl('text', { class: 'poly-title', x: 6, y: 9, 'dominant-baseline': 'central', text: '«able»' })]), 'Polymorphic: one column pair points at several tables', (v) => has(v, '.poly')],
   ]],
 ];
@@ -1549,14 +1726,25 @@ function setLegend(open) {
   legendOpen = open;
   if (open) renderLegend();
   legend.fo.style.display = open ? '' : 'none';
-  legendButton.classList.toggle('on', open);
   layoutOverlays();
 }
 
+// While review mode is on, a chip under the toolbar says so and how much
+// waits for review; its × turns the mode off.
+const reviewChip = overlay('oe-review-chip-host');
+reviewChip.fo.style.display = 'none';
+reviewChip.div.append(
+  el('div', { class: 'oe-review-chip', title: 'Lines are coloured by review status: amber = not confirmed yet, red = code changed since review' }, [
+    el('span', { text: `Review mode: ${data.review.pending} to confirm, ${data.review.stale} changed` }),
+    el('button', { class: 'oe-chip-close', text: '×', title: 'Turn review mode off', 'aria-label': 'Turn review mode off', on: { click: () => setReviewMode(false) } }),
+  ]),
+);
+
 function setReviewMode(on) {
   svg.classList.toggle('review-mode', on);
-  reviewButton.classList.toggle('on', on);
+  reviewChip.fo.style.display = on ? '' : 'none';
   if (legendOpen) setLegend(true);
+  layoutOverlays();
 }
 
 // ---------------------------------------------------------------- minimap
@@ -1597,7 +1785,6 @@ function updateMinimap() {
   const vp = viewport();
   const seen = visibleRect(state.cam, vp, TOOLBAR_HEIGHT, panelRoom());
   const show = map.on && !fitsInside(map.bounds, seen);
-  minimapButton.classList.toggle('on', map.on);
   minimap.fo.style.display = show ? '' : 'none';
   if (!show) return;
   for (const [k, v] of Object.entries(seen)) map.seen.setAttribute({ x: 'x', y: 'y', w: 'width', h: 'height' }[k], v);
@@ -1647,7 +1834,7 @@ function lineTip(g) {
     return [
       el('div', {}, [el('b', { text: `${domainName(from)} ⇄ ${domainName(to)}` })]),
       el('div', { text: plural(total, 'relation') }),
-      dbOf(from) !== dbOf(to) ? el('div', { text: `Cross-DB: ${dbOf(from)} ⇄ ${dbOf(to)}` }) : null,
+      dbOf(from) !== dbOf(to) ? el('div', { text: `Cross-DB: ${dbDisplayName(dbOf(from))} ⇄ ${dbDisplayName(dbOf(to))}` }) : null,
       ...directions.flatMap((d) => [
         el('div', { text: `${domainName(d.from)} → ${domainName(d.to)} (${d.relations.length})` }),
         ...d.relations.slice(0, TIP_RELATIONS).map((r) => el('div', { class: 'muted', text: `${short(r.from)}.${r.column} → ${short(r.to)}` })),
@@ -1657,7 +1844,7 @@ function lineTip(g) {
     ];
   }
   const l = data.links.find((x) => x.id === id) ?? data.hubLinks.find((x) => x.id === id);
-  return [el('b', { text: `${short(from)} → ${short(to)}` }), l ? el('div', { class: 'muted', text: `${linkSummary(l)} · ${l.review}` }) : null];
+  return [el('b', { text: `${short(from)} → ${short(to)}` }), l ? el('div', { class: 'muted oe-line-facts' }, [el('span', { text: linkSummary(l) }), l.kind === 'view_source' ? null : reviewIcon(l.review), l.kind === 'view_source' ? null : el('span', { text: REVIEW_WORDS[l.review] })]) : null];
 }
 
 function tipLines(target) {
@@ -1686,7 +1873,7 @@ function tipLines(target) {
     ];
   }
   if (nodeEl.classList.contains('domain')) {
-    return [el('b', { text: id.split('/').slice(1).join('/') }), el('div', { class: 'muted', text: `${id.split('/')[0]} · click to open the domain` })];
+    return [el('b', { text: id.split('/').slice(1).join('/') }), el('div', { class: 'muted', text: `${dbDisplayName(id.split('/')[0])} · click to open the domain` })];
   }
   if (nodeEl.classList.contains('stub')) {
     return [el('b', { text: id }), el('div', { class: 'muted', text: 'Outside this domain · click to open its domain' })];
@@ -1702,7 +1889,7 @@ function tipLines(target) {
   return [
     el('b', { text: id }),
     n?.note ? el('div', { text: n.note }) : null,
-    ...(n?.facts ?? []).map((f) => el('div', { class: 'muted', text: f })),
+    ...(n?.facts ?? []).map((f) => factLine(f, 'div')),
     warningLine(n?.warning),
     el('div', { class: 'muted', text: 'Click to highlight · double-click for its neighborhood' }),
   ];
@@ -1742,8 +1929,23 @@ function layoutOverlays() {
   const { w, h } = viewport();
   toolbar.fo.setAttribute('width', w);
   toolbar.fo.setAttribute('height', h);
-  const drop = [results, menu].find((d) => d.style.display !== 'none');
-  toolbar.fo.setAttribute('height', drop ? Math.ceil(TOOLBAR_HEIGHT + drop.getBoundingClientRect().height + 8) : TOOLBAR_HEIGHT);
+  // An open dropdown hangs below the toolbar: the toolbar's area grows to
+  // hold it, so clicks on its lower items reach it.
+  const drop = openMenu()?.menu;
+  toolbar.fo.setAttribute('height', drop ? Math.ceil(drop.getBoundingClientRect().bottom + 8) : TOOLBAR_HEIGHT);
+  if (spotlightOpen()) {
+    spotlight.fo.setAttribute('width', w);
+    spotlight.fo.setAttribute('height', h);
+  }
+  if (reviewChip.fo.style.display !== 'none') {
+    reviewChip.fo.setAttribute('width', w);
+    reviewChip.fo.setAttribute('height', 40);
+    const r = reviewChip.div.firstChild.getBoundingClientRect();
+    reviewChip.fo.setAttribute('x', PANEL_MARGIN);
+    reviewChip.fo.setAttribute('y', TOOLBAR_HEIGHT + 8);
+    reviewChip.fo.setAttribute('width', Math.ceil(r.width) + 2);
+    reviewChip.fo.setAttribute('height', Math.ceil(r.height) + 2);
+  }
   if (legend.fo.style.display !== 'none') {
     legend.fo.setAttribute('width', 300);
     legend.fo.setAttribute('height', h);
@@ -1834,8 +2036,6 @@ svg.addEventListener('click', (e) => {
     dragged = false;
     return;
   }
-  closeResults();
-  setMenu(false);
   const t = e.target;
   // With the join panel waiting for a table, a click on one picks it.
   const picked = t.closest('.table, .stub')?.getAttribute('data-id');
@@ -1908,13 +2108,29 @@ svg.addEventListener('gesturechange', (e) => {
   gestureScale = e.scale;
 });
 
+// A press anywhere outside a dropdown closes the toolbar's open menu.
+document.addEventListener(
+  'pointerdown',
+  (e) => {
+    const drop = openMenu();
+    if (drop && !e.composedPath().includes(drop.wrap)) closeMenus();
+  },
+  true,
+);
+
+// Cmd+F / Ctrl+F, or "/" outside a text field, opens the search; Escape
+// closes the innermost thing open: search, a menu, then the selection.
+const typing = () => document.activeElement instanceof HTMLInputElement || document.activeElement instanceof HTMLTextAreaElement;
 document.addEventListener('keydown', (e) => {
-  if (e.key !== 'Escape') return;
-  if (results.style.display !== 'none' || menu.style.display !== 'none') {
-    closeResults();
-    setMenu(false);
+  const find = (e.key === 'f' || e.key === 'F') && (IS_MAC ? e.metaKey : e.ctrlKey) && !e.altKey && !e.shiftKey;
+  if (find || (e.key === '/' && !typing() && !e.metaKey && !e.ctrlKey)) {
+    e.preventDefault();
+    openSpotlight();
     return;
   }
+  if (e.key !== 'Escape') return;
+  if (spotlightOpen()) return closeSpotlight();
+  if (openMenu()) return closeMenus();
   clearSelection();
 });
 
@@ -1923,10 +2139,9 @@ window.addEventListener('resize', () => {
   zoomToRect(viewBounds(state.view), MAX_FIT_SCALE);
 });
 
-// Later overlays paint on top: the search results over the panel, the
-// tooltip over everything.
-svg.append(legend.fo, minimap.fo, panel.fo, toolbar.fo, tip.fo);
-setBusiness(false);
+// Later overlays paint on top: the toolbar's menus over the panel, the
+// search over everything but the tooltip.
+svg.append(legend.fo, minimap.fo, reviewChip.fo, panel.fo, toolbar.fo, spotlight.fo, tip.fo);
 setWeak(false);
 // The view drawn visible without script is where the reader starts: the
 // overview, or all tables in a diff drawing.

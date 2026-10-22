@@ -250,6 +250,31 @@ test('special pattern fields must reference known columns and tables', () => {
   );
 });
 
+test('indexes: columns must exist; fields are typed; the old table-level unique becomes unique indexes', () => {
+  const workspace = (extra) => ({ 'open-erd.yaml': 'schema_version: 1\n', 'model/a.yaml': `schema_version: 1\ndatabase: a\nengine: postgresql\ntables:\n  - id: a.public.t\n    domain: D\n    columns: [{ name: id, type: int, pk: true }, { name: a, type: int }, { name: b, type: text }]\n${extra}` });
+  const messages = (extra) => parseWorkspace(workspace(extra)).errors.map((e) => `${e.path}: ${e.message}`);
+  assert.deepEqual(messages('    indexes:\n      - { columns: [a, nope] }\n      - { columns: [], unique: yes, using: 1 }\n      - { name: x, columns: [a], size: 3 }\n'), [
+    'tables[0].indexes[1].columns: must have at least 1 item(s)',
+    'tables[0].indexes[1].unique: must be boolean, got string',
+    'tables[0].indexes[1].using: must be string, got number',
+    'tables[0].indexes[2].size: unknown field',
+  ]);
+  assert.deepEqual(messages('    indexes:\n      - { columns: [a, nope] }\n'), ['tables[0].indexes[0].columns[1]: unknown column "nope" in a.public.t']);
+  // `unique: [[a, b]]` is read as a unique index; one already declared is not doubled.
+  const { model } = parseWorkspace(workspace('    unique: [[a, b], [b, a]]\n    indexes:\n      - { name: t_b_a, columns: [b, a], unique: true }\n      - { name: t_a, columns: [a], where: "a > 0", using: btree }\n'));
+  const [t] = model.tables;
+  assert.equal(t.unique, undefined);
+  assert.deepEqual(t.indexes, [
+    { name: 't_a', columns: ['a'], where: 'a > 0', using: 'btree' },
+    { columns: ['a', 'b'], unique: true },
+    { name: 't_b_a', columns: ['b', 'a'], unique: true },
+  ]);
+  // Both spellings load to the same model, so a diff across the change shows nothing.
+  const old = parseWorkspace(workspace('    unique: [[a, b]]\n')).model;
+  const now = parseWorkspace(workspace('    indexes: [{ columns: [a, b], unique: true }]\n')).model;
+  assert.deepEqual(old, now);
+});
+
 test('relations address embedded columns as <entity>.<column>', () => {
   const files = {
     'open-erd.yaml': 'schema_version: 1\n',

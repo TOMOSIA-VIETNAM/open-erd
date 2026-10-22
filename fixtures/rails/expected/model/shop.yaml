@@ -21,6 +21,9 @@ tables:
       - { name: tax_number, type: varchar, nullable: true, note: Required for vendors only }
       - { name: created_at, type: datetime, nullable: false }
       - { name: updated_at, type: datetime, nullable: false }
+    indexes:
+      - { name: index_accounts_on_email, columns: [email], unique: true }
+      - { name: index_accounts_on_type, columns: [type] }
   - id: shop.public.addresses
     domain: Accounts
     columns:
@@ -32,6 +35,8 @@ tables:
       - { name: country_code, type: varchar(2), nullable: false }
       - { name: created_at, type: datetime, nullable: false }
       - { name: updated_at, type: datetime, nullable: false }
+    indexes:
+      - { name: index_addresses_on_account_id, columns: [account_id] }
   - id: shop.public.categories
     domain: Catalog
     note: Category tree; parent_id points to the parent category.
@@ -58,15 +63,20 @@ tables:
           "2": archived — hidden, kept for past orders (Product.visibilities)
       - { name: created_at, type: datetime, nullable: false }
       - { name: updated_at, type: datetime, nullable: false }
+    indexes:
+      - { name: index_products_on_vendor_id, columns: [vendor_id] }
   - id: shop.public.tags
     domain: Catalog
     columns:
       - { name: id, type: bigint, pk: true, auto_increment: true }
       - { name: label, type: varchar, nullable: false, unique: true }
+    indexes:
+      - { name: index_tags_on_label, columns: [label], unique: true }
   - id: shop.public.products_tags
     domain: Catalog
     note: Join table of the has_and_belongs_to_many between products and tags; no model class.
-    unique: [[product_id, tag_id]]
+    indexes:
+      - { name: index_products_tags_on_product_id_and_tag_id, columns: [product_id, tag_id], unique: true }
     columns:
       - { name: product_id, type: bigint, nullable: false }
       - { name: tag_id, type: bigint, nullable: false }
@@ -144,6 +154,8 @@ tables:
       - { name: warehouse_id, type: bigint, nullable: true }
       - { name: tracking_number, type: varchar, nullable: true }
       - { name: shipped_at, type: datetime, nullable: true }
+    indexes:
+      - { name: index_shipments_on_order_id, columns: [order_id], unique: true }
   - id: shop.public.reviews
     domain: Community
     columns:
@@ -162,6 +174,8 @@ tables:
       - { name: account_id, type: bigint, nullable: false }
       - { name: body, type: text, nullable: false }
       - { name: created_at, type: datetime, nullable: false }
+    indexes:
+      - { name: index_comments_on_commentable, columns: [commentable_type, commentable_id] }
 relations:
   # Self-reference on the STI base table, declared on the Customer subclass with class_name + foreign_key.
   - { from: { table: shop.public.accounts, columns: [referred_by_id] }, to: { table: shop.public.accounts, columns: [id] }, cardinality: n-1, optional: true, kind: declared, evidence: ["shop-rails:app/models/customer.rb#Customer"], review: pending }

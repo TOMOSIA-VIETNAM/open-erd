@@ -11,4 +11,7 @@ export const PALETTE = HUES.map((h) => ({
   stroke: `hsl(${h}, 40%, 80%)`,
   header: `hsl(${h}, 65%, 91%)`,
   label: `hsl(${h}, 65%, 30%)`,
+  // Header of a domain's central table: the same hue, clearly stronger.
+  central: `hsl(${h}, 70%, 80%)`,
+  centralStroke: `hsl(${h}, 45%, 45%)`,
 }));

@@ -28,37 +28,3 @@ export function columnEntries(table) {
     ),
   ];
 }
-
-/**
- * Columns a business reader does not need, per table id: Business mode in the
- * viewer fades them out. A column is technical when it is
- *   - a primary key column,
- *   - an end of a relation (referencing or referenced, hub relations included),
- *   - the type or id column of a polymorphic association, or
- *   - timestamp-typed (created_at, updated_at, ...).
- * Keys are how tables connect, and the diagram already shows that as lines;
- * bookkeeping timestamps say nothing about the business. A column with an
- * enum is never technical: its values carry business meaning. A note does
- * not count, since every column gets one.
- */
-export function technicalColumns(model) {
-  const keys = new Map(model.tables.map((t) => [t.id, new Set()]));
-  const add = (table, columns) => {
-    for (const c of columns) keys.get(table)?.add(c);
-  };
-  for (const r of model.relations) {
-    add(r.from.table, r.from.columns);
-    add(r.to.table, r.to.columns);
-  }
-  for (const a of model.polymorphic) add(a.table, [a.type_column, a.id_column]);
-  return new Map(
-    model.tables.map((t) => [
-      t.id,
-      new Set(
-        columnEntries(t)
-          .filter(({ path, column: c }) => !c.enum && (c.pk || keys.get(t.id).has(path) || TIMESTAMP_TYPE.test(c.type)))
-          .map(({ path }) => path),
-      ),
-    ]),
-  );
-}

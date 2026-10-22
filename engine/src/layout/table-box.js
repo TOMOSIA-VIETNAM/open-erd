@@ -31,12 +31,19 @@ export const PADDING_X = 12;
 const NAME_TYPE_GAP = 16;
 const MIN_WIDTH = 140;
 const MAX_WIDTH = 360;
-// A column with enum values gets a small list icon right after its name (its
-// tooltip lists the values and their meanings). Every column has a note, so
-// a note gets no mark. The icon sits inside the NAME_TYPE_GAP the row keeps
-// anyway, so no box grows for it.
+// Marks right after a column name: a small list icon for a column with enum
+// values (its tooltip lists them), a bolt for a column in an index. Every
+// column has a note, so a note gets no mark. The first mark sits inside the
+// NAME_TYPE_GAP the row keeps anyway; each further one widens the row by
+// HINT_STEP.
 export const HINT_OFFSET = 7;
 export const HINT_SIZE = 8;
+export const HINT_STEP = 12;
+// Left gutter of every row and of the header: a key icon for a primary key
+// column, a link icon for a column referencing another table, the table (or,
+// for a central table, star) icon in the header. Always reserved, so names
+// line up whether or not a row has an icon.
+export const ICON_GUTTER = 15;
 // A long type (e.g. `timestamp with time zone`) is cut before the name is.
 const TYPE_SHARE = 0.4;
 
@@ -66,30 +73,35 @@ const TAGS = { view: '«view»', materialized_view: '«materialized view»' };
  *   header      table name, plus a «view» tag right-aligned for views;
  *   rows        its columns, then each embedded entity as an inset with a
  *               title row and its own (indented, depth 1) column rows;
- *   facts       one muted line per special pattern (STI, partition, ...);
+ *   facts       one muted line per special pattern (STI, partition, ...),
+ *               each as parts { text, code } (see tableFacts);
  *   badges      one line per hub target.
  * Facts and badges sit below one separator. Layout uses `w`/`h`; the
  * renderer uses the same object, so the box always fits the text it draws.
  * Offsets are relative to the box's top-left corner. Every row is ROW_HEIGHT
  * tall, so each column's attachment point stays on the layout grid.
  */
-export function tableBox(table, badges = [], facts = []) {
+export function tableBox(table, badges = [], facts = [], { fk = new Set(), indexed = new Set(), central = false } = {}) {
   // The cluster frame already names the domain and the database; the full id
   // goes into the tooltip.
   const label = table.id.split('.')[2];
   const tagText = TAGS[table.kind];
   const tagWidth = tagText ? measureText(tagText, TAG_FONT) + TAG_GAP : 0;
-  const titleWidth = measureText(label, TITLE_FONT);
-  const columnWidth = (c) => measureText(c.name, c.pk ? PK_FONT : COLUMN_FONT) + NAME_TYPE_GAP + measureText(c.type, TYPE_FONT);
+  const titleWidth = ICON_GUTTER + measureText(label, TITLE_FONT);
+  const hintsOf = (c, path) => [c.enum && Object.keys(c.enum).length > 0 ? 'enum' : null, indexed.has(path) ? 'index' : null].filter(Boolean);
+  const hintsWidth = (hints) => Math.max(0, hints.length - 1) * HINT_STEP;
+  const columnWidth = (c, path) =>
+    ICON_GUTTER + measureText(c.name, c.pk ? PK_FONT : COLUMN_FONT) + hintsWidth(hintsOf(c, path)) + NAME_TYPE_GAP + measureText(c.type, TYPE_FONT);
   const entityTitle = (e) => `${e.name}${e.array ? ' [ ]' : ''}`;
   const embedded = table.embedded ?? [];
   let natural = titleWidth + tagWidth + 2 * PADDING_X;
-  for (const c of table.columns) natural = Math.max(natural, columnWidth(c) + 2 * PADDING_X);
+  for (const c of table.columns) natural = Math.max(natural, columnWidth(c, c.name) + 2 * PADDING_X);
   for (const e of embedded) {
     natural = Math.max(natural, measureText(entityTitle(e), COLUMN_FONT) + 2 * (PADDING_X + EMBED_INSET));
-    for (const c of e.columns) natural = Math.max(natural, columnWidth(c) + 2 * (PADDING_X + EMBED_INSET));
+    for (const c of e.columns) natural = Math.max(natural, columnWidth(c, `${e.name}.${c.name}`) + 2 * (PADDING_X + EMBED_INSET));
   }
-  for (const f of facts) natural = Math.max(natural, measureText(f, FACT_FONT) + 2 * PADDING_X);
+  const factStrings = facts.map((parts) => parts.map((p) => p.text).join(''));
+  for (const f of factStrings) natural = Math.max(natural, measureText(f, FACT_FONT) + 2 * PADDING_X);
   const badgeText = (b) => `${b.target.split('.')[2]} ×${b.count}`;
   for (const b of badges) {
     natural = Math.max(natural, BADGE_ARROW_WIDTH + BADGE_ARROW_GAP + measureText(badgeText(b), BADGE_FONT) + 2 * PADDING_X);
@@ -99,12 +111,22 @@ export function tableBox(table, badges = [], facts = []) {
   let slot = 0;
   const centerOf = () => HEADER_HEIGHT + ROW_HEIGHT * slot++ + ROW_HEIGHT / 2;
   const columnRow = (c, path, depth) => {
-    const room = inner - 2 * EMBED_INSET * depth;
+    const hints = hintsOf(c, path);
+    const room = inner - 2 * EMBED_INSET * depth - ICON_GUTTER - hintsWidth(hints);
     const nameFont = c.pk ? PK_FONT : COLUMN_FONT;
     const type = fit(c.type, Math.min(measureText(c.type, TYPE_FONT), Math.max(room * TYPE_SHARE, room - NAME_TYPE_GAP - measureText(c.name, nameFont))), TYPE_FONT);
     const name = fit(c.name, room - NAME_TYPE_GAP - type.width, nameFont);
-    const hint = c.enum && Object.keys(c.enum).length > 0 ? 'enum' : null;
-    return { column: path, pk: c.pk === true, depth, name, type, hint, hintX: hint ? name.width + HINT_OFFSET : null, centerY: centerOf() };
+    return {
+      column: path,
+      pk: c.pk === true,
+      key: c.pk ? 'pk' : fk.has(path) ? 'fk' : null,
+      depth,
+      name,
+      type,
+      // x of each mark's centre, relative to the start of the name.
+      hints: hints.map((kind, i) => ({ kind, x: name.width + HINT_OFFSET + i * HINT_STEP })),
+      centerY: centerOf(),
+    };
   };
   const rows = table.columns.map((c) => columnRow(c, c.name, 0));
   const insets = embedded.map((e) => {
@@ -116,7 +138,7 @@ export function tableBox(table, badges = [], facts = []) {
   const columnsEnd = HEADER_HEIGHT + ROW_HEIGHT * slot;
   const footer = facts.length + badges.length > 0;
   const footerTop = columnsEnd + (footer ? BOTTOM_PADDING / 2 : 0);
-  const factRows = facts.map((f, i) => ({ text: fit(f, inner, FACT_FONT), centerY: footerTop + ROW_HEIGHT * i + ROW_HEIGHT / 2 }));
+  const factRows = facts.map((parts, i) => ({ text: fit(factStrings[i], inner, FACT_FONT), parts, centerY: footerTop + ROW_HEIGHT * i + ROW_HEIGHT / 2 }));
   const badgeTop = footerTop + ROW_HEIGHT * facts.length;
   const badgeRows = badges.map((b, i) => ({
     ...b,
@@ -128,7 +150,8 @@ export function tableBox(table, badges = [], facts = []) {
     kind: 'table',
     w,
     h: badgeTop + ROW_HEIGHT * badges.length + BOTTOM_PADDING,
-    title: { ...fit(label, inner - tagWidth, TITLE_FONT), centerY: HEADER_HEIGHT / 2 },
+    central,
+    title: { ...fit(label, inner - tagWidth - ICON_GUTTER, TITLE_FONT), centerY: HEADER_HEIGHT / 2 },
     tag: tagText ? { ...fit(tagText, tagWidth - TAG_GAP, TAG_FONT), centerY: HEADER_HEIGHT / 2 } : null,
     rows,
     insets,
@@ -167,17 +190,23 @@ export function stubBox(table) {
   return rowsBox('stub', table.id.split('.')[2], MUTED_TITLE_FONT, [], COLUMN_FONT);
 }
 
-/** Overview box of one domain: its name and table count. */
-export function domainBox(label, count) {
+/**
+ * Overview box of one domain: its name, table count and, when the domain
+ * has one, its central table ("central: campaigns") on a third line.
+ */
+export function domainBox(label, count, central = null) {
   const countText = `${count} ${count === 1 ? 'table' : 'tables'}`;
-  const w = Math.min(MAX_WIDTH, ceilToGrid(Math.max(MIN_WIDTH, measureText(label, DOMAIN_TITLE_FONT) + 2 * PADDING_X, measureText(countText, DOMAIN_COUNT_FONT) + 2 * PADDING_X)));
+  const centralText = central ? `central: ${central}` : null;
+  const widths = [measureText(label, DOMAIN_TITLE_FONT), measureText(countText, DOMAIN_COUNT_FONT), centralText ? measureText(centralText, DOMAIN_COUNT_FONT) : 0];
+  const w = Math.min(MAX_WIDTH, ceilToGrid(Math.max(MIN_WIDTH, ...widths.map((x) => x + 2 * PADDING_X))));
   const inner = w - 2 * PADDING_X;
   return {
     kind: 'domain',
     w,
-    h: DOMAIN_BOX_HEIGHT,
+    h: DOMAIN_BOX_HEIGHT + (centralText ? ROW_HEIGHT : 0),
     title: { ...fit(label, inner, DOMAIN_TITLE_FONT), centerY: 22 },
     count: { ...fit(countText, inner, DOMAIN_COUNT_FONT), centerY: 42 },
+    central: centralText ? { ...fit(centralText, inner, DOMAIN_COUNT_FONT), centerY: 62 } : null,
   };
 }
 

@@ -3,8 +3,19 @@ import { test } from 'node:test';
 import { buildDiagram } from '../src/layout/diagram.js';
 import { applyProfile } from '../src/model/profile.js';
 import { viewerData } from '../src/render/svg/render.js';
-import { HUB_COST, conditionsText, findJoinPaths, sqlNames, sqlSkeleton } from '../src/render/svg/viewer/join-path.js';
+import { HUB_COST, describeHop, findJoinPaths, hopCondition, pathNames, sqlNames, sqlSkeleton } from '../src/render/svg/viewer/join-path.js';
 import { fk, loadMulti } from './helpers/shop.js';
+
+// The conditions of a path, one hop per line, as the panel lists them.
+const conditionsText = (path) => {
+  const name = pathNames(path.nodes);
+  return path.hops
+    .map((h) => {
+      const poly = h.flags.find((f) => f.type === 'polymorphic');
+      return `${hopCondition(h, name)}${poly ? ` (filter by ${name(poly.table)}.${poly.column})` : ''}`;
+    })
+    .join('\n');
+};
 
 const dataOf = (model) => viewerData(model, buildDiagram(model));
 const route = (p) => p.nodes.join(' > ');
@@ -154,4 +165,13 @@ test('SQL names: the table name, schema-qualified only when two tables share it'
   const name = sqlNames(['billing.public.users', 'billing.audit.users', 'billing.public.orders']);
   assert.deepEqual(['billing.public.users', 'billing.audit.users', 'billing.public.orders'].map(name), ['public.users', 'audit.users', 'orders']);
   assert.equal(sqlNames(['shop._.orders'])('shop._.orders'), 'orders');
+});
+
+test('a hop flags its review state for the viewer to show as an icon; inferred stays a word', () => {
+  const edge = (kind, review) => ({ a: 'db._.a', b: 'db._.b', aColumns: ['b_id'], bColumns: ['id'], cardinality: 'n-1', kind, review });
+  const flags = (kind, review) => describeHop(edge(kind, review), 'db._.a').flags.filter((f) => f.type === 'trust');
+  assert.deepEqual(flags('declared', 'pending'), [{ type: 'trust', text: 'pending review', review: 'pending' }]);
+  assert.deepEqual(flags('db_fk', 'stale'), [{ type: 'trust', text: 'stale', review: 'stale' }]);
+  assert.deepEqual(flags('inferred', 'pending'), [{ type: 'trust', text: 'inferred' }]);
+  assert.deepEqual(flags('db_fk', 'reviewed'), []);
 });

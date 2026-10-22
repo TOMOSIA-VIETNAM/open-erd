@@ -92,7 +92,7 @@ function overview(model, diagram) {
   const children = (g, keys) =>
     keys.map((k) => {
       const tables = diagram.clusters.get(k).filter((id) => diagram.nodes.get(id).kind === 'table').length;
-      return { id: k, kind: 'domain', slot: g.database, box: domainBox(clusterLabel(k), tables) };
+      return { id: k, kind: 'domain', slot: g.database, box: domainBox(clusterLabel(k), tables, diagram.centralOf.has(k) ? diagram.centralOf.get(k).split('.')[2] : null) };
     });
   return { root: page(dbGroups(model, diagram, OVERVIEW_DB_ASPECT, children, 'grid')), links: domainLinks(diagram) };
 }

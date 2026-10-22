@@ -135,8 +135,26 @@ const table = {
         interval: text,
       },
     },
-    // Unique keys spanning several columns; a single unique column is
-    // `unique: true` on the column itself.
+    // Indexes as the schema source declares them, in authored order of
+    // columns. `where` is the predicate of a partial index, `using` its
+    // access method (btree, gin, hash, ...); both as written.
+    indexes: {
+      type: 'array',
+      minItems: 1,
+      items: {
+        type: 'object',
+        fields: {
+          name: text,
+          columns: { ...columnList(1), required: true },
+          unique: { type: 'boolean' },
+          where: text,
+          using: text,
+        },
+      },
+    },
+    // Deprecated: unique keys spanning several columns, the form before
+    // `indexes` existed. Still read (load turns each key into a unique
+    // index), never written.
     unique: { type: 'array', items: columnList(2), minItems: 1 },
     // Set when a framework creates the table without any file declaring it
     // (Django ManyToManyField, Prisma implicit many-to-many): names the
