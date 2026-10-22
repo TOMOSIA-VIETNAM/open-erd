@@ -141,9 +141,14 @@ function makeGrid(obstacles, frames) {
 }
 
 // Candidate attachments of one relation end: the column's row on the left and
-// right side of its box. A side whose first routable point is blocked (another
+// right side of its box, or only on `end.side` when the caller fixed it and
+// that side is free. A side whose first routable point is blocked (another
 // box too close) is skipped.
 function ports(grid, end, stubs) {
+  if (end.side) {
+    const fixed = ports(grid, { ...end, side: undefined }, stubs).filter((p) => p.side === end.side);
+    if (fixed.length > 0) return fixed;
+  }
   const result = [];
   for (const side of [-1, 1]) {
     const edgeX = side < 0 ? end.box.x : end.box.x + end.box.w;
@@ -313,9 +318,10 @@ function splitMixedPorts(prepared) {
  * obstacles: [{ id, x, y, w, h }] - table boxes and labels, on the grid or not.
  * frames: [{ x, y, w, h }] - cluster frames; lines cross them but avoid running
  *   along their borders.
- * edges: [{ id, from: { box, y, marker }, to: { box, y, marker } }] - `y` is the
- *   absolute row centre where the line attaches; boxes must be on the grid;
- *   `marker` names the end symbol so differing symbols do not share a point.
+ * edges: [{ id, from: { box, y, marker, side? }, to: { box, y, marker, side? } }] -
+ *   `y` is the absolute row centre where the line attaches; boxes must be on
+ *   the grid; `marker` names the end symbol so differing symbols do not share
+ *   a point; `side` (-1 left, 1 right) asks for that side when it is free.
  * Returns [{ id, points, fromSide, toSide }] in input order; points start and
  * end on the box sides, sides are -1 (left) / 1 (right).
  */

@@ -11,7 +11,7 @@ import { domainBox, stubBox } from './table-box.js';
 //   leaf:  { id, kind: 'table'|'poly'|'stub'|'domain', slot, box, node? }
 //          `slot` is the group key the leaf is stored under in layout.json.
 //   group: { id, kind: 'page'|'db'|'cluster', children, pad, gap, aspect,
-//            strategy: 'layered'|'pack'|'around', ... }
+//            strategy: 'layered'|'pack'|'grid'|'around', ... }
 //          `pad` is the frame padding (none for the page), `gap` the minimum
 //          free space between children, `aspect` the shape aimed at when a
 //          child is added, `strategy` how children are placed from scratch.
@@ -26,10 +26,15 @@ export const STUB_SLOT = 'related';
 // Shapes aimed at: a domain somewhat wider than tall, the page 16:9.
 const CLUSTER_ASPECT = 1.3;
 const PAGE_ASPECT = 16 / 9;
-// Overview lines attach to the left and right side of a domain box, so the
-// domains of one database are packed in wide rows: neighbours then connect
-// with straight lines instead of loops around a column.
-const OVERVIEW_DB_ASPECT = 4;
+// The domains of one database sit on a grid (see gridPlace) somewhat wider
+// than tall: rows of domain boxes are short, so a grid of this shape gives
+// each domain neighbours both beside and above or below it.
+//
+// Only a fresh layout is placed this way: domains already in layout.json
+// keep their positions (stability rules), and a new domain goes next to the
+// one it shares most relations with. Deleting the overview from layout.json
+// and running `layout` re-places the overview alone.
+const OVERVIEW_DB_ASPECT = 2.5;
 
 // Above this many tables the view of all tables is left out. Routing it
 // grows much faster than the table count (on an Apple M4 a few seconds at
@@ -67,14 +72,14 @@ function clusterGroup(diagram, key) {
   };
 }
 
-function dbGroups(model, diagram, aspect, childrenOf) {
+function dbGroups(model, diagram, aspect, childrenOf, strategy = 'pack') {
   return model.databases
     .map((db) => {
       const keys = [...diagram.clusters.keys()].filter((k) => k.split('/')[0] === db.database);
       return { id: `db:${db.database}`, kind: 'db', database: db.database, engine: db.engine, facts: databaseFacts(db), keys };
     })
     .filter((g) => g.keys.length > 0)
-    .map(({ keys, ...g }) => ({ ...g, pad: DB_PAD, gap: CLUSTER_GAP, aspect, strategy: 'pack', children: childrenOf(g, keys) }));
+    .map(({ keys, ...g }) => ({ ...g, pad: DB_PAD, gap: CLUSTER_GAP, aspect, strategy, children: childrenOf(g, keys) }));
 }
 
 const page = (children, extra = {}) => ({ id: 'page', kind: 'page', pad: null, gap: DB_GAP, aspect: PAGE_ASPECT, strategy: 'pack', children, ...extra });
@@ -89,7 +94,7 @@ function overview(model, diagram) {
       const tables = diagram.clusters.get(k).filter((id) => diagram.nodes.get(id).kind === 'table').length;
       return { id: k, kind: 'domain', slot: g.database, box: domainBox(clusterLabel(k), tables) };
     });
-  return { root: page(dbGroups(model, diagram, OVERVIEW_DB_ASPECT, children)), links: domainLinks(diagram) };
+  return { root: page(dbGroups(model, diagram, OVERVIEW_DB_ASPECT, children, 'grid')), links: domainLinks(diagram) };
 }
 
 // One domain plus a muted stub for every table outside it that a drawn line

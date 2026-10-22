@@ -2,16 +2,22 @@ import { clusterLabel, engineName } from '../../layout/clusters.js';
 import { VIEW_SOURCE, buildDiagram } from '../../layout/diagram.js';
 import { COLUMN_FONT, HEADER_HEIGHT, PADDING_X, PK_FONT, ROW_HEIGHT, TYPE_FONT } from '../../layout/table-box.js';
 import { ALL_VIEW, DOMAIN_VIEW_PREFIX, OVERVIEW, hasAllView, viewNames } from '../../layout/views.js';
+import { UNCONFIRMED_DASH, isConfirmed, overviewStrokeWidth } from '../svg/markers.js';
 import { columnEntries, enumMeaning } from '../../model/columns.js';
 import { PALETTE } from '../../palette.js';
 import { measureText, truncate } from '../../text/measure.js';
 import { buildScene } from '../svg/render.js';
 
-// draw.io export: one page per view, drawn from the same scenes as the SVG
-// (positions from layout.json, routes from the router), so both files show
-// the same diagram. Tables are draw.io table shapes with one row per column,
-// and every relation is a connector attached to the rows of its columns, so
-// a reader can drag tables in draw.io and the lines follow.
+// draw.io export: the overview and the view of all tables, drawn from the
+// same scenes as the SVG (positions from layout.json, routes from the
+// router), so both files show the same diagram. Tables are draw.io table
+// shapes with one row per column, and every relation is a connector attached
+// to the rows of its columns, so a reader can drag tables in draw.io and the
+// lines follow.
+//
+// draw.io shows an (i) icon on every cell with a tooltip, so only column
+// rows with enum values get one (the values and their meanings, which the
+// drawing cannot show otherwise).
 
 // draw.io styles want hex colours; the palette is written as hsl().
 function hslToHex(text) {
@@ -28,18 +34,16 @@ function hslToHex(text) {
 }
 const COLORS = PALETTE.map((p) => Object.fromEntries(Object.entries(p).map(([k, v]) => [k, hslToHex(v)])));
 
-// Same meaning as the SVG: colour carries the review state, dash pattern the
-// kind (inferred dashed until reviewed, cross_db dash-dot-dot, polymorphic
-// dotted, a view's line to its sources muted).
-const REVIEW_COLOR = { reviewed: '#6b778a', pending: '#c27c0e', stale: '#c53030' };
-const REVIEW_TEXT = { reviewed: '#4f5b6e', pending: '#9a6208', stale: '#a61f1f' };
+// Same line styles as the SVG: one neutral colour, dashed when not confirmed
+// (see isConfirmed); a view's line to its sources muted. draw.io has no
+// review mode, so review colours are left out.
+const LINE_COLOR = '#6b778a';
+const LABEL_COLOR = '#4f5b6e';
 const VIEW_SOURCE_COLOR = '#a9b2c0';
+const OVERVIEW_COLOR = '#8a96a8';
 function dashPattern(link) {
   if (link.kind === VIEW_SOURCE) return '5 4';
-  if (link.kind === 'cross_db') return '10 3 2 3 2 3';
-  if (link.kind === 'polymorphic') return '2 3';
-  if (link.kind === 'inferred' && link.review !== 'reviewed') return '6 4';
-  return null;
+  return isConfirmed(link.kind, link.review) ? null : UNCONFIRMED_DASH;
 }
 
 // Crow's foot ends, matching markers.js: `many` is one-or-more (crow plus
@@ -77,29 +81,17 @@ function cell({ id, value = '', tooltip, styles, parent, vertex = true, geometry
 
 const box = (x, y, w, h) => `<mxGeometry x="${x}" y="${y}" width="${w}" height="${h}" as="geometry"/>`;
 
-// Note fields a sharing profile has not dropped, business note first.
-const notes = (o) => ['note', 'note_source', 'internal_note'].map((f) => o[f]).filter(Boolean);
-
-// What a column's tooltip says: its type and flags, its note, the meaning
-// of each enum value.
-function columnTooltip(path, c) {
-  const flags = [
-    c.pk && 'primary key',
-    c.nullable === true && 'nullable',
-    c.nullable === false && 'not null',
-    c.unique && 'unique',
-    c.auto_increment && 'auto increment',
-    c.default !== undefined && `default ${c.default}`,
-    c.generated !== undefined && `generated as ${c.generated}`,
-    c.pii && 'PII',
-  ].filter(Boolean);
-  const lines = [`${path}: ${c.type}${flags.length > 0 ? ` (${flags.join(', ')})` : ''}`];
-  lines.push(...notes(c));
-  for (const [value, meaning] of Object.entries(c.enum ?? {})) {
-    const text = enumMeaning(value, meaning);
-    lines.push(text ? `${value}: ${text}` : value);
-  }
-  return lines.join('\n');
+// Tooltip of a column with enum values: one line per value, with its
+// meaning when the code gave one. Other columns get none.
+function enumTooltip(c) {
+  const values = Object.entries(c.enum ?? {});
+  if (values.length === 0) return null;
+  return values
+    .map(([value, meaning]) => {
+      const text = enumMeaning(value, meaning);
+      return text ? `${value}: ${text}` : value;
+    })
+    .join('\n');
 }
 
 const ROW_STYLE = {
@@ -117,8 +109,8 @@ const ROW_STYLE = {
   points: '[[0,0.5],[1,0.5]]',
   portConstraint: 'eastwest',
 };
-// Texts come fitted to the box by the layout (cut with an ellipsis, the full
-// text in the tooltip), so the inner padding is kept small.
+// Texts come fitted to the box by the layout (cut with an ellipsis), so the
+// inner padding is kept small.
 const CELL_STYLE = {
   shape: 'partialRectangle',
   connectable: 0,
@@ -146,13 +138,12 @@ const CELL_STYLE = {
  * header down, the same slots the layout gave the columns, so a row's middle
  * is where the router attached the line.
  */
-function tableCells({ id, parent, x, y, w, title, tooltip, header, stroke, dashed, titleColor }, rows, typeWidth) {
+function tableCells({ id, parent, x, y, w, title, header, stroke, dashed, titleColor }, rows, typeWidth) {
   const h = HEADER_HEIGHT + ROW_HEIGHT * rows.length;
   const out = [
     cell({
       id,
       value: title,
-      tooltip,
       parent,
       geometry: box(x, y, w, h),
       styles: {
@@ -240,8 +231,8 @@ function tableNode(n, parent, x, y, colors) {
   // A draw.io table has one width per column for all rows, while the layout
   // fitted each row on its own. The name column gets the widest name, the
   // type column the rest; when both cannot fit, the box is shared in
-  // proportion. Texts are then cut to their cell (with an ellipsis; the full
-  // text is in the tooltip).
+  // proportion. Texts are then cut to their cell (with an ellipsis; the SVG
+  // and the Excel file keep the full text).
   const NAME_PAD = PADDING_X - 2 + 4;
   const TYPE_PAD = PADDING_X - 2 + 2;
   const indent = (r) => 12 * r.depth;
@@ -257,31 +248,28 @@ function tableNode(n, parent, x, y, colors) {
       id: rowId(t.id, row.column),
       name: truncate(row.name.full, n.w - typeWidth - NAME_PAD - indent(row), nameFont(row)).text,
       type: truncate(row.type.full, typeWidth - TYPE_PAD, TYPE_FONT).text,
-      tooltip: columnTooltip(row.column, column),
+      tooltip: enumTooltip(column),
       fill: row.depth > 0 ? insetFill : undefined,
       nameStyle: { fontStyle: row.pk ? 1 : 0, spacingLeft: PADDING_X - 2 + indent(row) },
     };
   });
   for (const f of b.facts) rows.push({ name: f.text.full, nameStyle: { fontSize: 11, fontColor: '#5f6b7e' } });
   for (const badge of b.badges) {
-    rows.push({ name: `→ ${badge.label.full}`, tooltip: `${badge.columns.join(', ')} → ${badge.target}`, nameStyle: { fontSize: 11, fontColor: '#56627a' } });
+    rows.push({ name: `→ ${badge.label.full}`, nameStyle: { fontSize: 11, fontColor: '#56627a' } });
   }
   const kind = t.kind ?? 'table';
   const tag = b.tag ? ` ${b.tag.text}` : '';
-  const tooltip = [t.id + (kind === 'table' ? '' : ` (${kind.replace('_', ' ')})`), ...notes(t), ...n.node.facts].filter(Boolean).join('\n');
   return tableCells(
-    { id: nodeId(n.id), parent, x, y, w: n.w, title: b.title.text + tag, tooltip, header: colors.header, stroke: '#b8c2d0', dashed: kind === 'table' ? null : '5 3', titleColor: '#172033' },
+    { id: nodeId(n.id), parent, x, y, w: n.w, title: b.title.text + tag, header: colors.header, stroke: '#b8c2d0', dashed: kind === 'table' ? null : '5 3', titleColor: '#172033' },
     rows,
     typeWidth,
   );
 }
 
 function polyNode(n, parent, x, y) {
-  const a = n.node.association;
   const rows = n.box.rows.map((r) => ({ name: r.name.full, nameStyle: { fontColor: '#4a4236' } }));
-  const tooltip = [`${a.table}.${a.type_column} / ${a.id_column} → ${a.targets.join(', ')}`, ...notes(a)].filter(Boolean).join('\n');
   return tableCells(
-    { id: nodeId(n.id), parent, x, y, w: n.w, title: n.box.title.full, tooltip, header: '#fffdf7', stroke: '#a08a5c', dashed: '4 3', titleColor: '#6b5428' },
+    { id: nodeId(n.id), parent, x, y, w: n.w, title: n.box.title.full, header: '#fffdf7', stroke: '#a08a5c', dashed: '4 3', titleColor: '#6b5428' },
     rows,
     0,
   );
@@ -298,7 +286,6 @@ function nodeCells(n, parent, x, y, colorOf) {
       cell({
         id: nodeId(n.id),
         value: n.box.title.full,
-        tooltip: n.id,
         parent,
         geometry: box(x, y, n.w, n.h),
         styles: { ...shapeCommon, arcSize: 12, dashed: 1, dashPattern: '3 3', fixDash: 1, fillColor: '#f3f5f8', strokeColor: '#c3cad5', fontColor: '#8a94a6', fontSize: 12 },
@@ -313,7 +300,6 @@ function nodeCells(n, parent, x, y, colorOf) {
     cell({
       id: nodeId(n.id),
       value,
-      tooltip: n.id,
       parent,
       geometry: box(x, y, n.w, n.h),
       styles: { ...shapeCommon, html: 1, arcSize: 20, fillColor: c.header, strokeColor: c.stroke, fontSize: 12 },
@@ -339,7 +325,6 @@ function groupCell(g, parent, x, y, colorOf) {
   return cell({
     id: groupId(g.group),
     value: [`${database} · ${engineName(engine)}`, ...facts].join('  ·  '),
-    tooltip: facts.length > 0 ? facts.join('\n') : null,
     parent,
     geometry: box(x, y, w, h),
     styles: { ...frame, arcSize: 32, spacingTop: 20, fontSize: 15, fillColor: '#fbfcfd', strokeColor: '#94a0b2', fontColor: '#1f2a3d' },
@@ -347,12 +332,14 @@ function groupCell(g, parent, x, y, colorOf) {
 }
 
 // End of a connector: the column's row when the line names a column of a
-// drawn table, else the node itself at the height the router attached it.
+// drawn table, else the node itself at the point where the line meets it
+// (any side on the overview), as fractions of the node's drawn size.
 function endpoint(link, side, point, byId, heights) {
   const n = byId.get(link[side].node);
-  const x = point[0] === n.x ? 0 : 1;
+  const fraction = (v) => Math.round(v * 1e4) / 1e4;
+  const x = fraction((point[0] - n.x) / n.w);
   if (n.kind === 'table' && link[side].column !== null) return { id: rowId(n.id, link[side].column), x, y: 0.5 };
-  return { id: nodeId(n.id), x, y: Math.round(((point[1] - n.y) / heights.get(n.id)) * 1e4) / 1e4 };
+  return { id: nodeId(n.id), x, y: fraction((point[1] - n.y) / heights.get(n.id)) };
 }
 
 // draw.io places an edge label by its position along the line (x from -1 at
@@ -375,6 +362,11 @@ function labelAnchor(points, label) {
   return { x: total === 0 ? 0 : Math.round(((2 * best.along) / total - 1) * 1e4) / 1e4, dx: label.cx - best.px, dy: label.cy - best.py };
 }
 const labelGeometry = (points, label) => (label ? ` x="${labelAnchor(points, label).x}"` : '');
+const waypointsOf = (points, origin) =>
+  points
+    .slice(1, -1)
+    .map(([px, py]) => `<mxPoint x="${px - origin.x}" y="${py - origin.y}"/>`)
+    .join('');
 function labelOffset(points, label) {
   if (!label) return '';
   const { dx, dy } = labelAnchor(points, label);
@@ -383,42 +375,37 @@ function labelOffset(points, label) {
 
 // `r` is a routed line: { link, points, markers, label? }. Lines on a
 // hidden layer pass that layer as `parent` and their own id and style.
-function edgeCell(r, overview, byId, heights, origin, { id = edgeId(r.link), parent = '1', extra = {} } = {}) {
+function edgeCell(r, byId, heights, origin, { id = edgeId(r.link), parent = '1', extra = {} } = {}) {
   const { link, points } = r;
   const source = endpoint(link, 'from', points[0], byId, heights);
   const target = endpoint(link, 'to', points.at(-1), byId, heights);
-  const color = link.kind === VIEW_SOURCE ? VIEW_SOURCE_COLOR : REVIEW_COLOR[link.review];
-  const dash = overview ? (link.kind === 'cross_db' ? '10 3 2 3 2 3' : null) : dashPattern(link);
-  const arrows = overview ? { startArrow: 'none', endArrow: 'block', endFill: 1 } : { startArrow: ER_ARROWS[r.markers.from], endArrow: ER_ARROWS[r.markers.to], startFill: 0, endFill: 0 };
-  const waypoints = points
-    .slice(1, -1)
-    .map(([px, py]) => `<mxPoint x="${px - origin.x}" y="${py - origin.y}"/>`)
-    .join('');
-  const tooltip = link.via ? `${link.id} (n-n via ${link.via})` : link.id;
+  const dash = dashPattern(link);
   return cell({
     id,
     value: r.label?.text ?? '',
-    tooltip,
     parent,
     vertex: false,
     source: source.id,
     target: target.id,
-    geometry: `<mxGeometry${labelGeometry(points, r.label)} relative="1" as="geometry"><Array as="points">${waypoints}</Array>${labelOffset(points, r.label)}</mxGeometry>`,
+    geometry: `<mxGeometry${labelGeometry(points, r.label)} relative="1" as="geometry"><Array as="points">${waypointsOf(points, origin)}</Array>${labelOffset(points, r.label)}</mxGeometry>`,
     styles: {
       edgeStyle: 'orthogonalEdgeStyle',
       rounded: 0,
       orthogonalLoop: 1,
       html: 0,
-      strokeColor: color,
+      strokeColor: link.kind === VIEW_SOURCE ? VIEW_SOURCE_COLOR : LINE_COLOR,
       strokeWidth: 1.4,
       fontSize: 10,
       fontStyle: 1,
-      fontColor: REVIEW_TEXT[link.review] ?? REVIEW_TEXT.reviewed,
+      fontColor: LABEL_COLOR,
       labelBackgroundColor: '#ffffff',
       dashed: dash ? 1 : 0,
       dashPattern: dash,
       fixDash: dash ? 1 : null,
-      ...arrows,
+      startArrow: ER_ARROWS[r.markers.from],
+      endArrow: ER_ARROWS[r.markers.to],
+      startFill: 0,
+      endFill: 0,
       startSize: 10,
       endSize: 10,
       exitX: source.x,
@@ -432,6 +419,52 @@ function edgeCell(r, overview, byId, heights, origin, { id = edgeId(r.link), par
   });
 }
 
+// An overview line, as in the SVG: as thick as its relation count is high,
+// the count as a small boxed label at its middle, no arrowheads, dashed
+// between databases. Straight segments through the waypoints (no edge
+// style), so a diagonal line stays diagonal.
+function overviewEdgeCell(r, byId, heights, origin) {
+  const { link, points } = r;
+  const badge = { cx: r.badge.cx, cy: r.badge.cy };
+  const source = endpoint(link, 'from', points[0], byId, heights);
+  const target = endpoint(link, 'to', points.at(-1), byId, heights);
+  const cross = link.kind === 'cross_db';
+  return cell({
+    id: edgeId(link),
+    value: String(link.count),
+    parent: '1',
+    vertex: false,
+    source: source.id,
+    target: target.id,
+    // The count sits where the SVG put its badge (clear of other badges).
+    geometry: `<mxGeometry${labelGeometry(points, badge)} relative="1" as="geometry"><Array as="points">${waypointsOf(points, origin)}</Array>${labelOffset(points, badge)}</mxGeometry>`,
+    styles: {
+      edgeStyle: 'none',
+      rounded: 0,
+      html: 0,
+      strokeColor: OVERVIEW_COLOR,
+      strokeWidth: overviewStrokeWidth(link.count),
+      fontSize: 10,
+      fontStyle: 1,
+      fontColor: '#3d4a5e',
+      labelBackgroundColor: '#ffffff',
+      labelBorderColor: OVERVIEW_COLOR,
+      spacing: 2,
+      dashed: cross ? 1 : 0,
+      dashPattern: cross ? '8 6' : null,
+      fixDash: cross ? 1 : null,
+      startArrow: 'none',
+      endArrow: 'none',
+      exitX: source.x,
+      exitY: source.y,
+      exitPerimeter: 0,
+      entryX: target.x,
+      entryY: target.y,
+      entryPerimeter: 0,
+    },
+  });
+}
+
 // Lines the SVG draws only on demand (a click on a hub table or on a
 // polymorphic node). draw.io has no click, so each kind goes on its own
 // layer, hidden until the reader turns it on in the Layers panel.
@@ -440,18 +473,15 @@ export const POLY_LAYER = { id: 'layer-polymorphic-targets', name: 'Polymorphic 
 
 function hiddenLayers(scene, byId, heights, origin) {
   const layer = ({ id, name }, edges) => (edges.length === 0 ? [] : [`<mxCell id="${id}" value="${escapeXml(name)}" parent="0" visible="0"/>`, ...edges]);
-  const hub = scene.hubRoutes.map((r) => edgeCell(r, false, byId, heights, origin, { id: `hub|${r.link.id}`, parent: HUB_LAYER.id }));
+  const hub = scene.hubRoutes.map((r) => edgeCell(r, byId, heights, origin, { id: `hub|${r.link.id}`, parent: HUB_LAYER.id }));
   // A polymorphic line runs from the node's header to the target's first
   // primary key column (the one the id column holds), as in the SVG.
   const poly = scene.polyRoutes.map((r) => {
     const t = byId.get(r.target);
     const column = t.kind === 'table' ? (t.node.table.columns.find((c) => c.pk) ?? t.node.table.columns[0]).name : null;
-    const link = { id: `${r.poly}->${r.target}`, from: { node: r.poly, column: null }, to: { node: r.target, column }, review: 'reviewed' };
-    return edgeCell({ link, points: r.points, markers: { from: 'none', to: 'none' } }, false, byId, heights, origin, {
-      id: `poly|${link.id}`,
-      parent: POLY_LAYER.id,
-      extra: { strokeColor: '#a07a2c', strokeWidth: 1.8, dashed: 1, dashPattern: '2 3', fixDash: 1 },
-    });
+    const review = byId.get(r.poly).node.association.review;
+    const link = { id: `${r.poly}->${r.target}`, from: { node: r.poly, column: null }, to: { node: r.target, column }, kind: 'polymorphic', review };
+    return edgeCell({ link, points: r.points, markers: { from: 'none', to: 'none' } }, byId, heights, origin, { id: `poly|${link.id}`, parent: POLY_LAYER.id });
   });
   return [...layer(HUB_LAYER, hub), ...layer(POLY_LAYER, poly)];
 }
@@ -485,7 +515,7 @@ function pageXml(scene, colorOf) {
     cells.push(...drawn.cells);
   }
   const byId = new Map(scene.nodes.map((n) => [n.id, n]));
-  for (const r of scene.relations) cells.push(edgeCell(r, scene.name === OVERVIEW, byId, heights, origin));
+  for (const r of scene.relations) cells.push(scene.name === OVERVIEW ? overviewEdgeCell(r, byId, heights, origin) : edgeCell(r, byId, heights, origin));
   const layers = hiddenLayers(scene, byId, heights, origin);
   const { w, h } = scene.bounds;
   return [
@@ -503,16 +533,17 @@ function pageXml(scene, colorOf) {
 }
 
 /**
- * The .drawio file of every view: Overview, each domain, then All tables
- * when the diagram has that view. Plain (uncompressed) XML with no
- * timestamps, so the same model and layout always give the same bytes.
- * Options are those of renderSvg's scenes (`fitStored` for a profile).
+ * The .drawio file: two pages, Overview and All tables (with the hub and
+ * polymorphic layers). A schema too large for the view of all tables (see
+ * ALL_VIEW_MAX_TABLES) has no such page; it gets one page per domain
+ * instead, so every table is still in the file. Plain (uncompressed) XML
+ * with no timestamps, so the same model and layout always give the same
+ * bytes. Options are those of renderSvg's scenes (`fitStored` for a profile).
  */
 export function renderDrawio(model, layout, options = {}) {
   const diagram = buildDiagram(model);
   const colorOf = (key) => COLORS[layout.colors[key] % COLORS.length];
-  const names = viewNames(diagram).filter((n) => n !== ALL_VIEW);
-  if (hasAllView(diagram)) names.push(ALL_VIEW);
+  const names = hasAllView(diagram) ? [OVERVIEW, ALL_VIEW] : viewNames(diagram).filter((n) => n !== ALL_VIEW);
   const pages = names.map((name) => pageXml(buildScene(model, layout, name, diagram, options), colorOf));
   return ['<mxfile host="open-erd" compressed="false">', ...pages, '</mxfile>', ''].join('\n');
 }

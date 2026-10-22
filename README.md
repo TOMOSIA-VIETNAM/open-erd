@@ -15,17 +15,17 @@ files.
 
 | File | What it is |
 |---|---|
-| `out/erd.svg` | One self-contained file. Overview (database → domain), domain views, neighborhood of a table. Click a table to highlight its links, click a line to animate it, search tables/columns, hover a column for type/enum meanings/notes, Business/Technical mode. **Join path**: pick two tables and get up to three ways to join them, each hop's condition (`orders.user_id = users.id`) with warnings (unconfirmed, cross-DB, polymorphic type filter, row multiplication), lit hop by hop on the diagram, copyable as text (no SQL is generated). **Download** the view on screen as a static SVG, PNG or JPEG. Columns that look like a missing relation carry an amber mark. Without JavaScript it still shows a static view (the overview, or `default_view` from `open-erd.yaml`). |
+| `out/erd.svg` | One self-contained file. Overview (database → domain; one line per pair of domains, as thick as the relations it stands for, with their count in a badge), domain views, neighborhood of a table. Click a table to highlight its links, click a line to animate it, search tables/columns, hover a column for type/enum meanings/notes, Business/Technical mode. **Join path**: pick two tables and get up to three ways to join them, each hop's condition (`orders.user_id = users.id`) with warnings (unconfirmed, cross-DB, polymorphic type filter, row multiplication), lit hop by hop on the diagram, copyable as text or as a SQL skeleton (`SELECT *` with one `JOIN` per hop and a `--` comment above every hop to check; not offered for a path across databases). **Download** the view on screen as a static SVG, PNG or JPEG. Columns with enum values carry a small list icon; columns that look like a missing relation carry an amber mark. Lines are solid when confirmed (database foreign key, declared in code, or reviewed) and dashed when found in code but not confirmed; **Review mode** colours them by review state. The legend lists only what the view on screen draws; a minimap shows where you are once the view no longer fits the screen. Without JavaScript it still shows a static view (the overview, or `default_view` from `open-erd.yaml`). |
 | `out/erd.xlsx` | Overview sheet first (one row per table), then one sheet per table with its column grid (`# · Name · Type · Nullable · Default · Generated · Expression · Primary Key · Auto Inc · Comment`), then Relations, Polymorphic and a "To review" checklist (pending and stale facts, then possibly missing relations), cross-linked. |
-| `out/erd.drawio` | Every view as one draw.io page: tables as draw.io table shapes (one row per column, notes and enum meanings in tooltips), relations as crow's foot connectors attached to the column rows, so tables can be dragged and edited in draw.io. Turn off with `outputs: { drawio: false }` in `open-erd.yaml`. |
+| `out/erd.drawio` | Two pages, Overview and All tables (one page per domain instead when the schema is too large for the view of all tables): tables as draw.io table shapes (one row per column, enum meanings in the tooltip of their column), relations as crow's foot connectors attached to the column rows, so tables can be dragged and edited in draw.io. Turn off with `outputs: { drawio: false }` in `open-erd.yaml`. |
 | `out/diff.svg`, `out/diff.xlsx` | What changed between two snapshots, colored on the diagram and written as plain sentences, plus a Changes sheet. |
 
 ![Diff panel for a changed table](docs/images/diff.png)
 
 Readability with 100+ tables: three zoom levels (overview / domain / neighborhood),
 shared columns such as `created_by` shown as badges instead of lines,
-polymorphic associations drawn as one node, cross-database and inferred
-relations dashed with their evidence (`repo:path#symbol`). Adding tables keeps
+polymorphic associations drawn as one node, relations nobody confirmed yet
+dashed, with their evidence (`repo:path#symbol`). Adding tables keeps
 the existing layout's relative order, so people who know the diagram still
 recognise it.
 

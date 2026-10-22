@@ -1,8 +1,9 @@
 import { DB_FACT_FONT, DB_LABEL_FONT, ENGINE_FONT, LABEL_FONT, LABEL_OFFSET, clusterLabel, dbLabel, engineName, labelBox } from '../../layout/clusters.js';
 import { VIEW_SOURCE, buildDiagram, domainLinks, plural, polyLinkId, relationId } from '../../layout/diagram.js';
 import { resolveView } from '../../layout/index.js';
+import { routeOverview } from '../../layout/overview-router.js';
 import { STUB, routeEdges } from '../../layout/router.js';
-import { GRID, BADGE_ARROW_WIDTH, BADGE_FONT, DOMAIN_COUNT_FONT, DOMAIN_TITLE_FONT, EMBED_INSET, FACT_FONT, HEADER_HEIGHT, HINT_SIZE, PADDING_X, ROW_HEIGHT, TAG_FONT, attachOffset } from '../../layout/table-box.js';
+import { GRID, BADGE_ARROW_WIDTH, BADGE_FONT, DOMAIN_COUNT_FONT, DOMAIN_TITLE_FONT, EMBED_INSET, FACT_FONT, HEADER_HEIGHT, PADDING_X, ROW_HEIGHT, TAG_FONT, attachOffset } from '../../layout/table-box.js';
 import { ALL_VIEW, OVERVIEW, hasAllView, viewNames } from '../../layout/views.js';
 import { columnEntries, enumMeaning, technicalColumns } from '../../model/columns.js';
 import { compareStrings } from '../../model/load.js';
@@ -10,7 +11,7 @@ import { missingRelations } from '../../model/missing.js';
 import { measureText } from '../../text/measure.js';
 import { FONT_FAMILY, TEXT_STYLE_CSS, fontFaceCss } from '../../text/font.js';
 import { PALETTE } from '../../palette.js';
-import { endMarkers, markerSvg } from './markers.js';
+import { UNCONFIRMED_DASH, endMarkers, enumIconSvg, isConfirmed, markerSvg, overviewStrokeWidth } from './markers.js';
 import viewerBundle from './viewer-bundle.json' with { type: 'json' };
 
 const CANVAS_MARGIN = 40;
@@ -20,6 +21,10 @@ const WARN_INSET = 2;
 const CORNER = 6;
 const EDGE_LABEL_FONT = { size: 10, weight: 700 };
 const EDGE_LABEL_PAD = { x: 4, y: 3 };
+// Round badge with the relation count, at the middle of an overview line;
+// a pill when the number is too wide for a circle.
+const BADGE_COUNT_FONT = { size: 10, weight: 700 };
+const BADGE_HEIGHT = 16;
 const BANNER_TITLE_FONT = { size: 15, weight: 700 };
 const BANNER_SUMMARY_FONT = { size: 13, weight: 400 };
 const BANNER_LEGEND_FONT = { size: 12, weight: 400 };
@@ -47,9 +52,10 @@ const VIEWER_STYLE = `.row-hit { fill: transparent; }
 .selected > rect:last-of-type { stroke: #1d4ed8; stroke-width: 3; }
 .flow-target > rect:last-of-type { stroke: #e8590c; stroke-width: 3; animation: oe-pulse 0.9s ease-in-out infinite alternate; }
 .relation-group.hl .relation, .relation-group.hl .marker { stroke: #2563eb; stroke-width: 2; }
+.overview-link.hl .count-badge rect { stroke: #2563eb; }
 .relation-group.flowing .relation { stroke-opacity: 0.35; }
 .flow { fill: none; stroke: #2563eb; stroke-width: 3; stroke-dasharray: 6 10; pointer-events: none; animation: oe-flow 0.8s linear infinite; }
-.poly-route { fill: none; stroke: #a07a2c; stroke-width: 1.8; stroke-dasharray: 2 3; }
+.poly-route { fill: none; stroke: #6b778a; stroke-width: 1.4; }
 .hub-route .relation, .hub-route .marker { stroke: #2563eb; stroke-width: 1.6; }
 .hub-route { cursor: pointer; }
 @keyframes oe-flow { to { stroke-dashoffset: -16; } }
@@ -109,10 +115,10 @@ const VIEWER_STYLE = `.row-hit { fill: transparent; }
 .oe-tip .oe-enum td { color: #c9d1dd; }
 .oe-tip .oe-enum td.value { color: #ffffff; }
 .oe-hidden { display: none; }
-.oe-legend { display: inline-block; background: #ffffff; border: 1px solid #c3cad5; border-radius: 8px; padding: 8px 12px; box-shadow: 0 6px 18px rgba(20, 30, 50, 0.12); font-size: 12px; }
+.oe-legend { display: inline-block; background: #ffffff; border: 1px solid #c3cad5; border-radius: 8px; padding: 8px 12px; box-shadow: 0 6px 18px rgba(20, 30, 50, 0.12); font-size: 12px; max-width: 300px; }
 .oe-legend .head { display: flex; justify-content: space-between; gap: 24px; }
 .oe-legend .sub { color: #7a8597; font-size: 11px; margin: 6px 0 2px; }
-.oe-legend .item { display: flex; align-items: center; gap: 8px; height: 20px; }
+.oe-legend .item { display: flex; align-items: center; gap: 8px; min-height: 20px; padding: 1px 0; line-height: 1.3; }
 .oe-legend svg { flex: none; overflow: visible; }
 .oe-grid-wrap { overflow-x: auto; margin: 4px 0 10px; }
 .oe-grid { border-collapse: collapse; width: 100%; font-size: 11px; line-height: 1.35; }
@@ -130,6 +136,13 @@ const VIEWER_STYLE = `.row-hit { fill: transparent; }
 .oe-grid summary { font-size: 11px; color: #7c5cc4; }
 .oe-grid .chip { margin-left: 4px; font-size: 10px; padding: 0 4px; border-radius: 6px; font-weight: 700; background: #ffe1d8; color: #a8341a; }
 .cluster-label { cursor: pointer; }
+.fold-hit { fill: transparent; cursor: pointer; }
+.fold-toggle rect { fill: #ffffff; stroke: #8a94a6; stroke-width: 1; }
+.fold-toggle .fold-sign { fill: none; stroke: #56627a; stroke-width: 1.4; stroke-linecap: round; }
+.oe-minimap { background: #ffffff; border: 1px solid #c3cad5; border-radius: 6px; box-shadow: 0 6px 18px rgba(20, 30, 50, 0.12); padding: 4px; cursor: crosshair; touch-action: none; line-height: 0; }
+.oe-minimap .node { fill: #9aa4b5; }
+.oe-minimap .frame { stroke: none; }
+.oe-minimap .seen { fill: rgba(37, 99, 235, 0.08); stroke: #2563eb; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
 .fold-badge rect { fill: #ffffff; stroke: #c3cad5; }
 .fold-badge-text { font-size: 11px; font-weight: 400; fill: #56627a; }
 .oe-download { position: relative; }
@@ -183,9 +196,9 @@ const DIFF_STYLE = [
   `.banner-legend { font-size: ${BANNER_LEGEND_FONT.size}px; font-weight: ${BANNER_LEGEND_FONT.weight}; fill: #56627a; }`,
 ].join('\n');
 
-// Line colour carries the review state, dash pattern the kind:
-//   reviewed grey, pending amber, stale red;
-//   inferred dashed until reviewed, cross_db dash-dot-dot, polymorphic dotted.
+// Lines are one neutral colour, solid when confirmed and dashed when not
+// (see isConfirmed). Review mode (a class the viewer sets on the root)
+// colours them by review state for reviewers: pending amber, stale red.
 const STYLE = `${fontFaceCss()}
 text { font-family: '${FONT_FAMILY}', sans-serif; ${TEXT_STYLE_CSS} }
 .cluster-label { font-size: ${LABEL_FONT.size}px; font-weight: ${LABEL_FONT.weight}; }
@@ -199,8 +212,7 @@ text { font-family: '${FONT_FAMILY}', sans-serif; ${TEXT_STYLE_CSS} }
 .column-name { font-size: 12px; font-weight: 400; fill: #2a3546; }
 .column-name.pk { font-weight: 700; }
 .column-type { font-size: 12px; font-weight: 400; fill: #7a8597; }
-.hint-note { fill: #a9b2c0; }
-.hint-enum { fill: #7c5cc4; }
+.hint-enum { fill: none; stroke: #7c5cc4; stroke-width: 1.3; stroke-linecap: round; }
 .col-warn { fill: #e8a317; stroke: #ffffff; stroke-width: 0.8; stroke-linejoin: round; }
 .badge-text { font-size: ${BADGE_FONT.size}px; font-weight: ${BADGE_FONT.weight}; fill: #56627a; }
 .badge-arrow { fill: none; stroke: #56627a; stroke-width: 1.2; }
@@ -213,17 +225,19 @@ text { font-family: '${FONT_FAMILY}', sans-serif; ${TEXT_STYLE_CSS} }
 .domain-count { font-size: ${DOMAIN_COUNT_FONT.size}px; font-weight: ${DOMAIN_COUNT_FONT.weight}; fill: #5f6b7e; }
 .relation { fill: none; stroke: #6b778a; stroke-width: 1.4; stroke-linejoin: round; }
 .marker { fill: none; stroke: #6b778a; stroke-width: 1.4; }
-.marker .ring, .marker .head { fill: #ffffff; }
+.marker .ring { fill: #ffffff; }
 .edge-label rect { fill: #ffffff; }
 .edge-label text { font-size: ${EDGE_LABEL_FONT.size}px; font-weight: ${EDGE_LABEL_FONT.weight}; fill: #4f5b6e; }
-.review-pending .relation, .review-pending .marker { stroke: #c27c0e; }
-.review-pending .edge-label text { fill: #9a6208; }
-.review-stale .relation, .review-stale .marker { stroke: #c53030; }
-.review-stale .edge-label text { fill: #a61f1f; }
-.kind-inferred.review-pending .relation, .kind-inferred.review-stale .relation { stroke-dasharray: 6 4; }
-.kind-cross_db .relation { stroke-dasharray: 10 3 2 3 2 3; }
-.kind-polymorphic .relation { stroke-dasharray: 2 3; }
+.unconfirmed .relation, .poly-route.unconfirmed { stroke-dasharray: ${UNCONFIRMED_DASH}; }
+.review-mode .review-pending :is(.relation, .marker) { stroke: #c27c0e; }
+.review-mode .review-pending .edge-label text { fill: #9a6208; }
+.review-mode .review-stale :is(.relation, .marker) { stroke: #c53030; }
+.review-mode .review-stale .edge-label text { fill: #a61f1f; }
 .kind-view_source .relation { stroke: #a9b2c0; stroke-dasharray: 5 4; }
+.overview-link .relation { stroke: #8a96a8; stroke-linecap: round; }
+.overview-link.kind-cross_db .relation { stroke-dasharray: 8 6; stroke-linecap: butt; }
+.count-badge rect { fill: #ffffff; stroke: #8a96a8; stroke-width: 1; }
+.count-badge text { font-size: ${BADGE_COUNT_FONT.size}px; font-weight: ${BADGE_COUNT_FONT.weight}; fill: #3d4a5e; }
 .table-tag { font-size: ${TAG_FONT.size}px; font-weight: ${TAG_FONT.weight}; fill: #5f6b7e; letter-spacing: 0.02em; }
 .table.is-view > rect:last-of-type { stroke-dasharray: 5 3; }
 .tenant-copy { fill: #ffffff; stroke: #c9d1dc; stroke-width: 1; }
@@ -285,13 +299,19 @@ function diffBanner(bounds, diff) {
 
 const nodeRect = (n) => ({ id: n.id, x: n.x, y: n.y, w: n.w, h: n.h });
 
-// A cross-DB line names the database it reaches: its end's table id (or,
-// on the overview, its domain key) starts with that database's name.
-function labelText(view, link) {
-  if (link.kind === VIEW_SOURCE) return null;
-  const reaches = `cross-DB → ${link.to.node.split(view === OVERVIEW ? '/' : '.')[0]}`;
-  if (view === OVERVIEW) return `${plural(link.count, 'relation')}${link.kind === 'cross_db' ? ` · ${reaches}` : ''}`;
-  return link.kind === 'cross_db' ? reaches : null;
+function countBadge(count, [cx, cy]) {
+  const text = String(count);
+  const w = Math.max(BADGE_HEIGHT, Math.ceil(measureText(text, BADGE_COUNT_FONT)) + 8);
+  return { text, cx, cy, x: cx - w / 2, y: cy - BADGE_HEIGHT / 2, w, h: BADGE_HEIGHT };
+}
+
+// A cross-DB line in a table view names both databases it joins, in the
+// direction of the reference ("billing → auth"), so a line touching one
+// database never reads as belonging to only the other. Overview lines carry
+// no label: their count badge says how many relations they stand for, the
+// tooltip and panel name the databases.
+function labelText(link) {
+  return link.kind === 'cross_db' ? `${link.from.node.split('.')[0]} → ${link.to.node.split('.')[0]}` : null;
 }
 
 // Labels go where they read as part of their own line and cover nothing
@@ -395,33 +415,6 @@ function placeLabels(relations, texts, obstacles) {
   });
 }
 
-// Overview boxes have no rows, so every line would meet a box at its middle
-// and lines arriving from different domains would merge before the box.
-// Instead the ends at one box are spread one grid step apart around the
-// middle, ordered by the height of the box at the other end so they do not
-// cross on arrival.
-function spreadEnds(links, byId) {
-  const ends = new Map();
-  for (const l of links) {
-    for (const [side, other] of [['from', 'to'], ['to', 'from']]) {
-      const n = l[side].node;
-      if (!ends.has(n)) ends.set(n, []);
-      const o = byId.get(l[other].node);
-      ends.get(n).push({ key: `${l.id}\u0000${side}`, order: o.y + o.h / 2 });
-    }
-  }
-  const offsets = new Map();
-  for (const [id, list] of ends) {
-    const box = byId.get(id);
-    list.sort((a, b) => a.order - b.order || compareStrings(a.key, b.key));
-    list.forEach((e, i) => {
-      const offset = box.h / 2 + (i - Math.floor((list.length - 1) / 2)) * GRID;
-      offsets.set(e.key, Math.min(box.h - GRID, Math.max(GRID, offset)));
-    });
-  }
-  return offsets;
-}
-
 // Routes from every polymorphic node to each of its targets drawn in the
 // view (as a table or a stub), attached at the target's first primary key
 // row: the id column points there. The viewer cannot route, so these are
@@ -442,7 +435,7 @@ function routePolyTargets(nodes, byId, obstacles, groups) {
         from: { box: nodeRect(n), y: n.y + attachOffset(n.box, null), marker: 'none' },
         to: { box: nodeRect(t), y: t.y + attachOffset(t.box, column), marker: 'none' },
       });
-      ends.push({ poly: n.id, target });
+      ends.push({ poly: n.id, target, confirmed: isConfirmed('polymorphic', n.node.association.review) });
     }
   }
   return routeEdges(obstacles, groups.map((g) => g.frame), edges).map((r, i) => ({ ...ends[i], points: r.points }));
@@ -487,20 +480,22 @@ export function buildScene(model, layout, name = ALL_VIEW, diagram = buildDiagra
       : { id: `label:${g.group.id}`, ...dbLabel(g.frame, g.group.database, g.group.engine, g.group.facts).box },
   );
   const obstacles = [...view.nodes.map(nodeRect), ...labels];
-  const spread = name === OVERVIEW ? spreadEnds(view.links, byId) : null;
   const end = (link, side, marker) => {
     const e = link[side];
     const n = byId.get(e.node);
-    const offset = spread ? spread.get(`${link.id}\u0000${side}`) : attachOffset(n.box, e.column);
-    return { box: nodeRect(n), y: n.y + offset, marker };
+    return { box: nodeRect(n), y: n.y + attachOffset(n.box, e.column), marker };
   };
-  // An overview line stands for many relations: it shows only which way they
-  // point, at the domain holding the referenced keys.
-  const markers = view.links.map((l) => (name === OVERVIEW ? { from: 'none', to: 'arrow' } : l.kind === VIEW_SOURCE ? { from: 'none', to: 'none' } : endMarkers(l)));
-  const edges = view.links.map((l, i) => ({ id: l.id, from: end(l, 'from', markers[i].from), to: end(l, 'to', markers[i].to) }));
-  const routes = routeEdges(obstacles, view.groups.map((g) => g.frame), edges);
-  const labelsOf = placeLabels(routes, view.links.map((link) => labelText(name, link)), obstacles);
-  const relations = view.links.map((link, i) => ({ link, ...routes[i], markers: markers[i], label: labelsOf[i] }));
+  let relations;
+  if (name === OVERVIEW) {
+    const routes = routeOverview(view.nodes.map(nodeRect), labels, view.groups.map((g) => g.frame), view.links);
+    relations = view.links.map((link, i) => ({ link, ...routes[i], badge: countBadge(link.count, routes[i].middle) }));
+  } else {
+    const markers = view.links.map((l) => (l.kind === VIEW_SOURCE ? { from: 'none', to: 'none' } : endMarkers(l)));
+    const edges = view.links.map((l, i) => ({ id: l.id, from: end(l, 'from', markers[i].from), to: end(l, 'to', markers[i].to) }));
+    const routes = routeEdges(obstacles, view.groups.map((g) => g.frame), edges);
+    const labelsOf = placeLabels(routes, view.links.map(labelText), obstacles);
+    relations = view.links.map((link, i) => ({ link, ...routes[i], markers: markers[i], label: labelsOf[i] }));
+  }
   const polyRoutes = routePolyTargets(view.nodes, byId, obstacles, view.groups);
   const hubRoutes = name === OVERVIEW ? [] : routeHubLinks(diagram.hubLinks, byId, obstacles, view.groups);
 
@@ -537,13 +532,8 @@ function headerPath(x, y, w, fill) {
   );
 }
 
-// The mark after a column name saying it has a note or enum values to read.
-function hintSvg(r, nameX, cy) {
-  if (!r.hint) return '';
-  const cx = nameX + r.hintX;
-  if (r.hint === 'note') return `<circle class="hint-note" cx="${cx}" cy="${cy}" r="${HINT_SIZE / 2}"/>`;
-  return `<rect class="hint-enum" x="${cx - HINT_SIZE / 2}" y="${cy - HINT_SIZE / 2}" width="${HINT_SIZE}" height="${HINT_SIZE}" rx="1"/>`;
-}
+// The mark after a column name saying it has enum values to read.
+const hintSvg = (r, nameX, cy) => (r.hint ? enumIconSvg(nameX + r.hintX, cy) : '');
 
 // A possibly missing relation: a small amber triangle in the row's left
 // padding, so no box grows and no stored layout goes stale. Its title is the
@@ -691,12 +681,17 @@ function groupSvg(g, colorOf) {
   );
 }
 
+// `unconfirmed` draws the line dashed (see isConfirmed); a view's line to
+// its source has its own muted style.
+const styleClass = (link) => (link.kind !== VIEW_SOURCE && !isConfirmed(link.kind, link.review) ? ' unconfirmed' : '');
+
 const pathData = (points) => points.map(([px, py], i) => `${i === 0 ? 'M' : 'L'}${px} ${py}`).join('');
 
 function markersSvg(r) {
   const [first, last] = [r.points[0], r.points[r.points.length - 1]];
   const svg = markerSvg(r.markers.from, first[0], first[1], r.fromSide) + markerSvg(r.markers.to, last[0], last[1], r.toSide);
-  return svg ? `<g class="marker">${svg}</g>` : '';
+  // The legend lists only the end kinds a view draws: it reads them here.
+  return svg ? `<g class="marker" data-ends="${r.markers.from} ${r.markers.to}">${svg}</g>` : '';
 }
 
 function relationSvg(r, marks) {
@@ -709,10 +704,27 @@ function relationSvg(r, marks) {
     : '';
   const via = link.via ? ` data-via="${escapeXml(link.via)}"` : '';
   return (
-    `<g class="relation-group kind-${link.kind} review-${link.review}${linkDiffClass(marks, link.id)}" data-id="${escapeXml(link.id)}"` +
+    `<g class="relation-group kind-${link.kind} review-${link.review}${styleClass(link)}${linkDiffClass(marks, link.id)}" data-id="${escapeXml(link.id)}"` +
     ` data-from="${escapeXml(link.from.node)}" data-to="${escapeXml(link.to.node)}" data-kind="${link.kind}" data-review="${link.review}"${via}>` +
     `<title>${escapeXml(titleText(marks, link.id, link.via ? `${link.id} (n-n via ${link.via})` : link.id, 'links'))}</title>` +
     `<path class="relation" d="${d}"/>${markers}${label}</g>`
+  );
+}
+
+// An overview line: one per pair of domains, as thick as its relation count
+// is high (the width is inline so highlighting cannot reset it), the count
+// in a badge at its middle, no arrowheads, one neutral colour; dashed
+// between databases.
+function overviewLinkSvg(r, marks) {
+  const { link, badge } = r;
+  const [a, b] = [link.from.node, link.to.node];
+  const title = `${clusterLabel(a)} ⇄ ${clusterLabel(b)}: ${plural(link.count, 'relation')}${link.kind === 'cross_db' ? ` (${a.split('/')[0]} ⇄ ${b.split('/')[0]})` : ''}`;
+  return (
+    `<g class="relation-group overview-link kind-${link.kind}${linkDiffClass(marks, link.id)}" data-id="${escapeXml(link.id)}" data-from="${escapeXml(a)}" data-to="${escapeXml(b)}" data-kind="${link.kind}">` +
+    `<title>${escapeXml(title)}</title>` +
+    `<path class="relation" d="${pathData(r.points)}" style="stroke-width:${overviewStrokeWidth(link.count)}"/>` +
+    `<g class="count-badge"><rect x="${badge.x}" y="${badge.y}" width="${badge.w}" height="${badge.h}" rx="${badge.h / 2}"/>` +
+    `<text x="${badge.cx}" y="${badge.cy}" dominant-baseline="central" text-anchor="middle">${badge.text}</text></g></g>`
   );
 }
 
@@ -728,7 +740,7 @@ function polyRoutesSvg(routes) {
     .map(
       ([poly, list]) =>
         `<g class="poly-routes" data-poly="${escapeXml(poly)}" style="display:none">` +
-        list.map((r) => `<path class="poly-route" data-target="${escapeXml(r.target)}" d="${pathData(r.points)}"/>`).join('') +
+        list.map((r) => `<path class="poly-route${r.confirmed ? '' : ' unconfirmed'}" data-target="${escapeXml(r.target)}" d="${pathData(r.points)}"/>`).join('') +
         '</g>',
     )
     .join('');
@@ -749,7 +761,7 @@ function hubRoutesSvg(routes) {
         list
           .map(
             (r) =>
-              `<g class="hub-route kind-${r.link.kind} review-${r.link.review}" data-id="${escapeXml(r.link.id)}" data-from="${escapeXml(r.link.from.node)}" data-to="${escapeXml(hub)}">` +
+              `<g class="hub-route kind-${r.link.kind} review-${r.link.review}${styleClass(r.link)}" data-id="${escapeXml(r.link.id)}" data-from="${escapeXml(r.link.from.node)}" data-to="${escapeXml(hub)}">` +
               `<path class="relation" d="${pathData(r.points)}"/>${markersSvg(r)}</g>`,
           )
           .join('') +
@@ -773,7 +785,7 @@ function viewSvg(scene, colorOf, visible, technical, marks, banner, warnings) {
     `<g class="view" data-view="${escapeXml(scene.name)}" data-bounds="${x} ${y} ${w} ${h}"${hidden}>`,
     `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="#ffffff"/>`,
     `<g class="groups">${scene.groups.map((g) => groupSvg(g, colorOf)).join('')}</g>`,
-    `<g class="relations">${scene.relations.map((r) => relationSvg(r, marks)).join('')}${polyRoutesSvg(scene.polyRoutes)}${hubRoutesSvg(scene.hubRoutes)}</g>`,
+    `<g class="relations">${scene.relations.map((r) => (scene.name === OVERVIEW ? overviewLinkSvg(r, marks) : relationSvg(r, marks))).join('')}${polyRoutesSvg(scene.polyRoutes)}${hubRoutesSvg(scene.hubRoutes)}</g>`,
     `<g class="nodes">${nodes.join('')}</g>`,
     banner ?? '',
     '</g>',
@@ -852,7 +864,7 @@ export function viewerData(model, diagram, technical = technicalColumns(model), 
     const n = diagram.nodes.get(id);
     if (n.kind === 'poly') {
       const a = n.association;
-      nodes[id] = { kind: 'poly', cluster: n.cluster, table: a.table, name: a.name, typeColumn: a.type_column, idColumn: a.id_column, optional: a.optional, targets: a.targets, ...notes(a) };
+      nodes[id] = { kind: 'poly', cluster: n.cluster, table: a.table, name: a.name, typeColumn: a.type_column, idColumn: a.id_column, optional: a.optional, review: a.review, targets: a.targets, ...notes(a) };
       if (a.evidence?.length > 0) nodes[id].evidence = a.evidence;
       continue;
     }

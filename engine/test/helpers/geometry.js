@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { segmentCrosses } from '../../src/layout/overview-router.js';
 import { MARGIN, STUB } from '../../src/layout/router.js';
 import {
   BADGE_ARROW_WIDTH,
@@ -21,11 +22,10 @@ export function segments(points) {
   return points.slice(1).map((p, i) => [points[i], p]);
 }
 
-// True when the axis-aligned segment touches the open interior of `box`.
-export function hits([[ax, ay], [bx, by]], box) {
-  const [x0, x1] = [Math.min(ax, bx), Math.max(ax, bx)];
-  const [y0, y1] = [Math.min(ay, by), Math.max(ay, by)];
-  return x0 < box.x + box.w && x1 > box.x && y0 < box.y + box.h && y1 > box.y;
+// True when the segment (axis-aligned, or a diagonal overview line) passes
+// through the open interior of `box`.
+export function hits([a, b], box) {
+  return segmentCrosses(a, b, box);
 }
 
 export function inflate(b, by) {
@@ -38,10 +38,15 @@ export function pathLength(points) {
   return segments(points).reduce((sum, [[ax, ay], [bx, by]]) => sum + Math.abs(bx - ax) + Math.abs(by - ay), 0);
 }
 
+const onBorder = ([x, y], b) => ((x === b.x || x === b.x + b.w) && y >= b.y && y <= b.y + b.h) || ((y === b.y || y === b.y + b.h) && x >= b.x && x <= b.x + b.w);
+
 // Every line keeps the router margin from every box it does not attach to,
 // never crosses a group label, and leaves its own boxes horizontally with a
-// straight stub at least STUB long.
+// straight stub at least STUB long. Overview lines may meet any side of a
+// domain box (and run diagonally), so they only have to start and end on
+// their boxes' borders; their count badges cover no box and no label.
 export function assertLinesClear(scene) {
+  const overview = scene.name === 'overview';
   for (const r of scene.relations) {
     const segs = segments(r.points);
     const ends = new Set([r.link.from.node, r.link.to.node]);
@@ -52,6 +57,13 @@ export function assertLinesClear(scene) {
       for (const s of checked) assert.ok(!hits(s, inflate(n, MARGIN - 1)), `${scene.name}: ${r.id} crosses ${n.id}: ${JSON.stringify(s)}`);
     }
     for (const label of scene.labels) for (const s of segs) assert.ok(!hits(s, label), `${scene.name}: ${r.id} crosses ${label.id}`);
+    if (overview) {
+      const byId = new Map(scene.nodes.map((n) => [n.id, n]));
+      assert.ok(onBorder(r.points[0], byId.get(r.link.from.node)), `${scene.name}: ${r.id} does not start on its box`);
+      assert.ok(onBorder(r.points.at(-1), byId.get(r.link.to.node)), `${scene.name}: ${r.id} does not end on its box`);
+      for (const b of [...scene.nodes, ...scene.labels]) assert.ok(!overlaps(r.badge, b), `${scene.name}: badge of ${r.id} covers ${b.id}`);
+      continue;
+    }
     for (const [seg, side] of [
       [segs[0], r.fromSide],
       [[...segs.at(-1)].reverse(), r.toSide],

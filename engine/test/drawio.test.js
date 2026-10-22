@@ -8,12 +8,12 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { VIEW_SOURCE, buildDiagram, domainLinks } from '../src/layout/diagram.js';
 import { computeLayout } from '../src/layout/index.js';
-import { ALL_VIEW, OVERVIEW, viewNames, viewTree } from '../src/layout/views.js';
+import { ALL_VIEW, ALL_VIEW_MAX_TABLES, OVERVIEW, viewNames, viewTree } from '../src/layout/views.js';
 import { applyProfile } from '../src/model/profile.js';
 import { HUB_LAYER, POLY_LAYER, pageName, renderDrawio } from '../src/render/drawio/render.js';
 import { buildScene } from '../src/render/svg/render.js';
-import { endMarkers } from '../src/render/svg/markers.js';
-import { MULTI, loadMulti, loadWorkspace } from './helpers/shop.js';
+import { endMarkers, overviewStrokeWidth } from '../src/render/svg/markers.js';
+import { MULTI, loadMulti, loadWorkspace, table } from './helpers/shop.js';
 import { descendants, parseXml } from './helpers/xml.js';
 
 const CLI = fileURLToPath(new URL('../cli.js', import.meta.url));
@@ -47,19 +47,28 @@ test('the test XML parser rejects malformed input', () => {
   assert.throws(() => parseXml('<a>'));
 });
 
-test('drawio: well-formed plain XML, one page per view in reading order, no timestamps', async () => {
-  const { model, xml } = await multi();
+test('drawio: well-formed plain XML, two pages (Overview, All tables), no timestamps', async () => {
+  const { xml } = await multi();
   const file = parseXml(xml);
   assert.equal(file.name, 'mxfile');
   assert.equal(file.attrs.compressed, 'false');
   assert.equal(file.attrs.modified, undefined);
-  const diagram = buildDiagram(model);
-  const views = viewNames(diagram);
-  const expected = [OVERVIEW, ...views.filter((v) => v !== OVERVIEW && v !== ALL_VIEW), ALL_VIEW];
-  assert.deepEqual(file.children.map((d) => d.attrs.id), expected);
-  assert.deepEqual(file.children.map((d) => d.attrs.name).slice(0, 2), ['Overview', 'Audit (activity)']);
-  assert.equal(file.children.at(-1).attrs.name, 'All tables');
-  assert.deepEqual(file.children.map((d) => d.attrs.name), expected.map(pageName));
+  assert.deepEqual(file.children.map((d) => d.attrs.id), [OVERVIEW, ALL_VIEW]);
+  assert.deepEqual(file.children.map((d) => d.attrs.name), ['Overview', 'All tables']);
+});
+
+test('drawio: a schema without the view of all tables gets one page per domain instead', async () => {
+  const model = await loadMulti();
+  // More tables than the view of all tables allows, spread over two domains.
+  const extra = Array.from({ length: ALL_VIEW_MAX_TABLES }, (_, i) => table(`shop._.filler_${String(i).padStart(3, '0')}`, i % 2 ? 'Catalog' : 'Orders', []));
+  const big = { ...model, tables: [...model.tables, ...extra] };
+  const diagram = buildDiagram(big);
+  assert.ok(!viewNames(diagram).includes(ALL_VIEW));
+  const { layout } = await computeLayout(big);
+  const pages = parseXml(renderDrawio(big, layout)).children;
+  const expected = viewNames(diagram);
+  assert.deepEqual(pages.map((d) => d.attrs.id), expected);
+  assert.deepEqual(pages.map((d) => d.attrs.name), expected.map(pageName));
 });
 
 test('drawio: ids are unique per page and every parent, source and target exists', async () => {
@@ -87,12 +96,17 @@ test('drawio: every relation is a connector on its column rows with crow\'s foot
       const edge = cells.get(`e|${link.id}`);
       assert.ok(edge, `${name}: no connector for ${link.id}`);
       assert.equal(edge.edge, '1');
-      assert.equal(edge.style.edgeStyle, 'orthogonalEdgeStyle');
       assert.ok(descendants(edge.geometry).some((e) => e.name === 'Array'), 'waypoints from the router');
       if (name === OVERVIEW) {
-        assert.equal(edge.style.endArrow, 'block');
+        // Straight segments through the waypoints, no arrowheads, the count as label, width by count.
+        assert.equal(edge.style.edgeStyle, 'none');
+        assert.deepEqual([edge.style.startArrow, edge.style.endArrow], ['none', 'none']);
+        assert.equal(edge.value, String(link.count));
+        assert.equal(Number(edge.style.strokeWidth), overviewStrokeWidth(link.count));
+        assert.equal(edge.style.dashed, link.kind === 'cross_db' ? '1' : '0');
         continue;
       }
+      assert.equal(edge.style.edgeStyle, 'orthogonalEdgeStyle');
       for (const [side, end] of [['from', edge.source], ['to', edge.target]]) {
         const node = diagram.nodes.get(link[side].node);
         const onRow = node?.kind === 'table' && link[side].column !== null && cells.get(`n|${node.id}`)?.style.shape === 'table';
@@ -110,25 +124,36 @@ test('drawio: every relation is a connector on its column rows with crow\'s foot
       assert.equal(edge.style.endArrow, ER[markers.to], link.id);
     }
   }
-  // Overview lines are the domain links, labelled with their count.
-  const overview = new Map(cellsOf(parseXml(xml).children[0]).map((c) => [c.id, c]));
-  for (const d of domainLinks(diagram)) assert.match(overview.get(`e|${d.id}`).value, new RegExp(`^${d.count} relations?`));
+  // Overview lines are the domain links, one per pair of domains.
+  const overview = cellsOf(parseXml(xml).children[0]).filter((c) => c.edge === '1');
+  assert.deepEqual(overview.map((c) => c.id).sort(), domainLinks(diagram).map((d) => `e|${d.id}`).sort());
 });
 
-test('drawio: kinds and review states carry the SVG dash patterns and colours; notes go to tooltips', async () => {
-  const { xml } = await multi();
+test('drawio: two line styles as in the SVG, one neutral colour; tooltips only on enum columns', async () => {
+  const { model, xml } = await multi();
   const all = new Map(cellsOf(parseXml(xml).children.at(-1)).map((c) => [c.id, c]));
   const edge = (id) => all.get(`e|${id}`).style;
+  // Cross-DB has no dash pattern of its own; its label names both databases.
   const crossDb = edge('activity._.page_views(product_id)->shop._.products(id)');
-  assert.equal(crossDb.dashPattern, '10 3 2 3 2 3');
-  const pending = edge('auth.public.memberships(role_id)->auth.public.roles(id)');
-  assert.equal(pending.dashPattern, '6 4');
-  assert.equal(pending.strokeColor, '#c27c0e');
-  assert.match(all.get('e|activity._.page_views(product_id)->shop._.products(id)').value, /cross-DB → shop/);
+  assert.equal(crossDb.dashed, '0');
+  assert.equal(all.get('e|activity._.page_views(product_id)->shop._.products(id)').value, 'activity → shop');
+  // An unreviewed inference and a stale fact are dashed; colours stay neutral.
+  for (const id of ['auth.public.memberships(role_id)->auth.public.roles(id)', 'shop._.products(brand_id)->shop._.brands(id)']) {
+    assert.equal(edge(id).dashPattern, '6 4', id);
+    assert.equal(edge(id).strokeColor, '#6b778a', id);
+  }
   const poly = [...all.values()].find((c) => c.id.startsWith('e|') && c.id.includes('->«'));
-  assert.equal(poly.style.dashPattern, '2 3');
-  assert.match(all.get('n|shop._.orders').tooltip, /One order per checkout/);
-  assert.match(all.get('n|auth.public.users|email').tooltip, /PII/);
+  assert.equal(poly.style.dashed, '0');
+  // Only rows of columns with enum values carry a tooltip: their values and meanings.
+  const withEnum = new Set(model.tables.flatMap((t) => t.columns.filter((c) => c.enum && Object.keys(c.enum).length > 0).map((c) => `n|${t.id}|${c.name}`)));
+  assert.ok(withEnum.size > 0);
+  for (const page of parseXml(xml).children) {
+    for (const c of cellsOf(page)) {
+      if (withEnum.has(c.id)) assert.ok(c.tooltip, `${c.id} lacks its enum tooltip`);
+      else assert.equal(c.tooltip, undefined, `${page.attrs.name}: ${c.id} has a tooltip`);
+    }
+  }
+  assert.equal(all.get('n|shop._.orders|status').tooltip, 'pending: Created, waiting for payment\npaid: Payment confirmed by the gateway\ncancelled: Cancelled by the customer or by timeout');
 });
 
 test('drawio: hub and polymorphic target lines sit on their own hidden layers, attached to existing rows', async () => {
@@ -178,7 +203,7 @@ test('drawio: a public profile render holds no hidden table, hidden or PII colum
   const full = renderDrawio(model, layout);
   const shared = renderDrawio(applyProfile(model, 'public'), layout, { fitStored: true });
   parseXml(shared);
-  const secrets = ['audit_secrets', 'tax_number', 'email_address', 'ship_line1', 'Ask the billing team before changing this.', '納税者番号'];
+  const secrets = ['audit_secrets', 'tax_number', 'email_address', 'ship_line1'];
   for (const text of secrets) {
     assert.ok(full.includes(text), `full render lacks ${text}, so the check below proves nothing`);
     assert.ok(!shared.includes(text), `public render leaks ${text}`);

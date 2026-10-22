@@ -30,7 +30,8 @@ for (const [fixture, load] of [
   // whose ends need three or more markers shares a point by necessity.
   test(`${fixture}: ends sharing an attachment point draw the same marker`, async () => {
     const { scenes: all } = await scenes(await load());
-    for (const scene of all) {
+    // Overview lines carry no end markers.
+    for (const scene of all.filter((x) => x.name !== 'overview')) {
       const at = new Map();
       const perRow = new Map();
       for (const r of scene.relations) {
