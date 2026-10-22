@@ -28,7 +28,7 @@ If the chosen workspace already has `open-erd.yaml`, stop and offer
 ```bash
 mkdir -p <ws>/model <ws>/extract/facts
 git -C <ws> init
-printf 'open-erd.local.yaml\n' > <ws>/.gitignore
+printf 'open-erd.local.yaml\n.DS_Store\n' > <ws>/.gitignore
 ```
 
 4. Write `open-erd.yaml` (`schema_version: 1`, `sources` names only) and

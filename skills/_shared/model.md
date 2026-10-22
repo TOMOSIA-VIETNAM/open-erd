@@ -8,7 +8,7 @@ when this page and the engine disagree.
 
 ```
 <ws>/
-  .gitignore            # contains: open-erd.local.yaml
+  .gitignore            # contains: open-erd.local.yaml, .DS_Store
   open-erd.yaml         # shared config (committed)
   open-erd.local.yaml   # this machine's source paths (gitignored)
   model/<db>.yaml       # one file per logical database
