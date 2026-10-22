@@ -8,6 +8,8 @@ import { SELF_STUB } from '../src/layout/router.js';
 import { POLY_VISIBLE_TARGETS } from '../src/layout/table-box.js';
 import { ALL_VIEW, ALL_VIEW_MAX_TABLES, STUB_SLOT, viewNames } from '../src/layout/views.js';
 import { normalizeModel } from '../src/model/load.js';
+import { configSchema } from '../src/model/schema.js';
+import { validateNode } from '../src/model/validate.js';
 import { endMarkers, overviewStrokeWidth } from '../src/render/svg/markers.js';
 import { gridPlace } from '../src/layout/elk-layout.js';
 import { HUB_ROUTE_LIMIT, buildScene, renderSvg } from '../src/render/svg/render.js';
@@ -94,12 +96,17 @@ test('overview: one line per pair of domains, its width and badge from the relat
     // commentable -> orders, attachable -> orders, refunds
     'shop/Content<->shop/Orders': [3, 'domain', '3'],
   });
-  // No arrowheads, no text label; the badge sits on the line's middle.
+  // No arrowheads, no text label; orthogonal segments only (no diagonal),
+  // at most two bends here; lines of one relation are weak (hidden at first).
   for (const r of overview.relations) {
     assert.equal(r.markers, undefined);
     assert.equal(r.label, undefined);
-    assert.ok(r.points.length <= 3 || r.id === 'activity/Events<->shop/Orders', `${r.id}: straight or one bend where the boxes allow`);
+    assert.ok(r.points.slice(1).every(([x, y], i) => x === r.points[i][0] || y === r.points[i][1]), `${r.id}: diagonal segment`);
+    assert.ok(r.points.length <= 4, `${r.id}: ${r.points.length - 2} bends`);
+    assert.equal(r.weak, r.link.count < 2, r.id);
   }
+  assert.match(svg, /<g class="relation-group overview-link kind-domain weak" data-id="shop\/Catalog&lt;-&gt;shop\/Orders"/);
+  assert.match(svg, /\.overview-link\.weak \{ display: none; \}/);
   const content = overview.relations.find((r) => r.id === 'shop/Content<->shop/Orders').link.relations;
   assert.deepEqual(
     content.map((r) => [r.from.table, r.from.column, r.to, r.cardinality, r.association]),
@@ -320,4 +327,19 @@ test('the view of all tables exists up to ALL_VIEW_MAX_TABLES tables', async () 
     buildDiagram(normalizeModel({ ...base, relations: [], polymorphic: [], tables: Array.from({ length: n }, (_, i) => table(`shop._.t${i}`, 'Bulk', [])) }));
   assert.ok(viewNames(sized(ALL_VIEW_MAX_TABLES)).includes(ALL_VIEW));
   assert.deepEqual(viewNames(sized(ALL_VIEW_MAX_TABLES + 1)), ['overview', 'domain:shop/Bulk']);
+});
+
+test('overview.min_relations: 1 shows every line, a higher value hides more; validated; deterministic', async () => {
+  const counts = async (min) => {
+    const { scene, svg } = await multi(withConfig(min === undefined ? {} : { overview: { min_relations: min } }));
+    return { weak: scene('overview').relations.filter((r) => r.weak).map((r) => r.id), svg };
+  };
+  const byDefault = await counts();
+  assert.equal(byDefault.weak.length, 6);
+  assert.deepEqual((await counts(1)).weak, []);
+  assert.deepEqual((await counts(3)).weak.length, 7);
+  assert.equal((await counts()).svg, byDefault.svg);
+  assert.deepEqual(validateNode({ schema_version: 1, overview: { min_relations: 2 } }, configSchema), []);
+  assert.equal(validateNode({ schema_version: 1, overview: { min_relations: 0 } }, configSchema).length, 1);
+  assert.equal(validateNode({ schema_version: 1, overview: { min_lines: 2 } }, configSchema).length, 1);
 });

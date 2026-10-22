@@ -137,6 +137,29 @@ if (overviewLine) {
   await click(`document.querySelector('.oe-crumbs .oe-link')`);
 }
 
+// Weak overview links (fewer relations than overview.min_relations) start
+// hidden; the toolbar button shows them all, hovering a domain shows its own
+// and fades every other line and domain.
+const weakSel = `g.view[data-view="overview"] .overview-link.weak`;
+const weakDomain = await evaluate(`document.querySelector('${weakSel}')?.getAttribute('data-from') ?? null`);
+if (weakDomain) {
+  const weakShown = `[...document.querySelectorAll('${weakSel}')].filter((g) => getComputedStyle(g).display !== 'none').length`;
+  await shot('overview-weak-hidden', `${weakShown} === 0 && /^\\d+ weak links? hidden · Show all$/.test([...document.querySelectorAll('.oe-btn')].find((b) => b.textContent.includes('weak link')).textContent)`);
+  await click(`[...document.querySelectorAll('.oe-btn')].find((b) => b.textContent.includes('weak link'))`);
+  await shot('overview-weak-shown', `${weakShown} === document.querySelectorAll('${weakSel}').length`);
+  await click(`[...document.querySelectorAll('.oe-btn')].find((b) => b.textContent === 'Hide weak links')`);
+  await mouse('mouseMoved', await centre(`document.querySelector('g.view[data-view="overview"] .domain[data-domain=${JSON.stringify(weakDomain)}]')`));
+  await pause(150);
+  await shot(
+    'overview-domain-hover',
+    `(() => { const v = document.querySelector('g.view[data-view="overview"]'); const mine = [...v.querySelectorAll('.overview-link')].filter((g) => [g.getAttribute('data-from'), g.getAttribute('data-to')].includes(${JSON.stringify(weakDomain)}));
+      const others = [...v.querySelectorAll('.domain:not(.focus-node)')];
+      return v.classList.contains('domain-focus') && mine.every((g) => getComputedStyle(g).display !== 'none' && getComputedStyle(g).opacity === '1') && others.length > 0 && others.every((d) => getComputedStyle(d).opacity === '0.25') || { mine: mine.length, others: others.length }; })()`,
+  );
+  await mouse('mouseMoved', { x: 5, y: 890 });
+  await pause(100);
+}
+
 // The column with the most enum values: its tooltip stays compact (chips,
 // note, at most 8 values, never past the window) and a click on it lists
 // every value in the panel. Rows with a note or enum carry a mark.

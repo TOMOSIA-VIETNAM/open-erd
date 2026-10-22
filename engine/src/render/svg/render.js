@@ -7,6 +7,7 @@ import { GRID, BADGE_ARROW_WIDTH, BADGE_FONT, DOMAIN_COUNT_FONT, DOMAIN_TITLE_FO
 import { ALL_VIEW, OVERVIEW, hasAllView, viewNames } from '../../layout/views.js';
 import { columnEntries, enumMeaning, technicalColumns } from '../../model/columns.js';
 import { compareStrings } from '../../model/load.js';
+import { minRelations } from '../../model/schema.js';
 import { missingRelations } from '../../model/missing.js';
 import { measureText } from '../../text/measure.js';
 import { FONT_FAMILY, TEXT_STYLE_CSS, fontFaceCss } from '../../text/font.js';
@@ -53,6 +54,8 @@ const VIEWER_STYLE = `.row-hit { fill: transparent; }
 .flow-target > rect:last-of-type { stroke: #e8590c; stroke-width: 3; animation: oe-pulse 0.9s ease-in-out infinite alternate; }
 .relation-group.hl .relation, .relation-group.hl .marker { stroke: #2563eb; stroke-width: 2; }
 .overview-link.hl .count-badge rect { stroke: #2563eb; }
+.show-weak .overview-link.weak, .overview-link.weak.focus-link { display: inline; }
+.view.domain-focus :is(.overview-link:not(.focus-link), .domain:not(.focus-node)) { opacity: 0.25; }
 .relation-group.flowing .relation { stroke-opacity: 0.35; }
 .flow { fill: none; stroke: #2563eb; stroke-width: 3; stroke-dasharray: 6 10; pointer-events: none; animation: oe-flow 0.8s linear infinite; }
 .poly-route { fill: none; stroke: #6b778a; stroke-width: 1.4; }
@@ -236,6 +239,8 @@ text { font-family: '${FONT_FAMILY}', sans-serif; ${TEXT_STYLE_CSS} }
 .kind-view_source .relation { stroke: #a9b2c0; stroke-dasharray: 5 4; }
 .overview-link .relation { stroke: #8a96a8; stroke-linecap: round; }
 .overview-link.kind-cross_db .relation { stroke-dasharray: 8 6; stroke-linecap: butt; }
+/* Weak overview links: hidden until shown (see overview.min_relations). */
+.overview-link.weak { display: none; }
 .count-badge rect { fill: #ffffff; stroke: #8a96a8; stroke-width: 1; }
 .count-badge text { font-size: ${BADGE_COUNT_FONT.size}px; font-weight: ${BADGE_COUNT_FONT.weight}; fill: #3d4a5e; }
 .table-tag { font-size: ${TAG_FONT.size}px; font-weight: ${TAG_FONT.weight}; fill: #5f6b7e; letter-spacing: 0.02em; }
@@ -488,7 +493,10 @@ export function buildScene(model, layout, name = ALL_VIEW, diagram = buildDiagra
   let relations;
   if (name === OVERVIEW) {
     const routes = routeOverview(view.nodes.map(nodeRect), labels, view.groups.map((g) => g.frame), view.links);
-    relations = view.links.map((link, i) => ({ link, ...routes[i], badge: countBadge(link.count, routes[i].middle) }));
+    // A weak link (fewer relations than overview.min_relations) is routed
+    // last and drawn hidden until the reader asks for it.
+    const min = minRelations(model.config);
+    relations = view.links.map((link, i) => ({ link, ...routes[i], weak: link.count < min, badge: countBadge(link.count, routes[i].middle) }));
   } else {
     const markers = view.links.map((l) => (l.kind === VIEW_SOURCE ? { from: 'none', to: 'none' } : endMarkers(l)));
     const edges = view.links.map((l, i) => ({ id: l.id, from: end(l, 'from', markers[i].from), to: end(l, 'to', markers[i].to) }));
@@ -720,7 +728,7 @@ function overviewLinkSvg(r, marks) {
   const [a, b] = [link.from.node, link.to.node];
   const title = `${clusterLabel(a)} ⇄ ${clusterLabel(b)}: ${plural(link.count, 'relation')}${link.kind === 'cross_db' ? ` (${a.split('/')[0]} ⇄ ${b.split('/')[0]})` : ''}`;
   return (
-    `<g class="relation-group overview-link kind-${link.kind}${linkDiffClass(marks, link.id)}" data-id="${escapeXml(link.id)}" data-from="${escapeXml(a)}" data-to="${escapeXml(b)}" data-kind="${link.kind}">` +
+    `<g class="relation-group overview-link kind-${link.kind}${r.weak ? ' weak' : ''}${linkDiffClass(marks, link.id)}" data-id="${escapeXml(link.id)}" data-from="${escapeXml(a)}" data-to="${escapeXml(b)}" data-kind="${link.kind}">` +
     `<title>${escapeXml(title)}</title>` +
     `<path class="relation" d="${pathData(r.points)}" style="stroke-width:${overviewStrokeWidth(link.count)}"/>` +
     `<g class="count-badge"><rect x="${badge.x}" y="${badge.y}" width="${badge.w}" height="${badge.h}" rx="${badge.h / 2}"/>` +
@@ -920,7 +928,7 @@ export function viewerData(model, diagram, technical = technicalColumns(model), 
   // source), else plainly `erd`.
   const sources = model.config.sources ?? [];
   const project = model.databases.length === 1 ? model.databases[0].database : sources.length === 1 ? sources[0].name : 'erd';
-  const base = { project, nodes, links, hubLinks, domainLinks: domains, databases };
+  const base = { project, nodes, links, hubLinks, domainLinks: domains, databases, overviewMinRelations: minRelations(model.config) };
   if (!diff) return base;
   const sorted = (map) => Object.fromEntries([...map].sort(([a], [b]) => compareStrings(a, b)));
   const { sentences } = diff.marks;

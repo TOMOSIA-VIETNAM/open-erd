@@ -92,7 +92,7 @@ test('drawio: every relation is a connector on its column rows with crow\'s foot
     const cells = new Map(cellsOf(page).map((c) => [c.id, c]));
     const { links } = viewTree(model, diagram, name);
     assert.ok(links.length > 0);
-    for (const link of links) {
+    for (const link of links.filter((l) => name !== OVERVIEW || l.count >= 2)) {
       const edge = cells.get(`e|${link.id}`);
       assert.ok(edge, `${name}: no connector for ${link.id}`);
       assert.equal(edge.edge, '1');
@@ -124,9 +124,13 @@ test('drawio: every relation is a connector on its column rows with crow\'s foot
       assert.equal(edge.style.endArrow, ER[markers.to], link.id);
     }
   }
-  // Overview lines are the domain links, one per pair of domains.
-  const overview = cellsOf(parseXml(xml).children[0]).filter((c) => c.edge === '1');
-  assert.deepEqual(overview.map((c) => c.id).sort(), domainLinks(diagram).map((d) => `e|${d.id}`).sort());
+  // Overview lines are the domain links, one per pair of domains; weak links
+  // (fewer than overview.min_relations relations) are left out, and counted.
+  const overviewCells = cellsOf(parseXml(xml).children[0]);
+  const strong = domainLinks(diagram).filter((d) => d.count >= 2);
+  assert.ok(strong.length > 0 && strong.length < domainLinks(diagram).length);
+  assert.deepEqual(overviewCells.filter((c) => c.edge === '1').map((c) => c.id).sort(), strong.map((d) => `e|${d.id}`).sort());
+  assert.equal(overviewCells.find((c) => c.id === 'weak-links').value, `${domainLinks(diagram).length - strong.length} weak links hidden (fewer than 2 relations)`);
 });
 
 test('drawio: two line styles as in the SVG, one neutral colour; tooltips only on enum columns', async () => {
