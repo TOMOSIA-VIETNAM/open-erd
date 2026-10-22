@@ -3,17 +3,17 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { buildDiagram, domainLinks, domainPairs, polyNodeId } from '../src/layout/diagram.js';
 import { connectionMatrix, domainSummary, strength } from '../src/layout/domains.js';
-import { computeLayout } from '../src/layout/index.js';
+import { checkLayout, computeLayout } from '../src/layout/index.js';
 import { serializeLayout } from '../src/layout/layout-file.js';
 import { SELF_STUB } from '../src/layout/router.js';
 import { POLY_VISIBLE_TARGETS } from '../src/layout/table-box.js';
-import { ALL_VIEW, ALL_VIEW_MAX_TABLES, STUB_SLOT, viewNames } from '../src/layout/views.js';
+import { ALL_VIEW, ALL_VIEW_MAX_TABLES, STUB_SLOT, viewNames, viewTree } from '../src/layout/views.js';
 import { normalizeModel } from '../src/model/load.js';
 import { PALETTE } from '../src/palette.js';
 import { cellFill, connectionsSvg } from '../src/render/svg/connections.js';
 import { endMarkers } from '../src/render/svg/markers.js';
-import { HUB_ROUTE_LIMIT, buildScene, renderSvg } from '../src/render/svg/render.js';
-import { pathLength } from './helpers/geometry.js';
+import { HUB_ROUTE_LIMIT, buildScene, groupLinkText, renderSvg } from '../src/render/svg/render.js';
+import { assertSceneGeometry, pathLength } from './helpers/geometry.js';
 import { fk, loadMulti, loadWorkspace, table } from './helpers/shop.js';
 
 async function multi(change = (m) => m) {
@@ -389,4 +389,87 @@ test('the view of all tables exists up to ALL_VIEW_MAX_TABLES tables', async () 
     buildDiagram(normalizeModel({ ...base, relations: [], polymorphic: [], tables: Array.from({ length: n }, (_, i) => table(`shop._.t${i}`, 'Bulk', [])) }));
   assert.ok(viewNames(sized(ALL_VIEW_MAX_TABLES)).includes(ALL_VIEW));
   assert.deepEqual(viewNames(sized(ALL_VIEW_MAX_TABLES + 1)), ['overview', 'domain:shop/Bulk']);
+});
+
+// One domain (Core) referenced by many tables of another (Sales) and by
+// one table of a third (Ops).
+function crowded(extra = []) {
+  const sales = Array.from({ length: 10 }, (_, i) => table(`shop._.s${String(i).padStart(2, '0')}`, 'Sales', [['core_id', 'bigint'], ['other_id', 'bigint']]));
+  const tables = [table('shop._.core', 'Core', [['note', 'text']]), table('shop._.other', 'Core', []), ...sales, table('shop._.ops', 'Ops', [['core_id', 'bigint']]), ...extra.filter((t) => t.id)];
+  const relations = [
+    ...sales.map((t) => fk(t.id, 'core_id', 'shop._.core')),
+    fk('shop._.s00', 'other_id', 'shop._.other'),
+    { ...fk('shop._.s01', 'other_id', 'shop._.other'), cardinality: '1-1' },
+    fk('shop._.ops', 'core_id', 'shop._.core'),
+    ...extra.filter((r) => r.from),
+  ];
+  return normalizeModel({ config: { schema_version: 1 }, databases: [{ database: 'shop', engine: 'mysql' }], tables, relations, polymorphic: [] });
+}
+
+test('domain view: tables of one other domain become one group stub with bundled lines', async () => {
+  const model = crowded();
+  const diagram = buildDiagram(model);
+  const { root, links } = viewTree(model, diagram, 'domain:shop/Core');
+  const [, ...around] = root.children;
+  // Sales has ten tables here: one group; Ops has one: a plain stub.
+  assert.deepEqual(around.map((c) => [c.id, c.kind]), [['group:shop/Sales', 'group'], ['shop._.ops', 'stub']]);
+  const group = around[0];
+  assert.equal(group.group.tables.length, 10);
+  assert.deepEqual(group.box.rows.map((r) => r.name.text).slice(-2), ['s07', '+2 more']);
+  assert.equal(group.box.rows.at(-1).table, null);
+  // One line per (group, column of this domain): ten relations into core.id,
+  // two into other.id whose cardinalities differ, so that line has no ends.
+  const grouped = links.filter((l) => l.group);
+  assert.deepEqual(grouped.map((l) => [l.id, l.tables.length, l.relations.length, l.cardinality]), [
+    ['group:shop/Sales->shop._.core(id)', 10, 10, 'n-1'],
+    ['group:shop/Sales->shop._.other(id)', 2, 2, null],
+  ]);
+  assert.ok(links.some((l) => l.id === 'shop._.ops(core_id)->shop._.core(id)'));
+  assert.equal(groupLinkText(grouped[0]), '10 tables in Sales reference core.id');
+  // Deterministic, whatever the input order.
+  const reversed = normalizeModel({ ...model, tables: [...model.tables].reverse(), relations: [...model.relations].reverse() });
+  assert.deepEqual(viewTree(reversed, buildDiagram(reversed), 'domain:shop/Core').links, links);
+  // Laid out and routed clear of every box; the SVG carries what the viewer needs.
+  const { layout } = await computeLayout(model);
+  const scene = buildScene(model, layout, 'domain:shop/Core', diagram);
+  assertSceneGeometry(scene);
+  const svg = renderSvg(model, layout);
+  assert.match(svg, /<g class="stub group-stub" data-id="group:shop\/Sales" data-domain="shop\/Sales"/);
+  assert.match(svg, /<g class="group-row" data-table="shop\._\.s00">/);
+  assert.match(svg, /data-group="shop\/Sales" data-tables="[^"]+" data-label="10 tables in Sales reference core\.id"/);
+  // The view of all tables is unaffected.
+  assert.ok(!buildScene(model, layout, 'all', diagram).nodes.some((n) => n.kind === 'group'));
+});
+
+test('domain view stubs: many groups spread above and below, the view stays compact', async () => {
+  // Twelve other domains of three tables each, all referencing core.
+  const others = Array.from({ length: 36 }, (_, i) => table(`shop._.x${String(i).padStart(2, '0')}`, `D${String(Math.floor(i / 3)).padStart(2, '0')}`, [['core_id', 'bigint']]));
+  const model = crowded([...others, ...others.map((t) => fk(t.id, 'core_id', 'shop._.core'))]);
+  const { layout } = await computeLayout(model);
+  const scene = buildScene(model, layout, 'domain:shop/Core', buildDiagram(model));
+  assertSceneGeometry(scene);
+  const frame = scene.groups.find((g) => g.kind === 'cluster').frame;
+  const groups = scene.nodes.filter((n) => n.kind === 'group');
+  assert.equal(groups.length, 13);
+  assert.ok(groups.some((n) => n.y + n.h <= frame.y || n.y >= frame.y + frame.h), 'nothing above or below the domain');
+  assert.ok(scene.bounds.h < 3 * scene.bounds.w, `${scene.bounds.w}x${scene.bounds.h}`);
+});
+
+test('domain view stubs: group positions are kept; a second table turns a stub into a group', async () => {
+  const model = crowded();
+  const { layout: before } = await computeLayout(model);
+  const stubs = (l) => l.views['domain:shop/Core'].clusters[STUB_SLOT];
+  // One more Sales table: the group keeps its place.
+  const more = crowded([table('shop._.s10', 'Sales', [['core_id', 'bigint']]), fk('shop._.s10', 'core_id', 'shop._.core')]);
+  const { layout: after } = await computeLayout(more, before);
+  assert.deepEqual([stubs(after)['group:shop/Sales'].x, stubs(after)['group:shop/Sales'].y], [stubs(before)['group:shop/Sales'].x, stubs(before)['group:shop/Sales'].y]);
+  // A second Ops table: Ops becomes a group, its stub goes.
+  const ops = crowded([table('shop._.ops2', 'Ops', [['core_id', 'bigint']]), fk('shop._.ops2', 'core_id', 'shop._.core')]);
+  const { layout: next, report } = await computeLayout(ops, before);
+  assert.deepEqual(Object.keys(stubs(next)).sort(), ['group:shop/Ops', 'group:shop/Sales']);
+  assert.deepEqual(report['domain:shop/Core'].added, ['group:shop/Ops']);
+  checkLayout(ops, next);
+  // --relayout gives the same view as a layout from nothing.
+  const { layout: fresh } = await computeLayout(ops, next, { relayout: ['domain:shop/Core'] });
+  assert.deepEqual(fresh.views['domain:shop/Core'], (await computeLayout(ops)).layout.views['domain:shop/Core']);
 });

@@ -1,15 +1,15 @@
 import { compareStrings } from '../model/load.js';
 import { DOMAIN_VIEW_PREFIX } from '../model/schema.js';
 import { CLUSTER_GAP, CLUSTER_PAD, DB_GAP, DB_PAD, STUB_GAP, TABLE_GAP, clusterLabel } from './clusters.js';
-import { databaseFacts, domainLinks } from './diagram.js';
+import { KIND_TRUST, REVIEW_TRUST, VIEW_SOURCE, databaseFacts, domainLinks, leastTrusted } from './diagram.js';
 import { RELATED_ON_CARD, STRENGTH_SEGMENTS, domainSummary, strength } from './domains.js';
-import { domainCard, stubBox } from './table-box.js';
+import { domainCard, groupBox, stubBox } from './table-box.js';
 
 // Every view is a tree of nested groups over leaf boxes. Layout and render
 // both walk the same tree: layout to place the leaves group by group, render
 // to draw each group's frame around what it contains.
 //
-//   leaf:  { id, kind: 'table'|'poly'|'stub'|'domain', slot, box, node? }
+//   leaf:  { id, kind: 'table'|'poly'|'stub'|'group'|'domain', slot, box, node?, group? }
 //          `slot` is the group key the leaf is stored under in layout.json.
 //   group: { id, kind: 'page'|'db'|'cluster', children, pad, gap, aspect,
 //            strategy: 'layered'|'pack'|'grid'|'around', ... }
@@ -104,18 +104,85 @@ function overview(model, diagram) {
   return { root: page(dbGroups(model, diagram, OVERVIEW_DB_ASPECT, children, 'cards', CARD_GAP)), links: domainLinks(diagram) };
 }
 
-// One domain plus a muted stub for every table outside it that a drawn line
-// reaches, so the reader sees where the domain connects without the rest.
-function domainView(diagram, key) {
+// A domain view draws the tables outside the domain that its lines reach as
+// muted stubs. A domain linked to many outside tables (the domain of a
+// central table) would get a tall column of stubs with a line each, so the
+// outside tables of one other domain become one group stub as soon as that
+// domain contributes GROUP_MIN_TABLES of them: a box named after the
+// domain listing its tables, joined to each table of this domain by one
+// line per referencing or referenced column, standing for all of them.
+export const GROUP_MIN_TABLES = 2;
+export const GROUP_PREFIX = 'group:';
+
+// One line for several relations between a group stub and one table of the
+// domain: same direction and same column on the domain's side. Its ends
+// follow the relations when they all agree on cardinality and optionality,
+// and show none when they differ; kind and review take the least certain.
+function groupLink(key, list) {
+  const [first] = list;
+  const outwards = !first.groupedFrom;
+  const same = (f) => list.every((l) => f(l) === f(first));
+  const groupEnd = { node: GROUP_PREFIX + key, column: null };
+  const own = outwards ? first.from : first.to;
+  return {
+    id: `${GROUP_PREFIX}${key}${outwards ? '<-' : '->'}${own.node}(${own.column ?? ''})`,
+    from: outwards ? own : groupEnd,
+    to: outwards ? groupEnd : own,
+    cardinality: same((l) => l.cardinality) ? first.cardinality : null,
+    optional: same((l) => l.optional) ? first.optional : true,
+    kind: first.kind === VIEW_SOURCE ? VIEW_SOURCE : leastTrusted(list.map((l) => l.kind), KIND_TRUST),
+    review: leastTrusted(list.map((l) => l.review), REVIEW_TRUST),
+    group: key,
+    tables: [...new Set(list.map((l) => (outwards ? l.to.node : l.from.node)))].sort(compareStrings),
+    relations: list.map((l) => l.id).sort(compareStrings),
+  };
+}
+
+function domainView(model, diagram, key) {
   const core = clusterGroup(diagram, key);
   const inside = new Set(diagram.clusters.get(key));
-  const links = diagram.links.filter((l) => inside.has(l.from.node) || inside.has(l.to.node));
-  const outside = [...new Set(links.flatMap((l) => [l.from.node, l.to.node]).filter((id) => !inside.has(id)))].sort(compareStrings);
-  const stubs = outside.map((id) => {
-    const node = diagram.nodes.get(id);
-    return { id, kind: 'stub', slot: STUB_SLOT, box: stubBox(node.table), node };
-  });
-  return { root: page([core, ...stubs], { gap: STUB_GAP, strategy: 'around', core: key }), links };
+  const touching = diagram.links.filter((l) => inside.has(l.from.node) || inside.has(l.to.node));
+  const outside = [...new Set(touching.flatMap((l) => [l.from.node, l.to.node]).filter((id) => !inside.has(id)))].sort(compareStrings);
+  const byDomain = new Map();
+  for (const id of outside) {
+    const cluster = diagram.nodes.get(id).cluster;
+    if (!byDomain.has(cluster)) byDomain.set(cluster, []);
+    byDomain.get(cluster).push(id);
+  }
+  const grouped = new Map([...byDomain].filter(([, ids]) => ids.length >= GROUP_MIN_TABLES));
+  const groupOf = (id) => (inside.has(id) ? null : grouped.has(diagram.nodes.get(id).cluster) ? diagram.nodes.get(id).cluster : null);
+  const stubs = outside
+    .filter((id) => !groupOf(id))
+    .map((id) => {
+      const node = diagram.nodes.get(id);
+      return { id, kind: 'stub', slot: STUB_SLOT, box: stubBox(node.table), node };
+    });
+  const groups = [...grouped].map(([cluster, ids]) => ({
+    id: GROUP_PREFIX + cluster,
+    kind: 'group',
+    slot: STUB_SLOT,
+    box: groupBox(clusterLabel(cluster), ids, cluster.split('/')[0] === key.split('/')[0] ? null : cluster.split('/')[0]),
+    group: { key: cluster, tables: ids },
+  }));
+  // Lines to a group, bundled by (group, direction, table and column of this domain).
+  const bundles = new Map();
+  const links = [];
+  for (const l of touching) {
+    const g = groupOf(l.from.node) ?? groupOf(l.to.node);
+    if (!g) {
+      links.push(l);
+      continue;
+    }
+    const groupedFrom = Boolean(groupOf(l.from.node));
+    const own = groupedFrom ? l.to : l.from;
+    const bundle = JSON.stringify([g, groupedFrom, own.node, own.column, l.kind === VIEW_SOURCE]);
+    if (!bundles.has(bundle)) bundles.set(bundle, []);
+    bundles.get(bundle).push({ ...l, groupedFrom });
+  }
+  for (const list of bundles.values()) links.push(groupLink(groupOf(list[0].groupedFrom ? list[0].from.node : list[0].to.node), list));
+  links.sort((a, b) => compareStrings(a.id, b.id));
+  const around = [...stubs, ...groups].sort((a, b) => compareStrings(a.id, b.id));
+  return { root: page([core, ...around], { gap: STUB_GAP, strategy: 'around', core: key }), links };
 }
 
 /** The tree and the lines of view `name`; throws on an unknown view. */
@@ -123,7 +190,7 @@ export function viewTree(model, diagram, name) {
   if (name === ALL_VIEW && hasAllView(diagram)) return allView(model, diagram);
   if (name === OVERVIEW) return overview(model, diagram);
   if (name.startsWith(DOMAIN_VIEW_PREFIX) && diagram.clusters.has(name.slice(DOMAIN_VIEW_PREFIX.length))) {
-    return domainView(diagram, name.slice(DOMAIN_VIEW_PREFIX.length));
+    return domainView(model, diagram, name.slice(DOMAIN_VIEW_PREFIX.length));
   }
   throw new Error(`unknown view "${name}"`);
 }

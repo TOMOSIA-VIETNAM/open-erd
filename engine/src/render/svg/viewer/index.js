@@ -9,6 +9,7 @@ import { CANVAS_LIMITS, PIXEL_RATIO, canvasScale, exportBaseName } from './downl
 import { findJoinPaths, hopCondition, pathNames, sqlSkeleton } from './join-path.js';
 import { collectionDocument, createTableSql, isDocumentStore, markdownTable } from './schema-copy.js';
 import { centreOn, fitsInside, minimapSize, visibleRect } from './minimap.js';
+import { columnBadges, panelTabs } from './panel-parts.js';
 import { endTransforms, radialLayout, straightLink } from './radial.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -251,7 +252,9 @@ function showView(name) {
   if (name === CONNECTIONS) readableStart(viewBounds(name), null, 1);
   else zoomToRect(viewBounds(name), MAX_FIT_SCALE);
   renderToolbar();
-  setLegend(name === ALL_VIEW);
+  // The legend keeps the reader's choice (open or folded to its pill); its
+  // content follows the view.
+  setLegend(legendOpen);
 }
 
 // A large view opens where its text can be read: the whole view when it
@@ -719,6 +722,7 @@ const ICONS = {
   download: 'M8 2.5V10.5M4.5 7L8 10.5L11.5 7M3 13.5H13',
   caret: 'M4.5 6.5L8 10L11.5 6.5',
   check: 'M3.5 8.5L6.5 11.5L12.5 4.5',
+  copy: 'M5.5 5.5H12.5V13.5H5.5ZM3.5 10.5V2.5H10.5',
 };
 const iconSvg = (name, size = 16) =>
   svgEl('svg', { class: `oe-icon icon-${name}`, width: size, height: size, viewBox: '0 0 16 16', 'aria-hidden': 'true' }, [svgEl('path', { d: ICONS[name] })]);
@@ -822,7 +826,6 @@ moreMenu.onOpen = () => {
     menuItem('Collapse all', foldable ? 'Fold every domain in this view; a click on a domain header folds just that one' : 'Nothing to fold in this view', fold(true), { disabled: !foldable }),
     menuItem('Expand all', foldable ? 'Unfold every domain in this view' : 'Nothing to fold in this view', fold(false), { disabled: !foldable }),
     el('div', { class: 'oe-menu-sep' }),
-    menuItem('Legend', 'What the marks in this view mean', toggle(() => setLegend(!legendOpen)), { checked: legendOpen }),
     menuItem('Minimap', 'Small map of the whole view, shown while it does not fit on screen', toggle(() => setMinimap(!map.on)), { checked: map.on }),
     // Nothing to review: the entry would switch on a mode that changes nothing.
     REVIEW_TOTAL > 0 && reviewable()
@@ -879,11 +882,32 @@ function renderToolbar() {
   if (state.view === JOIN_VIEW) parts.push(crumb(`Join path: ${short(state.joinPath.nodes[0])} → ${short(state.joinPath.nodes.at(-1))}`));
   crumbs.replaceChildren(...parts.flatMap((p, i) => (i === 0 ? [p] : [el('span', { class: 'sep', text: '›' }), p])));
   backButton.disabled = state.history.length === 0;
+  updateBackPill();
   hopGroup.style.display = state.view === NEIGHBORHOOD ? '' : 'none';
   mapGroup.style.display = state.view === OVERVIEW || state.view === CONNECTIONS ? '' : 'none';
   for (const b of mapTabs) b.classList.toggle('on', b.getAttribute('data-view') === state.view);
   hopButtons.forEach((b, i) => b.classList.toggle('on', state.hops === RELATED.options[i].hops));
   layoutOverlays();
+}
+
+// In a view reached by navigation, a pill at the top left of the canvas
+// names where Back goes ("← All tables"); the toolbar's Back does the same.
+const NAVIGATED = (name) => name.startsWith(DOMAIN_PREFIX) || [NEIGHBORHOOD, JOIN_VIEW, CONNECTIONS].includes(name);
+function viewLabel(snap) {
+  if (snap.view === OVERVIEW) return 'Overview';
+  if (snap.view === ALL_VIEW) return 'All tables';
+  if (snap.view === CONNECTIONS) return 'Connections';
+  if (snap.view === NEIGHBORHOOD) return `Tables related to ${short(snap.center)}`;
+  if (snap.view === JOIN_VIEW) return `Join path ${short(snap.joinPath.nodes[0])} → ${short(snap.joinPath.nodes.at(-1))}`;
+  return domainName(snap.view.slice(DOMAIN_PREFIX.length));
+}
+const backPill = overlay('oe-back-host');
+backPill.fo.style.display = 'none';
+function updateBackPill() {
+  const prev = state.history.at(-1);
+  const show = Boolean(prev) && NAVIGATED(state.view);
+  backPill.fo.style.display = show ? '' : 'none';
+  if (show) backPill.div.replaceChildren(el('button', { class: 'oe-back-pill', title: 'Back (Backspace or Alt+←)', text: `← ${viewLabel(prev)}`, on: { click: back } }));
 }
 
 /** Shows database `db`'s frame: in the view of all tables when on it, else on the overview. */
@@ -1111,8 +1135,6 @@ const reviewIcon = (state) =>
   el('span', { class: `oe-review review-${state}`, title: REVIEW_WORDS[state], 'aria-label': REVIEW_WORDS[state], role: 'img' }, [svgEl('svg', { width: 14, height: 14, viewBox: '0 0 14 14' }, parsed(reviewIconSvg(state, 7, 7)))]);
 // A fact line: identifiers and values as code, the words around as text.
 const factLine = (parts, tag = 'li') => el(tag, { class: 'oe-fact' }, parts.map((p) => el(p.code ? 'code' : 'span', { class: p.code ? 'oe-code' : '', text: p.text })));
-const relatedRow = (id) =>
-  el('div', { class: 'row', title: RELATED.title }, [el('span', { class: 'label', text: RELATED.label }), ...relatedButtons((hops) => openNeighborhood(id, hops))]);
 // Business note, then the team-only note and the untranslated original.
 const noteLines = (n) => [
   n.note ? el('p', { text: n.note }) : null,
@@ -1141,34 +1163,6 @@ const columnText = (c) => [c.generated === undefined ? null : el('div', { class:
 // Enum values as value | meaning; a value whose meaning only restated it has none.
 const enumTable = (values) =>
   el('table', { class: 'oe-enum' }, values.map(([v, meaning]) => el('tr', {}, [el('td', { class: 'value', text: v }), el('td', { text: meaning })])));
-
-// The column grid of a table, as its Excel sheet has it: # | Name | Type |
-// Null | Default | PK, with the Comment (the note) on a line of its own
-// under each column, since a panel is too narrow for it as a seventh cell.
-// Enum values fold under their column as "N values"; the column `open` (the
-// one clicked) starts unfolded.
-function columnGrid(n, open) {
-  const head = el('tr', {}, ['#', 'Name / Comment', 'Type', 'Null', 'Default', 'Key'].map((h) => el('th', { text: h })));
-  const rows = n.columns.flatMap((c, i) => {
-    const values = Object.entries(c.enum ?? {});
-    const row = el('tr', { class: c.name === open ? 'open' : '', 'data-column': c.name }, [
-      el('td', { class: 'num', text: String(i + 1) }),
-      el('td', { class: 'name' }, [el('span', { text: c.name }), c.pii ? el('span', { class: 'chip pii', text: 'PII' }) : null, indexedColumns(n).has(c.name) ? el('span', { class: 'chip idx', text: 'idx', title: 'In an index (see Indexes below)' }) : null]),
-      el('td', { class: 'type', text: c.type }),
-      el('td', { text: c.nullable === true ? 'yes' : c.nullable === false ? 'no' : '' }),
-      el('td', { text: c.default ?? (c.autoIncrement ? 'auto' : c.generated !== undefined ? 'generated' : '') }),
-      el('td', { text: c.pk ? 'PK' : c.fk ? 'FK' : '' }),
-    ]);
-    const comment = [c.note, c.internalNote && `Internal: ${c.internalNote}`].filter(Boolean).join(' · ');
-    const details = values.length > 0 ? el('details', c.name === open ? { open: '' } : {}, [el('summary', { text: plural(values.length, 'value') }), enumTable(values)]) : null;
-    if (!comment && !details && !c.warning) return [row];
-    const cls = `more${c.name === open ? ' open' : ''}`;
-    return [row, el('tr', { class: cls }, [el('td', {}), el('td', { colspan: '5' }, [comment ? el('div', { class: 'comment', text: comment }) : null, warningLine(c.warning), details])])];
-  });
-  return el('div', { class: 'oe-grid-wrap' }, [el('table', { class: 'oe-grid' }, [head, ...rows])]);
-}
-
-const indexedColumns = (n) => new Set((n.indexes ?? []).flatMap((i) => i.columns));
 
 // Chips for related tables, one per table: a click goes to it. A relation
 // not confirmed yet (see isConfirmed) has a dashed chip; a table in another
@@ -1216,49 +1210,112 @@ function chipEntries(id, links, otherEnd) {
 }
 
 // Copy the table as SQL (a JSON schema-like document for MongoDB) or as a
-// Markdown table, from a small menu under the button.
-function copySchemaRow(id, n) {
+// Markdown table, from a small menu under an icon button; `status` says
+// what was copied.
+function copySchemaButton(id, n, status) {
   const engine = data.databases[dbOf(id)].engine;
   const foreignKeys = [...data.links, ...data.hubLinks]
     .filter((l) => l.from === id && l.kind === 'db_fk' && l.fromColumns)
     .map((l) => ({ columns: l.fromColumns, to: l.to, toColumns: l.toColumns }));
-  const status = el('span', { class: 'muted' });
   const options = isDocumentStore(engine)
     ? [['JSON schema (approximate)', 'Fields, required list, enum values and indexes as a JSON document', () => collectionDocument(id, n), 'JSON schema']]
     : [['SQL (CREATE TABLE, approximate)', 'Types as recorded in the ERD, NOT NULL, DEFAULT, keys, unique constraints, database foreign keys and indexes', () => createTableSql(id, n, engine, foreignKeys), 'SQL']];
   options.push(['Markdown table', 'The column grid as a Markdown table', () => markdownTable(id, n), 'Markdown table']);
   const menu = el('div', { class: 'oe-menu oe-copy-menu', style: 'display:none' });
-  const toggle = el('button', { class: 'oe-btn', text: 'Copy schema ▾', title: 'Copy this table as SQL or Markdown', on: { click: () => {
+  const toggle = toolButton('copy', '', 'Copy schema: SQL or Markdown', () => {
     menu.style.display = menu.style.display === 'none' ? '' : 'none';
     layoutOverlays();
-  } } });
+  }, ' oe-copy-schema');
   menu.append(...options.map(([label, title, make, what]) => menuItem(label, title, () => {
     menu.style.display = 'none';
     copyText(make(), status, what);
     layoutOverlays();
   })));
-  return el('div', { class: 'row' }, [el('button', { class: 'oe-btn', text: 'Find join path from here', on: { click: () => openJoin(id) } }), el('div', { class: 'oe-drop' }, [toggle, menu]), status]);
+  return el('div', { class: 'oe-drop' }, [toggle, menu]);
 }
 
-// Indexes of a table: name, columns, unique, partial-index condition.
-function indexSection(n) {
-  if (!n.indexes) return [];
-  return [
-    el('div', { class: 'sub', text: `${n.indexes.length} ${n.indexes.length === 1 ? 'index' : 'indexes'}` }),
-    el('div', { class: 'oe-grid-wrap' }, [
-      el('table', { class: 'oe-grid oe-indexes' }, [
-        el('tr', {}, ['Name', 'Columns', 'Unique', 'Where'].map((h) => el('th', { text: h }))),
-        ...n.indexes.map((i) =>
-          el('tr', {}, [
-            el('td', { class: 'name', text: i.name ?? '—', title: i.using ? `using ${i.using}` : '' }),
-            el('td', {}, [el('code', { class: 'oe-code', text: i.columns.join(', ') })]),
-            el('td', { text: i.unique ? 'yes' : '' }),
-            el('td', {}, [i.where ? el('code', { class: 'oe-code', text: i.where }) : null]),
-          ]),
-        ),
-      ]),
+// Header of a panel: name (its full id in the tooltip), the domain as a
+// small chip in the domain's colour, ★ for a central table, then the note on
+// one line (a click shows all of it).
+function domainChip(cluster) {
+  const accent = indexes.get(OVERVIEW).get(cluster)?.el.querySelector('.card-accent')?.getAttribute('stroke') ?? '#56627a';
+  return el('button', { class: 'oe-domain-chip', title: `Open the ${domainName(cluster)} domain`, style: `color:${accent};border-color:${accent}`, text: domainName(cluster), on: { click: () => navigate(domainView(cluster)) } });
+}
+function panelHeader({ name, tip, cluster, central = false, note, extra = [] }) {
+  return el('div', { class: 'oe-ph' }, [
+    el('div', { class: 'oe-ph-title' }, [
+      central ? el('span', { class: 'oe-star', title: 'Central table: the most connected table of its domain', text: '★' }) : null,
+      name ? el('b', { class: 'oe-ph-name', title: tip, text: name }) : null,
+      // Two domains (the relations between them) read "A ⇄ B" as chips.
+      ...(cluster ? [cluster].flat().flatMap((c, i) => [i > 0 ? el('span', { class: 'oe-ph-sep', title: tip, text: '⇄' }) : null, domainChip(c)]) : []),
     ]),
-  ];
+    note ? el('div', { class: 'oe-ph-note', title: note, text: note, on: { click: (e) => (e.currentTarget.classList.toggle('open'), layoutOverlays()) } }) : null,
+    ...extra,
+  ]);
+}
+
+// Tabs over the body of a panel; the first one shows first unless `open`
+// names another. Each tab: { id, label, count, body: () => [elements] }.
+function tabbed(tabs, open = tabs[0]?.id) {
+  const body = el('div', { class: 'oe-tab-body' });
+  const buttons = tabs.map((t) => el('button', { class: 'oe-tab', role: 'tab', 'data-tab': t.id, on: { click: () => pick(t.id) } }, [el('span', { text: t.label }), el('span', { class: 'n', text: String(t.count) })]));
+  function pick(id) {
+    buttons.forEach((b) => b.classList.toggle('on', b.getAttribute('data-tab') === id));
+    body.replaceChildren(...tabs.find((t) => t.id === id).body().filter(Boolean));
+    layoutOverlays();
+  }
+  pick(tabs.some((t) => t.id === open) ? open : tabs[0].id);
+  return [el('div', { class: 'oe-tabs', role: 'tablist' }, buttons), body];
+}
+
+const keyIcon = (key) => (key ? svgEl('svg', { class: 'oe-key', width: 14, height: 14, viewBox: '0 0 14 14' }, parsed((key === 'pk' ? keyIconSvg : linkIconSvg)(7, 7))) : null);
+
+// One column: key icon, name (bold for a primary key), small chips, type
+// on the right; the note under it on one line. The enum chip folds the
+// values out under the row; a click on the note shows all of it.
+function columnRow(n, c, open) {
+  const values = Object.entries(c.enum ?? {});
+  const list = values.length > 0 ? el('div', { class: 'oe-enum-list', style: c.name === open ? '' : 'display:none' }, values.map(([v, meaning]) => el('div', {}, [el('code', { class: 'oe-code', text: v }), meaning ? el('span', { text: ` — ${meaning}` }) : null]))) : null;
+  const chips = columnBadges(c).map((b) =>
+    el(b.kind === 'enum' ? 'button' : 'span', { class: `oe-badge ${b.kind}`, title: b.title, text: b.text, ...(b.kind === 'enum' ? { on: { click: () => ((list.style.display = list.style.display === 'none' ? '' : 'none'), layoutOverlays()) } } : {}) }),
+  );
+  const key = c.pk ? 'pk' : c.fk ? 'fk' : null;
+  const comment = [c.note, c.internalNote && `Internal: ${c.internalNote}`].filter(Boolean).join(' · ');
+  return el('div', { class: `oe-col${c.name === open ? ' open' : ''}`, 'data-column': c.name }, [
+    el('div', { class: 'l1' }, [
+      el('span', { class: 'gutter', title: key === 'pk' ? 'Primary key' : key === 'fk' ? 'References another table' : '' }, [keyIcon(key)]),
+      el('span', { class: `name${c.pk ? ' pk' : ''}`, text: c.name }),
+      ...chips,
+      el('span', { class: 'type', text: c.type }),
+    ]),
+    comment ? el('div', { class: 'l2', title: comment, text: comment, on: { click: (e) => (e.currentTarget.classList.toggle('open'), layoutOverlays()) } }) : null,
+    c.warning ? el('div', { class: 'l2 oe-warn', text: `${MISSING}: ${c.warning}` }) : null,
+    list,
+  ]);
+}
+
+// Indexes: name muted, columns in code, UNIQUE, the partial-index condition.
+const indexList = (n) =>
+  (n.indexes ?? []).map((i) =>
+    el('div', { class: 'oe-idx', title: i.using ? `using ${i.using}` : '' }, [
+      el('code', { class: 'cols', text: i.columns.join(', ') }),
+      i.unique ? el('span', { class: 'oe-badge unique', text: 'UNIQUE' }) : null,
+      el('span', { class: 'iname', text: i.name ?? '' }),
+      i.where ? el('code', { class: 'where', text: `where ${i.where}` }) : null,
+    ]),
+  );
+
+// "Related tables: Direct | +1 level", Join path and Copy schema as one row
+// of compact controls.
+function tableActions(id, n) {
+  const status = el('span', { class: 'oe-status-inline muted' });
+  return el('div', { class: 'oe-actions' }, [
+    el('span', { class: 'oe-actions-label', text: 'Related', title: RELATED.title }),
+    el('div', { class: 'oe-seg', title: RELATED.title }, RELATED.options.map((o) => el('button', { class: 'oe-btn', text: o.hops === 1 ? 'Direct' : '+1 level', title: `Related tables: ${o.title}`, on: { click: () => openNeighborhood(id, o.hops) } }))),
+    toolButton('join', '', 'Find a join path from this table', () => openJoin(id), ' oe-join-from'),
+    copySchemaButton(id, n, status),
+    status,
+  ]);
 }
 
 function nodePanel(id, column = null) {
@@ -1270,43 +1327,48 @@ function nodePanel(id, column = null) {
   const sharedOut = data.hubLinks.filter((l) => l.from === id && l.to !== id);
   const sharedIn = data.hubLinks.filter((l) => l.to === id && l.from !== id);
   const drawnHub = [...currentView().querySelectorAll('.hub-routes')].some((g) => g.getAttribute('data-hub') === id);
-  const none = out.length + into.length + self.length + sharedOut.length + sharedIn.length === 0;
-  return [
-    el('h3', {}, [n.central ? el('span', { class: 'oe-star', title: 'Central table: the most connected table of its domain', text: '★ ' }) : null, el('span', { text: short(id) })]),
-    el('div', { class: 'sub', text: `${id} · ${n.cluster.split('/').slice(1).join('/')}${n.tableKind ? ` · ${n.tableKind.replace('_', ' ')}` : ''}${n.central ? ' · central table' : ''}` }),
-    changeList('nodes', id),
-    ...noteLines(n),
-    warningLine(n.warning),
-    n.facts ? el('ul', { class: 'oe-facts' }, n.facts.map((f) => factLine(f))) : null,
-    n.sources ? el('p', {}, [el('span', { text: 'Reads from ' }), ...n.sources.flatMap((t, i) => [i > 0 ? el('span', { text: ', ' }) : null, link(short(t), () => goToNode(t))])]) : null,
-    relatedRow(id),
-    copySchemaRow(id, n),
-    el('div', { class: 'sub', text: plural(n.columns.length, 'column') }),
-    columnGrid(n, column),
-    ...indexSection(n),
-    none ? el('div', { class: 'sub', text: 'No relations' }) : null,
+  const relations = () => [
     chipGroup('References', chipEntries(id, out, (l) => l.to)),
     chipGroup('Referenced by', chipEntries(id, into, (l) => l.from)),
     self.length > 0 ? el('div', { class: 'muted', text: `Also references itself (${self.map((l) => l.fromColumns?.join(', ') ?? '').filter(Boolean).join('; ') || 'self'})` }) : null,
     // Hub relations are badges on the diagram, listed here in full.
     chipGroup('Shared references', chipEntries(id, sharedOut, (l) => l.to)),
-    sharedIn.length > 0
-      ? chipGroup(`Referenced as a shared table${drawnHub ? ', lines shown while selected' : ''}`, chipEntries(id, sharedIn, (l) => l.from), 'shared-in')
-      : null,
+    sharedIn.length > 0 ? chipGroup(`Referenced as a shared table${drawnHub ? ', lines shown while selected' : ''}`, chipEntries(id, sharedIn, (l) => l.from), 'shared-in') : null,
+  ];
+  const count = out.length + into.length + self.length + sharedOut.length + sharedIn.length;
+  const bodies = { columns: () => n.columns.map((c) => columnRow(n, c, column)), relations, indexes: () => indexList(n) };
+  return [
+    panelHeader({
+      name: short(id),
+      tip: `${id}${n.tableKind ? ` (${n.tableKind.replace('_', ' ')})` : ''}`,
+      cluster: n.cluster,
+      central: n.central,
+      note: n.note,
+      extra: [
+        n.internalNote ? el('div', { class: 'oe-ph-sub', text: `Internal: ${n.internalNote}` }) : null,
+        n.noteSource ? el('div', { class: 'oe-ph-sub', text: `Original: ${n.noteSource}` }) : null,
+        n.facts ? el('div', { class: 'oe-ph-facts' }, n.facts.map((f) => factLine(f, 'div'))) : null,
+        n.sources ? el('div', { class: 'oe-ph-sub' }, [el('span', { text: 'Reads from ' }), ...n.sources.flatMap((t, i) => [i > 0 ? el('span', { text: ', ' }) : null, link(short(t), () => goToNode(t))])]) : null,
+        warningLine(n.warning),
+      ],
+    }),
+    changeList('nodes', id),
+    tableActions(id, n),
+    ...tabbed(panelTabs(n, count).map((t) => ({ ...t, body: bodies[t.id] })), column ? 'columns' : undefined),
   ];
 }
 
 function polyPanel(id, poly) {
+  const targets = poly.targets.map((t) => ({ id: t, confirmed: isConfirmed('polymorphic', poly.review), db: dbOf(t) !== dbOf(poly.table) ? dbOf(t) : null }));
   return [
-    el('h3', { text: `«${poly.name}»` }),
-    el('div', { class: 'sub', text: `${poly.table}.${poly.typeColumn} / ${poly.idColumn}` }),
+    panelHeader({ name: `«${poly.name}»`, tip: `${poly.table}.${poly.typeColumn} / ${poly.idColumn}`, cluster: poly.cluster, note: poly.note }),
     changeList('nodes', id),
-    ...noteLines(poly),
+    el('div', { class: 'oe-actions' }, [
+      el('code', { class: 'oe-code', title: 'Type column / id column on the owner table', text: `${poly.typeColumn} / ${poly.idColumn}` }),
+      state.view === NEIGHBORHOOD && state.center === id ? null : el('button', { class: 'oe-btn oe-small', text: 'Show with targets', title: 'Show it with its owner and all its targets', on: { click: () => openNeighborhood(id, 1) } }),
+    ]),
     chipGroup('Owner', [{ id: poly.table, confirmed: true, db: null }]),
-    chipGroup('Targets', poly.targets.map((t) => ({ id: t, confirmed: isConfirmed('polymorphic', poly.review), db: dbOf(t) !== dbOf(poly.table) ? dbOf(t) : null }))),
-    state.view === NEIGHBORHOOD && state.center === id
-      ? null
-      : el('div', { class: 'row' }, [el('button', { class: 'oe-btn', text: 'Show with owner and all targets', on: { click: () => openNeighborhood(id, 1) } })]),
+    chipGroup('Targets', targets),
   ];
 }
 
@@ -1337,18 +1399,28 @@ function domainLinkPanel(a, b) {
       [el('span', { text: `${short(r.from)}.${r.column} → ${short(r.to)}` })],
     );
   return [
-    el('h3', { text: a === b ? domainName(a) : `${domainName(a)} ⇄ ${domainName(b)}` }),
-    el('div', { class: 'sub', text: a === b ? `${plural(total, 'relation')} inside this domain` : `${plural(total, 'relation')} between these two domains` }),
-    crossDb ? el('p', { text: `Cross-DB: ${crossing(a, b, '⇄')}` }) : null,
+    panelHeader({ name: a === b ? 'Inside' : null, tip: crossDb ? `Cross-DB: ${crossing(a, b, '⇄')}` : '', cluster: a === b ? [a] : [a, b], note: a === b ? `${plural(total, 'relation')} inside this domain` : `${plural(total, 'relation')} between these two domains${crossDb ? ` · cross-DB` : ''}` }),
     changeList('links', id),
     ...byDirection(a, b)
       .filter((d) => d.relations.length > 0)
       .map((d) => el('div', { class: 'oe-chip-group' }, [el('div', { class: 'sub', text: a === b ? `${domainName(a)} (${d.relations.length})` : `${domainName(d.from)} → ${domainName(d.to)} (${d.relations.length})` }), el('div', { class: 'oe-chipbox' }, d.relations.map(chip))])),
-    el('div', { class: 'row' }, a === b ? [link(`Open ${domainName(a)}`, () => navigate(domainView(a)))] : [link(`Open ${domainName(a)}`, () => navigate(domainView(a))), el('span', { text: '·' }), link(`Open ${domainName(b)}`, () => navigate(domainView(b)))]),
   ];
 }
 
+// A line of a domain view standing for several tables of another domain:
+// what it says, and those tables as chips.
+function groupLinePanel(g) {
+  const key = g.getAttribute('data-group');
+  const tables = JSON.parse(g.getAttribute('data-tables'));
+  return [
+    panelHeader({ name: g.getAttribute('data-label'), cluster: key }),
+    chipGroup('Tables', tables.map((t) => ({ id: t, confirmed: true, db: null }))),
+  ];
+}
+const groupTables = (box) => JSON.parse(box.getAttribute('data-tables'));
+
 function relationPanel(g) {
+  if (g.hasAttribute('data-group')) return groupLinePanel(g);
   const id = g.getAttribute('data-id');
   const [from, to] = [g.getAttribute('data-from'), g.getAttribute('data-to')];
   const l = data.links.find((x) => x.id === id) ?? data.hubLinks.find((x) => x.id === id);
@@ -1695,7 +1767,7 @@ function copyText(text, status, what) {
 // closed elsewhere.
 const legend = overlay('oe-legend-host');
 legend.fo.style.display = 'none';
-let legendOpen = false;
+let legendOpen = true;
 
 const sample = (children) => svgEl('svg', { width: 64, height: 18, viewBox: '0 0 64 18' }, children);
 // A line arriving at a box edge on the right, with end marker `kind`.
@@ -1763,10 +1835,12 @@ function renderLegend() {
   );
 }
 
+// Folded, the legend is a small "Legend" pill in the same corner.
 function setLegend(open) {
   legendOpen = open;
   if (open) renderLegend();
-  legend.fo.style.display = open ? '' : 'none';
+  else legend.div.replaceChildren(el('button', { class: 'oe-legend-pill', title: 'What the marks in this view mean', text: 'Legend', on: { click: () => setLegend(true) } }));
+  legend.fo.style.display = '';
   layoutOverlays();
 }
 
@@ -1906,7 +1980,15 @@ function tipLines(target) {
     return [...pairTip(a, b).slice(0, -1), el('div', { class: 'muted', text: `Click to open ${domainName(b)}` })];
   }
   const line = target.closest('.relation-group, .hub-route');
+  if (line?.hasAttribute('data-group')) return [el('b', { text: line.getAttribute('data-label') }), el('div', { class: 'muted', text: JSON.parse(line.getAttribute('data-tables')).map(short).join(', ') })];
   if (line) return lineTip(line);
+  const groupRow = target.closest('.group-row[data-table]');
+  if (groupRow) return [el('b', { text: groupRow.getAttribute('data-table') }), el('div', { class: 'muted', text: 'Outside this domain · click to open its domain' })];
+  const groupBoxEl = target.closest('.group-stub');
+  if (groupBoxEl) {
+    const tables = groupTables(groupBoxEl);
+    return [el('b', { text: `${domainName(groupBoxEl.getAttribute('data-domain'))} · ${plural(tables.length, 'table')}` }), el('div', { text: tables.map(short).join(', ') }), el('div', { class: 'muted', text: 'Click a table to open it · click the name to open the domain' })];
+  }
   const columnEl = target.closest('.column');
   const nodeEl = target.closest(NODE_SELECTOR);
   if (!nodeEl) return null;
@@ -1998,16 +2080,29 @@ function layoutOverlays() {
     spotlight.fo.setAttribute('width', w);
     spotlight.fo.setAttribute('height', h);
   }
+  // Floating pills under the toolbar, top left: Back, then the review chip.
+  let pillY = TOOLBAR_HEIGHT + 8;
+  if (backPill.fo.style.display !== 'none') {
+    backPill.fo.setAttribute('width', w);
+    backPill.fo.setAttribute('height', 40);
+    const r = backPill.div.firstChild.getBoundingClientRect();
+    backPill.fo.setAttribute('x', PANEL_MARGIN);
+    backPill.fo.setAttribute('y', pillY);
+    backPill.fo.setAttribute('width', Math.ceil(r.width) + 2);
+    backPill.fo.setAttribute('height', Math.ceil(r.height) + 2);
+    pillY += Math.ceil(r.height) + 8;
+  }
   if (reviewChip.fo.style.display !== 'none') {
     reviewChip.fo.setAttribute('width', w);
     reviewChip.fo.setAttribute('height', 40);
     const r = reviewChip.div.firstChild.getBoundingClientRect();
     reviewChip.fo.setAttribute('x', PANEL_MARGIN);
-    reviewChip.fo.setAttribute('y', TOOLBAR_HEIGHT + 8);
+    reviewChip.fo.setAttribute('y', pillY);
     reviewChip.fo.setAttribute('width', Math.ceil(r.width) + 2);
     reviewChip.fo.setAttribute('height', Math.ceil(r.height) + 2);
   }
   if (legend.fo.style.display !== 'none') {
+    legend.fo.setAttribute('y', 0);
     legend.fo.setAttribute('width', 300);
     legend.fo.setAttribute('height', h);
     const r = legend.div.firstChild.getBoundingClientRect();
@@ -2186,7 +2281,7 @@ svg.addEventListener('click', (e) => {
   }
   const t = e.target;
   // With the join panel waiting for a table, a click on one picks it.
-  const picked = t.closest('.table, .stub')?.getAttribute('data-id');
+  const picked = t.closest('.group-row[data-table]')?.getAttribute('data-table') ?? t.closest('.table, .stub')?.getAttribute('data-id');
   if (join.open && (!join.from || !join.to) && data.nodes[picked]?.kind === 'table') return setJoinEnd(join.from ? 'to' : 'from', picked);
   const related = t.closest('.card-related, .mx-head');
   if (related) return navigate(domainView(related.getAttribute('data-domain')));
@@ -2194,6 +2289,10 @@ svg.addEventListener('click', (e) => {
   if (domain) return navigate(domainView(domain.getAttribute('data-domain')));
   const pair = t.closest('.card-link, .mx-cell');
   if (pair) return showPanel(domainLinkPanel(pair.getAttribute('data-from'), pair.getAttribute('data-to')));
+  const groupRow = t.closest('.group-row[data-table]');
+  if (groupRow) return navigate(homeView(groupRow.getAttribute('data-table')), { focus: groupRow.getAttribute('data-table') });
+  const group = t.closest('.group-stub');
+  if (group) return navigate(domainView(group.getAttribute('data-domain')));
   const stub = t.closest('.stub');
   if (stub) return navigate(homeView(stub.getAttribute('data-id')), { focus: stub.getAttribute('data-id') });
   const node = t.closest('.table, .poly');
@@ -2203,7 +2302,7 @@ svg.addEventListener('click', (e) => {
     selectNode(id);
     column.classList.add('hl-column');
     showPanel(nodePanel(id, column.getAttribute('data-column')));
-    panel.div.querySelector('.oe-grid tr.open')?.scrollIntoView({ block: 'nearest' });
+    panel.div.querySelector('.oe-col.open')?.scrollIntoView({ block: 'nearest' });
     return;
   }
   if (node) return selectNode(node.getAttribute('data-id'));
@@ -2286,6 +2385,12 @@ document.addEventListener('keydown', (e) => {
     navigate(domainView(card.getAttribute('data-domain')));
     return;
   }
+  // Backspace outside a text field, or Alt+←, goes back like the toolbar's Back.
+  if ((e.key === 'Backspace' && !typing() && !e.metaKey && !e.ctrlKey) || (e.key === 'ArrowLeft' && e.altKey && !typing())) {
+    e.preventDefault();
+    if (!spotlightOpen()) back();
+    return;
+  }
   if (e.key !== 'Escape') return;
   if (spotlightOpen()) return closeSpotlight();
   if (openMenu()) return closeMenus();
@@ -2299,7 +2404,7 @@ window.addEventListener('resize', () => {
 
 // Later overlays paint on top: the toolbar's menus over the panel, the
 // search over everything but the tooltip.
-svg.append(legend.fo, minimap.fo, reviewChip.fo, panel.fo, toolbar.fo, spotlight.fo, tip.fo);
+svg.append(legend.fo, minimap.fo, backPill.fo, reviewChip.fo, panel.fo, toolbar.fo, spotlight.fo, tip.fo);
 // The view drawn visible without script is where the reader starts (all
 // tables unless the workspace configured another view). All tables open at
 // a readable size around the most central table; a diff drawing shows its

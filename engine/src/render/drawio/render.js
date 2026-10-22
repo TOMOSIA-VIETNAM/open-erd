@@ -295,6 +295,24 @@ function nodeCells(n, parent, x, y, colorOf) {
     ];
     return { cells, h: n.h };
   }
+  // Tables of one other domain, as in the SVG's group stub: the domain's
+  // name (and database) over the table names.
+  if (n.kind === 'group') {
+    const c = colorOf(n.group.key);
+    const head = `<b style="color:${c.label}">${escapeHtml(n.box.title.full)}</b>${n.box.db ? ` <span style="font-size:10px;color:#56627a">${escapeHtml(n.box.db)}</span>` : ''}`;
+    const rows = n.box.rows.map((r) => `<span style="color:#56627a">${escapeHtml(r.name.full)}</span>`);
+    const cells = [
+      cell({
+        id: nodeId(n.id),
+        value: [head, ...rows].join('<br>'),
+        tooltip: n.group.tables.join('\n'),
+        parent,
+        geometry: box(x, y, n.w, n.h),
+        styles: { ...shapeCommon, html: 1, verticalAlign: 'top', spacingTop: 6, arcSize: 12, dashed: 1, dashPattern: '3 3', fixDash: 1, fillColor: '#f7f8fa', strokeColor: '#c3cad5', fontSize: 12 },
+      }),
+    ];
+    return { cells, h: n.h };
+  }
   // Overview card, as in the SVG: name and table count, note, central
   // table, then the most related domains with a strength bar of filled and
   // empty squares; an accent bar in the domain's colour on its left edge.
