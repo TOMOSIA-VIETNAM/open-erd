@@ -56,8 +56,11 @@ it and mark those facts `stale`.
 New tables need a domain: propose one (existing domains first) and ask, in one
 message for all new tables.
 
-Every new table and column gets a `note` (rules in `model.md`, "Writing
-facts"); also write one for any column still without a note. Copy
+Every new table, column and polymorphic entry gets a `note` (rules in
+`model.md`, "Writing facts": business meaning learned from how the code uses
+it, not the name restated); also write one for any column or polymorphic
+entry still without a note. A new enum value gets a meaning only when the
+code reveals one, else `""`. Copy
 `default`, `auto_increment` and `generated` from the facts, and update them
 like any other attribute when the facts change. An extract script written
 before these fields existed does not emit them: extend it (`stacks.md`),

@@ -109,7 +109,7 @@ function viewSourceLinks(t) {
   }));
 }
 
-const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+export const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 /**
  * One short line per special pattern a table carries, shown at the bottom
@@ -163,6 +163,10 @@ function polyLink(a) {
  *   tenant?, association? }
  * links: lines between nodes, [{ id, from: { node, column }, to, cardinality,
  *   optional, kind, review, via? }] in id order
+ * hubLinks: the hub relations, same shape, in id order. They are badges in
+ *   every box; the viewer lists them and draws them only on demand (a hub
+ *   table selected, its neighborhood), so a central table still shows what
+ *   points at it.
  * clusters: Map cluster key -> node ids
  */
 export function buildDiagram(model) {
@@ -202,49 +206,66 @@ export function buildDiagram(model) {
     if (!clusters.has(n.cluster)) clusters.set(n.cluster, []);
     clusters.get(n.cluster).push(n.id);
   }
-  return { nodes, links, clusters: new Map([...clusters].sort(([a], [b]) => compareStrings(a, b))) };
+  // A hub relation whose referencing table was collapsed as a join table is
+  // impossible: a join table's keys are drawn lines by definition.
+  const hubLinks = hubRelations.map(relationLink).sort((a, b) => compareStrings(a.id, b.id));
+  return { nodes, links, hubLinks, clusters: new Map([...clusters].sort(([a], [b]) => compareStrings(a, b))) };
 }
 
 /**
- * Relations between domains for the overview, one entry per pair of
- * clusters in key order. A polymorphic association counts once per target,
- * since that is where its rows point. Hub relations are left out, as in every
- * other view: a hub is declared precisely so that it does not draw lines.
+ * Relations between domains for the overview: one line per direction, from
+ * the domain holding the referencing columns to the domain holding the
+ * referenced keys, so both directions between two domains stay apart. A
+ * polymorphic association counts once per target, since that is where its
+ * rows point; a collapsed join table is one n-n relation, drawn from its first
+ * key's table to its second. Hub relations are left out, as in every other
+ * view: a hub is declared precisely so that it does not draw lines.
+ *
+ * Each line carries the relations it stands for (`relations`, in id order),
+ * which the viewer lists when the line is clicked:
+ *   { id, from: { table, column }, to, cardinality, optional, kind, review, via? }
  */
 export function domainLinks(diagram) {
   const pairs = new Map();
-  const add = (a, b, review) => {
+  const add = (owner, target, relation) => {
+    const [a, b] = [diagram.nodes.get(owner).cluster, diagram.nodes.get(target).cluster];
     if (a === b) return;
-    const [from, to] = compareStrings(a, b) < 0 ? [a, b] : [b, a];
-    const key = `${from}\u0000${to}`;
-    if (!pairs.has(key)) pairs.set(key, { from, to, count: 0, reviews: [] });
-    const p = pairs.get(key);
-    p.count += 1;
-    p.reviews.push(review);
+    const key = `${a}\u0000${b}`;
+    if (!pairs.has(key)) pairs.set(key, { from: a, to: b, relations: [] });
+    pairs.get(key).relations.push(relation);
   };
+  const entry = (l, from, column, to, extra = {}) => ({
+    id: l.id,
+    from: { table: from, column },
+    to,
+    cardinality: l.cardinality,
+    optional: l.optional,
+    kind: l.kind,
+    review: l.review,
+    ...extra,
+  });
   for (const l of diagram.links) {
     // The overview counts references between rows; a view reading a table
     // is not one.
     if (l.kind === VIEW_SOURCE) continue;
-    const owner = diagram.nodes.get(l.from.node).cluster;
     if (l.kind === 'polymorphic') {
       const a = diagram.nodes.get(l.to.node).association;
       for (const t of a.targets) {
-        const target = diagram.nodes.get(t);
-        if (target) add(owner, target.cluster, l.review);
+        if (diagram.nodes.has(t)) add(a.table, t, entry(l, a.table, a.id_column, t, { association: a.name }));
       }
     } else {
-      add(owner, diagram.nodes.get(l.to.node).cluster, l.review);
+      add(l.from.node, l.to.node, entry(l, l.from.node, l.from.column, l.to.node, l.via ? { via: l.via } : {}));
     }
   }
   return [...pairs.values()]
     .sort((a, b) => compareStrings(a.from, b.from) || compareStrings(a.to, b.to))
     .map((p) => ({
-      id: `${p.from}<->${p.to}`,
+      id: `${p.from}->${p.to}`,
       from: { node: p.from, column: null },
       to: { node: p.to, column: null },
-      count: p.count,
+      count: p.relations.length,
       kind: p.from.split('/')[0] === p.to.split('/')[0] ? 'domain' : 'cross_db',
-      review: leastTrusted(p.reviews, REVIEW_TRUST),
+      review: leastTrusted(p.relations.map((r) => r.review), REVIEW_TRUST),
+      relations: [...p.relations].sort((a, b) => compareStrings(a.id, b.id) || compareStrings(a.to, b.to)),
     }));
 }

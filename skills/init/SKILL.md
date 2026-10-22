@@ -82,21 +82,28 @@ Facts confirmed by metadata get `kind: db_fk` (when a constraint exists) and
 From the facts files (and metadata cache), write one `model/<db>.yaml` per
 logical database and `model/cross-db.yaml` when needed, following every rule in
 `model.md` "Writing facts": table ids, direction, `kind`, evidence with the
-source name prefix, `review: pending`, English notes, enum meanings, `pii`,
+source name prefix, `review: pending`, English notes, enum meanings (only
+what code reveals; empty rather than the value restated), `pii`,
 and each column's `default`, `auto_increment` and `generated` from the facts.
 
-Write a `note` on every table and every column, not only the important ones:
-the Excel table sheets show it as the Comment of each column. Keep each
-column note short (about 15 words at most), say only what code, schema
-comments or names show, and write `Unclear from code.` when nothing does.
+Write a `note` on every table, every column and every polymorphic entry,
+not only the important ones: the Excel table sheets show it as the Comment of
+each column. Read how services, controllers, jobs and operations use a table
+before writing its note, and describe that business meaning rather than
+restating the name. Keep each column note short (about 15 words at most), say
+only what code, schema comments or names show, and write `Unclear from code.`
+when nothing does.
 
 ## 5. Domains
 
 Group tables into domains (5–15 tables each when possible; by bounded context,
 module folder, table prefix, then relation density). Present the proposal as a
 list `Domain: table, table, …` per database and ask the user to approve or
-change it. Write `domain` only after approval. Also propose `hub` tables and
-columns, and `collapse_join_tables`, in the same message.
+change it. Write `domain` only after approval. In the same message propose
+`collapse_join_tables` and hubs: `hub.columns` for audit and scoping columns
+first, `hub.tables` only for cross-cutting tables such as `users` or
+`tenants`, never a business table a domain is built around (`model.md`,
+`open-erd.yaml`), each with its reason.
 
 ## 6. Validate, layout, render
 

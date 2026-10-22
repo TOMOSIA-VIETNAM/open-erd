@@ -4,9 +4,11 @@ import { test } from 'node:test';
 import { OUTPUT, bundleViewer, serializeBundle } from '../scripts/bundle-viewer.js';
 import { buildDiagram, polyNodeId } from '../src/layout/diagram.js';
 import { computeLayout } from '../src/layout/index.js';
-import { technicalColumns } from '../src/model/columns.js';
+import { enumMeaning, technicalColumns } from '../src/model/columns.js';
+import { HINT_OFFSET, HINT_SIZE, tableBox } from '../src/layout/table-box.js';
 import { buildScene, renderSvg, viewerData } from '../src/render/svg/render.js';
-import { radialLayout, straightLink } from '../src/render/svg/viewer/radial.js';
+import { applyProfile } from '../src/model/profile.js';
+import { endTransforms, radialLayout, straightLink } from '../src/render/svg/viewer/radial.js';
 import { loadMulti } from './helpers/shop.js';
 
 async function multi() {
@@ -92,6 +94,77 @@ test('polymorphic target lines are routed per view and hidden until clicked', as
   assert.ok(!scene.relations.some((r) => r.id.startsWith(attachable)));
   const escaped = attachable.replace(/[.]/g, '\\.');
   assert.match(svg, new RegExp(`<g class="poly-routes" data-poly="${escaped}" style="display:none">`));
+});
+
+test('viewer data: overview line relations, hub relations, link optionality, polymorphic notes', async () => {
+  const { model, diagram, svg } = await multi();
+  const data = JSON.parse(dataBlock(svg));
+  // Each overview line lists the relations it stands for, keyed by its id.
+  assert.deepEqual(data.domainLinks['shop/Content->shop/Catalog'], [
+    { from: 'shop._.attachments', column: 'attachable_id', to: 'shop._.products', cardinality: 'n-1', kind: 'polymorphic', association: 'attachable' },
+    { from: 'shop._.comments', column: 'commentable_id', to: 'shop._.products', cardinality: 'n-1', kind: 'polymorphic', association: 'commentable' },
+  ]);
+  assert.deepEqual(Object.keys(data.domainLinks).sort(), Object.keys(data.domainLinks));
+  // Hub relations are listed with their referencing column; drawn links carry optional for the markers.
+  assert.deepEqual(data.hubLinks.map((l) => l.id), diagram.hubLinks.map((l) => l.id));
+  const created = data.hubLinks.find((l) => l.id === 'shop._.products(created_by)->auth.public.users(id)');
+  assert.deepEqual([created.from, created.to, created.column, created.cardinality], ['shop._.products', 'auth.public.users', 'created_by', 'n-1']);
+  for (const l of data.links) assert.equal(typeof l.optional, 'boolean', l.id);
+  // Engines by database, as the frames print them, for cross-DB panels.
+  assert.deepEqual(data.databases, { activity: 'MongoDB', auth: 'PostgreSQL', shop: 'MySQL' });
+  const commentable = data.nodes[polyNodeId(model.polymorphic.find((a) => a.name === 'commentable'))];
+  assert.equal(commentable.note, 'Customers discuss a post, product or order; support staff answer in the same thread.');
+  assert.equal(commentable.internalNote, 'CommentsController#create sets the type from the route.');
+  assert.equal(commentable.optional, false);
+  // Sharing profiles drop polymorphic notes like any other note.
+  const shared = applyProfile(model, 'public').polymorphic.find((a) => a.name === 'commentable');
+  assert.equal(shared.internal_note, undefined);
+  assert.ok(shared.note);
+  const noNotes = applyProfile({ ...model, config: { ...model.config, profiles: { bare: { drop_notes: ['note', 'internal_note'] } } } }, 'bare');
+  assert.ok(noNotes.polymorphic.every((a) => a.note === undefined && a.internal_note === undefined));
+});
+
+test('neighborhood end markers turn with their straight line', () => {
+  // Leaving to the right: no turn at the start, a half turn at the end.
+  assert.deepEqual(endTransforms([[0, 0], [100, 0]]), ['translate(0 0) rotate(0)', 'translate(100 0) rotate(180)']);
+  // Going down: a quarter turn, the far end facing up.
+  assert.deepEqual(endTransforms([[10, 20], [10, 80]]), ['translate(10 20) rotate(90)', 'translate(10 80) rotate(270)']);
+  const [from] = endTransforms([[0, 0], [-3, 3]]);
+  assert.equal(from, 'translate(0 0) rotate(135)');
+});
+
+test('enum meanings that only restate their value are left out', () => {
+  assert.equal(enumMeaning('smartsite_standard_one', 'Smartsite standard one (Template.code)'), '');
+  assert.equal(enumMeaning('PAID', 'paid.'), '');
+  assert.equal(enumMeaning('in-review', 'In review (Post::STATES)'), '');
+  assert.equal(enumMeaning('draft', ''), '');
+  assert.equal(enumMeaning('paid', 'Payment confirmed by the gateway (Invoice::STATUSES)'), 'Payment confirmed by the gateway (Invoice::STATUSES)');
+  assert.equal(enumMeaning('0', 'Hidden from customers'), 'Hidden from customers');
+});
+
+test('columns with a note or enum values get a mark after the name, inside the row budget', async () => {
+  const columns = [
+    { name: 'id', type: 'bigint', pk: true },
+    { name: 'title', type: 'varchar', note: 'Shown in lists.' },
+    { name: 'status', type: 'varchar', note: 'Lifecycle.', enum: { a: 'Active account', b: 'b' } },
+  ];
+  const plain = tableBox({ id: 'db._.posts', columns: columns.map(({ name, type, pk }) => ({ name, type, pk })) });
+  const box = tableBox({ id: 'db._.posts', columns });
+  // Same size with or without marks: no stored layout goes stale.
+  assert.deepEqual([box.w, box.h], [plain.w, plain.h]);
+  assert.deepEqual(box.rows.map((r) => r.hint), [null, 'note', 'enum']);
+  for (const r of box.rows.filter((x) => x.hint)) {
+    assert.equal(r.hintX, r.name.width + HINT_OFFSET);
+    // The mark ends before the right-aligned type starts.
+    assert.ok(12 + r.hintX + HINT_SIZE / 2 < box.w - 12 - r.type.width, r.column);
+  }
+  const { svg, model } = await multi();
+  assert.match(svg, /<rect class="hint-enum" /);
+  assert.match(svg, /<circle class="hint-note" /);
+  // The viewer gets enum values whose meanings say nothing as empty meanings.
+  const noisy = { ...model, tables: model.tables.map((t) => (t.id === 'shop._.orders' ? { ...t, columns: t.columns.map((c) => (c.name === 'status' ? { ...c, enum: { pending: 'Pending (Order.status)', paid: 'Payment confirmed' } } : c)) } : t)) };
+  const data = viewerData(noisy, buildDiagram(noisy));
+  assert.deepEqual(data.nodes['shop._.orders'].columns.find((c) => c.name === 'status').enum, { pending: '', paid: 'Payment confirmed' });
 });
 
 // Deterministic sizes in the range of real boxes: 140..360 wide, 50..400 tall.

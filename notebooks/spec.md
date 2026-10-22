@@ -46,7 +46,7 @@ Mọi người trong dự án: dev, tester, PM, BrSE, khách hàng, đối tác.
   - `kind: db_fk | declared | inferred | cross_db`
   - `evidence: ["<repo>:<path>#<symbol>"]` (line number tuỳ chọn, không dùng khi so sánh) hoặc `db`
   - `review: pending | reviewed | stale`
-- Polymorphic là block riêng trong model (1 association có nhiều target): `polymorphic: [{ name, table, type_column, id_column, optional, targets: [..], evidence, review }]`.
+- Polymorphic là block riêng trong model (1 association có nhiều target): `polymorphic: [{ name, table, type_column, id_column, optional, targets: [..], note?, internal_note?, evidence, review }]`.
 - Quan hệ suy đoán **vẫn vẽ**, nét đứt, kèm evidence, `review: pending`.
 - Fact `reviewed` không bao giờ bị sync đổi hay xoá. Code không còn khớp → sync đánh dấu `stale` và đưa vào To review; chỉ xoá khi user xác nhận.
 - **Rename** phát hiện lúc `sync`: AI hỏi user xác nhận, ghi `renamed_from`; sync chuyển vị trí layout và trạng thái review sang id mới.
@@ -55,11 +55,11 @@ Mọi người trong dự án: dev, tester, PM, BrSE, khách hàng, đối tác.
 
 **Chống chằng chịt**
 - 3 tầng view:
-  - **Overview**: DB → domain, chỉ số quan hệ giữa domain. Tính sẵn lúc build.
+  - **Overview**: DB → domain; mỗi chiều tham chiếu giữa 2 domain là 1 line có mũi tên về domain giữ khoá được tham chiếu, nhãn "N relations" ("· cross-DB" khi khác DB); click line → panel liệt kê từng quan hệ, mỗi dòng dẫn tới domain view. Tính sẵn lúc build.
   - **Domain**: bảng trong domain; bảng ngoài domain là stub mờ. Tính sẵn lúc build.
-  - **Neighborhood**: 1 bảng + 1–2 hop. Tính trong viewer bằng thuật toán radial deterministic (không ELK).
-- **Hub**: cột/bảng khai báo hub (`created_by`, `tenant_id`, `users`, …) hiện thành badge trong box (`→ users ×3`), không vẽ line.
-- **Polymorphic**: 1 node ảo `«commentable»` + danh sách target. Overview: nối tới domain chứa target. Domain/Neighborhood: line tới từng target chỉ hiện khi click node.
+  - **Neighborhood** (UI: "Related tables: Direct · Direct + next level"): 1 bảng + 1–2 hop, line có crow's foot như view chính. Tính trong viewer bằng thuật toán radial deterministic (không ELK).
+- **Hub**: cột/bảng khai báo hub (`created_by`, `tenant_id`, `users`, …) hiện thành badge trong box (`→ users ×3`), không vẽ line. Chỉ dùng cho tham chiếu cắt ngang (audit, tenant/company), không cho bảng nghiệp vụ trung tâm; ưu tiên `hub.columns`. Panel của bảng hub liệt kê mọi quan hệ hub trỏ vào nó; chọn bảng hub thì line hub (route tính sẵn lúc build, ẩn mặc định) hiện trong view hiện tại; neighborhood của bảng hub gồm cả các bảng đó.
+- **Polymorphic**: 1 node ảo `«commentable»` + danh sách target. Overview: nối tới domain chứa target. Domain/Neighborhood: line tới từng target chỉ hiện khi click node. Double-click node → neighborhood quanh node gồm bảng sở hữu và mọi target. Panel hiện `note` nghiệp vụ của association (nếu có).
 - Line orthogonal, không xuyên box, crow's foot notation.
 
 **Layout và ổn định thị giác**
@@ -85,6 +85,17 @@ Mọi người trong dự án: dev, tester, PM, BrSE, khách hàng, đối tác.
   - Layout diff = hợp layout 2 phía; trùng thì lấy phía "to"; bảng bị xoá giữ toạ độ phía "from".
 - **Profile chia sẻ**: profile lọc dữ liệu ở bước normalize, trước mọi output. Profile `public` mặc định bỏ evidence, cột `pii`, note nội bộ, bảng/cột trong `hidden`.
 
+**Phát hiện quan hệ bị sót**
+- `validate` cảnh báo (không fail): cột `*_id` hoặc cặp `*_type`/`*_id` không thuộc relation/hub/polymorphic nào; bảng không có quan hệ nào; relation trỏ cột không tồn tại. Cảnh báo xuất hiện trong sheet To review ("Possibly missing relation") và dấu cảnh báo cạnh cột trong SVG. Có thể tắt từng cảnh báo bằng khai báo trong `open-erd.yaml` (cột không phải khoá ngoại thật).
+- Skill `init`/`sync`: sau khi dựng model, một agent reviewer context sạch đọc lại code, dùng danh sách cảnh báo làm checklist, đề xuất quan hệ bị sót kèm evidence; agent chính thêm vào với `review: pending`.
+
+**Tìm đường join (viewer)**
+- Chọn 2 bảng → tối đa 3 đường ngắn nhất, xếp hạng: `db_fk`/`reviewed` trước, `inferred`/`pending` sau, đi qua bảng hub với chi phí cao; hoà thì theo id.
+- Tô sáng đường trên sơ đồ, animation theo thứ tự hop; panel liệt kê từng điều kiện nối (`a.x_id = b.id`, composite key đúng thứ tự, join table gộp được tách lại 2 hop).
+- Cờ: inferred/pending, cross-DB, polymorphic ("cần lọc theo `<type_column>`", không điền giá trị), cảnh báo nhân dòng khi hop đi theo chiều 1-n.
+- Nút copy chỉ copy danh sách điều kiện, không sinh câu SQL.
+- Profile `public`: đường không đi qua bảng/cột bị lọc.
+
 **Workspace ERD**
 - Nằm **ngoài repo code**, `git init` riêng, **vị trí do user chọn** khi `init`.
 - `sync` kết thúc bằng 1 commit trong workspace, ghi commit SHA của từng repo nguồn.
@@ -93,7 +104,7 @@ Mọi người trong dự án: dev, tester, PM, BrSE, khách hàng, đối tác.
 
 ### Ngoài phạm vi bản đầu
 
-Export DBML/Mermaid/`.drawio`, HTML wrapper, lint (gợi ý `add_foreign_key`, FK thiếu index), path finder giữa 2 bảng, Redis/Elasticsearch store node.
+Export DBML/Mermaid/`.drawio`, HTML wrapper, lint gợi ý `add_foreign_key` / FK thiếu index, sinh câu SQL hoàn chỉnh, Redis/Elasticsearch store node.
 
 ## Tech Stack
 

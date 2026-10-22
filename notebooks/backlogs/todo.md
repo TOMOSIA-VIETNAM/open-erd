@@ -78,3 +78,11 @@ Chi tiết từng task: `plan.md`. Đánh dấu `[x]` khi task pass verify.
 - [x] 22. README + dist cuối
 - [x] Checkpoint E
   - Dự án thật nội bộ (Rails, 75 bảng trong `schema.rb`, bản copy `app/ db/ config/` không có credentials): `init` headless xong trong ~8 phút, $2.31 → 63 bảng / 3 DB / 74 quan hệ / 8 polymorphic, `validate` pass, source copy không đổi, viewer qua mọi bước. Nhiều cột `unknown` type vì schema thật nằm trong gem `shared` không được copy — AI tự phát hiện và đề nghị `sync` khi có gem đó.
+
+## Sau UAT
+
+- [x] 23. Sửa feedback UAT vòng 2 (overview edge rõ nghĩa, nhãn neighborhood, hub hiện quan hệ khi focus, marker trong neighborhood, neighborhood của node đa hình, panel không lộ evidence mặc định, đếm số bảng)
+- [ ] 24. Phát hiện quan hệ bị sót: cảnh báo cơ học trong `validate` + agent reviewer trong init/sync
+- [ ] 25. Tìm đường join trong viewer (không sinh SQL)
+- [ ] 26. Viewer: Download view hiện tại (SVG tĩnh / PNG / JPEG); `default_view` trong open-erd.yaml cho view mặc định khi app không chạy JS
+- [ ] 27. Export `.drawio` (mỗi view 1 page, bảng = shape table, quan hệ = connector ER), bật/tắt bằng `outputs.drawio` trong open-erd.yaml, mặc định bật

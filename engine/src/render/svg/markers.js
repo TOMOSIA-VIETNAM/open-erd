@@ -4,6 +4,10 @@
 //   many         |<   one or more
 //   zeroOrMany   o<   any number
 //
+// The overview, whose lines stand for many relations, marks only direction:
+//   arrow        ->   points at the domain holding the referenced keys
+//   none              no marker at that end
+//
 // `cardinality` is "<from>-<to>" and `optional` says whether the referencing
 // (from) columns may be NULL. So:
 //   - the to end shows how many rows one from-row points at: its side of the
@@ -25,6 +29,8 @@ const BAR_FAR = 16;
 const BAR_HALF = 6;
 const RING_CENTRE = 21;
 const RING_RADIUS = 4;
+const ARROW_LENGTH = 12;
+const ARROW_HALF = 5;
 
 /**
  * SVG elements for a marker at point (x, y) on a box side; `side` is -1 when
@@ -36,6 +42,10 @@ export function markerSvg(kind, x, y, side) {
   const crow = `<path d="M${x} ${y - CROW_SPREAD}L${at(CROW_LENGTH)} ${y}L${x} ${y + CROW_SPREAD}"/>`;
   const ring = `<circle class="ring" cx="${at(RING_CENTRE)}" cy="${y}" r="${RING_RADIUS}"/>`;
   switch (kind) {
+    case 'none':
+      return '';
+    case 'arrow':
+      return `<path class="head" d="M${x} ${y}L${at(ARROW_LENGTH)} ${y - ARROW_HALF}L${at(ARROW_LENGTH)} ${y + ARROW_HALF}Z"/>`;
     case 'one':
       return bar(BAR_NEAR) + bar(BAR_FAR);
     case 'zeroOrOne':
