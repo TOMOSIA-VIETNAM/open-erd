@@ -1,9 +1,10 @@
 // Viewer embedded in erd.svg. It runs when the SVG is opened directly in a
-// browser; it turns the static drawing (overview visible, other views hidden)
-// into an explorable diagram. Everything it adds is created here at runtime,
-// so a viewer without script still shows the plain overview.
+// browser; it turns the static drawing (the opening view visible, other
+// views hidden) into an explorable diagram. Everything it adds is created
+// here at runtime, so a viewer without script still shows the plain
+// opening view.
 import { dbDisplayName } from '../../../display-name.js';
-import { REVIEW_WORDS, endMarkers, enumIconSvg, indexIconSvg, isConfirmed, keyIconSvg, linkIconSvg, markerSvg, reviewIconSvg, starIconSvg } from '../markers.js';
+import { REVIEW_WORDS, endMarkers, enumIconSvg, indexIconSvg, isConfirmed, keyIconSvg, linkIconSvg, markerSvg, overviewStrokeWidth, reviewIconSvg, starIconSvg } from '../markers.js';
 import { CANVAS_LIMITS, PIXEL_RATIO, canvasScale, exportBaseName } from './download.js';
 import { findJoinPaths, hopCondition, pathNames, sqlSkeleton } from './join-path.js';
 import { collectionDocument, createTableSql, isDocumentStore, markdownTable } from './schema-copy.js';
@@ -14,6 +15,7 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 const HTML_NS = 'http://www.w3.org/1999/xhtml';
 const OVERVIEW = 'overview';
 const ALL_VIEW = 'all';
+const CONNECTIONS = 'connections';
 const DOMAIN_PREFIX = 'domain:';
 const NEIGHBORHOOD = 'neighborhood';
 // View the viewer builds for a join path no drawn view holds.
@@ -43,8 +45,16 @@ const RING_GAP = 40;
 const NEIGHBORHOOD_MARGIN = 60;
 const SEARCH_LIMIT = 40;
 const TIP_OFFSET = 14;
-// Overview line tooltips list this many relations, the panel lists them all.
+// Pair tooltips (a connector, a matrix cell) list this many relations per
+// direction; the panel lists them all.
 const TIP_RELATIONS = 6;
+// Smallest text in table boxes and matrix headers, and the size it should
+// have on screen at least when a large view opens zoomed in.
+const SMALLEST_TEXT = 12;
+const READABLE_TEXT = 11;
+// Hovering off a card waits this long before its connectors go, so the
+// pointer can travel to a connector across the gap.
+const UNFOCUS_DELAY = 250;
 // Column tooltips list this many enum values; a click on the column shows all.
 const TIP_ENUM_ROWS = 8;
 // A collapsed domain frame keeps only its header bar.
@@ -83,10 +93,13 @@ const domainView = (cluster) => DOMAIN_PREFIX + cluster;
 const nodeIdOf = (g) => g.getAttribute('data-id') ?? g.getAttribute('data-domain');
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 // "qlear (PostgreSQL) → qlear_mongo (MongoDB)" for the databases of two
-// names; `⇄` for an overview line, which stands for both directions.
+// names; `⇄` for a pair of domains, which stands for both directions.
 const dbOf = (name) => name.split(/[./]/)[0];
 const crossing = (from, to, arrow = '→') => `${dbDisplayName(dbOf(from))} (${data.databases[dbOf(from)].label}) ${arrow} ${dbDisplayName(dbOf(to))} (${data.databases[dbOf(to)].label})`;
 const domainName = (cluster) => cluster.split('/').slice(1).join('/');
+// Key of the relations between two domains in data.domainLinks (code-unit
+// order, as the engine writes it).
+const pairId = (a, b) => (a <= b ? `${a}<->${b}` : `${b}<->${a}`);
 // Table nodes per domain, for the counts in the breadcrumb.
 const tableCount = (cluster) => Object.values(data.nodes).filter((n) => n.kind === 'table' && (cluster === null || n.cluster === cluster)).length;
 
@@ -131,7 +144,7 @@ const fullBoxes =
       .flatMap(([, index]) => [...index].filter(([, entry]) => !entry.el.classList.contains('stub'))),
   );
 // The viewer draws its own tooltips; native ones would show on top of them.
-for (const t of svg.querySelectorAll('.nodes title, .relations title')) t.remove();
+for (const t of svg.querySelectorAll('.nodes title, .relations title, .mx-cells title')) t.remove();
 
 // Lines are 1.4 px wide; a wide transparent twin makes them clickable.
 function addHitPaths(root) {
@@ -168,7 +181,23 @@ function applyCamera() {
   cameraFrame = 0;
   const { x, y, s } = state.cam;
   camera.setAttribute('transform', `translate(${x} ${y}) scale(${s})`);
+  if (state.view === CONNECTIONS) stickHeaders();
   updateMinimap();
+}
+
+// The connections view keeps its header column and header row on screen
+// while the matrix is panned: they slide along with the visible edge but
+// never past where they are drawn.
+function stickHeaders() {
+  const { x, y, s } = state.cam;
+  const dx = Math.max(0, -x / s);
+  const dy = Math.max(0, (TOOLBAR_HEIGHT - y) / s);
+  for (const g of views.get(CONNECTIONS).querySelectorAll('.mx-sticky-x, .mx-sticky-y')) {
+    const sx = g.classList.contains('mx-sticky-x') ? dx : 0;
+    // A header row drawn below the top edge sticks once it reaches it.
+    const sy = g.classList.contains('mx-sticky-y') ? Math.max(0, dy - Number(g.getAttribute('data-top') ?? 0)) : 0;
+    g.setAttribute('transform', `translate(${sx} ${sy})`);
+  }
 }
 // Pan and zoom gestures fire many events per frame: write the transform once
 // per frame, with the latest camera.
@@ -219,9 +248,24 @@ function showView(name) {
   state.view = name;
   // A neighborhood or join view of the same name may hold other tables now.
   map.view = null;
-  zoomToRect(viewBounds(name), MAX_FIT_SCALE);
+  if (name === CONNECTIONS) readableStart(viewBounds(name), null, 1);
+  else zoomToRect(viewBounds(name), MAX_FIT_SCALE);
   renderToolbar();
   setLegend(name === ALL_VIEW);
+}
+
+// A large view opens where its text can be read: the whole view when it
+// fits at a readable size, else at scale 1 centred on `focus` (a box), or
+// from the top left corner when there is none.
+function readableStart(bounds, focus, maxScale = MAX_FIT_SCALE) {
+  const { w, h } = viewport();
+  const fit = Math.min((w - 2 * FIT_PADDING) / bounds.w, (h - TOOLBAR_HEIGHT - 2 * FIT_PADDING) / bounds.h, maxScale);
+  if (fit * SMALLEST_TEXT >= READABLE_TEXT) return zoomToRect(bounds, maxScale);
+  const s = 1;
+  state.cam = focus
+    ? { s, x: w / 2 - (focus.x + focus.w / 2) * s, y: TOOLBAR_HEIGHT + (h - TOOLBAR_HEIGHT) / 2 - (focus.y + focus.h / 2) * s }
+    : { s, x: FIT_PADDING - bounds.x * s, y: TOOLBAR_HEIGHT + FIT_PADDING - bounds.y * s };
+  applyCamera();
 }
 
 function snapshot() {
@@ -661,8 +705,9 @@ function openNeighborhood(id, hops = state.hops) {
 // ---------------------------------------------------------------- toolbar
 
 // Left: Back and the breadcrumb, which gets whatever width is left. Right,
-// never shrinking: the search trigger, Join path, the view switcher, the ⋯
-// menu (folding, legend, minimap, review mode, weak links) and Download.
+// never shrinking: the Map | Connections switch (on those two views), the
+// search trigger, Join path, the view switcher, the ⋯ menu (folding,
+// legend, minimap, review mode) and Download.
 // Icons are inline SVG paths drawn with the text colour; every control has
 // a tooltip.
 const ICONS = {
@@ -689,6 +734,12 @@ function relatedButtons(open) {
 }
 const hopButtons = relatedButtons((hops) => openNeighborhood(state.center, hops));
 const hopGroup = el('div', { class: 'oe-related', title: RELATED.title }, [el('span', { text: RELATED.label }), el('div', { class: 'oe-seg' }, hopButtons)]);
+// The overview as cards or as the matrix of the same domains.
+const mapTabs = [
+  [OVERVIEW, 'Map', 'Domains as cards: what each holds and what it is related to'],
+  [CONNECTIONS, 'Connections', 'Domain × domain matrix: how many relations go from each domain to each other'],
+].map(([name, text, title]) => el('button', { class: 'oe-btn', text, title, 'data-view': name, on: { click: () => navigate(name) } }));
+const mapGroup = el('div', { class: 'oe-seg oe-map-tabs' }, mapTabs);
 
 const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 const FIND_KEY = IS_MAC ? '⌘F' : 'Ctrl+F';
@@ -742,7 +793,8 @@ const DATABASES = [...views.get(OVERVIEW).querySelectorAll('.database')].map((g)
 const fillMenu = (menu, items) => menu.replaceChildren(...items.filter(Boolean));
 viewsMenu.onOpen = () =>
   fillMenu(viewsMenu.menu, [
-    menuItem('Overview', 'Databases and their domains', () => (closeMenus(), navigate(OVERVIEW)), { checked: state.view === OVERVIEW }),
+    menuItem('Overview', 'Databases and their domains, as cards', () => (closeMenus(), navigate(OVERVIEW)), { checked: state.view === OVERVIEW }),
+    menuItem('Connections', 'Domain × domain matrix of relation counts', () => (closeMenus(), navigate(CONNECTIONS)), { checked: state.view === CONNECTIONS }),
     views.has(ALL_VIEW) ? menuItem(`All tables · ${plural(tableCount(null), 'table')}`, 'Every table of every domain', () => (closeMenus(), navigate(ALL_VIEW)), { checked: state.view === ALL_VIEW }) : null,
     DATABASES.length > 0 ? el('div', { class: 'oe-menu-sub', text: 'Databases' }) : null,
     ...DATABASES.map((db) => menuItem(dbDisplayName(db), `Show the ${dbDisplayName(db)} database (${data.databases[db].label})`, () => (closeMenus(), showDatabase(db)), { detail: data.databases[db].label })),
@@ -751,6 +803,8 @@ viewsMenu.onOpen = () =>
 // The ⋯ menu: view and display settings, rebuilt on every open so labels
 // and checks reflect the current state.
 const moreMenu = dropdown(toolButton('more', '', 'More: collapse or expand domains, legend, minimap, review mode'), 'oe-more-menu');
+// Overview cards and the matrix stand for many relations and carry no review colour.
+const reviewable = () => state.view !== OVERVIEW && state.view !== CONNECTIONS;
 const REVIEW_TOTAL = data.review.pending + data.review.stale;
 const reviewCounts = () => `${data.review.pending} to confirm · ${data.review.stale} changed in code`;
 moreMenu.onOpen = () => {
@@ -771,16 +825,10 @@ moreMenu.onOpen = () => {
     menuItem('Legend', 'What the marks in this view mean', toggle(() => setLegend(!legendOpen)), { checked: legendOpen }),
     menuItem('Minimap', 'Small map of the whole view, shown while it does not fit on screen', toggle(() => setMinimap(!map.on)), { checked: map.on }),
     // Nothing to review: the entry would switch on a mode that changes nothing.
-    // Overview lines stand for many relations and carry no review colour.
-    REVIEW_TOTAL > 0 && state.view !== OVERVIEW
+    REVIEW_TOTAL > 0 && reviewable()
       ? menuItem(`Review mode · ${reviewCounts()}`, 'Color lines by review status: amber = not confirmed yet, red = code changed since review', toggle(() => setReviewMode(!reviewing())), {
           checked: reviewing(),
           detail: 'Color lines by review status: amber = not confirmed yet, red = code changed since review',
-        })
-      : null,
-    state.view === OVERVIEW && weakCount > 0
-      ? menuItem(`Show weak links (${weakCount} hidden)`, `Lines standing for fewer than ${data.overviewMinRelations} relations; hovering a domain shows its own`, toggle(() => setWeak(!svg.classList.contains('show-weak'))), {
-          checked: svg.classList.contains('show-weak'),
         })
       : null,
   ]);
@@ -799,18 +847,9 @@ downloadMenu.menu.append(
   downloadStatus,
 );
 
-// Overview lines standing for few relations are hidden at first (see
-// overview.min_relations); the ⋯ menu shows or hides them all, and hovering
-// a domain shows its own.
-const weakCount = views.get(OVERVIEW).querySelectorAll('.overview-link.weak').length;
-function setWeak(on) {
-  svg.classList.toggle('show-weak', on);
-  if (legendOpen) setLegend(true);
-}
-
 toolbar.div.append(
   el('div', { class: 'oe-left' }, [backButton, crumbs]),
-  el('div', { class: 'oe-right' }, [hopGroup, searchButton, joinButton, viewsMenu.wrap, moreMenu.wrap, downloadMenu.wrap]),
+  el('div', { class: 'oe-right' }, [hopGroup, mapGroup, searchButton, joinButton, viewsMenu.wrap, moreMenu.wrap, downloadMenu.wrap]),
 );
 
 function crumb(text, onClick) {
@@ -825,6 +864,7 @@ function renderToolbar() {
       ? clusterOf(state.center)
       : null;
   if (state.view === ALL_VIEW) parts.push(crumb(`All tables · ${plural(tableCount(null), 'table')}`));
+  if (state.view === CONNECTIONS) parts.push(crumb('Connections'));
   if (cluster) {
     const db = cluster.split('/')[0];
     // There is no database-level view; the database crumb shows its frame on the overview.
@@ -840,6 +880,8 @@ function renderToolbar() {
   crumbs.replaceChildren(...parts.flatMap((p, i) => (i === 0 ? [p] : [el('span', { class: 'sep', text: '›' }), p])));
   backButton.disabled = state.history.length === 0;
   hopGroup.style.display = state.view === NEIGHBORHOOD ? '' : 'none';
+  mapGroup.style.display = state.view === OVERVIEW || state.view === CONNECTIONS ? '' : 'none';
+  for (const b of mapTabs) b.classList.toggle('on', b.getAttribute('data-view') === state.view);
   hopButtons.forEach((b, i) => b.classList.toggle('on', state.hops === RELATED.options[i].hops));
   layoutOverlays();
 }
@@ -878,7 +920,8 @@ function viewAsSvg(keep) {
   for (const e of view.querySelectorAll('.cluster-label[data-x]')) e.setAttribute('x', e.getAttribute('data-x'));
   for (const e of view.querySelectorAll('.database > [transform]')) e.removeAttribute('transform');
   for (const e of [...view.querySelectorAll('*')].filter(isHidden)) e.remove();
-  for (const e of view.querySelectorAll('.relation-hit')) e.remove();
+  for (const e of view.querySelectorAll('.relation-hit, .card-links')) e.remove();
+  for (const e of view.querySelectorAll('.mx-sticky-x, .mx-sticky-y')) e.removeAttribute('transform');
   const root = svgEl('svg', { width: w, height: h, viewBox: `${x} ${y} ${w} ${h}` }, [svg.querySelector('style').cloneNode(true), view]);
   // Review colours and diff colours are classes on the root.
   const cls = ['review-mode', 'diff-mode'].filter((c) => svg.classList.contains(c));
@@ -1267,51 +1310,47 @@ function polyPanel(id, poly) {
   ];
 }
 
-// Relations of an overview line by direction: those whose referencing
-// table is in domain `a` (pointing at keys in `b`), then the others.
-function byDirection(id, a, b) {
-  const relations = data.domainLinks[id] ?? [];
-  return [
-    [a, b],
-    [b, a],
-  ].map(([from, to]) => ({ from, to, relations: relations.filter((r) => clusterOf(r.from) === from) }));
+// Relations between domains `a` and `b` by direction: those whose
+// referencing table is in `a` (pointing at keys in `b`), then the others;
+// one direction only for a domain with itself.
+function byDirection(a, b) {
+  const relations = data.domainLinks[pairId(a, b)] ?? [];
+  const directions = a === b ? [[a, a]] : [[a, b], [b, a]];
+  return directions.map(([from, to]) => ({ from, to, relations: relations.filter((r) => clusterOf(r.from) === from) }));
 }
 
-// An overview line: the relations it stands for, grouped by direction
-// ("A → B (n)"), each leading to the domain view of its referencing table.
-function domainLinkPanel(id, a, b) {
+// The relations between two domains (a connector, a matrix cell), grouped
+// by direction ("A → B (n)"), each a chip leading to its referencing
+// column in that table's domain view; dashed while not confirmed.
+function domainLinkPanel(a, b) {
+  const id = pairId(a, b);
   const total = (data.domainLinks[id] ?? []).length;
   const crossDb = dbOf(a) !== dbOf(b);
+  const chip = (r) =>
+    el(
+      'button',
+      {
+        class: `oe-chip${isConfirmed(r.kind, r.review) ? '' : ' unconfirmed'}`,
+        title: [`${r.from}.${r.column} → ${r.to}`, r.cardinality, r.association ? `polymorphic «${r.association}»` : r.kind, r.via ? `via ${short(r.via)}` : null].filter(Boolean).join(' · '),
+        on: { click: () => navigate(homeView(r.from), { focus: r.from, column: r.column }) },
+      },
+      [el('span', { text: `${short(r.from)}.${r.column} → ${short(r.to)}` })],
+    );
   return [
-    el('h3', { text: `${domainName(a)} ⇄ ${domainName(b)}` }),
-    el('div', { class: 'sub', text: `${plural(total, 'relation')} between these two domains` }),
+    el('h3', { text: a === b ? domainName(a) : `${domainName(a)} ⇄ ${domainName(b)}` }),
+    el('div', { class: 'sub', text: a === b ? `${plural(total, 'relation')} inside this domain` : `${plural(total, 'relation')} between these two domains` }),
     crossDb ? el('p', { text: `Cross-DB: ${crossing(a, b, '⇄')}` }) : null,
     changeList('links', id),
-    ...byDirection(id, a, b)
+    ...byDirection(a, b)
       .filter((d) => d.relations.length > 0)
-      .flatMap((d) => [
-        el('div', { class: 'sub', text: `${domainName(d.from)} → ${domainName(d.to)} (${d.relations.length})` }),
-        el(
-          'ul',
-          {},
-          d.relations.map((r) =>
-            el('li', {}, [
-              link(`${short(r.from)}.${r.column}`, () => navigate(homeView(r.from), { focus: r.from, column: r.column })),
-              el('span', { text: ` → ${short(r.to)}` }),
-              // A polymorphic entry names its association instead of its kind.
-              el('span', { class: 'detail', text: [r.cardinality, r.association ? `polymorphic «${r.association}»` : r.kind, r.via ? `via ${short(r.via)}` : null].filter(Boolean).join(' · ') }),
-            ]),
-          ),
-        ),
-      ]),
-    el('div', { class: 'row' }, [link(`Open ${domainName(a)}`, () => navigate(domainView(a))), el('span', { text: '·' }), link(`Open ${domainName(b)}`, () => navigate(domainView(b)))]),
+      .map((d) => el('div', { class: 'oe-chip-group' }, [el('div', { class: 'sub', text: a === b ? `${domainName(a)} (${d.relations.length})` : `${domainName(d.from)} → ${domainName(d.to)} (${d.relations.length})` }), el('div', { class: 'oe-chipbox' }, d.relations.map(chip))])),
+    el('div', { class: 'row' }, a === b ? [link(`Open ${domainName(a)}`, () => navigate(domainView(a)))] : [link(`Open ${domainName(a)}`, () => navigate(domainView(a))), el('span', { text: '·' }), link(`Open ${domainName(b)}`, () => navigate(domainView(b)))]),
   ];
 }
 
 function relationPanel(g) {
   const id = g.getAttribute('data-id');
   const [from, to] = [g.getAttribute('data-from'), g.getAttribute('data-to')];
-  if (state.view === OVERVIEW) return domainLinkPanel(id, from, to);
   const l = data.links.find((x) => x.id === id) ?? data.hubLinks.find((x) => x.id === id);
   return [
     el('h3', { text: `${short(from)} → ${short(to)}` }),
@@ -1678,18 +1717,20 @@ const has = (view, selector) => view.querySelector(selector) !== null;
 const endKinds = (view) => new Set([...view.querySelectorAll('.marker[data-ends]')].flatMap((g) => g.getAttribute('data-ends').split(' ')));
 const reviewing = () => svg.classList.contains('review-mode');
 // What lines and boxes mean. Solid and dashed lines explain themselves;
-// the legend covers what a reader cannot guess: overview line widths and
-// counts, line ends, the icons in boxes, and, in review mode only, the
+// the legend covers what a reader cannot guess: card strength bars and
+// connectors, line ends, the icons in boxes, and, in review mode only, the
 // review colours and icons.
+const strengthSample = () => sample([0, 1, 2, 3, 4].map((i) => svgEl('rect', { class: `seg${i < 3 ? ' on' : ''}`, x: 2 + i * 11, y: 6, width: 9, height: 6, rx: 1 })));
+const connectorSample = (cls, width) => sample([svgEl('path', { class: `card-link ${cls}`, d: 'M2 14C20 14 26 4 44 4', style: `stroke-width:${width}` })]);
 const LEGEND = [
-  ['Overview lines', [
-    [() => lineSample('overview-link kind-domain', 3), 'Relations between two domains; the thicker, the more', (v) => has(v, '.overview-link')],
-    [() => sample([svgEl('g', { class: 'count-badge' }, [svgEl('rect', { x: 2, y: 1, width: 16, height: 16, rx: 8 }), svgEl('text', { x: 10, y: 9, 'dominant-baseline': 'central', 'text-anchor': 'middle', text: '4' })])]), 'Number of relations the line stands for', (v) => has(v, '.count-badge')],
-    [() => lineSample('overview-link kind-cross_db', 2), 'Domains in different databases', (v) => has(v, '.overview-link.kind-cross_db')],
+  ['Domain cards', [
+    [strengthSample, 'Relations with that domain: more filled, more relations', (v) => has(v, '.card-related')],
+    [() => connectorSample('', 3), 'Hover a card: its relations to other domains; the thicker, the more', (v) => has(v, '.domain')],
+    [() => connectorSample('cross_db', 2), 'Domains in different databases', (v) => has(v, '.card-db')],
   ]],
   ['Review mode', [
-    [() => reviewSample('kind-db_fk review-reviewed', 'reviewed'), REVIEW_WORDS.reviewed, (v) => reviewing() && has(v, '.relation-group.review-reviewed:not(.overview-link)')],
-    [() => reviewSample('kind-declared review-pending', 'pending'), REVIEW_WORDS.pending, (v) => reviewing() && has(v, '.relation-group.review-pending:not(.overview-link)')],
+    [() => reviewSample('kind-db_fk review-reviewed', 'reviewed'), REVIEW_WORDS.reviewed, (v) => reviewing() && has(v, '.relation-group.review-reviewed')],
+    [() => reviewSample('kind-declared review-pending', 'pending'), REVIEW_WORDS.pending, (v) => reviewing() && has(v, '.relation-group.review-pending')],
     [() => reviewSample('kind-declared review-stale unconfirmed', 'stale'), REVIEW_WORDS.stale, (v) => reviewing() && has(v, '.relation-group.review-stale')],
   ]],
   ['Line ends', [
@@ -1784,7 +1825,8 @@ function updateMinimap() {
   if (map.view !== state.view) buildMinimap();
   const vp = viewport();
   const seen = visibleRect(state.cam, vp, TOOLBAR_HEIGHT, panelRoom());
-  const show = map.on && !fitsInside(map.bounds, seen);
+  // The matrix keeps its headers on screen itself; a map of cells says nothing.
+  const show = map.on && state.view !== CONNECTIONS && !fitsInside(map.bounds, seen);
   minimap.fo.style.display = show ? '' : 'none';
   if (!show) return;
   for (const [k, v] of Object.entries(seen)) map.seen.setAttribute({ x: 'x', y: 'y', w: 'width', h: 'height' }[k], v);
@@ -1824,30 +1866,45 @@ const tip = overlay('oe-tip-host');
 tip.fo.style.display = 'none';
 tip.fo.style.pointerEvents = 'none';
 
-// Lines: an overview line names its two domains and lists the first few
-// relations each way; any other line names its two ends and kind.
+// Relations between two domains (a connector, a matrix cell): how many each
+// way, and the first few of each.
+function pairTip(a, b) {
+  const directions = byDirection(a, b);
+  const total = directions.reduce((n, d) => n + d.relations.length, 0);
+  if (a === b) return [el('b', { text: domainName(a) }), el('div', { text: `${plural(total, 'relation')} inside the domain` }), ...pairSamples(directions), el('div', { class: 'muted', text: 'Click to list them' })];
+  return [
+    el('div', {}, [el('b', { text: `${plural(total, 'relation')} between ${domainName(a)} and ${domainName(b)}` })]),
+    ...directions.map((d) => el('div', { text: `${domainName(d.from)} → ${domainName(d.to)}: ${plural(d.relations.length, 'relation')}` })),
+    dbOf(a) !== dbOf(b) ? el('div', { class: 'muted', text: `Cross-DB: ${dbDisplayName(dbOf(a))} ⇄ ${dbDisplayName(dbOf(b))}` }) : null,
+    ...pairSamples(directions),
+    total > 0 ? el('div', { class: 'muted', text: 'Click to list them' }) : null,
+  ];
+}
+const pairSamples = (directions) =>
+  directions.flatMap((d) => [
+    ...d.relations.slice(0, TIP_RELATIONS).map((r) => el('div', { class: 'muted', text: `${short(r.from)}.${r.column} → ${short(r.to)}` })),
+    d.relations.length > TIP_RELATIONS ? el('div', { class: 'muted', text: `… ${d.relations.length - TIP_RELATIONS} more` }) : null,
+  ]);
+
+// Lines of the table views: their two ends and kind.
 function lineTip(g) {
   const [id, from, to] = [g.getAttribute('data-id'), g.getAttribute('data-from'), g.getAttribute('data-to')];
-  if (state.view === OVERVIEW) {
-    const directions = byDirection(id, from, to).filter((d) => d.relations.length > 0);
-    const total = directions.reduce((n, d) => n + d.relations.length, 0);
-    return [
-      el('div', {}, [el('b', { text: `${domainName(from)} ⇄ ${domainName(to)}` })]),
-      el('div', { text: plural(total, 'relation') }),
-      dbOf(from) !== dbOf(to) ? el('div', { text: `Cross-DB: ${dbDisplayName(dbOf(from))} ⇄ ${dbDisplayName(dbOf(to))}` }) : null,
-      ...directions.flatMap((d) => [
-        el('div', { text: `${domainName(d.from)} → ${domainName(d.to)} (${d.relations.length})` }),
-        ...d.relations.slice(0, TIP_RELATIONS).map((r) => el('div', { class: 'muted', text: `${short(r.from)}.${r.column} → ${short(r.to)}` })),
-        d.relations.length > TIP_RELATIONS ? el('div', { class: 'muted', text: `… ${d.relations.length - TIP_RELATIONS} more` }) : null,
-      ]),
-      el('div', { class: 'muted', text: 'Click to list them all' }),
-    ];
-  }
   const l = data.links.find((x) => x.id === id) ?? data.hubLinks.find((x) => x.id === id);
   return [el('b', { text: `${short(from)} → ${short(to)}` }), l ? el('div', { class: 'muted oe-line-facts' }, [el('span', { text: linkSummary(l) }), l.kind === 'view_source' ? null : reviewIcon(l.review), l.kind === 'view_source' ? null : el('span', { text: REVIEW_WORDS[l.review] })]) : null];
 }
 
 function tipLines(target) {
+  const connector = target.closest('.card-link');
+  if (connector) return pairTip(connector.getAttribute('data-from'), connector.getAttribute('data-to'));
+  const cell = target.closest('.mx-cell');
+  if (cell) return pairTip(cell.getAttribute('data-from'), cell.getAttribute('data-to'));
+  const head = target.closest('.mx-head');
+  if (head) return [el('b', { text: domainName(head.getAttribute('data-domain')) }), el('div', { class: 'muted', text: `${dbDisplayName(dbOf(head.getAttribute('data-domain')))} · click to open the domain` })];
+  const related = target.closest('.card-related');
+  if (related) {
+    const [a, b] = [target.closest('.domain').getAttribute('data-domain'), related.getAttribute('data-domain')];
+    return [...pairTip(a, b).slice(0, -1), el('div', { class: 'muted', text: `Click to open ${domainName(b)}` })];
+  }
   const line = target.closest('.relation-group, .hub-route');
   if (line) return lineTip(line);
   const columnEl = target.closest('.column');
@@ -1872,8 +1929,12 @@ function tipLines(target) {
       values.length > TIP_ENUM_ROWS ? el('div', { class: 'muted', text: `+${values.length - TIP_ENUM_ROWS} more — click the column for the full list` }) : null,
     ];
   }
+  // A card shows everything itself; the tooltip only completes a cut name or note.
   if (nodeEl.classList.contains('domain')) {
-    return [el('b', { text: id.split('/').slice(1).join('/') }), el('div', { class: 'muted', text: `${dbDisplayName(id.split('/')[0])} · click to open the domain` })];
+    const cut = [...nodeEl.querySelectorAll(':scope > .card-title, :scope > .card-note')].some((t) => t.textContent.endsWith('…'));
+    if (!cut) return null;
+    const note = data.domainNotes?.[id];
+    return [el('b', { text: domainName(id) }), note ? el('div', { text: note }) : null, el('div', { class: 'muted', text: 'Click to open the domain' })];
   }
   if (nodeEl.classList.contains('stub')) {
     return [el('b', { text: id }), el('div', { class: 'muted', text: 'Outside this domain · click to open its domain' })];
@@ -2006,28 +2067,115 @@ svg.addEventListener('pointerup', () => {
 });
 svg.addEventListener('pointerleave', hideTip);
 
-// Hovering a domain on the overview brings up all its lines (weak ones
-// too) and fades every other line and domain.
+// Hovering (or keyboard-focusing) a card on the overview draws curved
+// connectors from it to every domain it has relations with, as thick as
+// they are many, and fades the other cards. Connectors leave a side of the
+// card spread out, nearest target first, and end at the middle of the
+// facing side of the other card.
 let focused = null;
+let unfocusTimer = 0;
+const CONNECTOR_BEND = 0.45;
+function sideOf(from, to) {
+  const [dx, dy] = [to.x + to.w / 2 - (from.x + from.w / 2), to.y + to.h / 2 - (from.y + from.h / 2)];
+  if (Math.abs(dx) * from.h >= Math.abs(dy) * from.w) return dx >= 0 ? 'right' : 'left';
+  return dy >= 0 ? 'bottom' : 'top';
+}
+const facing = { left: 'right', right: 'left', top: 'bottom', bottom: 'top' };
+const outward = { left: [-1, 0], right: [1, 0], top: [0, -1], bottom: [0, 1] };
+function sidePoint(b, side, t = 0.5) {
+  if (side === 'left') return [b.x, b.y + b.h * t];
+  if (side === 'right') return [b.x + b.w, b.y + b.h * t];
+  if (side === 'top') return [b.x + b.w * t, b.y];
+  return [b.x + b.w * t, b.y + b.h];
+}
+function connectors(id) {
+  const index = indexes.get(OVERVIEW);
+  const box = index.get(id).box;
+  const ends = Object.entries(data.domainLinks)
+    .map(([key, relations]) => {
+      const [a, b] = key.split('<->');
+      if (a === b || (a !== id && b !== id)) return null;
+      const other = a === id ? b : a;
+      return index.has(other) ? { other, count: relations.length, box: index.get(other).box, side: sideOf(box, index.get(other).box) } : null;
+    })
+    .filter(Boolean);
+  const paths = [];
+  for (const side of ['left', 'right', 'top', 'bottom']) {
+    const mine = ends.filter((e) => e.side === side);
+    const along = (e) => (side === 'left' || side === 'right' ? e.box.y + e.box.h / 2 : e.box.x + e.box.w / 2);
+    mine.sort((p, q) => along(p) - along(q) || byId(p.other, q.other));
+    mine.forEach((e, i) => {
+      const [x1, y1] = sidePoint(box, side, (i + 1) / (mine.length + 1));
+      const [x2, y2] = sidePoint(e.box, facing[side]);
+      const reach = CONNECTOR_BEND * Math.hypot(x2 - x1, y2 - y1);
+      const [ox, oy] = outward[side];
+      const d = `M${x1} ${y1}C${x1 + ox * reach} ${y1 + oy * reach} ${x2 - ox * reach} ${y2 - oy * reach} ${x2} ${y2}`;
+      // A wide transparent twin makes the thin line easy to point at.
+      paths.push(
+        svgEl('g', { class: `card-link${dbOf(id) === dbOf(e.other) ? '' : ' cross_db'}`, 'data-from': id, 'data-to': e.other }, [
+          svgEl('path', { class: 'card-link-hit', d }),
+          svgEl('path', { class: 'card-link-line', d, style: `stroke-width:${overviewStrokeWidth(e.count) * 1.5}` }),
+        ]),
+      );
+    });
+  }
+  return svgEl('g', { class: 'card-links' }, paths);
+}
 function focusDomain(id) {
+  clearTimeout(unfocusTimer);
   if (focused === id) return;
   focused = id;
   const view = views.get(OVERVIEW);
-  for (const e of view.querySelectorAll('.focus-link, .focus-node')) e.classList.remove('focus-link', 'focus-node');
+  for (const e of view.querySelectorAll('.focus-node')) e.classList.remove('focus-node');
+  for (const e of view.querySelectorAll('.card-links')) e.remove();
   view.classList.toggle('domain-focus', id !== null);
   if (id === null) return;
-  view.querySelector(`.domain[data-domain="${CSS.escape(id)}"]`)?.classList.add('focus-node');
-  for (const g of view.querySelectorAll('.overview-link')) {
-    const ends = [g.getAttribute('data-from'), g.getAttribute('data-to')];
-    if (!ends.includes(id)) continue;
-    g.classList.add('focus-link');
-    for (const end of ends) view.querySelector(`.domain[data-domain="${CSS.escape(end)}"]`)?.classList.add('focus-node');
-  }
+  const card = indexes.get(OVERVIEW).get(id)?.el;
+  if (!card) return;
+  card.classList.add('focus-node');
+  const links = connectors(id);
+  for (const p of links.children) indexes.get(OVERVIEW).get(p.getAttribute('data-to'))?.el.classList.add('focus-node');
+  // Under the cards: a line runs behind the cards it passes, which stay
+  // readable, and shows through the faded ones.
+  view.querySelector('.relations').append(links);
+}
+// Leaving a card keeps its connectors a moment, for the pointer to reach one.
+function unfocusSoon() {
+  clearTimeout(unfocusTimer);
+  if (focused !== null) unfocusTimer = setTimeout(() => focusDomain(null), UNFOCUS_DELAY);
 }
 svg.addEventListener('pointerover', (e) => {
   if (state.view !== OVERVIEW || press) return;
-  const domain = inUi(e) ? null : e.target.closest('.domain');
-  focusDomain(domain ? domain.getAttribute('data-domain') : null);
+  if (inUi(e)) return unfocusSoon();
+  if (e.target.closest('.card-link')) return clearTimeout(unfocusTimer);
+  const domain = e.target.closest('.domain');
+  if (domain) focusDomain(domain.getAttribute('data-domain'));
+  else unfocusSoon();
+});
+// Cards take keyboard focus (Tab); Enter or Space opens the focused one.
+for (const card of views.get(OVERVIEW).querySelectorAll('.domain')) {
+  card.setAttribute('tabindex', '0');
+  card.setAttribute('role', 'button');
+  card.setAttribute('aria-label', `${domainName(card.getAttribute('data-domain'))}: open the domain`);
+}
+svg.addEventListener('focusin', (e) => {
+  const card = e.target.closest?.('.domain');
+  if (card && state.view === OVERVIEW) focusDomain(card.getAttribute('data-domain'));
+});
+svg.addEventListener('focusout', (e) => {
+  if (e.target.closest?.('.domain')) unfocusSoon();
+});
+// Matrix: hovering a cell marks it and its two headers.
+function markCell(cell) {
+  const view = views.get(CONNECTIONS);
+  for (const e of view.querySelectorAll('.mx-cell.hl, .mx-head.hl')) e.classList.remove('hl');
+  if (!cell) return;
+  cell.classList.add('hl');
+  const ends = [cell.getAttribute('data-from'), cell.getAttribute('data-to')];
+  for (const h of view.querySelectorAll('.mx-head')) if (ends.includes(h.getAttribute('data-domain'))) h.classList.add('hl');
+}
+svg.addEventListener('pointerover', (e) => {
+  if (state.view === CONNECTIONS && !press) markCell(inUi(e) ? null : e.target.closest('.mx-cell'));
 });
 
 svg.addEventListener('click', (e) => {
@@ -2040,8 +2188,12 @@ svg.addEventListener('click', (e) => {
   // With the join panel waiting for a table, a click on one picks it.
   const picked = t.closest('.table, .stub')?.getAttribute('data-id');
   if (join.open && (!join.from || !join.to) && data.nodes[picked]?.kind === 'table') return setJoinEnd(join.from ? 'to' : 'from', picked);
+  const related = t.closest('.card-related, .mx-head');
+  if (related) return navigate(domainView(related.getAttribute('data-domain')));
   const domain = t.closest('.domain');
   if (domain) return navigate(domainView(domain.getAttribute('data-domain')));
+  const pair = t.closest('.card-link, .mx-cell');
+  if (pair) return showPanel(domainLinkPanel(pair.getAttribute('data-from'), pair.getAttribute('data-to')));
   const stub = t.closest('.stub');
   if (stub) return navigate(homeView(stub.getAttribute('data-id')), { focus: stub.getAttribute('data-id') });
   const node = t.closest('.table, .poly');
@@ -2128,6 +2280,12 @@ document.addEventListener('keydown', (e) => {
     openSpotlight();
     return;
   }
+  const card = document.activeElement?.closest?.('.domain');
+  if ((e.key === 'Enter' || e.key === ' ') && card && state.view === OVERVIEW && !typing()) {
+    e.preventDefault();
+    navigate(domainView(card.getAttribute('data-domain')));
+    return;
+  }
   if (e.key !== 'Escape') return;
   if (spotlightOpen()) return closeSpotlight();
   if (openMenu()) return closeMenus();
@@ -2142,7 +2300,10 @@ window.addEventListener('resize', () => {
 // Later overlays paint on top: the toolbar's menus over the panel, the
 // search over everything but the tooltip.
 svg.append(legend.fo, minimap.fo, reviewChip.fo, panel.fo, toolbar.fo, spotlight.fo, tip.fo);
-setWeak(false);
-// The view drawn visible without script is where the reader starts: the
-// overview, or all tables in a diff drawing.
-showView([...views].find(([, v]) => v.style.display !== 'none')?.[0] ?? OVERVIEW);
+// The view drawn visible without script is where the reader starts (all
+// tables unless the workspace configured another view). All tables open at
+// a readable size around the most central table; a diff drawing shows its
+// whole view, banner included.
+const start = [...views].find(([, v]) => v.style.display !== 'none')?.[0] ?? OVERVIEW;
+showView(start);
+if (start === ALL_VIEW && !data.changes) readableStart(viewBounds(ALL_VIEW), indexes.get(ALL_VIEW).get(data.mostCentral)?.box ?? null);

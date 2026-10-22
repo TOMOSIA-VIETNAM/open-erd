@@ -2,7 +2,8 @@ import { compareStrings } from '../model/load.js';
 import { DOMAIN_VIEW_PREFIX } from '../model/schema.js';
 import { CLUSTER_GAP, CLUSTER_PAD, DB_GAP, DB_PAD, STUB_GAP, TABLE_GAP, clusterLabel } from './clusters.js';
 import { databaseFacts, domainLinks } from './diagram.js';
-import { domainBox, stubBox } from './table-box.js';
+import { RELATED_ON_CARD, STRENGTH_SEGMENTS, domainSummary, strength } from './domains.js';
+import { domainCard, stubBox } from './table-box.js';
 
 // Every view is a tree of nested groups over leaf boxes. Layout and render
 // both walk the same tree: layout to place the leaves group by group, render
@@ -26,15 +27,15 @@ export const STUB_SLOT = 'related';
 // Shapes aimed at: a domain somewhat wider than tall, the page 16:9.
 const CLUSTER_ASPECT = 1.3;
 const PAGE_ASPECT = 16 / 9;
-// The domains of one database sit on a grid (see gridPlace) somewhat wider
-// than tall: rows of domain boxes are short, so a grid of this shape gives
-// each domain neighbours both beside and above or below it.
+// The domain cards of one database sit on a grid somewhat wider than tall,
+// in reading order from the most connected domain (see domainSummary).
 //
-// Only a fresh layout is placed this way: domains already in layout.json
+// Only a fresh layout is placed this way: cards already in layout.json
 // keep their positions (stability rules), and a new domain goes next to the
-// one it shares most relations with. Deleting the overview from layout.json
-// and running `layout` re-places the overview alone.
-const OVERVIEW_DB_ASPECT = 2.5;
+// one it shares most relations with. `layout --relayout overview`
+// re-places the overview alone.
+const OVERVIEW_DB_ASPECT = 2;
+const CARD_GAP = 50;
 
 // Above this many tables the view of all tables is left out. Routing it
 // grows much faster than the table count (on an Apple M4 a few seconds at
@@ -72,14 +73,14 @@ function clusterGroup(diagram, key) {
   };
 }
 
-function dbGroups(model, diagram, aspect, childrenOf, strategy = 'pack') {
+function dbGroups(model, diagram, aspect, childrenOf, strategy = 'pack', gap = CLUSTER_GAP) {
   return model.databases
     .map((db) => {
       const keys = [...diagram.clusters.keys()].filter((k) => k.split('/')[0] === db.database);
       return { id: `db:${db.database}`, kind: 'db', database: db.database, engine: db.engine, facts: databaseFacts(db), keys };
     })
     .filter((g) => g.keys.length > 0)
-    .map(({ keys, ...g }) => ({ ...g, pad: DB_PAD, gap: CLUSTER_GAP, aspect, strategy, children: childrenOf(g, keys) }));
+    .map(({ keys, ...g }) => ({ ...g, pad: DB_PAD, gap, aspect, strategy, children: childrenOf(g, keys) }));
 }
 
 const page = (children, extra = {}) => ({ id: 'page', kind: 'page', pad: null, gap: DB_GAP, aspect: PAGE_ASPECT, strategy: 'pack', children, ...extra });
@@ -89,12 +90,18 @@ function allView(model, diagram) {
 }
 
 function overview(model, diagram) {
+  const summary = domainSummary(model, diagram);
+  const rank = new Map(summary.order.map((k, i) => [k, i]));
   const children = (g, keys) =>
-    keys.map((k) => {
-      const tables = diagram.clusters.get(k).filter((id) => diagram.nodes.get(id).kind === 'table').length;
-      return { id: k, kind: 'domain', slot: g.database, box: domainBox(clusterLabel(k), tables, diagram.centralOf.has(k) ? diagram.centralOf.get(k).split('.')[2] : null) };
-    });
-  return { root: page(dbGroups(model, diagram, OVERVIEW_DB_ASPECT, children, 'grid')), links: domainLinks(diagram) };
+    [...keys]
+      .sort((a, b) => rank.get(a) - rank.get(b))
+      .map((k) => {
+        const card = summary.cards.get(k);
+        const related = card.related.slice(0, RELATED_ON_CARD);
+        const box = domainCard(card, { related, segments: related.map((r) => strength(r.count, summary.max)), total: STRENGTH_SEGMENTS });
+        return { id: k, kind: 'domain', slot: g.database, box };
+      });
+  return { root: page(dbGroups(model, diagram, OVERVIEW_DB_ASPECT, children, 'cards', CARD_GAP)), links: domainLinks(diagram) };
 }
 
 // One domain plus a muted stub for every table outside it that a drawn line

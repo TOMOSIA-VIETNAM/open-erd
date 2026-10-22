@@ -36,7 +36,8 @@ function withoutFields(object, fields) {
  *     `drop_pii`, with every relation, polymorphic association, STI,
  *     partition and index that uses them; an embedded entity listed by
  *     name, or left without columns, goes whole;
- *   - the note fields in `drop_notes`, everywhere they occur;
+ *   - the note fields in `drop_notes`, everywhere they occur (domain notes
+ *     included); the entry of a domain left without tables;
  *   - evidence when `drop_evidence`.
  * The config keeps no hidden names either: `hidden` and `profiles` are left out.
  */
@@ -84,12 +85,20 @@ export function applyProfile(model, name) {
     : undefined;
   const config = withoutFields(model.config, ['hidden', 'profiles', 'hub']);
   if (hub) config.hub = hub;
+  // A domain whose tables are all hidden is gone, and so is its entry.
+  const domainsOf = (db) =>
+    Object.fromEntries(
+      Object.entries(db.domains)
+        .filter(([name]) => [...kept.values()].some(({ table }) => table.domain === name && table.id.split('.')[0] === db.database))
+        .map(([name, d]) => [name, strip(d)]),
+    );
   return {
     config,
     databases: model.databases.map((db) => ({
       ...db,
       ...(db.tenant_schemas ? { tenant_schemas: db.tenant_schemas.map(strip) } : {}),
       ...(db.topology ? { topology: strip(db.topology) } : {}),
+      ...(db.domains ? { domains: domainsOf(db) } : {}),
     })),
     tables: [...kept.values()].map((k) => k.table),
     relations: model.relations.filter((r) => endOk(r.from) && endOk(r.to)).map(evidence),

@@ -55,7 +55,8 @@ Mọi người trong dự án: dev, tester, PM, BrSE, khách hàng, đối tác.
 
 **Chống chằng chịt**
 - 3 tầng view:
-  - **Overview**: DB → domain; mỗi cặp domain là 1 line (gộp cả 2 chiều), không mũi tên, nét dày theo số quan hệ, số quan hệ trong badge tròn giữa line; khác DB thì nét đứt. Line thẳng / 1 góc gấp giữa các cạnh box khi được, router orthogonal chỉ là fallback. Layout mới: domain trong 1 DB xếp lưới, domain liên kết nhiều đứng cạnh nhau (layout cũ giữ nguyên vị trí). Click line → panel liệt kê quan hệ theo chiều ("A → B (n)"), mỗi dòng dẫn tới domain view. Tính sẵn lúc build.
+  - **Overview**: DB → thẻ domain, không vẽ line mặc định. Mỗi thẻ cùng kích thước: vạch màu domain, tên, số bảng, mô tả nghiệp vụ 1 câu (`domains.<tên>.note` trong `model/<db>.yaml`, tối đa 2 dòng, đủ trong tooltip), bảng trung tâm, tối đa 3 domain liên quan nhất kèm thanh độ mạnh 5 ô (căn bậc hai theo cặp mạnh nhất, không hiện số; khác DB có nhãn DB nhỏ). Trong 1 DB thẻ xếp lưới theo thứ tự domain liên kết nhiều nhất trước, hoà thì theo tên; layout cũ giữ vị trí, domain mới đặt cạnh domain liên quan nhất. Hover / focus bàn phím 1 thẻ → line cong tới mọi domain liên quan (dày theo số quan hệ, tooltip "n relations between A and B", click → panel chip quan hệ), thẻ khác mờ đi. Click thẻ → domain view; click 1 domain liên quan → domain đó. Tính sẵn lúc build (trừ line hover).
+  - **Connections**: ma trận domain × domain (thứ tự như thẻ, nhóm theo DB), ô tô đậm nhạt theo số quan hệ hàng → cột, đường chéo = quan hệ trong domain (màu xám); hover ô → số theo 2 chiều, click → panel chip; hàng/cột tiêu đề dính mép khi pan. Vẽ sẵn lúc build, không cần layout.json.
   - **Domain**: bảng trong domain; bảng ngoài domain là stub mờ. Tính sẵn lúc build.
   - **Neighborhood** (UI: "Related tables: Direct · Direct + next level"): 1 bảng + 1–2 hop, line có crow's foot như view chính. Tính trong viewer bằng thuật toán radial deterministic (không ELK).
 - **Hub**: cột/bảng khai báo hub (`created_by`, `tenant_id`, `users`, …) hiện thành badge trong box (`→ users ×3`), không vẽ line. Chỉ dùng cho tham chiếu cắt ngang (audit, tenant/company), không cho bảng nghiệp vụ trung tâm; ưu tiên `hub.columns`. Panel của bảng hub liệt kê mọi quan hệ hub trỏ vào nó; chọn bảng hub thì line hub (route tính sẵn lúc build, ẩn mặc định) hiện trong view hiện tại; neighborhood của bảng hub gồm cả các bảng đó.
@@ -77,7 +78,8 @@ Mọi người trong dự án: dev, tester, PM, BrSE, khách hàng, đối tác.
   - Click bảng → highlight bảng và các line nối vào, phần còn lại mờ đi.
   - Click line → animation chạy tới bảng đích.
   - Search bảng/cột (⌘F / Ctrl+F mở ô tìm giữa màn hình), hover cột → chi tiết, chuyển view; bảng trung tâm (nhiều liên kết nhất) của mỗi domain được tô đậm và đặt giữa cụm khi layout mới.
-  - Không có JS → vẫn hiện Overview tĩnh. Viewer nào không chạy JS thì mở bằng browser.
+  - Mở mặc định ở All tables, zoom sẵn tỉ lệ 1 quanh bảng trung tâm nhất (cả view khi chữ vẫn đọc được) + minimap; > 300 bảng thì Overview; `default_view` ghi đè.
+  - Không có JS → vẫn hiện view mặc định tĩnh (All tables / Overview dạng thẻ / ma trận Connections). Viewer nào không chạy JS thì mở bằng browser.
 - **Excel**: Overview (sheet đầu, mỗi bảng 1 dòng), mỗi bảng 1 sheet dạng lưới cột như DB client (`# | Name | Type | Nullable | Default | Generated | Expression | Primary Key | Auto Inc | Index | Comment`, Comment = note cột + nghĩa enum), Relations, Polymorphic, Indexes, To review (`pending` + `stale`), Changes (khi có diff); hyperlink giữa các sheet.
 - **Diff ngữ nghĩa** giữa 2 snapshot:
   - Tóm tắt 1 dòng; SVG tô màu thêm/xoá/đổi/rename; click bảng → panel câu tiếng Anh; sheet Changes.

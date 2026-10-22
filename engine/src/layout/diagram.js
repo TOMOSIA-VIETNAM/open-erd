@@ -194,6 +194,9 @@ function polyLink(a) {
  *   points at it.
  * clusters: Map cluster key -> node ids
  * centralOf: Map cluster key -> id of its central table (see centrality.js)
+ * mostCentral: id of the drawn table with the highest centrality score (ties
+ *   by id), where the viewer opens the view of all tables; null when no
+ *   table has a link
  */
 export function buildDiagram(model) {
   const hubRelations = model.relations.filter((r) => isHub(model.config, r));
@@ -242,33 +245,35 @@ export function buildDiagram(model) {
   const hubLinks = hubRelations.map(relationLink).sort((a, b) => compareStrings(a.id, b.id));
   // The central table of each domain, for the overview's domain boxes.
   const centralOf = centrality.byCluster;
-  return { nodes, links, hubLinks, clusters: new Map([...clusters].sort(([a], [b]) => compareStrings(a, b))), centralOf };
+  const [mostCentral = null] = drawnTables
+    .map((t) => t.id)
+    .filter((id) => centrality.scores.get(id) > 0)
+    .sort((a, b) => centrality.scores.get(b) - centrality.scores.get(a) || compareStrings(a, b));
+  return { nodes, links, hubLinks, clusters: new Map([...clusters].sort(([a], [b]) => compareStrings(a, b))), centralOf, mostCentral };
 }
 
-/** Id of the overview line between domains `a` and `b`, whatever their order. */
+/** Id of the pair of domains `a` and `b`, whatever their order (`a<->a` for a domain with itself). */
 export function domainLinkId(a, b) {
   return compareStrings(a, b) <= 0 ? `${a}<->${b}` : `${b}<->${a}`;
 }
 
 /**
- * Relations between domains for the overview: one line per pair of domains,
- * whichever way its relations point, so two domains are joined by one line
- * however they reference each other. Ends are in id order (`from` sorts
- * before `to`); each relation keeps its own direction. A polymorphic
- * association counts once per target, since that is where its rows point; a
- * collapsed join table is one n-n relation, from its first key's table to its
- * second. Hub relations are left out, as in every other view: a hub is
- * declared precisely so that it does not draw lines.
+ * Relations grouped by pair of domains, whichever way they point, a domain
+ * with itself included (relations inside one domain). Ends are in id order
+ * (`from` sorts before `to`); each relation keeps its own direction. A
+ * polymorphic association counts once per target, since that is where its
+ * rows point; a collapsed join table is one n-n relation, from its first
+ * key's table to its second. Hub relations are left out, as in every other
+ * view: a hub is declared precisely so that it does not count as structure.
  *
- * Each line carries the relations it stands for (`relations`, in id order),
- * which the viewer lists by direction when the line is clicked:
- *   { id, from: { table, column }, to, cardinality, optional, kind, review, via? }
+ * Each pair carries the relations it stands for (`relations`, in id order),
+ * which the viewer lists by direction:
+ *   { id, from: { table, column }, to, cardinality, optional, kind, review, via?, association? }
  */
-export function domainLinks(diagram) {
+export function domainPairs(diagram) {
   const pairs = new Map();
   const add = (owner, target, relation) => {
     const [a, b] = [diagram.nodes.get(owner).cluster, diagram.nodes.get(target).cluster];
-    if (a === b) return;
     const id = domainLinkId(a, b);
     if (!pairs.has(id)) pairs.set(id, { id, ends: [a, b].sort(compareStrings), relations: [] });
     pairs.get(id).relations.push(relation);
@@ -284,8 +289,7 @@ export function domainLinks(diagram) {
     ...extra,
   });
   for (const l of diagram.links) {
-    // The overview counts references between rows; a view reading a table
-    // is not one.
+    // References between rows only; a view reading a table is not one.
     if (l.kind === VIEW_SOURCE) continue;
     if (l.kind === 'polymorphic') {
       const a = diagram.nodes.get(l.to.node).association;
@@ -306,4 +310,9 @@ export function domainLinks(diagram) {
       kind: a.split('/')[0] === b.split('/')[0] ? 'domain' : 'cross_db',
       relations: [...relations].sort((x, y) => compareStrings(x.id, y.id) || compareStrings(x.to, y.to)),
     }));
+}
+
+/** The pairs of two different domains (see domainPairs): what ties domains together. */
+export function domainLinks(diagram) {
+  return domainPairs(diagram).filter((p) => p.from.node !== p.to.node);
 }

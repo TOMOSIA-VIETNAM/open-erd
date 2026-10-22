@@ -32,7 +32,6 @@ hub:                         # cross-cutting references, drawn as badges instead
   tables: [billing.public.users]
 collapse_join_tables: false  # true draws a pure join table as one n-n line
 outputs: { drawio: true }    # default true: render also writes out/erd.drawio (Overview and All tables pages)
-overview: { min_relations: 2 }   # default 2: overview lines of fewer relations start hidden (1 shows all)
 hidden:                      # left out of every profile render
   tables: [billing.public.audit_logs]
   columns: [billing.public.users.password_digest]   # embedded: <table id>.<entity>.<column> or <table id>.<entity>
@@ -41,7 +40,7 @@ ignore_missing:              # possibly missing relations `validate` stops repor
     - billing.public.payments.stripe_charge_id   # not a FK: Stripe charge id
   tables:
     - billing.public.settings                    # standalone key/value store
-default_view: overview       # overview | all | domain:<db>/<domain>; the view the SVG opens on
+default_view: all            # all (default) | overview | connections | domain:<db>/<domain>; the view the SVG opens on
 profiles:                    # render --profile <name> writes out/erd.<name>.svg
   partner:                   # name: letters, digits, - and _
     drop_evidence: false     # default true
@@ -67,9 +66,10 @@ static file) or a table stands alone on purpose, add it to
 `ignore_missing.columns` silences column warnings only,
 `ignore_missing.tables` only the "nothing connects this table" warning.
 
-`default_view` falls back to the overview, with a warning from `render`, when
-the render has no such view (the view of all tables is left out above 300
-tables; a profile may hide a whole domain).
+Left out, `default_view` is `all`; a schema over 300 tables has no view of
+all tables and opens on the overview. A configured `default_view` the render
+has no such view for (the view of all tables above 300 tables; a domain a
+profile hides) falls back to the overview, with a warning from `render`.
 
 A hub is only for references that cut across every domain: audit columns
 (`created_by`, `updated_by`), tenant or company scoping (`tenant_id`,
@@ -98,6 +98,9 @@ schema_version: 1
 database: billing            # no dots, no spaces
 engine: postgresql           # postgresql | mysql | sqlite | mongodb | sqlserver | oracle | ...
 topology: { replicas: 2, shards: 4, note: ... }   # optional; one logical database
+domains:                     # optional; one entry per domain of this file's tables
+  Billing:
+    note: Invoices sent to customers each cycle, their payments and refunds.   # shown on the overview card
 tenant_schemas:              # optional; schema-per-tenant, modelled once
   - { schema: tenant, count: 120, note: One schema tenant_<slug> per tenants row. }   # count only when known
 tables:
@@ -278,6 +281,12 @@ polymorphic entry may also carry `note` and `internal_note`.
   schema comments or names show; when nothing does, write `Unclear from
   code.` rather than guess. Enum value meanings stay in `enum`, not in the
   note.
+- **note** on a domain (`domains:` in its database's model file): one
+  English sentence, about 90 characters at most (the overview card shows two
+  lines), saying what the domain covers for the business, learned from how
+  the code uses its tables (`Invoices sent to customers each cycle, their
+  payments and refunds.`), not a list of table names. A key must be the
+  `domain` of a table in that file. Write one for every domain.
 - **note** on a polymorphic entry: what the association means for the
   business, from the code that creates its rows: which records get one and
   what for (`Staff discuss an invoice or a payment with the customer.`).

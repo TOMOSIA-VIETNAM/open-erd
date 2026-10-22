@@ -20,9 +20,32 @@ export const BADGE_FONT = { size: 11, weight: 400 };
 export const BADGE_ARROW_WIDTH = 10;
 const BADGE_ARROW_GAP = 5;
 export const MUTED_TITLE_FONT = { size: 12, weight: 400 };
-export const DOMAIN_TITLE_FONT = { size: 14, weight: 700 };
-export const DOMAIN_COUNT_FONT = { size: 12, weight: 400 };
-const DOMAIN_BOX_HEIGHT = 60;
+// Overview card of a domain. Every card has the same size whatever it
+// says, so editing a note never moves a card or makes layout.json stale.
+export const CARD_TITLE_FONT = { size: 15, weight: 700 };
+export const CARD_TEXT_FONT = { size: 12, weight: 400 };
+export const CARD_LABEL_FONT = { size: 11, weight: 700 };
+export const CARD_DB_FONT = { size: 9, weight: 700 };
+export const CARD = {
+  w: 300,
+  h: 200,
+  // Colour bar along the left edge; text starts after it.
+  accent: 5,
+  padX: 18,
+  titleY: 24,
+  noteY: [48, 65],
+  centralY: 90,
+  dividerY: 106,
+  relatedLabelY: 121,
+  relatedY: [141, 160, 179],
+  // Strength bar at the right end of a related row.
+  segment: { w: 9, h: 6, gap: 2 },
+  // Space kept between a related name (with its db tag) and the bar.
+  barGap: 10,
+  dbGap: 5,
+  // Small colour square before a related domain's name.
+  swatch: 14,
+};
 // A polymorphic node lists this many targets at most; the rest collapse into
 // one "+N more" row (all targets stay in the node's data for the viewer).
 export const POLY_VISIBLE_TARGETS = 4;
@@ -191,22 +214,67 @@ export function stubBox(table) {
 }
 
 /**
- * Overview box of one domain: its name, table count and, when the domain
- * has one, its central table ("central: campaigns") on a third line.
+ * `text` on at most two lines of `width` px: words go on the first line
+ * while they fit (a first word wider than the line, as in CJK text without
+ * spaces, is cut by characters), the rest on the second, cut with an
+ * ellipsis when too long. Returns the fitted lines.
  */
-export function domainBox(label, count, central = null) {
-  const countText = `${count} ${count === 1 ? 'table' : 'tables'}`;
-  const centralText = central ? `central: ${central}` : null;
-  const widths = [measureText(label, DOMAIN_TITLE_FONT), measureText(countText, DOMAIN_COUNT_FONT), centralText ? measureText(centralText, DOMAIN_COUNT_FONT) : 0];
-  const w = Math.min(MAX_WIDTH, ceilToGrid(Math.max(MIN_WIDTH, ...widths.map((x) => x + 2 * PADDING_X))));
-  const inner = w - 2 * PADDING_X;
+export function wrapTwoLines(text, width, font) {
+  const clean = text.trim().replace(/\s+/g, ' ');
+  const words = clean.split(' ');
+  let first = '';
+  let used = 0;
+  for (const word of words) {
+    const next = first ? `${first} ${word}` : word;
+    if (measureText(next, font) > width) break;
+    first = next;
+    used += 1;
+  }
+  if (used === words.length) return [{ text: first, truncated: false }];
+  if (!first) {
+    for (const ch of clean) {
+      if (measureText(first + ch, font) > width) break;
+      first += ch;
+    }
+    return [{ text: first, truncated: false }, truncate(clean.slice(first.length).trim(), width, font)];
+  }
+  return [{ text: first, truncated: false }, truncate(words.slice(used).join(' '), width, font)];
+}
+
+const barWidth = (segments) => segments * CARD.segment.w + (segments - 1) * CARD.segment.gap;
+
+/**
+ * Overview card of one domain (an entry of domainSummary): name, table
+ * count, business note on two lines, central table, and the domains it is
+ * most related to, each with `segments` of a strength bar filled. Cross-DB
+ * related domains carry their database as a small tag. Fixed size (CARD).
+ */
+export function domainCard(card, { related, segments, total }) {
+  const inner = CARD.w - CARD.padX - CARD.padX;
+  const countText = `${card.tables} ${card.tables === 1 ? 'table' : 'tables'}`;
+  const countWidth = Math.ceil(measureText(countText, CARD_TEXT_FONT));
+  const centralText = card.central ? `Central: ${card.central.split('.')[2]}` : null;
+  const rowRoom = inner - CARD.swatch - barWidth(total) - CARD.barGap;
   return {
     kind: 'domain',
-    w,
-    h: DOMAIN_BOX_HEIGHT + (centralText ? ROW_HEIGHT : 0),
-    title: { ...fit(label, inner, DOMAIN_TITLE_FONT), centerY: 22 },
-    count: { ...fit(countText, inner, DOMAIN_COUNT_FONT), centerY: 42 },
-    central: centralText ? { ...fit(centralText, inner, DOMAIN_COUNT_FONT), centerY: 62 } : null,
+    w: CARD.w,
+    h: CARD.h,
+    title: { ...fit(card.name, inner - countWidth - 12, CARD_TITLE_FONT), centerY: CARD.titleY },
+    count: { ...fit(countText, countWidth, CARD_TEXT_FONT), centerY: CARD.titleY },
+    note: card.note ? { full: card.note, lines: wrapTwoLines(card.note, inner, CARD_TEXT_FONT).map((l, i) => ({ ...l, centerY: CARD.noteY[i] })) } : null,
+    central: centralText ? { ...fit(centralText, inner - ICON_GUTTER, CARD_TEXT_FONT), centerY: CARD.centralY } : null,
+    related: related.map((r, i) => {
+      const db = r.crossDb ? r.key.split('/')[0] : null;
+      const dbWidth = db ? Math.ceil(measureText(db, CARD_DB_FONT)) + 8 + CARD.dbGap : 0;
+      return {
+        key: r.key,
+        count: r.count,
+        segments: segments[i],
+        name: fit(r.key.slice(r.key.indexOf('/') + 1), rowRoom - dbWidth, CARD_TEXT_FONT),
+        db,
+        centerY: CARD.relatedY[i],
+      };
+    }),
   };
 }
 

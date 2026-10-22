@@ -1,18 +1,19 @@
 import { DB_FACT_FONT, DB_LABEL_FONT, ENGINE_FONT, LABEL_FONT, LABEL_OFFSET, clusterLabel, dbLabel, engineName, labelBox } from '../../layout/clusters.js';
-import { VIEW_SOURCE, buildDiagram, domainLinks, plural, relationId } from '../../layout/diagram.js';
+import { VIEW_SOURCE, buildDiagram, domainPairs, relationId } from '../../layout/diagram.js';
+import { STRENGTH_SEGMENTS, connectionMatrix, domainSummary } from '../../layout/domains.js';
 import { resolveView } from '../../layout/index.js';
-import { routeOverview } from '../../layout/overview-router.js';
 import { STUB, routeEdges } from '../../layout/router.js';
-import { GRID, BADGE_ARROW_WIDTH, BADGE_FONT, DOMAIN_COUNT_FONT, DOMAIN_TITLE_FONT, EMBED_INSET, FACT_FONT, HEADER_HEIGHT, ICON_GUTTER, PADDING_X, ROW_HEIGHT, TAG_FONT, attachOffset } from '../../layout/table-box.js';
+import { GRID, BADGE_ARROW_WIDTH, BADGE_FONT, CARD, CARD_DB_FONT, CARD_LABEL_FONT, CARD_TEXT_FONT, CARD_TITLE_FONT, EMBED_INSET, FACT_FONT, HEADER_HEIGHT, ICON_GUTTER, PADDING_X, ROW_HEIGHT, TAG_FONT, attachOffset } from '../../layout/table-box.js';
 import { ALL_VIEW, OVERVIEW, hasAllView, viewNames } from '../../layout/views.js';
 import { columnEntries, enumMeaning } from '../../model/columns.js';
 import { compareStrings } from '../../model/load.js';
-import { minRelations } from '../../model/schema.js';
+import { CONNECTIONS_VIEW } from '../../model/schema.js';
 import { missingRelations } from '../../model/missing.js';
 import { measureText } from '../../text/measure.js';
 import { FONT_FAMILY, TEXT_STYLE_CSS, fontFaceCss } from '../../text/font.js';
 import { PALETTE } from '../../palette.js';
-import { UNCONFIRMED_DASH, endMarkers, enumIconSvg, indexIconSvg, isConfirmed, keyIconSvg, linkIconSvg, markerSvg, overviewStrokeWidth, starIconSvg, tableIconSvg } from './markers.js';
+import { CONNECTIONS_STYLE, connectionsSvg } from './connections.js';
+import { UNCONFIRMED_DASH, endMarkers, enumIconSvg, indexIconSvg, isConfirmed, keyIconSvg, linkIconSvg, markerSvg, starIconSvg, tableIconSvg } from './markers.js';
 import viewerBundle from './viewer-bundle.json' with { type: 'json' };
 
 const CANVAS_MARGIN = 40;
@@ -22,10 +23,6 @@ const WARN_INSET = 2;
 const CORNER = 6;
 const EDGE_LABEL_FONT = { size: 10, weight: 700 };
 const EDGE_LABEL_PAD = { x: 4, y: 3 };
-// Round badge with the relation count, at the middle of an overview line;
-// a pill when the number is too wide for a circle.
-const BADGE_COUNT_FONT = { size: 10, weight: 700 };
-const BADGE_HEIGHT = 16;
 const BANNER_TITLE_FONT = { size: 15, weight: 700 };
 const BANNER_SUMMARY_FONT = { size: 13, weight: 400 };
 const BANNER_LEGEND_FONT = { size: 12, weight: 400 };
@@ -53,9 +50,20 @@ const VIEWER_STYLE = `.row-hit { fill: transparent; }
 .selected > rect:last-of-type { stroke: #1d4ed8; stroke-width: 3; }
 .flow-target > rect:last-of-type { stroke: #e8590c; stroke-width: 3; animation: oe-pulse 0.9s ease-in-out infinite alternate; }
 .relation-group.hl .relation, .relation-group.hl .marker { stroke: #2563eb; stroke-width: 2; }
-.overview-link.hl .count-badge rect { stroke: #2563eb; }
-.show-weak .overview-link.weak, .overview-link.weak.focus-link { display: inline; }
-.view.domain-focus :is(.overview-link:not(.focus-link), .domain:not(.focus-node)) { opacity: 0.25; }
+.view.domain-focus .domain:not(.focus-node) { opacity: 0.3; }
+.domain.focus-node .card-box { stroke: #5b8def; stroke-width: 1.5; }
+.domain:focus { outline: none; }
+.domain:focus-visible .card-box { stroke: #2563eb; stroke-width: 2.5; }
+.card-related { cursor: pointer; }
+.card-related:hover .card-related-name { fill: #1d4ed8; text-decoration: underline; }
+.card-link { cursor: pointer; }
+.card-link-hit { fill: none; stroke: transparent; stroke-width: 14; }
+.card-link-line { fill: none; stroke: #2563eb; stroke-opacity: 0.6; stroke-linecap: round; }
+.card-link.cross_db .card-link-line { stroke-dasharray: 8 6; stroke-linecap: butt; }
+.card-link:hover .card-link-line { stroke-opacity: 1; }
+.mx-cell { cursor: pointer; }
+.mx-cell.hl { stroke: #1f2a3d; stroke-width: 2; }
+.mx-head.hl .mx-name { font-weight: 700; fill: #1d4ed8; }
 .relation-group.flowing .relation { stroke-opacity: 0.35; }
 .flow { fill: none; stroke: #2563eb; stroke-width: 3; stroke-dasharray: 6 10; pointer-events: none; animation: oe-flow 0.8s linear infinite; }
 .poly-route { fill: none; stroke: #6b778a; stroke-width: 1.4; }
@@ -237,7 +245,7 @@ const DIFF_STYLE = [
   ]),
   '.diff-removed > rect:last-of-type { stroke-dasharray: 6 4; }',
   '.table.diff-removed, .stub.diff-removed, .poly.diff-removed, .domain.diff-removed { opacity: 0.7; }',
-  '.diff-removed :is(.table-title, .stub-title, .poly-title, .domain-title), .column.col-removed text { text-decoration: line-through; }',
+  '.diff-removed :is(.table-title, .stub-title, .poly-title, .card-title), .column.col-removed text { text-decoration: line-through; }',
   '.column.col-removed .column-name { fill: #c92a2a; }',
   '.relation-group.diff-removed .relation { stroke-dasharray: 6 4; }',
   '.diff-mode .relation-group:not(.diff-added, .diff-removed, .diff-changed) :is(.relation, .marker) { stroke: #c3cad5; stroke-dasharray: none; }',
@@ -284,8 +292,23 @@ text { font-family: '${FONT_FAMILY}', sans-serif; ${TEXT_STYLE_CSS} }
 .poly-target { font-size: 12px; font-weight: 400; fill: #4a4236; }
 .stub-box { fill: #f3f5f8; stroke: #c3cad5; stroke-width: 1; stroke-dasharray: 3 3; }
 .stub-title { font-size: 12px; font-weight: 400; fill: #8a94a6; }
-.domain-title { font-size: ${DOMAIN_TITLE_FONT.size}px; font-weight: ${DOMAIN_TITLE_FONT.weight}; }
-.domain-count { font-size: ${DOMAIN_COUNT_FONT.size}px; font-weight: ${DOMAIN_COUNT_FONT.weight}; fill: #5f6b7e; }
+.card-box { fill: #ffffff; stroke: #cfd6e0; stroke-width: 1; }
+.card-accent { fill: none; stroke-width: 4; stroke-linecap: round; }
+.card-title { font-size: ${CARD_TITLE_FONT.size}px; font-weight: ${CARD_TITLE_FONT.weight}; }
+.card-count { font-size: ${CARD_TEXT_FONT.size}px; font-weight: ${CARD_TEXT_FONT.weight}; fill: #7a8597; }
+.card-note { font-size: ${CARD_TEXT_FONT.size}px; font-weight: ${CARD_TEXT_FONT.weight}; fill: #3d4a5e; }
+.card-central { font-size: ${CARD_TEXT_FONT.size}px; font-weight: ${CARD_TEXT_FONT.weight}; fill: #56627a; }
+.card-central .fact-code { fill: #4c4f9e; }
+.card-divider { stroke: #e6eaf0; }
+.card-label { font-size: ${CARD_LABEL_FONT.size}px; font-weight: ${CARD_LABEL_FONT.weight}; fill: #8a94a6; }
+.card-related-name { font-size: ${CARD_TEXT_FONT.size}px; font-weight: ${CARD_TEXT_FONT.weight}; fill: #2a3546; }
+.card-none { font-size: ${CARD_TEXT_FONT.size}px; font-weight: ${CARD_TEXT_FONT.weight}; fill: #9aa4b5; }
+.card-db-pill { fill: #eef1f5; }
+.card-db { font-size: ${CARD_DB_FONT.size}px; font-weight: ${CARD_DB_FONT.weight}; fill: #56627a; }
+.card-related-hit { fill: transparent; }
+.seg { fill: #e3e7ee; }
+.seg.on { fill: #5d7fb8; }
+${CONNECTIONS_STYLE}
 .relation { fill: none; stroke: #6b778a; stroke-width: 1.4; stroke-linejoin: round; }
 .marker { fill: none; stroke: #6b778a; stroke-width: 1.4; }
 .marker .ring { fill: #ffffff; }
@@ -297,12 +320,6 @@ text { font-family: '${FONT_FAMILY}', sans-serif; ${TEXT_STYLE_CSS} }
 .review-mode .review-stale :is(.relation, .marker) { stroke: #c53030; }
 .review-mode .review-stale .edge-label text { fill: #a61f1f; }
 .kind-view_source .relation { stroke: #a9b2c0; stroke-dasharray: 5 4; }
-.overview-link .relation { stroke: #8a96a8; stroke-linecap: round; }
-.overview-link.kind-cross_db .relation { stroke-dasharray: 8 6; stroke-linecap: butt; }
-/* Weak overview links: hidden until shown (see overview.min_relations). */
-.overview-link.weak { display: none; }
-.count-badge rect { fill: #ffffff; stroke: #8a96a8; stroke-width: 1; }
-.count-badge text { font-size: ${BADGE_COUNT_FONT.size}px; font-weight: ${BADGE_COUNT_FONT.weight}; fill: #3d4a5e; }
 .table-tag { font-size: ${TAG_FONT.size}px; font-weight: ${TAG_FONT.weight}; fill: #5f6b7e; letter-spacing: 0.02em; }
 .table.is-view > rect:last-of-type { stroke-dasharray: 5 3; }
 .tenant-copy { fill: #ffffff; stroke: #c9d1dc; stroke-width: 1; }
@@ -312,7 +329,6 @@ text { font-family: '${FONT_FAMILY}', sans-serif; ${TEXT_STYLE_CSS} }
 /* Identifiers and values inside a fact line, set apart from its words by
    colour only: same font and weight, so measured widths still hold. */
 .fact-code { fill: #4c4f9e; }
-.domain-central { font-size: ${DOMAIN_COUNT_FONT.size}px; font-weight: ${DOMAIN_COUNT_FONT.weight}; fill: #4c4f9e; }
 .db-fact-pill { fill: #eef1f5; stroke: #c3cad5; stroke-width: 1; }
 .db-fact { font-size: ${DB_FACT_FONT.size}px; font-weight: ${DB_FACT_FONT.weight}; fill: #3d4a5e; }
 ${DIFF_STYLE}
@@ -368,17 +384,9 @@ function diffBanner(bounds, diff) {
 
 const nodeRect = (n) => ({ id: n.id, x: n.x, y: n.y, w: n.w, h: n.h });
 
-function countBadge(count, [cx, cy]) {
-  const text = String(count);
-  const w = Math.max(BADGE_HEIGHT, Math.ceil(measureText(text, BADGE_COUNT_FONT)) + 8);
-  return { text, cx, cy, x: cx - w / 2, y: cy - BADGE_HEIGHT / 2, w, h: BADGE_HEIGHT };
-}
-
 // A cross-DB line in a table view names both databases it joins, in the
 // direction of the reference ("billing → auth"), so a line touching one
-// database never reads as belonging to only the other. Overview lines carry
-// no label: their count badge says how many relations they stand for, the
-// tooltip and panel name the databases.
+// database never reads as belonging to only the other.
 function labelText(link) {
   return link.kind === 'cross_db' ? `${link.from.node.split('.')[0]} → ${link.to.node.split('.')[0]}` : null;
 }
@@ -554,14 +562,10 @@ export function buildScene(model, layout, name = ALL_VIEW, diagram = buildDiagra
     const n = byId.get(e.node);
     return { box: nodeRect(n), y: n.y + attachOffset(n.box, e.column), marker };
   };
-  let relations;
-  if (name === OVERVIEW) {
-    const routes = routeOverview(view.nodes.map(nodeRect), labels, view.groups.map((g) => g.frame), view.links);
-    // A weak link (fewer relations than overview.min_relations) is routed
-    // last and drawn hidden until the reader asks for it.
-    const min = minRelations(model.config);
-    relations = view.links.map((link, i) => ({ link, ...routes[i], weak: link.count < min, badge: countBadge(link.count, routes[i].middle) }));
-  } else {
+  // The overview draws cards only: its links (domainLinks) order the cards
+  // and the viewer draws a card's connectors on hover.
+  let relations = [];
+  if (name !== OVERVIEW) {
     const markers = view.links.map((l) => (l.kind === VIEW_SOURCE ? { from: 'none', to: 'none' } : endMarkers(l)));
     const edges = view.links.map((l, i) => ({ id: l.id, from: end(l, 'from', markers[i].from), to: end(l, 'to', markers[i].to) }));
     const routes = routeEdges(obstacles, view.groups.map((g) => g.frame), edges);
@@ -731,14 +735,58 @@ function stubSvg(n, marks) {
   );
 }
 
-function domainSvg(n, colors, marks) {
+// Overview card of a domain (see domainCard): an accent bar in the
+// domain's colour, name and table count, the business note, the central
+// table, and the most related domains with a strength bar each (no numbers:
+// the tooltips and the connections view carry them). Each related row
+// leads to that domain.
+function cardSvg(n, colors, colorOf, marks) {
   const { x, y, w, h, box } = n;
+  const c = CARD;
+  const left = x + c.padX;
+  const right = x + w - c.padX;
+  const text = (cls, tx, f, extra = '') => textEl(cls, tx, y + f.centerY, f, extra || undefined);
+  const note = box.note ? box.note.lines.map((l) => `<text class="card-note" x="${left}" y="${y + l.centerY}" dominant-baseline="central">${escapeXml(l.text)}</text>`).join('') : '';
+  const central = box.central
+    ? `${starIconSvg(left + ICON_GUTTER / 2 - 2, y + box.central.centerY)}<text class="card-central" x="${left + ICON_GUTTER}" y="${y + box.central.centerY}" dominant-baseline="central">${escapeXml(box.central.text.slice(0, 9))}<tspan class="fact-code">${escapeXml(box.central.text.slice(9))}</tspan>${box.central.truncated ? `<title>${escapeXml(box.central.full)}</title>` : ''}</text>`
+    : '';
+  const segW = c.segment.w + c.segment.gap;
+  const barX = right - STRENGTH_SEGMENTS * segW + c.segment.gap;
+  const related = box.related.map((r) => {
+    const cy = y + r.centerY;
+    const segs = Array.from({ length: STRENGTH_SEGMENTS }, (_, i) => `<rect class="seg${i < r.segments ? ' on' : ''}" x="${barX + i * segW}" y="${cy - c.segment.h / 2}" width="${c.segment.w}" height="${c.segment.h}" rx="1"/>`).join('');
+    const nameW = Math.ceil(r.name.width);
+    const tag = r.db
+      ? (() => {
+          const tw = Math.ceil(measureText(r.db, CARD_DB_FONT)) + 8;
+          const tx = left + c.swatch + nameW + c.dbGap;
+          return `<rect class="card-db-pill" x="${tx}" y="${cy - 7}" width="${tw}" height="14" rx="7"/><text class="card-db" x="${tx + tw / 2}" y="${cy}" dominant-baseline="central" text-anchor="middle">${escapeXml(r.db)}</text>`;
+        })()
+      : '';
+    const swatch = colorOf(r.key);
+    const nameX = left + c.swatch;
+    return (
+      `<g class="card-related" data-domain="${escapeXml(r.key)}"><title>${escapeXml(`${r.name.full}${r.db ? ` (${r.db})` : ''}: ${r.count} relation${r.count === 1 ? '' : 's'} with ${box.title.full}`)}</title>` +
+      `<rect class="card-related-hit" x="${left - 4}" y="${cy - 9}" width="${right - left + 8}" height="18"/>` +
+      `<rect x="${left}" y="${cy - 4}" width="8" height="8" rx="2" fill="${swatch.header}" stroke="${swatch.label}"/>` +
+      `<text class="card-related-name" x="${nameX}" y="${cy}" dominant-baseline="central">${escapeXml(r.name.text)}</text>${tag}${segs}</g>`
+    );
+  });
+  const none = box.related.length === 0 ? `<text class="card-none" x="${left}" y="${y + c.relatedY[0]}" dominant-baseline="central">No relations with other domains</text>` : '';
+  const tip = [box.title.full, box.count.full, box.note?.full, box.central?.full].filter(Boolean).join('\n');
   return (
-    `<g class="domain${diffClass(marks, n.id)}" data-domain="${escapeXml(n.id)}"><title>${escapeXml(n.id)}</title>` +
-    `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="10" fill="${colors.header}" stroke="${colors.stroke}"/>` +
-    `<text class="domain-title" x="${x + PADDING_X}" y="${y + box.title.centerY}" dominant-baseline="central" fill="${colors.label}">${escapeXml(box.title.text)}</text>` +
-    `${textEl('domain-count', x + PADDING_X, y + box.count.centerY, box.count)}` +
-    `${box.central ? textEl('domain-central', x + PADDING_X, y + box.central.centerY, box.central) : ''}</g>`
+    `<g class="domain${diffClass(marks, n.id)}" data-domain="${escapeXml(n.id)}"><title>${escapeXml(tip)}</title>` +
+    `<rect class="card-box" x="${x}" y="${y}" width="${w}" height="${h}" rx="10"/>` +
+    `<path class="card-accent" d="M${x + 6} ${y + 12}V${y + h - 12}" stroke="${colors.label}"/>` +
+    `<text class="card-title" x="${left}" y="${y + box.title.centerY}" dominant-baseline="central" fill="${colors.label}">${escapeXml(box.title.text)}${box.title.truncated ? `<title>${escapeXml(box.title.full)}</title>` : ''}</text>` +
+    text('card-count', right, box.count, 'end') +
+    note +
+    central +
+    `<path class="card-divider" d="M${left} ${y + c.dividerY}H${right}"/>` +
+    `<text class="card-label" x="${left}" y="${y + c.relatedLabelY}" dominant-baseline="central">Related domains</text>` +
+    related.join('') +
+    none +
+    '</g>'
   );
 }
 
@@ -807,23 +855,6 @@ function relationSvg(r, marks) {
   );
 }
 
-// An overview line: one per pair of domains, as thick as its relation count
-// is high (the width is inline so highlighting cannot reset it), the count
-// in a badge at its middle, no arrowheads, one neutral colour; dashed
-// between databases.
-function overviewLinkSvg(r, marks) {
-  const { link, badge } = r;
-  const [a, b] = [link.from.node, link.to.node];
-  const title = `${clusterLabel(a)} ⇄ ${clusterLabel(b)}: ${plural(link.count, 'relation')}${link.kind === 'cross_db' ? ` (${a.split('/')[0]} ⇄ ${b.split('/')[0]})` : ''}`;
-  return (
-    `<g class="relation-group overview-link kind-${link.kind}${r.weak ? ' weak' : ''}${linkDiffClass(marks, link.id)}" data-id="${escapeXml(link.id)}" data-from="${escapeXml(a)}" data-to="${escapeXml(b)}" data-kind="${link.kind}">` +
-    `<title>${escapeXml(title)}</title>` +
-    `<path class="relation" d="${pathData(r.points)}" style="stroke-width:${overviewStrokeWidth(link.count)}"/>` +
-    `<g class="count-badge"><rect x="${badge.x}" y="${badge.y}" width="${badge.w}" height="${badge.h}" rx="${badge.h / 2}"/>` +
-    `<text x="${badge.cx}" y="${badge.cy}" dominant-baseline="central" text-anchor="middle">${badge.text}</text></g></g>`
-  );
-}
-
 // Lines from a polymorphic node to each of its targets in the view, hidden
 // until the viewer shows them on click.
 function polyRoutesSvg(routes) {
@@ -866,26 +897,26 @@ function hubRoutesSvg(routes) {
     .join('');
 }
 
+// Hidden views are shown by the embedded viewer script; without script the
+// opening view alone is what a reader sees.
+function viewGroup(name, { x, y, w, h }, visible, content) {
+  const hidden = visible ? '' : ' style="display:none"';
+  return [`<g class="view" data-view="${escapeXml(name)}" data-bounds="${x} ${y} ${w} ${h}"${hidden}>`, `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="#ffffff"/>`, ...content, '</g>'].join('\n');
+}
+
 function viewSvg(scene, colorOf, visible, marks, banner, warnings) {
-  const { x, y, w, h } = scene.bounds;
   const nodes = scene.nodes.map((n) => {
     if (n.kind === 'table') return tableSvg(n, colorOf(n.node.cluster), marks, warnings.get(n.id));
     if (n.kind === 'poly') return polySvg(n, marks);
     if (n.kind === 'stub') return stubSvg(n, marks);
-    return domainSvg(n, colorOf(n.id), marks);
+    return cardSvg(n, colorOf(n.id), colorOf, marks);
   });
-  // Hidden views are shown by the embedded viewer script; without script the
-  // overview alone is what a reader sees.
-  const hidden = visible ? '' : ' style="display:none"';
-  return [
-    `<g class="view" data-view="${escapeXml(scene.name)}" data-bounds="${x} ${y} ${w} ${h}"${hidden}>`,
-    `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="#ffffff"/>`,
+  return viewGroup(scene.name, scene.bounds, visible, [
     `<g class="groups">${scene.groups.map((g) => groupSvg(g, colorOf)).join('')}</g>`,
-    `<g class="relations">${scene.relations.map((r) => (scene.name === OVERVIEW ? overviewLinkSvg(r, marks) : relationSvg(r, marks))).join('')}${polyRoutesSvg(scene.polyRoutes)}${hubRoutesSvg(scene.hubRoutes)}</g>`,
+    `<g class="relations">${scene.relations.map((r) => relationSvg(r, marks)).join('')}${polyRoutesSvg(scene.polyRoutes)}${hubRoutesSvg(scene.hubRoutes)}</g>`,
     `<g class="nodes">${nodes.join('')}</g>`,
     banner ?? '',
-    '</g>',
-  ].join('\n');
+  ]);
 }
 
 // The viewer bundle is generated by scripts/bundle-viewer.js; a CDATA
@@ -991,9 +1022,10 @@ export function viewerData(model, diagram, diff = null, warnings = missingRelati
   // The referencing column too: a hub table's panel names it for each table
   // pointing at it.
   const hubLinks = diagram.hubLinks.map((l) => ({ ...linkData(l), column: l.from.column }));
-  // The relations behind each overview line, listed when it is clicked.
+  // The relations of each pair of domains (a domain with itself too), for
+  // the overview's connectors and the connections view's cells and panels.
   const domains = Object.fromEntries(
-    domainLinks(diagram).map((d) => [
+    domainPairs(diagram).map((d) => [
       d.id,
       d.relations.map((r) => ({
         from: r.from.table,
@@ -1001,6 +1033,7 @@ export function viewerData(model, diagram, diff = null, warnings = missingRelati
         to: r.to,
         cardinality: r.cardinality,
         kind: r.kind,
+        review: r.review,
         ...(r.association ? { association: r.association } : {}),
         ...(r.via ? { via: r.via } : {}),
       })),
@@ -1016,23 +1049,31 @@ export function viewerData(model, diagram, diff = null, warnings = missingRelati
   // source), else plainly `erd`.
   const sources = model.config.sources ?? [];
   const project = model.databases.length === 1 ? model.databases[0].database : sources.length === 1 ? sources[0].name : 'erd';
-  const base = { project, nodes, links, hubLinks, domainLinks: domains, databases, review, overviewMinRelations: minRelations(model.config) };
+  // Business note of each domain, for its card's tooltip.
+  const domainNotes = Object.fromEntries(model.databases.flatMap((db) => Object.entries(db.domains ?? {}).filter(([, d]) => d.note).map(([name, d]) => [`${db.database}/${name}`, d.note])));
+  const base = { project, nodes, links, hubLinks, domainLinks: domains, domainNotes, databases, review, mostCentral: diagram.mostCentral };
   if (!diff) return base;
   const sorted = (map) => Object.fromEntries([...map].sort(([a], [b]) => compareStrings(a, b)));
   const { sentences } = diff.marks;
   return { ...base, changes: { from: diff.from, to: diff.to, summary: diff.summary, nodes: sorted(sentences.nodes), links: sorted(sentences.links) } };
 }
 
+/** Every view a render draws: the laid-out ones, then the connections view. */
+export const renderedViews = (diagram) => [...viewNames(diagram), CONNECTIONS_VIEW];
+
 /**
  * The view a plain render opens on and draws without script: the
- * configured `default_view` when this diagram has it, else the overview.
- * `fallback` is true when a configured view was missing (the view of all
- * tables of a very large schema, a domain a profile hid).
+ * configured `default_view` when this diagram has it, else the view of all
+ * tables, else the overview. `fallback` is true when a configured view was
+ * missing (the view of all tables of a very large schema, a domain a
+ * profile hid); a schema too large for the view of all tables opens on the
+ * overview without one when nothing is configured.
  */
 export function openingView(model, diagram = buildDiagram(model)) {
-  const wanted = model.config.default_view;
-  if (!wanted || wanted === OVERVIEW) return { view: OVERVIEW, fallback: false };
-  return viewNames(diagram).includes(wanted) ? { view: wanted, fallback: false } : { view: OVERVIEW, fallback: true };
+  const configured = model.config.default_view;
+  const wanted = configured ?? ALL_VIEW;
+  if (renderedViews(diagram).includes(wanted)) return { view: wanted, fallback: false };
+  return { view: OVERVIEW, fallback: configured !== undefined };
 }
 
 /**
@@ -1068,11 +1109,13 @@ export function renderSvg(model, layout, options = {}) {
   // Indices past the palette cycle, which only happens once every tint is taken.
   const colorOf = (key) => PALETTE[layout.colors[key] % PALETTE.length];
   const columnWarnings = warningsByTable(warnings).columns;
-  const { x, y, w, h } = scenes.find((s) => s.scene.name === visible).scene.bounds;
+  const connections = connectionsSvg(connectionMatrix(model, diagram, domainSummary(model, diagram)), colorOf);
+  const { x, y, w, h } = visible === CONNECTIONS_VIEW ? connections.bounds : scenes.find((s) => s.scene.name === visible).scene.bounds;
   return [
     `<svg xmlns="http://www.w3.org/2000/svg"${diff ? ' class="diff-mode"' : ''} width="${w}" height="${h}" viewBox="${x} ${y} ${w} ${h}">`,
     `<style>${STYLE}</style>`,
     ...scenes.map((s) => viewSvg(s.scene, colorOf, s.scene.name === visible, marks, s.banner, columnWarnings)),
+    viewGroup(CONNECTIONS_VIEW, connections.bounds, visible === CONNECTIONS_VIEW, [connections.svg]),
     `<script type="application/json" id="open-erd-data">${scriptJson(viewerData(model, diagram, diff, warnings))}</script>`,
     `<script><![CDATA[\n${VIEWER_SCRIPT}\n]]></script>`,
     '</svg>',

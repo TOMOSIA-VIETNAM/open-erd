@@ -99,7 +99,10 @@ when nothing does.
 Group tables into domains (5–15 tables each when possible; by bounded context,
 module folder, table prefix, then relation density). Present the proposal as a
 list `Domain: table, table, …` per database and ask the user to approve or
-change it. Write `domain` only after approval. In the same message propose
+change it. Write `domain` only after approval, then give every domain a
+one-sentence business description under `domains:` in its database's model
+file (`model.md`, "note on a domain"), learned from how the code uses its
+tables. In the same message propose
 `collapse_join_tables` and hubs: `hub.columns` for audit and scoping columns
 first, `hub.tables` only for cross-cutting tables such as `users` or
 `tenants`, never a business table a domain is built around (`model.md`,

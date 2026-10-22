@@ -38,7 +38,10 @@ export const NOTE_FIELDS = ['note', 'note_source', 'internal_note'];
 export const PROFILE_NAME = /^[A-Za-z0-9_-]+$/;
 // Name of the view of one domain: domain:<db>/<domain>.
 export const DOMAIN_VIEW_PREFIX = 'domain:';
-export const DEFAULT_VIEW_PATTERN = new RegExp(`^(overview|all|${DOMAIN_VIEW_PREFIX}[^/\\s]+/.+)$`);
+// The domain × domain matrix of relation counts; drawn from the model
+// alone (no positions in layout.json).
+export const CONNECTIONS_VIEW = 'connections';
+export const DEFAULT_VIEW_PATTERN = new RegExp(`^(overview|all|${CONNECTIONS_VIEW}|${DOMAIN_VIEW_PREFIX}[^/\\s]+/.+)$`);
 
 // Older files must go through a migration before the engine reads them.
 const schemaVersion = { type: 'integer', oneOf: [SCHEMA_VERSION], required: true };
@@ -225,6 +228,10 @@ export const modelFileSchema = {
     database: { ...identifier, pattern: /^[^.\s]+$/, hint: 'no dots or whitespace', required: true },
     engine: { ...identifier, required: true },
     tables: { type: 'array', items: table, required: true },
+    // Per domain of this database (the `domain` of its tables): `note` is
+    // one sentence on what the domain covers for the business, shown on its
+    // overview card.
+    domains: { type: 'map', values: { type: 'object', fields: { note: text } } },
     relations: { type: 'array', items: relation },
     polymorphic: { type: 'array', items: polymorphic },
     // Schema-per-tenant: each tenant has its own copy of `schema`, modelled
@@ -308,15 +315,6 @@ export const configSchema = {
         drawio: { type: 'boolean' },
       },
     },
-    // The overview hides a line between two domains that stands for fewer
-    // than `min_relations` relations until the reader asks for it (1 shows
-    // every line); fields left out take their value from OVERVIEW_DEFAULTS.
-    overview: {
-      type: 'object',
-      fields: {
-        min_relations: { type: 'integer', min: 1 },
-      },
-    },
     // Left out of every profile render.
     hidden: hideSpec,
     // Possibly missing relations `validate` should stop reporting: columns
@@ -324,10 +322,12 @@ export const configSchema = {
     // tables that stand alone on purpose. Same shape as `hidden`.
     ignore_missing: hideSpec,
     // View the file opens on, also the one drawn without script:
-    // overview | all | domain:<db>/<domain>. A view the render does not
-    // have (the view of all tables of a very large schema, a domain a
-    // profile hides) falls back to the overview with a warning.
-    default_view: { type: 'string', pattern: DEFAULT_VIEW_PATTERN, hint: 'overview, all or domain:<db>/<domain>' },
+    // all (when left out) | overview | connections | domain:<db>/<domain>.
+    // A configured view the render does not have (the view of all tables of
+    // a very large schema, a domain a profile hides) falls back to the
+    // overview with a warning; left out, a schema without the view of all
+    // tables opens on the overview silently.
+    default_view: { type: 'string', pattern: DEFAULT_VIEW_PATTERN, hint: 'all, overview, connections or domain:<db>/<domain>' },
     // Sharing profiles by name, used by `render --profile <name>`. Fields left
     // out take their value from PROFILE_DEFAULTS; `public` exists even when
     // not declared here.
@@ -347,12 +347,6 @@ export const configSchema = {
  */
 /** Output files written when `outputs` in open-erd.yaml does not say otherwise. */
 export const OUTPUT_DEFAULTS = { drawio: true };
-
-/** Overview settings when `overview` in open-erd.yaml does not say otherwise. */
-export const OVERVIEW_DEFAULTS = { min_relations: 2 };
-
-/** Relation count below which an overview line is a weak link, hidden at first. */
-export const minRelations = (config) => ({ ...OVERVIEW_DEFAULTS, ...config.overview }).min_relations;
 
 export const PROFILE_DEFAULTS = {
   drop_evidence: true,

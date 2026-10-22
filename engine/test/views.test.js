@@ -1,17 +1,17 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { buildDiagram, polyNodeId } from '../src/layout/diagram.js';
+import { buildDiagram, domainLinks, domainPairs, polyNodeId } from '../src/layout/diagram.js';
+import { connectionMatrix, domainSummary, strength } from '../src/layout/domains.js';
 import { computeLayout } from '../src/layout/index.js';
 import { serializeLayout } from '../src/layout/layout-file.js';
 import { SELF_STUB } from '../src/layout/router.js';
 import { POLY_VISIBLE_TARGETS } from '../src/layout/table-box.js';
 import { ALL_VIEW, ALL_VIEW_MAX_TABLES, STUB_SLOT, viewNames } from '../src/layout/views.js';
 import { normalizeModel } from '../src/model/load.js';
-import { configSchema } from '../src/model/schema.js';
-import { validateNode } from '../src/model/validate.js';
-import { endMarkers, overviewStrokeWidth } from '../src/render/svg/markers.js';
-import { gridPlace } from '../src/layout/elk-layout.js';
+import { PALETTE } from '../src/palette.js';
+import { cellFill, connectionsSvg } from '../src/render/svg/connections.js';
+import { endMarkers } from '../src/render/svg/markers.js';
 import { HUB_ROUTE_LIMIT, buildScene, renderSvg } from '../src/render/svg/render.js';
 import { pathLength } from './helpers/geometry.js';
 import { fk, loadMulti, loadWorkspace, table } from './helpers/shop.js';
@@ -79,35 +79,25 @@ test('a polymorphic association is one virtual node and one line; targets are da
   assert.ok(attachable.x >= contentFrame.x && attachable.x + attachable.w <= contentFrame.x + contentFrame.w);
 });
 
-test('overview: one line per pair of domains, its width and badge from the relation count', async () => {
-  const { scene, svg } = await multi();
+test('overview: one card per domain and no lines; the pairs of domains behind the cards', async () => {
+  const { scene, svg, diagram, model } = await multi();
   const overview = scene('overview');
-  const counts = Object.fromEntries(overview.relations.map((r) => [r.id, [r.link.count, r.link.kind, r.badge.text]]));
+  assert.deepEqual(overview.relations, []);
+  const counts = Object.fromEntries(domainLinks(diagram).map((l) => [l.id, [l.count, l.kind]]));
   assert.deepEqual(counts, {
     // memberships.role_id -> roles; memberships.user_id is a hub badge.
-    'auth/Identity<->auth/Organizations': [1, 'domain', '1'],
-    'activity/Audit<->auth/Organizations': [1, 'cross_db', '1'],
-    'activity/Events<->shop/Catalog': [1, 'cross_db', '1'],
-    'activity/Events<->shop/Orders': [1, 'cross_db', '1'],
-    'auth/Organizations<->shop/Orders': [1, 'cross_db', '1'],
-    'shop/Catalog<->shop/Orders': [1, 'domain', '1'],
+    'auth/Identity<->auth/Organizations': [1, 'domain'],
+    'activity/Audit<->auth/Organizations': [1, 'cross_db'],
+    'activity/Events<->shop/Catalog': [1, 'cross_db'],
+    'activity/Events<->shop/Orders': [1, 'cross_db'],
+    'auth/Organizations<->shop/Orders': [1, 'cross_db'],
+    'shop/Catalog<->shop/Orders': [1, 'domain'],
     // commentable -> products, attachable -> products
-    'shop/Catalog<->shop/Content': [2, 'domain', '2'],
+    'shop/Catalog<->shop/Content': [2, 'domain'],
     // commentable -> orders, attachable -> orders, refunds
-    'shop/Content<->shop/Orders': [3, 'domain', '3'],
+    'shop/Content<->shop/Orders': [3, 'domain'],
   });
-  // No arrowheads, no text label; orthogonal segments only (no diagonal),
-  // at most two bends here; lines of one relation are weak (hidden at first).
-  for (const r of overview.relations) {
-    assert.equal(r.markers, undefined);
-    assert.equal(r.label, undefined);
-    assert.ok(r.points.slice(1).every(([x, y], i) => x === r.points[i][0] || y === r.points[i][1]), `${r.id}: diagonal segment`);
-    assert.ok(r.points.length <= 4, `${r.id}: ${r.points.length - 2} bends`);
-    assert.equal(r.weak, r.link.count < 2, r.id);
-  }
-  assert.match(svg, /<g class="relation-group overview-link kind-domain weak" data-id="shop\/Catalog&lt;-&gt;shop\/Orders"/);
-  assert.match(svg, /\.overview-link\.weak \{ display: none; \}/);
-  const content = overview.relations.find((r) => r.id === 'shop/Content<->shop/Orders').link.relations;
+  const content = domainLinks(diagram).find((l) => l.id === 'shop/Content<->shop/Orders').relations;
   assert.deepEqual(
     content.map((r) => [r.from.table, r.from.column, r.to, r.cardinality, r.association]),
     [
@@ -116,51 +106,111 @@ test('overview: one line per pair of domains, its width and badge from the relat
       ['shop._.comments', 'commentable_id', 'shop._.orders', 'n-1', 'commentable'],
     ],
   );
-  // Width in a few steps; cross-DB lines dashed; one neutral colour, no review classes.
-  assert.deepEqual([1, 2, 3, 4, 7, 8, 40].map(overviewStrokeWidth), [1.2, 2, 2, 3, 3, 4, 4]);
-  assert.match(svg, /<g class="relation-group overview-link kind-domain" data-id="shop\/Content&lt;-&gt;shop\/Orders"[^>]*>.*?style="stroke-width:2"/);
-  assert.match(svg, /\.overview-link\.kind-cross_db \.relation \{ stroke-dasharray: 8 6;/);
-  assert.doesNotMatch(svg.slice(svg.indexOf('<g class="view"'), svg.indexOf('<script')), /overview-link[^"]*review-/);
+  // No line, badge or number on the overview: cards only.
+  const drawn = svg.slice(svg.indexOf('<g class="view" data-view="overview"'), svg.indexOf('<g class="view" data-view="all"'));
+  assert.doesNotMatch(drawn, /relation-group|count-badge|card-link/);
+  assert.equal((drawn.match(/<g class="domain" data-domain=/g) ?? []).length, diagram.clusters.size);
   assert.deepEqual(
     overview.groups.map((g) => [g.kind, g.group.database, g.group.engine]),
     [['db', 'activity', 'mongodb'], ['db', 'auth', 'postgresql'], ['db', 'shop', 'mysql']],
   );
-  const catalog = overview.nodes.find((n) => n.id === 'shop/Catalog');
-  assert.equal(catalog.box.count.text, '4 tables');
+  // A card: name, table count, note on at most two lines, central table,
+  // related domains with a strength bar; a cross-DB one names its database.
+  const orders = overview.nodes.find((n) => n.id === 'shop/Orders').box;
+  assert.equal(orders.count.text, '4 tables');
+  assert.equal(orders.note.lines.map((l) => l.text).join(' '), model.databases.find((d) => d.database === 'shop').domains.Orders.note);
+  assert.equal(orders.central.text, 'Central: orders');
+  assert.deepEqual(orders.related.map((r) => [r.key, r.count, r.segments, r.db]), [
+    ['shop/Content', 3, 3, null],
+    ['activity/Events', 1, 2, 'activity'],
+    ['auth/Organizations', 1, 2, 'auth'],
+  ]);
+  assert.match(drawn, /<g class="card-related" data-domain="activity\/Events"><title>Events \(activity\): 1 relation with Orders<\/title>/);
+  assert.equal(overview.nodes.find((n) => n.id === 'activity/Events').box.note, null);
+  // Every card the same size, so a new note never makes layout.json stale.
+  assert.equal(new Set(overview.nodes.map((n) => `${n.w}x${n.h}`)).size, 1);
 });
 
-test('references both ways between two domains are one overview line listing both directions', async () => {
-  const back = { from: { table: 'auth.public.roles', columns: ['id'] }, to: { table: 'auth.public.organizations', columns: ['id'] }, cardinality: '1-1', optional: false, kind: 'declared', evidence: ['db'], review: 'pending' };
-  const { scene } = await multi((m) => normalizeModel({ ...m, relations: [...m.relations, back] }));
-  const lines = scene('overview').relations.filter((r) => r.id.includes('auth/Identity') && r.id.includes('auth/Organizations'));
+test('domain summary: most connected first per database, related by strength, ties by name; strength scale', async () => {
+  const { model, diagram } = await multi();
+  const summary = domainSummary(model, diagram);
+  assert.deepEqual(summary.order, ['activity/Events', 'activity/Audit', 'auth/Organizations', 'auth/Identity', 'shop/Orders', 'shop/Content', 'shop/Catalog']);
   assert.deepEqual(
-    lines.map((r) => [r.id, r.link.count, r.link.relations.map((x) => `${x.from.table}->${x.to}`)]),
+    [...summary.cards.values()].map((c) => [c.key, c.connectivity, c.within]),
+    [
+      ['activity/Audit', 1, 0],
+      ['activity/Events', 2, 1],
+      ['auth/Identity', 1, 1],
+      ['auth/Organizations', 3, 2],
+      ['shop/Catalog', 4, 4],
+      ['shop/Content', 5, 3],
+      ['shop/Orders', 6, 3],
+    ],
+  );
+  assert.deepEqual(summary.cards.get('shop/Catalog').related.map((r) => [r.key, r.count, r.crossDb]), [
+    ['shop/Content', 2, false],
+    ['activity/Events', 1, true],
+    ['shop/Orders', 1, false],
+  ]);
+  assert.equal(summary.max, 3);
+  // Square root of the share of the strongest pair (at least 10), 1..5.
+  assert.deepEqual([0, 1, 2, 3, 5, 10, 40].map((n) => strength(n, 10)), [0, 2, 2, 3, 4, 5, 5]);
+  assert.deepEqual([1, 10, 20, 40].map((n) => strength(n, 40)), [1, 3, 4, 5]);
+  // Same model in another order, same summary.
+  const again = domainSummary(model, buildDiagram(normalizeModel({ ...model, tables: [...model.tables].reverse(), relations: [...model.relations].reverse() })));
+  assert.deepEqual(again.order, summary.order);
+});
+
+test('connections matrix: relation counts by direction, the diagonal inside one domain', async () => {
+  const { model, diagram, svg } = await multi();
+  const matrix = connectionMatrix(model, diagram);
+  assert.deepEqual(matrix.keys, domainSummary(model, diagram).order);
+  const count = (a, b) => matrix.counts.get(`${a}\u0000${b}`) ?? 0;
+  // Content's comments and attachments point at orders and refunds; Orders points at none of Content.
+  assert.equal(count('shop/Content', 'shop/Orders'), 3);
+  assert.equal(count('shop/Orders', 'shop/Content'), 0);
+  assert.equal(count('shop/Catalog', 'shop/Catalog'), 4);
+  assert.equal(matrix.max, 3);
+  assert.equal(matrix.maxWithin, 4);
+  // Every directed count adds up to the pairs of domains.
+  const total = [...matrix.counts.values()].reduce((a, b) => a + b, 0);
+  assert.equal(total, domainPairs(diagram).reduce((n, p) => n + p.count, 0));
+  // Drawn as a hidden view with one cell per pair of domains and a legend.
+  const view = svg.slice(svg.indexOf('<g class="view" data-view="connections"'));
+  assert.match(view, /^<g class="view" data-view="connections" data-bounds="[^"]+" style="display:none">/);
+  assert.equal((view.match(/<rect class="mx-cell/g) ?? []).length, matrix.keys.length ** 2);
+  assert.match(view, /<title>Content → Orders: 3 relations, Orders → Content: 0 relations<\/title>/);
+  assert.match(view, /<title>Catalog: 4 relations inside the domain<\/title>/);
+  assert.match(view, /darker = more relations/);
+  const geometry = connectionsSvg(matrix, () => PALETTE[0]).geometry;
+  // Rows and columns in matrix order, databases apart.
+  assert.deepEqual([...geometry.rows.keys()], matrix.keys);
+  assert.ok(matrix.keys.every((k, i) => i === 0 || geometry.cols.get(k) > geometry.cols.get(matrix.keys[i - 1])));
+  assert.equal(geometry.dbs.map((d) => d.database).join(), 'activity,auth,shop');
+  assert.equal(cellFill(0, false, matrix), cellFill(0, true, matrix));
+  assert.notEqual(cellFill(3, false, matrix), cellFill(1, false, matrix));
+});
+
+test('references both ways between two domains are one pair listing both directions', async () => {
+  const back = { from: { table: 'auth.public.roles', columns: ['id'] }, to: { table: 'auth.public.organizations', columns: ['id'] }, cardinality: '1-1', optional: false, kind: 'declared', evidence: ['db'], review: 'pending' };
+  const { diagram } = await multi((m) => normalizeModel({ ...m, relations: [...m.relations, back] }));
+  const lines = domainLinks(diagram).filter((r) => r.id.includes('auth/Identity') && r.id.includes('auth/Organizations'));
+  assert.deepEqual(
+    lines.map((r) => [r.id, r.count, r.relations.map((x) => `${x.from.table}->${x.to}`)]),
     [['auth/Identity<->auth/Organizations', 2, ['auth.public.memberships->auth.public.roles', 'auth.public.roles->auth.public.organizations']]],
   );
 });
 
-test('overview grid: linked domains of a fresh layout are neighbours, the same on every run', () => {
-  // A chain a-b-c-d-e with heavy weights and one stray box: each link should
-  // end up between grid neighbours (straight or one bend).
-  const boxes = ['a', 'b', 'c', 'd', 'e', 'z'].map((id) => ({ id, w: 200, h: 60 }));
-  const pairs = [
-    { from: 'a', to: 'b', weight: 9 },
-    { from: 'b', to: 'c', weight: 7 },
-    { from: 'c', to: 'd', weight: 5 },
-    { from: 'd', to: 'e', weight: 3 },
-    { from: 'e', to: 'a', weight: 1 },
-  ];
-  const placed = gridPlace(boxes, pairs, 80, 2.5);
-  assert.deepEqual(gridPlace(boxes, [...pairs].reverse(), 80, 2.5), placed);
-  const cellOf = (id) => [placed.get(id).x, placed.get(id).y];
-  const xs = [...new Set(boxes.map((b) => placed.get(b.id).x))].sort((p, q) => p - q);
-  const ys = [...new Set(boxes.map((b) => placed.get(b.id).y))].sort((p, q) => p - q);
-  const grid = (id) => [ys.indexOf(cellOf(id)[1]), xs.indexOf(cellOf(id)[0])];
-  for (const { from, to } of pairs.slice(0, 4)) {
-    const [[r1, c1], [r2, c2]] = [grid(from), grid(to)];
-    assert.ok(Math.max(Math.abs(r1 - r2), Math.abs(c1 - c2)) === 1, `${from}-${to} are not neighbours: ${grid(from)} ${grid(to)}`);
+test('overview cards of a fresh layout: a grid in summary order, the same on every run', async () => {
+  const { model, diagram, layout } = await multi();
+  const order = domainSummary(model, diagram).order;
+  const cards = layout.views.overview.clusters;
+  for (const db of ['activity', 'auth', 'shop']) {
+    const placed = Object.entries(cards[db]).sort(([, a], [, b]) => a.y - b.y || a.x - b.x).map(([k]) => k);
+    assert.deepEqual(placed, order.filter((k) => k.startsWith(`${db}/`)), db);
+    for (const b of Object.values(cards[db])) assert.ok(b.x % 10 === 0 && b.y % 10 === 0);
   }
-  for (const b of boxes) assert.ok(placed.get(b.id).x % 10 === 0 && placed.get(b.id).y % 10 === 0, `${b.id} off the grid`);
+  assert.deepEqual((await computeLayout(model)).layout.views.overview, layout.views.overview);
 });
 
 test('hub relations into a hub table are routed per view, hidden until it is selected', async () => {
@@ -262,13 +312,13 @@ test('a self-reference loops out and back on one side, clear of its markers', as
   assert.equal(Math.abs(loop.points[1][0] - edge), SELF_STUB);
 });
 
-test('one SVG holds every view; only the overview shows without script', async () => {
+test('one SVG holds every view and the connections view; only the view of all tables shows without script', async () => {
   const { svg, diagram } = await multi();
   const views = [...svg.matchAll(/<g class="view" data-view="([^"]+)" data-bounds="([^"]+)"( style="display:none")?>/g)];
-  assert.deepEqual(views.map((m) => m[1]), viewNames(diagram));
-  for (const [, name, , hidden] of views) assert.equal(Boolean(hidden), name !== 'overview', name);
-  const overviewBounds = views.find((m) => m[1] === 'overview')[2];
-  assert.match(svg, new RegExp(`^<svg [^>]*viewBox="${overviewBounds}"`));
+  assert.deepEqual(views.map((m) => m[1]), [...viewNames(diagram), 'connections']);
+  for (const [, name, , hidden] of views) assert.equal(Boolean(hidden), name !== 'all', name);
+  const allBounds = views.find((m) => m[1] === 'all')[2];
+  assert.match(svg, new RegExp(`^<svg [^>]*viewBox="${allBounds}"`));
 });
 
 test('multi-database layout and render are byte-identical across runs', async () => {
@@ -339,19 +389,4 @@ test('the view of all tables exists up to ALL_VIEW_MAX_TABLES tables', async () 
     buildDiagram(normalizeModel({ ...base, relations: [], polymorphic: [], tables: Array.from({ length: n }, (_, i) => table(`shop._.t${i}`, 'Bulk', [])) }));
   assert.ok(viewNames(sized(ALL_VIEW_MAX_TABLES)).includes(ALL_VIEW));
   assert.deepEqual(viewNames(sized(ALL_VIEW_MAX_TABLES + 1)), ['overview', 'domain:shop/Bulk']);
-});
-
-test('overview.min_relations: 1 shows every line, a higher value hides more; validated; deterministic', async () => {
-  const counts = async (min) => {
-    const { scene, svg } = await multi(withConfig(min === undefined ? {} : { overview: { min_relations: min } }));
-    return { weak: scene('overview').relations.filter((r) => r.weak).map((r) => r.id), svg };
-  };
-  const byDefault = await counts();
-  assert.equal(byDefault.weak.length, 6);
-  assert.deepEqual((await counts(1)).weak, []);
-  assert.deepEqual((await counts(3)).weak.length, 7);
-  assert.equal((await counts()).svg, byDefault.svg);
-  assert.deepEqual(validateNode({ schema_version: 1, overview: { min_relations: 2 } }, configSchema), []);
-  assert.equal(validateNode({ schema_version: 1, overview: { min_relations: 0 } }, configSchema).length, 1);
-  assert.equal(validateNode({ schema_version: 1, overview: { min_lines: 2 } }, configSchema).length, 1);
 });

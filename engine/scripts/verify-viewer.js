@@ -125,6 +125,22 @@ const stubClipboard = `(() => { window.__copied = null; Object.defineProperty(na
 
 await pause(300);
 await shot(startView.replace(/[:/]/g, '-'), `${viewIs(startView)} && document.querySelector('.oe-toolbar') !== null`);
+// A plain drawing too large to read whole opens the view of all tables at
+// scale 1 around the most central table, with the minimap.
+if (startView === 'all' && (await evaluate(`JSON.parse(document.getElementById('open-erd-data').textContent).changes === undefined`))) {
+  await shot(
+    'all-opens-readable',
+    `(() => { const d = JSON.parse(document.getElementById('open-erd-data').textContent);
+      const m = /scale\\(([\\d.]+)\\)/.exec(document.querySelector('.camera').getAttribute('transform')); const s = Number(m[1]);
+      const v = document.querySelector('g.view[data-view="all"]'); const [, , w, h] = v.getAttribute('data-bounds').split(' ').map(Number);
+      const fits = Math.min((innerWidth - 48) / w, (innerHeight - 44 - 48) / h) * 12 >= 11;
+      if (fits) return true;
+      const t = d.mostCentral && v.querySelector('.table[data-id="' + CSS.escape(d.mostCentral) + '"]');
+      const r = t?.getBoundingClientRect(); const mid = r && Math.abs(r.x + r.width / 2 - innerWidth / 2) < 2 && Math.abs(r.y + r.height / 2 - (44 + (innerHeight - 44) / 2)) < 2;
+      const map = document.querySelector('.oe-minimap')?.closest('foreignObject');
+      return (s === 1 && (!d.mostCentral || mid) && map && map.style.display !== 'none') || { s, mid, map: map?.style.display }; })()`,
+  );
+}
 if (await evaluate(`JSON.parse(document.getElementById('open-erd-data').textContent).changes !== undefined`)) {
   for (const status of ['changed', 'renamed', 'added', 'removed']) {
     const changed = await evaluate(`${inView(`.table.diff-${status}`)}?.getAttribute('data-id') ?? null`);
@@ -137,62 +153,86 @@ if (await evaluate(`JSON.parse(document.getElementById('open-erd-data').textCont
   await shot('overview', viewIs('overview'));
 }
 
-// Overview lines, one per pair of domains: no arrowheads and no text label,
-// a count badge instead, a tooltip, and a panel listing the relations by
-// direction, every entry leading to the referencing table's domain view.
+// Overview: one card per domain and no lines. Hovering the card with most
+// related domains draws a connector to each and fades the others; a
+// connector's tooltip and panel give the relations; a related entry opens
+// that domain; keyboard focus does what hovering does.
 const data = `JSON.parse(document.getElementById('open-erd-data').textContent)`;
 await key('Escape');
 await click(`document.querySelector('.oe-crumbs .oe-link') ?? document.querySelector('.oe-crumbs .here')`);
-const overviewLine = await evaluate(`(() => { const d = ${data}; const lines = [...document.querySelectorAll('g.view[data-view="overview"] .relation-group')];
-  lines.sort((a, b) => d.domainLinks[b.getAttribute('data-id')].length - d.domainLinks[a.getAttribute('data-id')].length);
-  // The busiest line whose middle is its own (another line may cross there).
-  const own = lines.find((g) => { const e = g.querySelector('path.relation-hit') ?? g.querySelector('path.relation'); const m = e.getPointAtLength(e.getTotalLength() / 2).matrixTransform(e.getScreenCTM()); return g.contains(document.elementFromPoint(m.x, m.y)); });
-  return own?.getAttribute('data-id') ?? null; })()`);
-if (overviewLine) {
-  const lineSel = inView(`.relation-group[data-id="${overviewLine}"] path.relation-hit`);
-  await mouse('mouseMoved', await centre(lineSel));
-  await pause(150);
-  await shot(
-    'overview-line-tooltip',
-    `${viewIs('overview')} && [...document.querySelectorAll('.oe-tip')].some((t) => /⇄/.test(t.textContent) && /\\d+ relations?/.test(t.textContent)) && ${inView('.relation-group .marker')} === null && ${inView('.edge-label')} === null && ${visible}.querySelectorAll('.count-badge').length === ${visible}.querySelectorAll('.relation-group').length`,
-  );
-  await click(lineSel);
-  await shot(
-    'overview-line-panel',
-    `(() => { const n = ${data}.domainLinks[${JSON.stringify(overviewLine)}].length; const groups = [...document.querySelectorAll('.oe-panel .sub')].filter((x) => /→ .+ \\(\\d+\\)$/.test(x.textContent)).length;
-      return document.querySelector('.oe-panel h3')?.textContent.includes('⇄') && document.querySelectorAll('.oe-panel li').length === n && groups >= 1 || { n, li: document.querySelectorAll('.oe-panel li').length, groups }; })()`,
-  );
-  const target = await evaluate(`${data}.domainLinks[${JSON.stringify(overviewLine)}][0].from`);
-  await click(`document.querySelector('.oe-panel li .oe-link')`);
-  await shot('overview-line-entry-jump', `${visible}.getAttribute('data-view').startsWith('domain:') && ${inView(`.table.selected[data-id="${target}"]`)} !== null`);
-  await key('Escape');
-  await click(`document.querySelector('.oe-crumbs .oe-link')`);
-}
+const ov = `document.querySelector('g.view[data-view="overview"]')`;
+const relatedOf = (id) => `Object.keys(${data}.domainLinks).filter((k) => { const [a, b] = k.split('<->'); return a !== b && (a === ${JSON.stringify(id)} || b === ${JSON.stringify(id)}); })`;
+await shot(
+  'overview-cards',
+  `${viewIs('overview')} && ${ov}.querySelectorAll('.domain').length === new Set(Object.values(${data}.nodes).map((n) => n.cluster)).size && ${ov}.querySelector('.relation-group, .card-links') === null && [...${ov}.querySelectorAll('.domain')].every((c) => c.querySelector('.card-related, .card-none'))`,
+);
+const busiest = await evaluate(`(() => { const d = ${data}; const n = (id) => Object.keys(d.domainLinks).filter((k) => { const [a, b] = k.split('<->'); return a !== b && (a === id || b === id); }).length;
+  return [...${ov}.querySelectorAll('.domain')].map((c) => c.getAttribute('data-domain')).sort((a, b) => n(b) - n(a))[0]; })()`);
+const hubCard = `${ov}.querySelector('.domain[data-domain=${JSON.stringify(busiest)}]')`;
+await mouse('mouseMoved', await centre(`${hubCard}.querySelector('.card-box')`, 'top'));
+await pause(150);
+await shot(
+  'overview-card-hover',
+  `(() => { const links = [...${ov}.querySelectorAll('.card-links .card-link')]; const want = ${relatedOf(busiest)}.length;
+    const faded = [...${ov}.querySelectorAll('.domain:not(.focus-node)')];
+    return ${ov}.classList.contains('domain-focus') && links.length === want && want > 0 && faded.every((c) => getComputedStyle(c).opacity === '0.3') || { links: links.length, want }; })()`,
+);
+// A connector runs under the cards: take one with a free spot along it.
+const { pairEnds, onConnector } = await evaluate(`(() => { for (const g of ${ov}.querySelectorAll('.card-links .card-link')) { const p = g.querySelector('.card-link-hit');
+  for (const t of [0.5, 0.4, 0.6, 0.3, 0.7]) { const m = p.getPointAtLength(p.getTotalLength() * t).matrixTransform(p.getScreenCTM());
+    if (g.contains(document.elementFromPoint(m.x, m.y))) return { pairEnds: [g.getAttribute('data-from'), g.getAttribute('data-to')], onConnector: { x: m.x, y: m.y } }; } } return {}; })()`);
+const pairKey = pairEnds[0] <= pairEnds[1] ? `${pairEnds[0]}<->${pairEnds[1]}` : `${pairEnds[1]}<->${pairEnds[0]}`;
+await mouse('mouseMoved', onConnector);
+await pause(200);
+await shot(
+  'overview-connector-tooltip',
+  `${ov}.querySelector('.card-links') !== null && [...document.querySelectorAll('.oe-tip')].some((t) => new RegExp(${data}.domainLinks[${JSON.stringify(pairKey)}].length + ' relations? between').test(t.textContent))`,
+);
+await mouse('mousePressed', onConnector);
+await mouse('mouseReleased', onConnector);
+await pause(150);
+await shot('overview-connector-panel', `document.querySelectorAll('.oe-panel .oe-chip').length === ${data}.domainLinks[${JSON.stringify(pairKey)}].length && document.querySelector('.oe-panel h3').textContent.includes('⇄')`);
+await key('Escape');
+const relatedKey = await evaluate(`${hubCard}.querySelector('.card-related').getAttribute('data-domain')`);
+await click(`${hubCard}.querySelector('.card-related .card-related-name')`);
+await shot('overview-related-opens-domain', viewIs(`domain:${relatedKey}`));
+await click(`document.querySelector('.oe-crumbs .oe-link')`);
+await mouse('mouseMoved', { x: 5, y: 890 });
+await pause(400);
+await evaluate(`${hubCard}.focus()`);
+await pause(100);
+await shot('overview-card-keyboard-focus', `${ov}.querySelectorAll('.card-links .card-link').length === ${relatedOf(busiest)}.length`);
+await key('Enter');
+await shot('overview-card-enter-opens', viewIs(`domain:${busiest}`));
+await click(`document.querySelector('.oe-crumbs .oe-link')`);
 
-// Weak overview links (fewer relations than overview.min_relations) start
-// hidden; the toolbar button shows them all, hovering a domain shows its own
-// and fades every other line and domain.
-const weakSel = `g.view[data-view="overview"] .overview-link.weak`;
-const weakDomain = await evaluate(`document.querySelector('${weakSel}')?.getAttribute('data-from') ?? null`);
-if (weakDomain) {
-  const weakShown = `[...document.querySelectorAll('${weakSel}')].filter((g) => getComputedStyle(g).display !== 'none').length`;
-  await click(menuButton('more'));
-  await shot('overview-weak-hidden', `${weakShown} === 0 && /^Show weak links \\(\\d+ hidden\\)$/.test(${menuItem('more', 'Show weak links')}.textContent) && !${menuItem('more', 'Show weak links')}.classList.contains('checked')`);
-  await click(menuItem('more', 'Show weak links'));
-  await shot('overview-weak-shown', `${weakShown} === document.querySelectorAll('${weakSel}').length && ${menuItem('more', 'Show weak links')}.classList.contains('checked')`);
-  await click(menuItem('more', 'Show weak links'));
-  await closeMenu('more');
-  await mouse('mouseMoved', await centre(`document.querySelector('g.view[data-view="overview"] .domain[data-domain=${JSON.stringify(weakDomain)}]')`));
-  await pause(150);
-  await shot(
-    'overview-domain-hover',
-    `(() => { const v = document.querySelector('g.view[data-view="overview"]'); const mine = [...v.querySelectorAll('.overview-link')].filter((g) => [g.getAttribute('data-from'), g.getAttribute('data-to')].includes(${JSON.stringify(weakDomain)}));
-      const others = [...v.querySelectorAll('.domain:not(.focus-node)')];
-      return v.classList.contains('domain-focus') && mine.every((g) => getComputedStyle(g).display !== 'none' && getComputedStyle(g).opacity === '1') && others.length > 0 && others.every((d) => getComputedStyle(d).opacity === '0.25') || { mine: mine.length, others: others.length }; })()`,
-  );
-  await mouse('mouseMoved', { x: 5, y: 890 });
-  await pause(100);
-}
+// Connections: the Map | Connections switch, a cell's tooltip names both
+// directions, a click lists its relations as chips, the header row and
+// column stay on screen while the matrix is panned.
+await click(`document.querySelector('.oe-map-tabs [data-view="connections"]')`);
+const cx = `document.querySelector('g.view[data-view="connections"]')`;
+await shot('connections', `${viewIs('connections')} && ${cx}.querySelectorAll('.mx-cell').length === ${cx}.querySelectorAll('.mx-rows .mx-head').length ** 2 && document.querySelector('.oe-map-tabs [data-view="connections"]').classList.contains('on')`);
+const cellSel = `${cx}.querySelector('.mx-cell[data-from=${JSON.stringify(pairEnds[0])}][data-to=${JSON.stringify(pairEnds[1])}]')`;
+await mouse('mouseMoved', await centre(cellSel));
+await pause(150);
+await shot(
+  'connections-cell-hover',
+  `${cellSel}.classList.contains('hl') && ${cx}.querySelectorAll('.mx-head.hl').length >= 2 && [...document.querySelectorAll('.oe-tip')].some((t) => t.textContent.includes('→') && /relations? between/.test(t.textContent))`,
+);
+await click(cellSel);
+await shot('connections-cell-panel', `document.querySelectorAll('.oe-panel .oe-chip').length === ${data}.domainLinks[${JSON.stringify(pairKey)}].length`);
+await key('Escape');
+// Pan so the first cell sits just right of and below the screen corner:
+// its own header row and column would then be off screen.
+const firstCell = await evaluate(`(() => { const r = ${cx}.querySelector('.mx-cell').getBoundingClientRect(); return { x: r.x, y: r.y }; })()`);
+await send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: 700, y: 500, deltaX: Math.round(firstCell.x - 30), deltaY: Math.round(firstCell.y - 70) });
+await pause(300);
+const colsTop = `${cx}.querySelector('.mx-cols').getBoundingClientRect()`;
+const rowName = `${cx}.querySelector('.mx-rows .mx-head text').getBoundingClientRect()`;
+const cellNow = `${cx}.querySelector('.mx-cell').getBoundingClientRect()`;
+await shot('connections-sticky-headers', `(() => { const c = ${colsTop}; const r = ${rowName}; const cell = ${cellNow};
+  return (Math.abs(c.y - 44) < 2 && r.x >= 0 && r.x < 40 && cell.x < 40 && cell.y < 80) || { cols: c.y, row: r.x, cell: [cell.x, cell.y] }; })()`);
+await click(`document.querySelector('.oe-crumbs .oe-link')`);
 
 // The column with the most enum values: its tooltip stays compact (chips,
 // note, at most 8 values, never past the window) and a click on it lists

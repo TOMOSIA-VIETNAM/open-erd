@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { CLUSTER_GAP, frameAround } from '../src/layout/clusters.js';
 import { GRID } from '../src/layout/table-box.js';
 import { PALETTE } from '../src/palette.js';
-import { computeLayout, formatReport } from '../src/layout/index.js';
+import { checkLayout, computeLayout, formatReport } from '../src/layout/index.js';
 import { normalizeModel } from '../src/model/load.js';
 import { serializeLayout } from '../src/layout/layout-file.js';
 import { axisOrder } from '../src/layout/stability.js';
@@ -259,9 +259,31 @@ test('multi: add a domain', async () => {
     loadMulti,
   );
   assert.deepEqual(reports.overview.added, ['auth/Security']);
+  // The new card goes next to the card it shares most relations with.
+  const cards = after.views.overview.clusters.auth;
+  const [a, b] = [cards['auth/Security'], cards['auth/Organizations']];
+  const gapX = Math.max(a.x, b.x) - Math.min(a.x + a.w, b.x + b.w);
+  const gapY = Math.max(a.y, b.y) - Math.min(a.y + a.h, b.y + b.h);
+  assert.ok((gapX >= 0 && gapX <= 60 && gapY < 0) || (gapY >= 0 && gapY <= 60 && gapX < 0), JSON.stringify({ a, b }));
   assert.ok(after.views['domain:auth/Security']);
   // The new domain view shows organizations as a stub next to it.
   assert.deepEqual(Object.keys(after.views['domain:auth/Security'].clusters[STUB_SLOT]), ['auth.public.organizations']);
+});
+
+test('multi: a domain note or a new relation between domains moves no card', async () => {
+  const model = await loadMulti();
+  const { layout: before } = await computeLayout(model);
+  const noted = {
+    ...model,
+    databases: model.databases.map((db) => (db.database === 'activity' ? { ...db, domains: { Events: { note: 'A much longer note than before, which wraps onto a second line and is cut there with an ellipsis.' } } } : db)),
+  };
+  const linked = changeModel(noted, { relations: [fk('activity._.audit_logs', 'organization_id', 'auth.public.organizations')] });
+  for (const next of [noted, linked]) {
+    checkLayout(next, before);
+    const { layout: after, report } = await computeLayout(next, before);
+    assert.deepEqual(after.views.overview, before.views.overview);
+    assert.deepEqual(report.overview.moved, []);
+  }
 });
 
 test('multi: add a database', async () => {

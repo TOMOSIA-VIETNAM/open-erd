@@ -6,13 +6,13 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { VIEW_SOURCE, buildDiagram, domainLinks } from '../src/layout/diagram.js';
+import { VIEW_SOURCE, buildDiagram } from '../src/layout/diagram.js';
 import { computeLayout } from '../src/layout/index.js';
 import { ALL_VIEW, ALL_VIEW_MAX_TABLES, OVERVIEW, viewNames, viewTree } from '../src/layout/views.js';
 import { applyProfile } from '../src/model/profile.js';
 import { HUB_LAYER, POLY_LAYER, pageName, renderDrawio } from '../src/render/drawio/render.js';
 import { buildScene } from '../src/render/svg/render.js';
-import { endMarkers, overviewStrokeWidth } from '../src/render/svg/markers.js';
+import { endMarkers } from '../src/render/svg/markers.js';
 import { MULTI, loadMulti, loadWorkspace, table } from './helpers/shop.js';
 import { descendants, parseXml } from './helpers/xml.js';
 
@@ -87,25 +87,16 @@ test('drawio: ids are unique per page and every parent, source and target exists
 test('drawio: every relation is a connector on its column rows with crow\'s foot ends and the routed waypoints', async () => {
   const { model, xml } = await multi();
   const diagram = buildDiagram(model);
-  for (const page of parseXml(xml).children) {
+  for (const page of parseXml(xml).children.slice(1)) {
     const name = page.attrs.id;
     const cells = new Map(cellsOf(page).map((c) => [c.id, c]));
     const { links } = viewTree(model, diagram, name);
     assert.ok(links.length > 0);
-    for (const link of links.filter((l) => name !== OVERVIEW || l.count >= 2)) {
+    for (const link of links) {
       const edge = cells.get(`e|${link.id}`);
       assert.ok(edge, `${name}: no connector for ${link.id}`);
       assert.equal(edge.edge, '1');
       assert.ok(descendants(edge.geometry).some((e) => e.name === 'Array'), 'waypoints from the router');
-      if (name === OVERVIEW) {
-        // Straight segments through the waypoints, no arrowheads, the count as label, width by count.
-        assert.equal(edge.style.edgeStyle, 'none');
-        assert.deepEqual([edge.style.startArrow, edge.style.endArrow], ['none', 'none']);
-        assert.equal(edge.value, String(link.count));
-        assert.equal(Number(edge.style.strokeWidth), overviewStrokeWidth(link.count));
-        assert.equal(edge.style.dashed, link.kind === 'cross_db' ? '1' : '0');
-        continue;
-      }
       assert.equal(edge.style.edgeStyle, 'orthogonalEdgeStyle');
       for (const [side, end] of [['from', edge.source], ['to', edge.target]]) {
         const node = diagram.nodes.get(link[side].node);
@@ -124,13 +115,21 @@ test('drawio: every relation is a connector on its column rows with crow\'s foot
       assert.equal(edge.style.endArrow, ER[markers.to], link.id);
     }
   }
-  // Overview lines are the domain links, one per pair of domains; weak links
-  // (fewer than overview.min_relations relations) are left out, and counted.
-  const overviewCells = cellsOf(parseXml(xml).children[0]);
-  const strong = domainLinks(diagram).filter((d) => d.count >= 2);
-  assert.ok(strong.length > 0 && strong.length < domainLinks(diagram).length);
-  assert.deepEqual(overviewCells.filter((c) => c.edge === '1').map((c) => c.id).sort(), strong.map((d) => `e|${d.id}`).sort());
-  assert.equal(overviewCells.find((c) => c.id === 'weak-links').value, `${domainLinks(diagram).length - strong.length} weak links hidden (fewer than 2 relations)`);
+});
+
+test('drawio: the Overview page is the domain cards, without lines', async () => {
+  const { model, xml } = await multi();
+  const diagram = buildDiagram(model);
+  const cells = cellsOf(parseXml(xml).children[0]);
+  assert.deepEqual(cells.filter((c) => c.edge === '1'), []);
+  const cards = cells.filter((c) => c.id.startsWith('n|') && !c.id.endsWith('|accent'));
+  assert.deepEqual(cards.map((c) => c.id.slice(2)).sort(), [...diagram.clusters.keys()]);
+  const orders = cards.find((c) => c.id === 'n|shop/Orders');
+  assert.equal(orders.style.fillColor, '#ffffff');
+  for (const text of ['Orders', '4 tables', 'What a customer bought, how it was paid and what was refunded.', 'Central: orders', 'Related domains', 'Content', 'Events', 'activity']) {
+    assert.ok(orders.value.includes(text), text);
+  }
+  assert.ok(cells.some((c) => c.id === 'n|shop/Orders|accent' && c.parent === 'n|shop/Orders'));
 });
 
 test('drawio: two line styles as in the SVG, one neutral colour; tooltips only on enum columns', async () => {

@@ -6,7 +6,7 @@ import { TABLE_GAP } from './clusters.js';
 import { roundToGrid } from './table-box.js';
 
 // Domains are arranged with ELK's rectangle packing (the overview's domain
-// boxes on a grid instead, see gridPlace): it fills rows towards a
+// cards on a plain grid instead, see cardGrid in index.js): it fills rows towards a
 // 16:9 page instead of growing one long row the way a layered layout does.
 // Packing ignores edges, so relation structure enters through the input order
 // (see affinityOrder): ELK keeps that order row by row, which puts strongly
@@ -199,120 +199,4 @@ export async function layoutTables(boxes, links, central = new Set()) {
  */
 export function layoutGroups(frames, links, gap, aspectRatio) {
   return pack(frames, links.map((l) => [l.from, l.to, l.weight]), gap + 20, aspectRatio);
-}
-
-// Grid distance between two cells as a line between them reads: next to
-// each other in a row or column is a straight line (1), diagonal neighbours
-// a line with one bend (2); further apart in one row or column a box sits in
-// between and the line must go round it, which costs one step more.
-function cellDistance(p, q) {
-  const [dr, dc] = [Math.abs(p.r - q.r), Math.abs(p.c - q.c)];
-  return dr + dc + ((dr === 0 || dc === 0) && dr + dc > 1 ? 1 : 0);
-}
-
-/**
- * Places boxes from scratch on a grid of rows and columns, so that boxes
- * sharing many relations are neighbours (a short straight line, or one bend)
- * and lines rarely cross. Used for the domains of one database on the
- * overview, whose boxes are all the same height.
- *
- * Deterministic greedy placement on relation counts, then local swaps:
- *   1. the number of columns gives the frame the shape closest to `aspect`;
- *   2. the most connected box takes the middle cell; then, one at a time,
- *      the box most linked to the placed ones (ties: most links overall,
- *      then id) takes the free cell nearest, by relation count times grid
- *      distance, to the boxes it is linked with (ties: nearer the middle,
- *      then reading order); boxes without links fill the remaining cells
- *      last, in id order;
- *   3. any swap of two cells (or a move to a free one) that lowers the
- *      total of relation count times distance is made, in a fixed order,
- *      until none is left.
- * Columns are as wide as their widest box, boxes centred in them; empty
- * rows and columns take no space. `pairs`: [{ from, to, weight? }].
- * Returns Map id -> { x, y } on the grid.
- */
-export function gridPlace(boxes, pairs, gap, aspect) {
-  const spacing = gap + 20;
-  const n = boxes.length;
-  const weights = pairWeights(pairs.map((p) => [p.from, p.to, p.weight]));
-  const weight = (a, b) => (a === b ? 0 : (weights.get(pairKey(a, b)) ?? 0));
-  const ids = boxes.map((b) => b.id).sort(compareStrings);
-  const degree = new Map(ids.map((id) => [id, ids.reduce((s, o) => s + weight(id, o), 0)]));
-  const cellW = boxes.reduce((s, b) => s + b.w, 0) / n + spacing;
-  const cellH = Math.max(...boxes.map((b) => b.h)) + spacing;
-  let cols = 1;
-  for (let c = 2; c <= n; c++) {
-    const off = (k) => Math.abs(Math.log((k * cellW) / (Math.ceil(n / k) * cellH) / aspect));
-    if (off(c) < off(cols) - 1e-9) cols = c;
-  }
-  const rows = Math.ceil(n / cols);
-  const cells = [];
-  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) cells.push({ r, c });
-  const middle = { r: (rows - 1) / 2, c: (cols - 1) / 2 };
-  const fromMiddle = (p) => Math.abs(p.r - middle.r) + Math.abs(p.c - middle.c);
-
-  const at = new Map();
-  const taken = new Map();
-  const cost = (id, cell) => [...at].reduce((s, [o, p]) => s + weight(id, o) * cellDistance(cell, p), 0);
-  const linked = ids.filter((id) => degree.get(id) > 0);
-  const unplaced = new Set(linked);
-  while (unplaced.size > 0) {
-    const towards = (id) => [...at.keys()].reduce((s, o) => s + weight(id, o), 0);
-    const [id] = [...unplaced].sort((a, b) => towards(b) - towards(a) || degree.get(b) - degree.get(a) || compareStrings(a, b));
-    const free = cells.filter((p) => !taken.has(`${p.r},${p.c}`));
-    const [cell] = free.sort((p, q) => cost(id, p) - cost(id, q) || fromMiddle(p) - fromMiddle(q) || p.r - q.r || p.c - q.c);
-    at.set(id, cell);
-    taken.set(`${cell.r},${cell.c}`, id);
-    unplaced.delete(id);
-  }
-  for (const id of ids.filter((x) => degree.get(x) === 0)) {
-    const cell = cells.find((p) => !taken.has(`${p.r},${p.c}`));
-    at.set(id, cell);
-    taken.set(`${cell.r},${cell.c}`, id);
-  }
-
-  // Total cost changes when `id` moves to `cell` and whatever is there moves
-  // to `id`'s old cell.
-  const swapGain = (id, cell) => {
-    const other = taken.get(`${cell.r},${cell.c}`);
-    const home = at.get(id);
-    const around = (x, from, to) => ids.reduce((s, o) => (o === x || o === other || o === id ? s : s + weight(x, o) * (cellDistance(to, at.get(o)) - cellDistance(from, at.get(o)))), 0);
-    return around(id, home, cell) + (other ? around(other, cell, home) : 0);
-  };
-  for (let improved = true, rounds = 0; improved && rounds < 50; rounds++) {
-    improved = false;
-    for (const id of linked) {
-      for (const cell of cells) {
-        if (swapGain(id, cell) >= -1e-9) continue;
-        const home = at.get(id);
-        const other = taken.get(`${cell.r},${cell.c}`);
-        taken.delete(`${home.r},${home.c}`);
-        if (other) {
-          at.set(other, home);
-          taken.set(`${home.r},${home.c}`, other);
-        }
-        at.set(id, cell);
-        taken.set(`${cell.r},${cell.c}`, id);
-        improved = true;
-      }
-    }
-  }
-
-  const byId = new Map(boxes.map((b) => [b.id, b]));
-  const usedRows = [...new Set([...at.values()].map((p) => p.r))].sort((a, b) => a - b);
-  const usedCols = [...new Set([...at.values()].map((p) => p.c))].sort((a, b) => a - b);
-  const colWidth = new Map(usedCols.map((c) => [c, Math.max(...ids.filter((id) => at.get(id).c === c).map((id) => byId.get(id).w))]));
-  const colX = new Map();
-  let x = 0;
-  for (const c of usedCols) {
-    colX.set(c, x);
-    x += colWidth.get(c) + spacing;
-  }
-  const rowY = new Map(usedRows.map((r, i) => [r, i * cellH]));
-  return new Map(
-    boxes.map((b) => {
-      const p = at.get(b.id);
-      return [b.id, { x: colX.get(p.c) + roundToGrid((colWidth.get(p.c) - b.w) / 2), y: rowY.get(p.r) }];
-    }),
-  );
 }
