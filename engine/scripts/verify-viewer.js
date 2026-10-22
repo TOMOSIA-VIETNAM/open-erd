@@ -229,7 +229,12 @@ await mouse('mouseMoved', await centre(inView(`.table[data-id="${column[0]}"] .c
 await pause(150);
 await shot('column-tooltip', `[...document.querySelectorAll('foreignObject')].some((f) => f.style.display !== 'none' && f.querySelector('.oe-tip'))`);
 
-await click(`${visible}.querySelector('.relation-group:not(.kind-polymorphic) path.relation-hit')`);
+// Pick a line whose middle is actually clickable: on big views the middle of
+// the first line can sit under the side panel or another box.
+await click(`[...${visible}.querySelectorAll('.relation-group:not(.kind-polymorphic) path.relation-hit')].find((e) => {
+  const m = e.getPointAtLength(e.getTotalLength() / 2).matrixTransform(e.getScreenCTM());
+  return e.closest('.relation-group').contains(document.elementFromPoint(m.x, m.y));
+})`);
 // The flow animates; two frames apart the dash offset must differ.
 await shot('line-flow', `${inView('.flow')} !== null && ${inView('.flow-target')} !== null`);
 const offsets = await evaluate(`new Promise((done) => { const f = ${inView('.flow')}; const a = getComputedStyle(f).strokeDashoffset; setTimeout(() => done([a, getComputedStyle(f).strokeDashoffset]), 250); })`);
