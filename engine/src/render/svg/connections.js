@@ -22,15 +22,17 @@ const PAD = 12;
 const SLANT = Math.PI / 4;
 const DB_ROW = 26;
 const DB_GAP = 10;
-const MIN_CORNER = { w: 120, h: 60 };
+const MIN_CORNER = { w: 160, h: 70 };
 // Title and legend above the matrix; they scroll away with it.
-const LEGEND_HEIGHT = 64;
+const LEGEND_HEIGHT = 86;
 const MARGIN = 40;
 
 // Sequential shades, lightest first: blue between domains, grey within one.
 export const SHADES = ['#dce7f9', '#b4ccf2', '#82a8e6', '#4f80d4', '#2556b0'];
 export const WITHIN_SHADES = ['#eef0f3', '#e1e5eb', '#d2d8e0', '#c1c8d3', '#aeb6c3'];
 const EMPTY = '#f7f8fa';
+// From this shade up a count is written in white.
+const DARK_LEVEL = 4;
 
 const escapeXml = (text) => text.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 const nameOf = (key) => key.slice(key.indexOf('/') + 1);
@@ -90,20 +92,22 @@ export function matrixGeometry(matrix) {
 // Title, then one legend line: what a row and a column mean, the shades.
 function legendSvg() {
   const parts = [`<text class="mx-title" x="${PAD}" y="${PAD + 8}" dominant-baseline="central">Relations between domains</text>`];
-  const y = PAD + 36;
+  parts.push(`<text class="mx-legend" x="${PAD}" y="${PAD + 32}" dominant-baseline="central">Read a row: how many relations its tables point to each column's domain. Grey diagonal = relations inside the same domain.</text>`);
+  const y = PAD + 56;
   let x = PAD;
   const words = (text) => {
     parts.push(`<text class="mx-legend" x="${x}" y="${y}" dominant-baseline="central">${text}</text>`);
     x += Math.ceil(measureText(text, LEGEND_FONT)) + 16;
   };
-  words('Each row references the column domains');
+  words('Relations:');
   SHADES.forEach((fill, i) => parts.push(`<rect x="${x + i * (SWATCH + 2)}" y="${y - SWATCH / 2}" width="${SWATCH}" height="${SWATCH}" fill="${fill}"/>`));
   x += STRENGTH_SEGMENTS * (SWATCH + 2) + 4;
   words('darker = more relations');
   parts.push(`<rect x="${x}" y="${y - SWATCH / 2}" width="${SWATCH}" height="${SWATCH}" fill="${WITHIN_SHADES[2]}"/>`);
   x += SWATCH + 6;
   words('inside one domain');
-  return { svg: `<g class="mx-legend-strip">${parts.join('')}</g>`, w: x };
+  const intro = Math.ceil(measureText("Read a row: how many relations its tables point to each column's domain. Grey diagonal = relations inside the same domain.", LEGEND_FONT)) + PAD;
+  return { svg: `<g class="mx-legend-strip">${parts.join('')}</g>`, w: Math.max(x, intro) };
 }
 
 /**
@@ -116,6 +120,7 @@ export function connectionsSvg(matrix, colorOf) {
   const { keys, counts } = matrix;
   const count = (a, b) => counts.get(`${a}\u0000${b}`) ?? 0;
   const cells = [];
+  const nums = [];
   for (const a of keys) {
     for (const b of keys) {
       const n = count(a, b);
@@ -124,6 +129,11 @@ export function connectionsSvg(matrix, colorOf) {
       cells.push(
         `<rect class="mx-cell${within ? ' within' : ''}" data-from="${escapeXml(a)}" data-to="${escapeXml(b)}" x="${g.cols.get(b)}" y="${g.rows.get(a)}" width="${CELL}" height="${CELL}" fill="${cellFill(n, within, matrix)}"><title>${escapeXml(title)}</title></rect>`,
       );
+      // The count itself, light on the darkest shades.
+      if (n > 0) {
+        const dark = !within && strength(n, matrix.max) >= DARK_LEVEL;
+        nums.push(`<text class="mx-num${dark ? ' on-dark' : ''}" x="${g.cols.get(b) + CELL / 2}" y="${g.rows.get(a) + CELL / 2}" dominant-baseline="central" text-anchor="middle">${n}</text>`);
+      }
     }
   }
   // Top of the cells, below the legend and the column names.
@@ -156,10 +166,13 @@ export function connectionsSvg(matrix, colorOf) {
     );
   });
   const svg = [
-    `<g class="mx-cells">${cells.join('')}<path class="mx-grid" d="${grid}"/>${separators ? `<path class="mx-sep" d="${separators}"/>` : ''}</g>`,
+    `<g class="mx-cells">${cells.join('')}<path class="mx-grid" d="${grid}"/>${separators ? `<path class="mx-sep" d="${separators}"/>` : ''}${nums.join('')}</g>`,
     `<g class="mx-rows mx-sticky-x"><rect class="mx-bg" x="0" y="${top}" width="${g.corner.w}" height="${g.bottom - top}"/>${dbRows.join('')}${rowHeads.join('')}</g>`,
     `<g class="mx-cols mx-sticky-y" data-top="${g.corner.y}"><rect class="mx-bg" x="${g.corner.w}" y="${g.corner.y}" width="${g.bounds.x + g.bounds.w - g.corner.w}" height="${g.corner.h}"/>${colHeads.join('')}</g>`,
-    `<g class="mx-corner mx-sticky-x mx-sticky-y" data-top="${g.corner.y}"><rect class="mx-bg" x="0" y="${g.corner.y}" width="${g.corner.w}" height="${g.corner.h}"/></g>`,
+    // Axis titles in the corner, where the two header strips meet.
+    `<g class="mx-corner mx-sticky-x mx-sticky-y" data-top="${g.corner.y}"><rect class="mx-bg" x="0" y="${g.corner.y}" width="${g.corner.w}" height="${g.corner.h}"/>` +
+      `<text class="mx-axis" x="${g.corner.w - 8}" y="${top - 30}" dominant-baseline="central" text-anchor="end">Referenced domain →</text>` +
+      `<text class="mx-axis" x="${PAD}" y="${top - 10}" dominant-baseline="central">Referencing domain ↓</text></g>`,
     legendSvg().svg,
   ].join('');
   return { svg, bounds: g.bounds, geometry: g };
@@ -172,4 +185,8 @@ export const CONNECTIONS_STYLE = `.mx-bg { fill: #ffffff; }
 .mx-db { font-size: ${DB_FONT.size}px; font-weight: ${DB_FONT.weight}; fill: #56627a; }
 .mx-title { font-size: ${TITLE_FONT.size}px; font-weight: ${TITLE_FONT.weight}; fill: #1f2a3d; }
 .mx-legend { font-size: ${LEGEND_FONT.size}px; font-weight: ${LEGEND_FONT.weight}; fill: #56627a; }
-.mx-head-hit { fill: transparent; }`;
+.mx-head-hit { fill: transparent; }
+.mx-axis { font-size: 11px; font-weight: 700; fill: #7a8597; }
+.mx-num { font-size: 10px; font-weight: 700; fill: #2a3546; pointer-events: none; }
+.mx-num.on-dark { fill: #ffffff; }
+.mx-cell.cross { stroke: #8a96a8; stroke-width: 1; }`;

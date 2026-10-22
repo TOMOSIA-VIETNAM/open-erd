@@ -13,7 +13,7 @@ import { measureText } from '../../text/measure.js';
 import { FONT_FAMILY, TEXT_STYLE_CSS, fontFaceCss } from '../../text/font.js';
 import { PALETTE } from '../../palette.js';
 import { CONNECTIONS_STYLE, connectionsSvg } from './connections.js';
-import { UNCONFIRMED_DASH, endMarkers, enumIconSvg, indexIconSvg, isConfirmed, keyIconSvg, linkIconSvg, markerSvg, overviewStrokeWidth, starIconSvg, tableIconSvg } from './markers.js';
+import { ICON_PAINT, UNCONFIRMED_DASH, endMarkers, enumIconSvg, indexIconSvg, isConfirmed, keyIconSvg, linkIconSvg, markerSvg, overviewStrokeWidth, starIconSvg, tableIconSvg } from './markers.js';
 import viewerBundle from './viewer-bundle.json' with { type: 'json' };
 
 const CANVAS_MARGIN = 40;
@@ -48,6 +48,8 @@ const VIEWER_STYLE = `.row-hit { fill: transparent; }
 .view.dimmed.center-selected .relation-group.hop-2:not(.hl) { opacity: 0.5; }
 .hl > rect:last-of-type { stroke: #5b8def; stroke-width: 2; }
 .selected > rect:last-of-type { stroke: #1d4ed8; stroke-width: 3; }
+.arrive > rect:last-of-type { stroke: #e8590c; stroke-width: 3; animation: oe-arrive 0.4s ease-in-out 4 alternate; }
+@keyframes oe-arrive { to { stroke-width: 8; } }
 .flow-target > rect:last-of-type { stroke: #e8590c; stroke-width: 3; animation: oe-pulse 0.9s ease-in-out infinite alternate; }
 .relation-group.hl .relation, .relation-group.hl .marker { stroke: #2563eb; stroke-width: 2; }
 .view.domain-focus .domain:not(.focus-node) { opacity: 0.3; }
@@ -101,16 +103,23 @@ const VIEWER_STYLE = `.row-hit { fill: transparent; }
 .oe-more-menu { width: 340px; }
 .oe-spotlight-host { position: relative; width: 100%; height: 100%; }
 .oe-spotlight-backdrop { position: absolute; inset: 0; background: rgba(20, 30, 50, 0.28); }
-.oe-spotlight { position: absolute; left: 50%; top: 12%; transform: translateX(-50%); width: min(640px, calc(100vw - 32px)); background: #ffffff; border-radius: 12px; box-shadow: 0 18px 48px rgba(20, 30, 50, 0.3); overflow: hidden; }
+.oe-spotlight { position: absolute; left: 50%; top: 12%; transform: translateX(-50%); width: min(900px, 90vw); background: #ffffff; border-radius: 12px; box-shadow: 0 18px 48px rgba(20, 30, 50, 0.3); overflow: hidden; }
 .oe-spotlight-field { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid #eef1f5; color: #7a8597; }
 .oe-spotlight-input { flex: 1; font: inherit; font-size: 18px; border: 0; outline: none; color: #1f2a3d; background: none; }
 .oe-spotlight-list { max-height: 420px; overflow: auto; padding: 4px 0; }
-.oe-spotlight-list .oe-result { display: flex; align-items: baseline; gap: 10px; width: 100%; text-align: left; padding: 7px 16px; border: 0; background: none; font: inherit; cursor: pointer; }
+.oe-spotlight-list .oe-result { display: flex; align-items: baseline; gap: 10px; white-space: nowrap; min-width: 0; width: 100%; text-align: left; padding: 7px 16px; border: 0; background: none; font: inherit; cursor: pointer; }
 .oe-spotlight-list .oe-result.active { background: #eef3fb; }
 .oe-result .kind { flex: none; width: 38px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; color: #7a8597; }
 .oe-result .kind.is-table { color: #2f6fd6; }
-.oe-result .name { font-weight: 700; color: #1f2a3d; overflow-wrap: anywhere; }
-.oe-result .where { color: #7a8597; font-size: 12px; margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%; }
+.oe-result .name { flex: 0 1 auto; font-weight: 700; color: #1f2a3d; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 70%; }
+.oe-result .where { flex: 1 1 0; min-width: 0; text-align: right; color: #7a8597; font-size: 12px; margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.oe-join-spot .oe-spotlight-field { padding: 10px 16px; }
+.oe-field-label { flex: none; width: 44px; font-size: 12px; font-weight: 700; color: #56627a; text-transform: uppercase; letter-spacing: 0.04em; }
+.oe-toast { display: inline-block; background: #1f2a3d; color: #ffffff; font-size: 13px; padding: 8px 14px; border-radius: 8px; box-shadow: 0 6px 18px rgba(20, 30, 50, 0.25); white-space: nowrap; }
+.oe-keys { border-collapse: collapse; width: 100%; }
+.oe-keys td { padding: 5px 6px; border-bottom: 1px solid #f0f2f6; vertical-align: top; }
+.oe-keys kbd { font: inherit; font-size: 12px; color: #1f2a3d; background: #f1f4f8; border: 1px solid #dfe4ec; border-radius: 4px; padding: 1px 6px; white-space: nowrap; }
+.oe-view-tabs .oe-btn { height: 30px; font-size: 12.5px; padding: 0 10px; }
 .oe-spotlight-empty { padding: 14px 16px; color: #7a8597; }
 .oe-spotlight-hint { padding: 6px 16px; font-size: 11px; color: #9aa4b5; border-top: 1px solid #eef1f5; }
 .oe-chip-group { margin: 8px 0 4px; }
@@ -129,8 +138,8 @@ const VIEWER_STYLE = `.row-hit { fill: transparent; }
 .oe-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.92em; color: #4c4f9e; background: #f1f1fa; border-radius: 3px; padding: 0 3px; overflow-wrap: anywhere; }
 .oe-tip .oe-code { color: #c8caff; background: #2c3650; }
 .oe-star { color: #d99a00; }
-.oe-copy-menu { position: static; width: max-content; max-width: 100%; margin-top: 4px; box-shadow: none; }
-.oe-panel .oe-drop { position: static; }
+.oe-popover { position: absolute; top: calc(100% + 4px); left: 0; right: auto; width: max-content; min-width: 140px; z-index: 3; }
+.oe-panel .oe-drop { position: relative; }
 .legend-central { fill: #fde7a8; stroke: #a87a00; }
 .oe-link { color: #1d4ed8; cursor: pointer; background: none; border: 0; padding: 0; font: inherit; }
 .oe-link:hover { text-decoration: underline; }
@@ -148,6 +157,14 @@ const VIEWER_STYLE = `.row-hit { fill: transparent; }
 .oe-panel { background: #ffffff; border: 1px solid #c3cad5; border-radius: 8px; padding: 12px 14px; box-shadow: 0 6px 18px rgba(20, 30, 50, 0.12); overflow: auto; }
 .oe-panel h3 { margin: 0 0 4px; font-size: 14px; overflow-wrap: anywhere; }
 .oe-ph { margin-bottom: 10px; }
+.oe-trail { display: flex; align-items: center; gap: 4px; margin: -2px 0 8px; font-size: 12px; color: #7a8597; min-width: 0; }
+.oe-trail .items { display: flex; align-items: center; gap: 4px; flex: 1 1 auto; min-width: 0; justify-content: flex-end; overflow: hidden; white-space: nowrap; }
+.oe-trail .items > * { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.oe-trail .items > .here, .oe-trail .items > .sep { flex: none; }
+.oe-trail .here { color: #1f2a3d; }
+.oe-trail-btn { flex: none; font: inherit; width: 22px; height: 22px; border: 1px solid #dfe4ec; border-radius: 5px; background: #ffffff; color: #3d4a5e; cursor: pointer; padding: 0; }
+.oe-trail-btn:hover:not(:disabled) { background: #eef3fb; }
+.oe-trail-btn:disabled { color: #c3cad5; cursor: default; }
 .oe-ph-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .oe-ph-name { font-size: 15px; color: #172033; overflow-wrap: anywhere; }
 .oe-domain-chip { font: inherit; font-size: 11px; line-height: 18px; padding: 0 8px; border: 1px solid; border-radius: 9px; background: #ffffff; cursor: pointer; }
@@ -188,8 +205,10 @@ const VIEWER_STYLE = `.row-hit { fill: transparent; }
 .oe-idx .cols { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #1f2a3d; }
 .oe-idx .iname { font-size: 11px; color: #9aa4b5; overflow-wrap: anywhere; }
 .oe-idx .where { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: #7a8597; flex-basis: 100%; }
-.oe-legend-pill { font: inherit; font-size: 12px; padding: 4px 12px; border: 1px solid #c3cad5; border-radius: 14px; background: #ffffff; color: #3d4a5e; box-shadow: 0 2px 8px rgba(20, 30, 50, 0.12); cursor: pointer; }
-.oe-legend-pill:hover { background: #f1f4f8; }
+.oe-legend-pill { display: inline-flex; align-items: center; gap: 8px; font: inherit; font-size: 12px; font-weight: 700; padding: 6px 10px; border: 1px solid #c3cad5; border-radius: 8px; background: #ffffff; color: #3d4a5e; box-shadow: 0 6px 18px rgba(20, 30, 50, 0.12); cursor: pointer; transition: transform 0.12s, border-color 0.12s, box-shadow 0.12s; }
+.oe-legend-pill:hover { border-color: #8a96a8; transform: translateY(-1px); box-shadow: 0 8px 22px rgba(20, 30, 50, 0.18); }
+.oe-legend-glyph { flex: none; overflow: visible; }
+.oe-chevron { color: #7a8597; }
 .oe-back-pill { font: inherit; font-size: 12px; padding: 4px 12px 4px 10px; border: 1px solid #c3cad5; border-radius: 14px; background: #ffffff; color: #1d4ed8; box-shadow: 0 2px 8px rgba(20, 30, 50, 0.12); cursor: pointer; white-space: nowrap; max-width: 360px; overflow: hidden; text-overflow: ellipsis; }
 .oe-back-pill:hover { background: #eef3fb; }
 /* Pills float over the drawing: a drag that starts on one selects no text. */
@@ -290,6 +309,11 @@ const DIFF_STYLE = [
 // Lines are one neutral colour, solid when confirmed and dashed when not
 // (see isConfirmed). Review mode (a class the viewer sets on the root)
 // colours them by review state for reviewers: pending amber, stale red.
+// Icon colours come from ICON_PAINT so the SVG and the draw.io export never drift apart.
+const ICON_CSS = Object.entries(ICON_PAINT)
+  .map(([cls, paint]) => `.${cls} { ${Object.entries(paint).map(([k, v]) => `${k}: ${v};`).join(' ')} }`)
+  .join('\n');
+
 const STYLE = `${fontFaceCss()}
 text { font-family: '${FONT_FAMILY}', sans-serif; ${TEXT_STYLE_CSS} }
 .cluster-label { font-size: ${LABEL_FONT.size}px; font-weight: ${LABEL_FONT.weight}; }
@@ -303,12 +327,7 @@ text { font-family: '${FONT_FAMILY}', sans-serif; ${TEXT_STYLE_CSS} }
 .column-name { font-size: 12px; font-weight: 400; fill: #2a3546; }
 .column-name.pk { font-weight: 700; }
 .column-type { font-size: 12px; font-weight: 400; fill: #7a8597; }
-.hint-enum { fill: none; stroke: #7c5cc4; stroke-width: 1.3; stroke-linecap: round; }
-.icon-pk { fill: none; stroke: #c98a04; stroke-width: 1.4; stroke-linecap: round; }
-.icon-fk { fill: none; stroke: #2f6fd6; stroke-width: 1.3; stroke-linecap: round; }
-.icon-index { fill: #1f9d8f; stroke: none; }
-.icon-table { fill: none; stroke: #5f6b7e; stroke-width: 1.1; }
-.icon-central { fill: #f2b705; stroke: #a87a00; stroke-width: 0.8; stroke-linejoin: round; }
+${ICON_CSS}
 .review-icon { fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 .review-icon-reviewed { stroke: #2f9e44; }
 .review-icon-pending { stroke: #c27c0e; }
@@ -842,7 +861,7 @@ function cardSvg(n, colors, colorOf, marks) {
       `<text class="card-related-name" x="${nameX}" y="${cy}" dominant-baseline="central">${escapeXml(r.name.text)}</text>${tag}${segs}</g>`
     );
   });
-  const none = box.related.length === 0 ? `<text class="card-none" x="${left}" y="${y + c.relatedY[0]}" dominant-baseline="central">No relations with other domains</text>` : '';
+  const none = box.related.length === 0 ? `<text class="card-none" x="${left}" y="${y + box.layout.relatedY[0]}" dominant-baseline="central">No relations with other domains</text>` : '';
   const tip = [box.title.full, box.count.full, box.note?.full, box.central?.full].filter(Boolean).join('\n');
   return (
     `<g class="domain${diffClass(marks, n.id)}" data-domain="${escapeXml(n.id)}"><title>${escapeXml(tip)}</title>` +
@@ -852,8 +871,8 @@ function cardSvg(n, colors, colorOf, marks) {
     text('card-count', right, box.count, 'end') +
     note +
     central +
-    `<path class="card-divider" d="M${left} ${y + c.dividerY}H${right}"/>` +
-    `<text class="card-label" x="${left}" y="${y + c.relatedLabelY}" dominant-baseline="central">Related domains</text>` +
+    `<path class="card-divider" d="M${left} ${y + box.layout.dividerY}H${right}"/>` +
+    `<text class="card-label" x="${left}" y="${y + box.layout.relatedLabelY}" dominant-baseline="central">Related domains</text>` +
     related.join('') +
     none +
     '</g>'

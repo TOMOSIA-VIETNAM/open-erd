@@ -139,7 +139,7 @@ export function assertTextFits(scene) {
         const tag = r.db ? measureText(r.db, CARD_DB_FONT) + 8 + CARD.dbGap : 0;
         assert.ok(CARD.swatch + measureText(r.name.text, CARD_TEXT_FONT) + tag + CARD.barGap + bar <= cardInner + 1, `${scene.name}: ${id}: related ${r.key} runs into its bar`);
       }
-      assert.ok(box.related.length <= CARD.relatedY.length && CARD.relatedY.at(-1) + 10 <= box.h, `${scene.name}: ${id}: related rows overflow`);
+      assert.ok(box.related.length <= CARD.relatedY.length && box.layout.relatedY.at(-1) + 10 <= box.h, `${scene.name}: ${id}: related rows overflow`);
     }
   }
   for (const l of scene.labels) {

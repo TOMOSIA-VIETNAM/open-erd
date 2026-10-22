@@ -14,6 +14,7 @@ import { HUB_LAYER, POLY_LAYER, pageName, renderDrawio } from '../src/render/dra
 import { buildScene } from '../src/render/svg/render.js';
 import { endMarkers } from '../src/render/svg/markers.js';
 import { normalizeModel } from '../src/model/load.js';
+import { columnEntries } from '../src/model/columns.js';
 import { MULTI, fk, loadMulti, loadWorkspace, table } from './helpers/shop.js';
 import { descendants, parseXml } from './helpers/xml.js';
 
@@ -21,19 +22,26 @@ const CLI = fileURLToPath(new URL('../cli.js', import.meta.url));
 const PATTERNS = fileURLToPath(new URL('./fixtures/workspace-patterns', import.meta.url));
 const ER = { one: 'ERmandOne', zeroOrOne: 'ERzeroToOne', many: 'ERoneToMany', zeroOrMany: 'ERzeroToMany' };
 
+const escapeAttr = (text) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/\n/g, '&#10;');
 const parseStyle = (text) => Object.fromEntries(text.split(';').filter(Boolean).map((kv) => kv.split('=')));
 
-// Cells of one <diagram>, by id: a plain mxCell, or an mxCell wrapped in an
-// <object> that carries the id, label and tooltip.
+// Cells of one <diagram>, by id: a plain mxCell, or an mxCell wrapped in a
+// <UserObject> that carries the id, label, link and custom properties
+// (`data`: every other attribute of the UserObject).
 function cellsOf(diagram) {
   const root = descendants(diagram).find((e) => e.name === 'root');
   return root.children.map((el) => {
-    const mx = el.name === 'object' ? el.children[0] : el;
+    const wrapped = el.name === 'UserObject';
+    const mx = wrapped ? el.children[0] : el;
     assert.equal(mx.name, 'mxCell');
-    if (el.name === 'object') assert.equal(mx.attrs.id, undefined, 'a wrapped mxCell must not carry its own id');
-    return { ...mx.attrs, id: el.attrs.id ?? mx.attrs.id, value: el.attrs.label ?? mx.attrs.value, tooltip: el.attrs.tooltip, style: parseStyle(mx.attrs.style ?? ''), geometry: mx.children[0] };
+    if (wrapped) assert.equal(mx.attrs.id, undefined, 'a wrapped mxCell must not carry its own id');
+    const { id, label, link, ...data } = wrapped ? el.attrs : {};
+    return { ...mx.attrs, id: id ?? mx.attrs.id, value: label ?? mx.attrs.value, link, data, style: parseStyle(mx.attrs.style ?? ''), geometry: mx.children[0] };
   });
 }
+
+// Data URIs of the icon images in an HTML label, in order.
+const iconsIn = (label) => [...label.matchAll(/<img src="(data:image\/svg\+xml;base64,[^"]+)"/g)].map((m) => Buffer.from(m[1].split(',')[1], 'base64').toString());
 
 async function multi() {
   const model = await loadMulti();
@@ -133,8 +141,8 @@ test('drawio: the Overview page is the domain cards, without lines', async () =>
   assert.ok(cells.some((c) => c.id === 'n|shop/Orders|accent' && c.parent === 'n|shop/Orders'));
 });
 
-test('drawio: two line styles as in the SVG, one neutral colour; tooltips only on enum columns', async () => {
-  const { model, xml } = await multi();
+test('drawio: two line styles as in the SVG, one neutral colour', async () => {
+  const { xml } = await multi();
   const all = new Map(cellsOf(parseXml(xml).children.at(-1)).map((c) => [c.id, c]));
   const edge = (id) => all.get(`e|${id}`).style;
   // Cross-DB has no dash pattern of its own; its label names both databases.
@@ -148,16 +156,75 @@ test('drawio: two line styles as in the SVG, one neutral colour; tooltips only o
   }
   const poly = [...all.values()].find((c) => c.id.startsWith('e|') && c.id.includes('->«'));
   assert.equal(poly.style.dashed, '0');
-  // Only rows of columns with enum values carry a tooltip: their values and meanings.
-  const withEnum = new Set(model.tables.flatMap((t) => t.columns.filter((c) => c.enum && Object.keys(c.enum).length > 0).map((c) => `n|${t.id}|${c.name}`)));
-  assert.ok(withEnum.size > 0);
-  for (const page of parseXml(xml).children) {
-    for (const c of cellsOf(page)) {
-      if (withEnum.has(c.id)) assert.ok(c.tooltip, `${c.id} lacks its enum tooltip`);
-      else assert.equal(c.tooltip, undefined, `${page.attrs.name}: ${c.id} has a tooltip`);
-    }
-  }
-  assert.equal(all.get('n|shop._.orders|status').tooltip, 'pending: Created, waiting for payment\npaid: Payment confirmed by the gateway\ncancelled: Cancelled by the customer or by timeout');
+});
+
+test('drawio: no tooltip anywhere; details are Edit Data properties of table headers and column names', async () => {
+  const { xml } = await multi();
+  // draw.io draws an icon beside a cell with a tooltip or a note.
+  assert.doesNotMatch(xml, /\b(tooltip|note)=/);
+  const all = new Map(cellsOf(parseXml(xml).children.at(-1)).map((c) => [c.id, c]));
+  assert.deepEqual(all.get('n|shop._.orders').data, {
+    table: 'shop._.orders',
+    domain: 'Orders',
+    description: 'One order per checkout; the basket becomes order items.',
+    central: 'yes',
+    indexes: "index_orders_on_placed_at: placed_at where status = 'paid'\nindex_orders_on_user_id_and_status: user_id, status",
+  });
+  assert.equal(all.get('n|auth.public.users').data.indexes, 'index_users_on_email: email unique\nindex_users_on_status: status');
+  assert.deepEqual(all.get('n|shop._.orders|status|name').data, {
+    column: 'status',
+    type: 'varchar(16)',
+    default: 'pending',
+    primary_key: 'no',
+    enum: 'pending — Created, waiting for payment\npaid — Payment confirmed by the gateway\ncancelled — Cancelled by the customer or by timeout',
+    description: 'Lifecycle of the order; only paid orders are shipped.',
+    pii: 'no',
+  });
+  const userId = all.get('n|shop._.orders|user_id|name').data;
+  assert.equal(userId.references, 'auth.public.users.id');
+  assert.equal(userId.nullable, 'no');
+  assert.equal(all.get('n|shop._.orders|id|name').data.primary_key, 'yes');
+  assert.equal(all.get('n|auth.public.users|email|name').data.pii, 'yes');
+  // The label stays literal text: no placeholders.
+  assert.doesNotMatch(xml, /placeholders=/);
+});
+
+test('drawio: table headers link to the table in the SVG; Overview cards link to the All tables page', async () => {
+  const { model, layout, xml } = await multi();
+  const pages = parseXml(xml).children;
+  const all = cellsOf(pages.at(-1));
+  const headers = all.filter((c) => c.style.shape === 'table' && c.data.table);
+  assert.ok(headers.length > 0);
+  for (const h of headers) assert.equal(h.link, `erd.svg#table=${h.data.table}`);
+  const shared = cellsOf(parseXml(renderDrawio(model, layout, { svgFile: 'erd.partner.svg', fitStored: true })).children.at(-1));
+  assert.equal(shared.find((c) => c.id === 'n|shop._.orders').link, 'erd.partner.svg#table=shop._.orders');
+  const cards = cellsOf(pages[0]).filter((c) => c.id.startsWith('n|') && !c.id.endsWith('|accent'));
+  assert.ok(cards.length > 0);
+  for (const c of cards) assert.equal(c.link, `data:page/id,${pages[1].attrs.id}`);
+  assert.equal(pages[1].attrs.id, ALL_VIEW);
+});
+
+test('drawio: icons as in the SVG, as data URI images in the labels', async () => {
+  const { xml } = await multi();
+  const all = new Map(cellsOf(parseXml(xml).children.at(-1)).map((c) => [c.id, c]));
+  const name = (row) => all.get(`${row}|name`);
+  const icons = (row) => iconsIn(name(row).value);
+  assert.equal(name('n|shop._.orders|id').style.html, '1');
+  // Primary key: gold key; reference: blue link; enum and index marks after the name.
+  assert.match(icons('n|shop._.orders|id')[0], /stroke="#c98a04"/);
+  assert.match(icons('n|shop._.orders|user_id')[0], /stroke="#2f6fd6"/);
+  const status = icons('n|shop._.orders|status');
+  assert.equal(status.length, 2, 'enum and index marks');
+  assert.match(status[0], /stroke="#7c5cc4"/);
+  assert.match(status[1], /fill="#1f9d8f"/);
+  // No key: an empty gutter keeps the name in line.
+  assert.match(name('n|shop._.orders|status').value, /^<span style="display:inline-block;width:15px"><\/span>status<img/);
+  // Header: star for a central table, table icon otherwise.
+  assert.match(iconsIn(all.get('n|shop._.orders').value)[0], /fill="#f2b705"/);
+  assert.equal(all.get('n|shop._.orders').style.html, '1');
+  const plain = [...all.values()].find((c) => c.style.shape === 'table' && c.data.central === 'no');
+  assert.match(iconsIn(plain.value)[0], /stroke="#5f6b7e"/);
+  for (const svg of [...all.values()].flatMap((c) => iconsIn(c.value ?? ''))) parseXml(svg);
 });
 
 test('drawio: hub and polymorphic target lines sit on their own hidden layers, attached to existing rows', async () => {
@@ -213,16 +280,24 @@ test('drawio: a public profile render holds no hidden table, hidden or PII colum
     assert.ok(!shared.includes(text), `public render leaks ${text}`);
   }
   for (const e of new Set([...model.relations, ...model.polymorphic].flatMap((f) => f.evidence))) assert.ok(!shared.includes(e), `public render leaks evidence ${e}`);
+  const notes = model.tables.flatMap((t) => [t.internal_note, t.note_source, ...columnEntries(t).flatMap(({ column: c }) => [c.internal_note, c.note_source])]).filter(Boolean);
+  assert.ok(notes.length > 0, 'the fixture must have internal notes');
+  for (const note of notes) assert.ok(!shared.includes(escapeAttr(note)), `public render leaks note ${note}`);
 });
 
-test('CLI: render writes out/erd.drawio by default and none with outputs.drawio false', async () => {
+test('CLI: render writes out/erd.drawio (headers linking to erd.svg; erd.<profile>.svg for a profile) and none with outputs.drawio false', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'open-erd-'));
   const run = (...args) => promisify(execFile)(process.execPath, [CLI, ...args]);
   try {
     await cp(MULTI, dir, { recursive: true });
     await run('layout', '--workspace', dir);
     await run('render', '--workspace', dir);
-    parseXml(await readFile(join(dir, 'out', 'erd.drawio'), 'utf8'));
+    assert.match(await readFile(join(dir, 'out', 'erd.drawio'), 'utf8'), /link="erd\.svg#table=/);
+    await run('render', '--workspace', dir, '--profile', 'public');
+    const shared = await readFile(join(dir, 'out', 'erd.public.drawio'), 'utf8');
+    parseXml(shared);
+    assert.match(shared, /link="erd\.public\.svg#table=/);
+    assert.doesNotMatch(shared, /link="erd\.svg#/);
     await rm(join(dir, 'out'), { recursive: true });
     const config = join(dir, 'open-erd.yaml');
     await writeFile(config, `${await readFile(config, 'utf8')}outputs: { drawio: false }\n`);

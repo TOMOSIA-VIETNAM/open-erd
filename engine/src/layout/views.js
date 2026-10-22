@@ -92,13 +92,14 @@ function allView(model, diagram) {
 function overview(model, diagram) {
   const summary = domainSummary(model, diagram);
   const rank = new Map(summary.order.map((k, i) => [k, i]));
+  const withNotes = [...summary.cards.values()].some((c) => c.note);
   const children = (g, keys) =>
     [...keys]
       .sort((a, b) => rank.get(a) - rank.get(b))
       .map((k) => {
         const card = summary.cards.get(k);
         const related = card.related.slice(0, RELATED_ON_CARD);
-        const box = domainCard(card, { related, segments: related.map((r) => strength(r.count, summary.max)), total: STRENGTH_SEGMENTS });
+        const box = domainCard(card, { related, segments: related.map((r) => strength(r.count, summary.max)), total: STRENGTH_SEGMENTS, withNotes });
         return { id: k, kind: 'domain', slot: g.database, box };
       });
   return { root: page(dbGroups(model, diagram, OVERVIEW_DB_ASPECT, children, 'cards', CARD_GAP)), links: domainLinks(diagram) };
