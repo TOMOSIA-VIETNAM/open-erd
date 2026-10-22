@@ -6,7 +6,8 @@
 import { dbDisplayName } from '../../../display-name.js';
 import { REVIEW_WORDS, endMarkers, enumIconSvg, indexIconSvg, isConfirmed, keyIconSvg, linkIconSvg, markerSvg, overviewStrokeWidth, reviewIconSvg, starIconSvg } from '../markers.js';
 import { CANVAS_LIMITS, PIXEL_RATIO, canvasScale, exportBaseName } from './download.js';
-import { findJoinPaths, hopCondition, pathNames, sqlSkeleton } from './join-path.js';
+import { findJoinPaths, hopCondition, pathNames, pathThrough, sqlSkeleton } from './join-path.js';
+import { parseHash } from './deep-link.js';
 import { collectionDocument, createTableSql, isDocumentStore, markdownTable } from './schema-copy.js';
 import { centreOn, fitsInside, minimapSize, visibleRect } from './minimap.js';
 import { columnBadges, panelTabs } from './panel-parts.js';
@@ -308,9 +309,11 @@ function showView(name) {
   if (name === CONNECTIONS) readableStart(viewBounds(name), null, 1);
   else zoomToRect(viewBounds(name), MAX_FIT_SCALE);
   renderToolbar();
-  // The legend keeps the reader's choice (open or folded to its pill); its
-  // content follows the view.
-  setLegend(legendOpen);
+  // The legend keeps the reader's choice (open or folded to its pill),
+  // except in the views where it would cover the drawing; its content
+  // follows the view.
+  legendFolded = LEGEND_FOLDED_VIEWS.includes(name);
+  showLegend();
 }
 
 // A large view opens where its text can be read: the whole view when it
@@ -1513,12 +1516,14 @@ for (const slot of ['from', 'to']) {
 // erd.svg#table=<table id>, #column=<table id>.<column> or #view=<view>
 // opens there: a table in the view of all tables (its domain view in a
 // schema without one), selected, with its panel; a column also unfolds in
-// the panel. Selecting a table writes its link back into the address
-// (replaceState: Back does not walk through selections), so the address bar
-// is always a link to what is on screen.
+// the panel. #tables=<id>,<id>,... lights a set of tables and
+// #path=<id>,<id>,... a join path through them (see openTableSet and
+// openPathThrough); ids no table has are left out. Selecting a table writes
+// its link back into the address (replaceState: Back does not walk through
+// selections), so the address bar is always a link to what is on screen.
 let lastHash = null;
 function shareHash(value) {
-  const hash = `#${value.replace(/[^A-Za-z0-9_./:-]/g, encodeURIComponent)}`;
+  const hash = `#${value.replace(/[^A-Za-z0-9_./:,-]/g, encodeURIComponent)}`;
   if (hash === location.hash) return;
   lastHash = hash;
   try {
@@ -1529,8 +1534,16 @@ function shareHash(value) {
 }
 function openDeepLink(hash) {
   if (!hash || hash === lastHash) return false;
-  const [key, ...rest] = hash.slice(1).split('=');
-  const value = decodeURIComponent(rest.join('='));
+  const parsed = parseHash(hash);
+  if (!parsed) return false;
+  const { key, value } = parsed;
+  if (key === 'tables' || key === 'path') {
+    const ids = parsed.ids.filter((id) => data.nodes[id]?.kind === 'table');
+    if (ids.length === 0) return false;
+    if (key === 'path' && ids.length > 1) openPathThrough(ids);
+    else openTableSet(ids);
+    return true;
+  }
   if (key === 'view' && views.has(value) && ![NEIGHBORHOOD, JOIN_VIEW, IMPACT_VIEW].includes(value)) {
     navigate(value);
     return true;
@@ -1553,6 +1566,54 @@ function openDeepLink(hash) {
     shareHash(`column=${id}.${column}`);
   }
   return true;
+}
+
+// #tables=: the view of all tables (in a schema without one, the smallest
+// domain view drawing every table as a full box; failing that, the home
+// view of the first table, with a note on how many are elsewhere), the
+// tables lit and the rest dimmed as a selection does, fitted to them. Esc
+// or a click on the empty canvas clears it like any selection.
+function openTableSet(ids) {
+  const full = (name, id) => indexes.get(name).has(id) && !indexes.get(name).get(id).el.classList.contains('stub');
+  const domains = [...views.keys()].filter((n) => n.startsWith(DOMAIN_PREFIX) && ids.every((id) => full(n, id)));
+  const name = views.has(ALL_VIEW) ? ALL_VIEW : domains.sort((a, b) => indexes.get(a).size - indexes.get(b).size)[0] ?? homeView(ids[0]);
+  navigate(name);
+  clearSelection();
+  const index = currentIndex();
+  const shown = ids.filter((id) => index.has(id));
+  for (const id of shown) unfoldFor(id);
+  const set = new Set(shown);
+  for (const g of relationGroups()) if (set.has(g.getAttribute('data-from')) && set.has(g.getAttribute('data-to'))) g.classList.add('hl');
+  for (const id of shown) index.get(id).el.classList.add('hl');
+  currentView().classList.add('dimmed');
+  // The legend sits bottom left, where the fitted tables would run under
+  // it: folded in this view only, the reader's choice stays.
+  legendFolded = true;
+  showLegend();
+  zoomToRect(boundsOf(index, shown), FOCUS_MAX_SCALE);
+  if (shown.length < ids.length) showToast(`${ids.length - shown.length} of ${plural(ids.length, 'table')} are in other domains`);
+}
+
+// #path=: a join path through the tables in the order given, as the join
+// panel shows it. Two tables: the panel's own search, alternatives included.
+// More: the cheapest path between each pair of neighbours, end to end. A
+// pair no relations join falls back to lighting the tables.
+function openPathThrough(ids) {
+  if (ids.length === 2) {
+    openJoin(ids[0]);
+    setJoinEnd('to', ids[1]);
+    if (join.paths.length > 0) return;
+  } else {
+    const { path } = pathThrough(data, ids);
+    if (path) {
+      Object.assign(join, { from: ids[0], to: ids.at(-1), paths: [path], index: 0 });
+      showJoinPath(0);
+      return;
+    }
+  }
+  const { gap } = pathThrough(data, ids);
+  openTableSet(ids);
+  showToast(`No join path from ${short(gap[0])} to ${short(gap[1])}`);
 }
 
 // ---------------------------------------------------------------- panel
@@ -2050,9 +2111,10 @@ function stepSegments(name, step, i) {
 // its line) and the polymorphic nodes its lines run through.
 const stepNodes = (steps) => [...new Set(steps.flatMap((s) => [s.from, s.to, ...(s.line.type === 'poly' ? [s.line.poly] : [])]))];
 
-// Box around the path's nodes in a view, with room around it.
-function joinBounds(index, steps) {
-  const boxes = stepNodes(steps).map((id) => index.get(id)?.box).filter(Boolean);
+// Box around nodes `ids` in a view, with room around it.
+const joinBounds = (index, steps) => boundsOf(index, stepNodes(steps));
+function boundsOf(index, ids) {
+  const boxes = ids.map((id) => index.get(id)?.box).filter(Boolean);
   const x0 = Math.min(...boxes.map((b) => b.x)) - FOCUS_MARGIN / 2;
   const y0 = Math.min(...boxes.map((b) => b.y)) - FOCUS_MARGIN / 2;
   return { x: x0, y: y0, w: Math.max(...boxes.map((b) => b.x + b.w)) - x0 + FOCUS_MARGIN / 2, h: Math.max(...boxes.map((b) => b.y + b.h)) - y0 + FOCUS_MARGIN / 2 };
@@ -2284,12 +2346,18 @@ function copyText(text, status, what, then = () => {}) {
 // Samples drawn with the diagram's own classes and marker shapes, so the
 // legend always looks like what it explains. It lists only what the view on
 // screen draws (review colours only in review mode), rebuilt whenever the
-// view or the mode changes. Open by default in the view of all tables,
-// closed elsewhere.
+// view or the mode changes. Open by default, folded to its pill in the
+// views it would cover part of from its corner: the overview (cards reach
+// the bottom left), a neighbourhood and an impact view (rings fitted to the
+// whole screen; the impact panel names the ring colours).
 const legend = overlay('oe-legend-host');
 const LEGEND_ROOM = 8;
+const LEGEND_FOLDED_VIEWS = [OVERVIEW, NEIGHBORHOOD, IMPACT_VIEW];
 legend.fo.style.display = 'none';
+// The reader's choice, and whether the view on screen folds it anyway
+// (until the reader opens or hides it there).
 let legendOpen = true;
+let legendFolded = false;
 
 const sample = (children) => svgEl('svg', { width: 64, height: 18, viewBox: '0 0 64 18' }, children);
 // A line arriving at a box edge on the right, with end marker `kind`.
@@ -2382,13 +2450,19 @@ function legendPill() {
   ]);
 }
 
-// A view with nothing to explain shows neither the legend nor its pill;
-// the reader's choice is kept for the next view.
+// The reader opens or hides the legend: kept for the next views.
 function setLegend(open) {
   legendOpen = open;
+  legendFolded = false;
+  showLegend();
+}
+const legendShown = () => legendOpen && !legendFolded;
+
+// A view with nothing to explain shows neither the legend nor its pill.
+function showLegend() {
   const empty = legendSections().length === 0;
   if (empty) legend.div.replaceChildren();
-  else if (open) renderLegend();
+  else if (legendShown()) renderLegend();
   else legend.div.replaceChildren(legendPill());
   // The tour clears the corner for its caption.
   legend.fo.style.display = empty || tour.on ? 'none' : '';
@@ -2409,7 +2483,7 @@ reviewChip.div.append(
 function setReviewMode(on) {
   svg.classList.toggle('review-mode', on);
   reviewChip.fo.style.display = on ? '' : 'none';
-  if (legendOpen) setLegend(true);
+  showLegend();
   layoutOverlays();
 }
 
@@ -2483,7 +2557,7 @@ function setPiiMode(on) {
     showPiiSummary();
     if (whole) zoomToRect(viewBounds(state.view), MAX_FIT_SCALE);
   } else if (piiSummaryShown()) hidePanel();
-  if (legendOpen) setLegend(true);
+  showLegend();
   layoutOverlays();
   placeBackPill();
 }
@@ -2578,7 +2652,7 @@ function setHealthMode(on) {
     showHealthList();
     if (whole) zoomToRect(viewBounds(state.view), MAX_FIT_SCALE);
   } else if (healthListShown()) hidePanel();
-  if (legendOpen) setLegend(true);
+  showLegend();
   layoutOverlays();
   placeBackPill();
 }
@@ -2628,7 +2702,7 @@ function endTour(back) {
     state.cam = tour.from.cam;
     applyCamera();
   }
-  setLegend(legendOpen);
+  showLegend();
   updateBackPill();
 }
 
@@ -3322,7 +3396,7 @@ document.addEventListener('keydown', (e) => {
     return;
   }
   if (letter === 'l' && !e.metaKey && !e.ctrlKey && !e.altKey && !typing()) {
-    if (legendSections().length > 0) setLegend(!legendOpen);
+    if (legendSections().length > 0) setLegend(!legendShown());
     return;
   }
   // Backspace outside a text field, or Alt+←, goes back like the toolbar's Back.

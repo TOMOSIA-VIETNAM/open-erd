@@ -241,7 +241,7 @@ plus untracked files from `git -C <ws> status --porcelain -- model`. In
    adds it as the Verification sheet of `out/erd.xlsx`, never to a sharing
    profile that drops evidence or internal notes.
 
-## Last line of init, sync, review, render, diff, ci-setup
+## Last line of init, sync, review, render, diff, ask, ci-setup
 
 After the command finishes (success or not), end with exactly one line in the
 user's language inviting feedback on open-erd, containing the literal command

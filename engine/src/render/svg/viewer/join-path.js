@@ -182,6 +182,24 @@ export function findJoinPaths(data, from, to, limit = MAX_PATHS) {
   return found.map((p) => ({ cost: p.cost, nodes: p.nodes, hops: p.edges.map((e, i) => describeHop(e, p.nodes[i], graph)) }));
 }
 
+/**
+ * One path through tables `ids` in the order given: the cheapest path
+ * between each pair of neighbours (a direct relation, when there is one, is
+ * always the cheapest), joined end to end, in findJoinPaths' shape.
+ * `{ path }`, or `{ gap: [from, to] }` naming the first pair no path joins.
+ */
+export function pathThrough(data, ids) {
+  const path = { cost: 0, nodes: [ids[0]], hops: [] };
+  for (let i = 1; i < ids.length; i++) {
+    const [best] = findJoinPaths(data, ids[i - 1], ids[i], 1);
+    if (!best) return { gap: [ids[i - 1], ids[i]] };
+    path.cost += best.cost;
+    path.nodes.push(...best.nodes.slice(1));
+    path.hops.push(...best.hops);
+  }
+  return { path };
+}
+
 const dbOf = (id) => id.split('.')[0];
 
 /**

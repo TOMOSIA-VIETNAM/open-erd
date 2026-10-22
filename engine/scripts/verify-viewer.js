@@ -13,6 +13,7 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { launchChrome } from './cdp.js';
 import { impactRings, referencedColumns } from '../src/render/svg/viewer/impact.js';
+import { findJoinPaths, pathThrough } from '../src/render/svg/viewer/join-path.js';
 
 const VIEWPORT = { width: 1400, height: 900 };
 const [input, outDir] = process.argv.slice(2);
@@ -187,6 +188,9 @@ await shot(
   'overview-cards',
   `${viewIs('overview')} && ${ov}.querySelectorAll('.domain').length === new Set(Object.values(${data}.nodes).map((n) => n.cluster)).size && ${ov}.querySelector('.relation-group, .card-links') === null && [...${ov}.querySelectorAll('.domain')].every((c) => c.querySelector('.card-related, .card-none'))`,
 );
+// The legend opens folded to its pill here: open, it would cover the cards
+// in the bottom left corner.
+await shot('overview-legend-folded', `document.querySelector('.oe-legend') === null && document.querySelector('.oe-legend-pill') !== null`);
 const busiest = await evaluate(`(() => { const d = ${data}; const n = (id) => Object.keys(d.domainLinks).filter((k) => { const [a, b] = k.split('<->'); return a !== b && (a === id || b === id); }).length;
   return [...${ov}.querySelectorAll('.domain')].map((c) => c.getAttribute('data-domain')).sort((a, b) => n(b) - n(a))[0]; })()`);
 const hubCard = `${ov}.querySelector('.domain[data-domain=${JSON.stringify(busiest)}]')`;
@@ -215,6 +219,10 @@ await pause(150);
 await shot('overview-connector-panel', `document.querySelectorAll('.oe-panel .oe-chip').length === new Set(${data}.domainLinks[${JSON.stringify(pairKey)}].map((r) => r.from + ' ' + r.to)).size && document.querySelector('.oe-panel .oe-ph-sep')?.textContent === '⇄' && document.querySelectorAll('.oe-panel .oe-domain-chip').length === 2`);
 await key('Escape');
 const relatedKey = await evaluate(`${hubCard}.querySelector('.card-related').getAttribute('data-domain')`);
+// Its tooltip says what a click does.
+await mouse('mouseMoved', await centre(`${hubCard}.querySelector('.card-related .card-related-name')`));
+await pause(150);
+await shot('overview-related-tip', `[...document.querySelectorAll('.oe-tip')].some((t) => t.textContent.endsWith('Click to open ' + ${hubCard}.querySelector('.card-related .card-related-name').textContent))`);
 await click(`${hubCard}.querySelector('.card-related .card-related-name')`);
 await shot('overview-related-opens-domain', viewIs(`domain:${relatedKey}`));
 await click(`document.querySelector('.oe-crumbs .oe-link')`);
@@ -1398,6 +1406,50 @@ await shot(
     await open(`#impact=${encodeURIComponent(impactTarget)}`);
     await shot('deep-link-impact', impactChecks(impactTarget));
   }
+  // #tables=: tables of different domains lit together, the rest dimmed,
+  // fitted, no panel; an unknown id is left out; Esc clears it.
+  const tables = Object.keys(model.nodes).filter((id) => model.nodes[id].kind === 'table');
+  const spread = [...new Map(tables.map((id) => [model.nodes[id].cluster, id])).values()].slice(0, 3);
+  await open(`#tables=${[...spread, 'no.such.table'].map(encodeURIComponent).join(',')}`);
+  await shot(
+    'deep-link-tables',
+    `(() => { const lit = ${JSON.stringify(spread)}.map((id) => ${visible}.querySelector('.table[data-id="' + CSS.escape(id) + '"]'));
+      const r = lit.map((g) => g?.getBoundingClientRect());
+      const onScreen = r.every((b) => b && b.left >= 0 && b.right <= innerWidth && b.top >= 44 && b.bottom <= innerHeight);
+      return lit.every((g) => g?.classList.contains('hl')) && ${visible}.classList.contains('dimmed') && ${visible}.querySelector('.table.selected') === null
+        && document.querySelector('.oe-panel').closest('foreignObject').style.display === 'none' && onScreen || { lit: lit.map((g) => g?.getAttribute('class')), onScreen }; })()`,
+  );
+  await key('Escape');
+  await shot('deep-link-tables-esc', `!${visible}.classList.contains('dimmed') && ${visible}.querySelector('.table.hl') === null`);
+  // #path=: two tables give the join panel's paths; more give one path
+  // through them in order.
+  // A pair two hops or more apart, among the first tables (searching every
+  // pair of a large schema takes long).
+  const few = tables.slice(0, 30);
+  const pair = few.flatMap((a) => few.map((b) => [a, b])).find(([a, b]) => findJoinPaths(model, a, b, 1)[0]?.hops.length >= 2);
+  if (pair) {
+    const [from, to] = pair;
+    const [best] = findJoinPaths(model, from, to);
+    await open(`#path=${encodeURIComponent(from)},${encodeURIComponent(to)}`);
+    await shot('deep-link-path', `document.querySelectorAll('.oe-panel .oe-hops li').length === ${best.hops.length} && ${visible}.classList.contains('dimmed') && ${JSON.stringify(best.nodes)}.every((id) => ${visible}.querySelector('.table.hl[data-id="' + CSS.escape(id) + '"]') !== null)`);
+    const through = [from, best.nodes[1], to];
+    const { path } = pathThrough(model, through);
+    await open(`#path=${through.map(encodeURIComponent).join(',')}`);
+    await shot('deep-link-path-through', `document.querySelectorAll('.oe-panel .oe-paths .oe-btn').length === 1 && document.querySelectorAll('.oe-panel .oe-hops li').length === ${path.hops.length}`);
+  }
+  // Two tables no relations join are lit instead, with a note.
+  const lone = tables.find((id) => id !== tables[0] && findJoinPaths(model, tables[0], id, 1).length === 0);
+  if (lone) {
+    await open(`#path=${encodeURIComponent(tables[0])},${encodeURIComponent(lone)}`);
+    await shot(
+      'deep-link-path-gap',
+      `${JSON.stringify([tables[0], lone])}.every((id) => ${visible}.querySelector('.table.hl[data-id="' + CSS.escape(id) + '"]') !== null) && ${visible}.classList.contains('dimmed')
+        && document.querySelector('.oe-panel').closest('foreignObject').style.display === 'none' && document.querySelector('.oe-toast')?.textContent.startsWith('No join path')`,
+    );
+  }
+  // No known table: the usual start.
+  await open('#tables=no.such.table');
+  await shot('deep-link-tables-unknown', `${viewIs(startView)} && !${visible}.classList.contains('dimmed')`);
   const other = await evaluate(`[...${visible}.querySelectorAll('.table')].map((g) => g.getAttribute('data-id')).find((id) => id !== ${JSON.stringify(linked[0])})`);
   await bringIntoView(inView(`.table[data-id="${other}"]`));
   const before = await evaluate('history.length');
