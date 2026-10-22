@@ -12,6 +12,7 @@ import { centreOn, fitsInside, minimapSize, visibleRect } from './minimap.js';
 import { columnBadges, panelTabs } from './panel-parts.js';
 import { emptyHistory, goBack, goForward, tableTrail, visit } from './history.js';
 import { endTransforms, radialLayout, straightLink } from './radial.js';
+import { TOUR_STEP_MS, tourIndex, tourSteps } from './tour.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const HTML_NS = 'http://www.w3.org/1999/xhtml';
@@ -219,7 +220,8 @@ function zoomToRect(r, maxScale) {
   const panelOpen = panel.fo.style.display !== 'none';
   // The Back pill floats under the toolbar in a navigated view: keep clear of it.
   const top = TOOLBAR_HEIGHT + (backPillShown() ? BACK_PILL_ROOM : 0);
-  const area = { w: panelOpen ? w - PANEL_WIDTH - 2 * PANEL_MARGIN : w, h: h - top };
+  // The tour's caption takes a strip at the bottom.
+  const area = { w: panelOpen ? w - PANEL_WIDTH - 2 * PANEL_MARGIN : w, h: h - top - tourRoom() };
   const s = Math.min((area.w - 2 * FIT_PADDING) / r.w, (area.h - 2 * FIT_PADDING) / r.h, maxScale);
   state.cam = { s, x: (area.w - r.w * s) / 2 - r.x * s, y: top + (area.h - r.h * s) / 2 - r.y * s };
   applyCamera();
@@ -270,7 +272,8 @@ function showView(name) {
 // fits at a readable size, else at scale 1 centred on `focus` (a box), or
 // from the top left corner when there is none.
 function readableStart(bounds, focus, maxScale = MAX_FIT_SCALE) {
-  const { w, h } = viewport();
+  const { w } = viewport();
+  const h = viewport().h - tourRoom();
   const fit = Math.min((w - 2 * FIT_PADDING) / bounds.w, (h - TOOLBAR_HEIGHT - 2 * FIT_PADDING) / bounds.h, maxScale);
   if (fit * SMALLEST_TEXT >= READABLE_TEXT) return zoomToRect(bounds, maxScale);
   const s = 1;
@@ -293,6 +296,8 @@ function recordVisit() {
 
 /** Switches view and/or focuses `focus`, remembering where we came from. */
 function navigate(name, { focus, column } = {}) {
+  // Going somewhere ends the tour where the reader went.
+  endTour(false);
   if (name !== state.view || (focus && focus !== selectedTable())) recordVisit();
   if (name !== state.view) showView(name);
   if (focus) {
@@ -316,12 +321,14 @@ function restore(step) {
   renderToolbar();
 }
 function back() {
+  endTour(false);
   const { history, target } = goBack(nav, snapshot());
   if (!target) return;
   nav = history;
   restore(target);
 }
 function forward() {
+  endTour(false);
   const { history, target } = goForward(nav, snapshot());
   if (!target) return;
   nav = history;
@@ -783,6 +790,11 @@ const ICONS = {
   map: 'M2.5 4L6 2.5L10 4L13.5 2.5V12L10 13.5L6 12L2.5 13.5ZM6 2.5V12M10 4V13.5',
   matrix: 'M2.5 2.5H13.5V13.5H2.5ZM6.2 2.5V13.5M9.8 2.5V13.5M2.5 6.2H13.5M2.5 9.8H13.5',
   database: 'M3.5 4C3.5 2.6 12.5 2.6 12.5 4V12C12.5 13.4 3.5 13.4 3.5 12ZM3.5 4C3.5 5.4 12.5 5.4 12.5 4M3.5 8C3.5 9.4 12.5 9.4 12.5 8',
+  // Tour controls.
+  play: 'M5 3.5L12 8L5 12.5Z',
+  pause: 'M5.5 3.5V12.5M10.5 3.5V12.5',
+  next: 'M6 3L11 8L6 13',
+  close: 'M4 4L12 12M12 4L4 12',
 };
 const iconSvg = (name, size = 16) =>
   svgEl('svg', { class: `oe-icon icon-${name}`, width: size, height: size, viewBox: '0 0 16 16', 'aria-hidden': 'true' }, [svgEl('path', { d: ICONS[name] })]);
@@ -821,6 +833,16 @@ const searchButton = el('button', { class: 'oe-btn oe-tool oe-search-trigger', t
 ]);
 const joinButton = toolButton('join', 'Join path', `How to join two tables: the condition of each hop (${MOD_KEY}J)`, () => (join.open ? clearSelection() : openJoinSpot(selectedTable())));
 joinButton.append(el('kbd', { text: `${MOD_KEY}J` }));
+// The tour's steps (see the tour section): one per domain, in the order of
+// the overview's cards, which the connections matrix lists as its rows. A
+// single domain makes no tour: its button is not shown.
+const TOUR_STEPS = tourSteps(
+  [...(views.get(CONNECTIONS)?.querySelectorAll('.mx-rows .mx-head') ?? [])].map((g) => g.getAttribute('data-domain')),
+  data.nodes,
+  data.domainNotes,
+);
+const tourButton = toolButton('play', 'Tour', 'Tour: each domain in turn, zoomed on its central table (T)', () => (tour.on ? endTour(true) : startTour()), ' oe-tour-btn');
+if (TOUR_STEPS.length < 2) tourButton.style.display = 'none';
 
 // Dropdown menus of the toolbar; one open at a time.
 const menus = [];
@@ -917,7 +939,7 @@ downloadMenu.menu.append(
 
 toolbar.div.append(
   el('div', { class: 'oe-left' }, [backButton, crumbs]),
-  el('div', { class: 'oe-right' }, [hopGroup, viewGroup, searchButton, joinButton, viewsMenu.wrap, moreMenu.wrap, downloadMenu.wrap]),
+  el('div', { class: 'oe-right' }, [hopGroup, viewGroup, searchButton, joinButton, tourButton, viewsMenu.wrap, moreMenu.wrap, downloadMenu.wrap]),
 );
 
 function crumb(text, onClick) {
@@ -973,7 +995,7 @@ backPill.fo.style.display = 'none';
 // click away on the toolbar's Map tab.
 function backPillShown() {
   const prev = nav.back.at(-1);
-  return Boolean(prev) && state.view !== OVERVIEW && prev.view !== OVERVIEW && (NAVIGATED(state.view) || Boolean(prev.table));
+  return !tour.on && Boolean(prev) && state.view !== OVERVIEW && prev.view !== OVERVIEW && (NAVIGATED(state.view) || Boolean(prev.table));
 }
 function updateBackPill() {
   const prev = nav.back.at(-1);
@@ -1047,6 +1069,8 @@ function viewAsSvg(keep) {
   for (const e of [...view.querySelectorAll('*')].filter(isHidden)) e.remove();
   for (const e of view.querySelectorAll('.relation-hit, .card-links')) e.remove();
   for (const e of view.querySelectorAll('.mx-sticky-x, .mx-sticky-y')) e.removeAttribute('transform');
+  // The pulse on a table just reached is a moment on screen, not drawing.
+  for (const e of view.querySelectorAll('.arrive')) e.classList.remove('arrive');
   const root = svgEl('svg', { width: w, height: h, viewBox: `${x} ${y} ${w} ${h}` }, [svg.querySelector('style').cloneNode(true), view]);
   // Review colours and diff colours are classes on the root.
   const cls = ['review-mode', 'diff-mode'].filter((c) => svg.classList.contains(c));
@@ -2172,7 +2196,8 @@ function setLegend(open) {
   if (empty) legend.div.replaceChildren();
   else if (open) renderLegend();
   else legend.div.replaceChildren(legendPill());
-  legend.fo.style.display = empty ? 'none' : '';
+  // The tour clears the corner for its caption.
+  legend.fo.style.display = empty || tour.on ? 'none' : '';
   layoutOverlays();
 }
 
@@ -2191,6 +2216,101 @@ function setReviewMode(on) {
   svg.classList.toggle('review-mode', on);
   reviewChip.fo.style.display = on ? '' : 'none';
   if (legendOpen) setLegend(true);
+  layoutOverlays();
+}
+
+// ---------------------------------------------------------------- tour
+
+// ▶ Tour (or T) shows the domains one after another (TOUR_STEPS): each in
+// its view, opened as the view of all tables opens (whole when readable,
+// else around the central table, which pulses), with a caption at the
+// bottom: its name, table count and business note. The next domain comes
+// after TOUR_STEP_MS, the last one is followed by the first. The legend,
+// minimap and Back pill step aside meanwhile. Esc (or the caption's ×)
+// puts back the view the reader was on; going anywhere else ends the tour
+// there. Nothing is added to the history, and the caption lives outside the
+// drawing, so a download never holds it.
+const TOUR_WIDTH = 640;
+// Room around the caption card inside its area, for the card's shadow.
+const TOUR_ROOM = 8;
+const tourBox = overlay('oe-tour-host');
+tourBox.fo.style.display = 'none';
+const tour = { on: false, i: 0, paused: false, timer: 0, from: null, height: 0 };
+// Screen height the caption takes at the bottom while the tour runs.
+const tourRoom = () => (tour.on ? tour.height + PANEL_MARGIN : 0);
+
+function startTour() {
+  if (tour.on || TOUR_STEPS.length < 2) return;
+  closeMenus();
+  closeSpotlight();
+  closeJoinSpot();
+  tour.from = { step: snapshot(), cam: { ...state.cam } };
+  tour.on = true;
+  tour.paused = false;
+  tourBox.fo.style.display = '';
+  tourButton.classList.add('on');
+  showTourStep(0);
+}
+
+/** Ends the tour; `back` puts back the view (and table) it started from. */
+function endTour(back) {
+  if (!tour.on) return;
+  clearTimeout(tour.timer);
+  tour.on = false;
+  tourBox.fo.style.display = 'none';
+  tourButton.classList.remove('on');
+  if (back) {
+    restore(tour.from.step);
+    state.cam = tour.from.cam;
+    applyCamera();
+  }
+  setLegend(legendOpen);
+  updateBackPill();
+}
+
+function showTourStep(i) {
+  tour.i = i;
+  const step = TOUR_STEPS[i];
+  // The caption first: the view is fitted above it.
+  renderTour();
+  showView(domainView(step.cluster));
+  frameTourStep();
+  if (step.central && currentIndex().has(step.central)) arrive(step.central);
+  scheduleTour();
+}
+function frameTourStep() {
+  const id = TOUR_STEPS[tour.i].central;
+  readableStart(viewBounds(state.view), (id && currentIndex().get(id)?.box) ?? null);
+}
+const tourStep = (by) => showTourStep(tourIndex(tour.i, by, TOUR_STEPS.length));
+function scheduleTour() {
+  clearTimeout(tour.timer);
+  if (!tour.paused) tour.timer = setTimeout(() => tourStep(1), TOUR_STEP_MS);
+}
+// Resuming waits a whole step again; the camera stays where the reader left it.
+function toggleTourPause() {
+  tour.paused = !tour.paused;
+  renderTour();
+  scheduleTour();
+}
+
+function renderTour() {
+  const step = TOUR_STEPS[tour.i];
+  const control = (icon, title, onClick) => el('button', { class: 'oe-btn oe-tool icon-only', title, 'aria-label': title, on: { click: onClick } }, [iconSvg(icon)]);
+  tourBox.div.replaceChildren(
+    el('div', { class: 'oe-tour', role: 'status' }, [
+      el('div', { class: 'oe-tour-text' }, [
+        el('div', { class: 'oe-tour-head' }, [el('span', { class: 'oe-tour-count', text: `${tour.i + 1} / ${TOUR_STEPS.length}` }), el('b', { text: step.title })]),
+        step.note ? el('div', { class: 'oe-tour-note', text: step.note }) : null,
+      ]),
+      el('div', { class: 'oe-tour-controls' }, [
+        control('back', 'Previous domain (←)', () => tourStep(-1)),
+        control(tour.paused ? 'play' : 'pause', tour.paused ? 'Resume (Space)' : 'Pause (Space)', toggleTourPause),
+        control('next', 'Next domain (→)', () => tourStep(1)),
+        control('close', 'End the tour and go back (Esc)', () => endTour(true)),
+      ]),
+    ]),
+  );
   layoutOverlays();
 }
 
@@ -2232,7 +2352,7 @@ function updateMinimap() {
   const vp = viewport();
   const seen = visibleRect(state.cam, vp, TOOLBAR_HEIGHT, panelRoom());
   // The matrix keeps its headers on screen itself; a map of cells says nothing.
-  const show = map.on && state.view !== CONNECTIONS && !fitsInside(map.bounds, seen);
+  const show = map.on && !tour.on && state.view !== CONNECTIONS && !fitsInside(map.bounds, seen);
   minimap.fo.style.display = show ? '' : 'none';
   if (!show) return;
   for (const [k, v] of Object.entries(seen)) map.seen.setAttribute({ x: 'x', y: 'y', w: 'width', h: 'height' }[k], v);
@@ -2443,6 +2563,18 @@ function layoutOverlays() {
     legend.fo.setAttribute('x', PANEL_MARGIN - LEGEND_ROOM);
     legend.fo.setAttribute('y', Math.max(TOOLBAR_HEIGHT + PANEL_MARGIN, h - r.height - PANEL_MARGIN) - LEGEND_ROOM);
     legend.fo.setAttribute('height', Math.ceil(r.height) + 1 + 2 * LEGEND_ROOM);
+  }
+  if (tour.on) {
+    // Centred at the bottom of the canvas left of the panel.
+    const cardW = Math.min(TOUR_WIDTH, w - panelRoom() - 2 * PANEL_MARGIN);
+    tourBox.div.style.padding = `${TOUR_ROOM}px`;
+    tourBox.div.style.width = `${cardW + 2 * TOUR_ROOM}px`;
+    tourBox.fo.setAttribute('width', cardW + 2 * TOUR_ROOM);
+    tourBox.fo.setAttribute('height', h);
+    tour.height = Math.ceil(tourBox.div.firstChild.getBoundingClientRect().height) + 1;
+    tourBox.fo.setAttribute('x', Math.round((w - panelRoom() - cardW) / 2) - TOUR_ROOM);
+    tourBox.fo.setAttribute('y', h - tour.height - PANEL_MARGIN - TOUR_ROOM);
+    tourBox.fo.setAttribute('height', tour.height + 2 * TOUR_ROOM);
   }
   if (panel.fo.style.display !== 'none') {
     const room = h - TOOLBAR_HEIGHT - 2 * PANEL_MARGIN;
@@ -2723,6 +2855,7 @@ const SHORTCUTS = [
   [`${MOD_KEY}A`, 'All tables'],
   [`${MOD_KEY}C`, 'Copy the selected table as SQL (with its indexes)'],
   ['L', 'Show or hide the legend'],
+  ['T', 'Tour: each domain in turn (← → step, Space pauses, Esc ends)'],
   ['Backspace or Alt+←', 'Back to the previous table or view'],
   ['Shift+Backspace or Alt+→', 'Forward again'],
   ['Esc', 'Close search, menu or panel'],
@@ -2793,6 +2926,24 @@ document.addEventListener('keydown', (e) => {
     navigate(domainView(card.getAttribute('data-domain')));
     return;
   }
+  const plain = !e.metaKey && !e.ctrlKey && !e.altKey && !typing();
+  if (letter === 't' && plain) {
+    if (tour.on) endTour(true);
+    else startTour();
+    return;
+  }
+  // While touring, ← → step and Space pauses (unless a button has focus:
+  // Space then presses it).
+  if (tour.on && plain && !spotlightOpen() && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
+    e.preventDefault();
+    tourStep(e.key === 'ArrowRight' ? 1 : -1);
+    return;
+  }
+  if (tour.on && plain && e.key === ' ' && !e.target.closest?.('button')) {
+    e.preventDefault();
+    toggleTourPause();
+    return;
+  }
   if (letter === 'l' && !e.metaKey && !e.ctrlKey && !e.altKey && !typing()) {
     if (legendSections().length > 0) setLegend(!legendOpen);
     return;
@@ -2814,17 +2965,19 @@ document.addEventListener('keydown', (e) => {
   if (spotlightOpen()) return closeSpotlight();
   if (joinSpotOpen()) return closeJoinSpot();
   if (openMenu()) return closeMenus();
+  if (tour.on) return endTour(true);
   clearSelection();
 });
 
 window.addEventListener('resize', () => {
   layoutOverlays();
-  zoomToRect(viewBounds(state.view), MAX_FIT_SCALE);
+  if (tour.on) frameTourStep();
+  else zoomToRect(viewBounds(state.view), MAX_FIT_SCALE);
 });
 
 // Later overlays paint on top: the toolbar's menus over the panel, the
 // search over everything but the tooltip.
-svg.append(legend.fo, minimap.fo, backPill.fo, reviewChip.fo, panel.fo, toolbar.fo, spotlight.fo, joinSpot.fo, toast.fo, tip.fo);
+svg.append(legend.fo, minimap.fo, backPill.fo, reviewChip.fo, panel.fo, tourBox.fo, toolbar.fo, spotlight.fo, joinSpot.fo, toast.fo, tip.fo);
 // The view drawn visible without script is where the reader starts (all
 // tables unless the workspace configured another view). All tables open at
 // a readable size around the most central table; a diff drawing shows its

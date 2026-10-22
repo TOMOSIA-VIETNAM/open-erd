@@ -12,6 +12,8 @@ import { buildScene, renderSvg, viewerData } from '../src/render/svg/render.js';
 import { applyProfile } from '../src/model/profile.js';
 import { centreOn, fitsInside, minimapSize, visibleRect } from '../src/render/svg/viewer/minimap.js';
 import { endTransforms, radialLayout, straightLink } from '../src/render/svg/viewer/radial.js';
+import { tourIndex, tourSteps } from '../src/render/svg/viewer/tour.js';
+import { domainSummary } from '../src/layout/domains.js';
 import { loadMulti } from './helpers/shop.js';
 
 async function multi() {
@@ -271,4 +273,25 @@ test('minimap: sized from the view bounds, its rectangle is the part on screen, 
   const cam = centreOn({ x: 1000, y: 500 }, { x: 0, y: 0, s: 2 }, viewport, 44, 464);
   assert.equal(cam.s, 2);
   assert.deepEqual([(468 - cam.x) / 2, (44 + 428 - cam.y) / 2], [1000, 500]);
+});
+
+test('tour: one step per domain in the overview order the matrix rows carry, central table, note or name and table count', async () => {
+  const { model, diagram, svg } = await multi();
+  const data = JSON.parse(dataBlock(svg));
+  // The viewer reads the order from the matrix row heads (the column heads have no hit rect).
+  const order = [...svg.matchAll(/<g class="mx-head" data-domain="([^"]+)"><rect class="mx-head-hit"/g)].map((m) => m[1]);
+  assert.deepEqual(order, domainSummary(model, diagram).order);
+  const steps = tourSteps(order, data.nodes, data.domainNotes);
+  assert.deepEqual(steps.map((s) => s.cluster), order);
+  for (const s of steps) assert.equal(s.central, diagram.centralOf.get(s.cluster) ?? null, s.cluster);
+  const identity = steps.find((s) => s.cluster === 'auth/Identity');
+  assert.equal(identity.note, 'People who sign in and the profiles and sessions that belong to them.');
+  // No note: the name and table count still make a caption.
+  const events = steps.find((s) => s.cluster === 'activity/Events');
+  const tables = Object.values(data.nodes).filter((n) => n.kind === 'table' && n.cluster === 'activity/Events').length;
+  assert.equal(events.note, null);
+  assert.equal(events.title, `Events · ${tables} table${tables === 1 ? '' : 's'}`);
+  assert.equal(tourSteps(['db/One'], { 'db._.t': { kind: 'table', cluster: 'db/One' } }).at(0).title, 'One · 1 table');
+  // Next and Prev wrap round.
+  assert.deepEqual([tourIndex(0, -1, 4), tourIndex(3, 1, 4), tourIndex(1, 1, 4)], [3, 0, 2]);
 });
