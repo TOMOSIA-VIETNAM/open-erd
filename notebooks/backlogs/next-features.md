@@ -9,7 +9,7 @@ Nguyên tắc chung (giữ như mọi vòng trước):
 - Khi chạy không có người: không dùng shell `rm`, không hỏi; ghi danh sách "Cần xoá".
 - README chỉ cho người dùng, ngắn; chi tiết vào `docs/USAGE.md`, dev vào `docs/DEVELOPMENT.md`.
 
-Thứ tự làm: 1 → 2 → 3 → 4 → 5 → 6.
+Thứ tự làm: 7 (verifier, vì mọi tính năng sau đều ghi vào ERD) → 1 → 2 → 3 → 4 → 5 → 6.
 
 ## 1. ERD tự cập nhật trong CI (không cần AI)
 
@@ -60,6 +60,20 @@ Danh sách phát hiện, **không chấm điểm**, không sinh migration theo f
 - Skill mới: Claude đọc **model** (không đọc code) trả lời câu hỏi nghiệp vụ/cấu trúc; kèm link mở viewer với bảng liên quan được tô sáng.
 - Viewer: deep link `#tables=<id>,<id>…` (tô sáng tập bảng, fit view) và `#path=<id>,<id>…` (hiện như join path). Đã có `#table=`, `#column=`, `#view=`.
 - Không sinh file; trả lời trong hội thoại kèm câu gợi ý `/open-erd:feedback`.
+
+## 7. Verifier: agent kiểm lại mọi thay đổi AI ghi vào ERD
+
+Mục tiêu: không tin một agent duy nhất; mỗi lần cập nhật ERD có agent thứ hai (context sạch) kiểm chứng trước khi commit.
+
+- Áp dụng: `init`, `sync`, `review`, và mọi chỉnh sửa bằng lời trong hội thoại — sau khi ghi model, trước khi commit.
+- Phạm vi: chỉ phần model thay đổi so với commit trước (`git diff -- model`).
+- Hai lớp:
+  1. Cơ học (không tốn AI): chạy lại extract scripts, so cấu trúc (bảng, cột, type, nullable, default, index, `db_fk`) với model; lệch → báo lỗi cụ thể.
+  2. Verifier subagent: các fact do AI viết (note bảng/cột/domain/polymorphic, nghĩa enum, quan hệ `declared`/`inferred`/`cross_db`/polymorphic targets, cardinality/optional). Mở lại evidence trong code; mỗi mục trả `confirmed` / `wrong: <lý do + sửa đề xuất>` / `unverifiable`.
+- Xử lý: `wrong` → agent chính sửa rồi verifier kiểm lại mục đó (tối đa 2 vòng); `unverifiable` → `review: pending` (không bao giờ tự `reviewed`); verifier không được sửa model trực tiếp.
+- Ghi nhận: commit message có dòng `verify: confirmed N, fixed M, unverifiable K`; xlsx sheet "Verification" (lần chạy gần nhất: fact, kết quả, lý do).
+- Cấu hình `verify: full | ai-only | off` trong `open-erd.yaml` (mặc định `ai-only`: lớp 1 luôn chạy, lớp 2 chỉ cho fact do AI viết). Tradeoff: thêm ~30–50% token mỗi sync khi `full`.
+- Viết rule chung một nơi (`skills/_shared/rules.md` mục "Verification"), các skill gọi tới; test eval: trên fixtures, cố ý chèn lỗi (sai bảng đích, note sai) → verifier phải bắt được.
 
 ## Việc tồn đọng nhỏ (làm kèm khi tiện)
 
