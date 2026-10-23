@@ -9,7 +9,9 @@ import { POSSIBLE_RENAME_SIMILARITY, describeChange, diffModels, summarize, summ
 import { diffMarks, unionModel } from '../src/diff/union.js';
 import { parseWorkspace } from '../src/model/load.js';
 import { editFile, git, runCli, snapshotRepo } from './helpers/git-workspace.js';
-import { MULTI, SHOP, loadWorkspace, table } from './helpers/shop.js';
+import { MULTI, SHOP, loadMulti, loadWorkspace, table } from './helpers/shop.js';
+import { buildDiagram } from '../src/layout/diagram.js';
+import { changesSummary } from '../src/render/svg/viewer/changes.js';
 import { SHOP_V2_EDITS, SHOP_V2_SUMMARY } from './helpers/shop-v2.js';
 import { xlsxLinks } from './helpers/xlsx.js';
 
@@ -134,6 +136,48 @@ test('union model keeps removed tables, columns and relations so they can be dra
   assert.equal(marks.nodes.get('shop/Catalog'), 'changed');
 });
 
+test('diff marks: tables near a changed line, counts, and the Changes list of the viewer', async () => {
+  const { from, to } = await shopVersions();
+  const result = diffModels(from, to);
+  const union = unionModel(from, to, result);
+  const marks = diffMarks(union, result.changes);
+  // A table with sentences but no status of its own sits at the end of a
+  // changed line (so do the far ends of a join table's line, tested below).
+  for (const t of union.tables) {
+    if (marks.nodes.has(t.id)) assert.ok(!marks.near.has(t.id), t.id);
+    else if (marks.sentences.nodes.has(t.id)) assert.ok(marks.near.has(t.id), t.id);
+  }
+  const s = summarize(result.changes);
+  assert.deepEqual(marks.counts, { tables: union.tables.filter((t) => marks.nodes.has(t.id)).length, columns: s.columnsChanged, relations: s.relationsChanged });
+
+  const sorted = (map) => Object.fromEntries(map);
+  const nodes = Object.fromEntries(union.tables.map((t) => [t.id, { kind: 'table' }]));
+  const summary = changesSummary({ nodes: sorted(marks.sentences.nodes), links: sorted(marks.sentences.links), status: sorted(marks.nodes), counts: marks.counts }, nodes);
+  assert.equal(summary.label, `${marks.counts.tables} tables, ${s.columnsChanged} columns, ${s.relationsChanged} relations`);
+  assert.deepEqual(new Set(summary.tables.map((t) => t.id)), new Set([...marks.sentences.nodes.keys()].filter((id) => nodes[id])));
+  // New and renamed first, then changed, removed, and tables only near a changed line.
+  const order = ['added', 'renamed', 'changed', 'removed', undefined];
+  const ranks = summary.tables.map((t) => order.indexOf(t.status));
+  assert.deepEqual(ranks, [...ranks].sort((a, b) => a - b));
+  assert.equal(summary.tables.at(-1).status, undefined);
+  assert.equal(changesSummary({ nodes: {}, links: {}, status: {}, counts: { tables: 0, columns: 0, relations: 0 } }, nodes), null);
+  assert.equal(changesSummary({ nodes: {}, links: { x: ['a'] }, status: {}, counts: { tables: 0, columns: 0, relations: 1 } }, nodes).label, '1 relation');
+});
+
+test('a changed key of a join table marks the many-to-many line drawn for it', async () => {
+  const from = await loadMulti();
+  const to = clone(from);
+  to.relations = to.relations.filter((r) => !(r.from.table === 'shop._.product_tags' && r.to.table === 'shop._.tags'));
+  const result = diffModels(from, to);
+  const union = unionModel(from, to, result);
+  const marks = diffMarks(union, result.changes);
+  const line = buildDiagram(union).links.find((l) => l.via === 'shop._.product_tags');
+  assert.ok(line, 'product_tags is drawn as a many-to-many line');
+  assert.equal(marks.links.get(line.id), 'changed');
+  assert.ok(marks.sentences.links.get(line.id).length > 0);
+  for (const end of [line.from.node, line.to.node]) assert.ok(marks.near.has(end), end);
+});
+
 // ---------------------------------------------------------------- CLI on a git workspace
 
 let ws;
@@ -160,6 +204,8 @@ test('CLI diff between two tags: summary, colored SVG and Changes sheet agree', 
   const marks = diffMarks(unionModel(from, to, result), result.changes);
   // Every table the diff marks is drawn with that colour in the visible
   // view of all tables, and no other table is.
+  // It opens with the Changes mode on, so the static drawing fades what did not change.
+  assert.match(/<svg [^>]*>/.exec(svg)[0], /class="diff-mode changes-mode"/);
   const all = viewOf(svg, 'all');
   assert.ok(!/<g class="view" data-view="all"[^>]*display:none/.test(all), 'all tables view is the visible one');
   const drawn = [...all.matchAll(/<g class="table[^"]*?(?: diff-(\w+))?" data-id="([^"]+)"/g)].filter((m) => m[1]).map((m) => [m[2], m[1]]);

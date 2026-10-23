@@ -15,6 +15,7 @@ import { emptyHistory, goBack, goForward, tableTrail, visit } from './history.js
 import { endTransforms, radialLayout, straightLink } from './radial.js';
 import { TOUR_STEP_MS, tourIndex, tourSteps } from './tour.js';
 import { piiSummary } from './pii.js';
+import { changesSummary } from './changes.js';
 import { commandsFirst, matchCommands, parseJoinQuery } from './palette.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -181,6 +182,10 @@ const PII = piiSummary(data.nodes);
   }
   for (const g of svg.querySelectorAll('.domain[data-domain], .mx-head[data-domain]')) if (domains.has(g.getAttribute('data-domain'))) g.classList.add('has-pii');
 }
+
+// What a diff drawing changed (see the Changes mode section); null in a
+// plain drawing or a diff that marks nothing.
+const CHANGES = data.changes ? changesSummary(data.changes, data.nodes) : null;
 
 // Schema health (see the health mode section): each table with a finding
 // gets a small amber triangle on its top right corner and its columns in a
@@ -722,7 +727,9 @@ function straightRelation(l, from, to, boxes, extraClass = '') {
   }
   // Solid when confirmed, dashed when not, as in the drawn views.
   const style = l.kind !== 'view_source' && !isConfirmed(l.kind, l.review) ? ' unconfirmed' : '';
-  return svgEl('g', { class: `relation-group kind-${l.kind} review-${l.review}${style}${extraClass}`, 'data-id': l.id, 'data-from': from, 'data-to': to }, children);
+  // In a diff drawing, the line's change colour, as the drawn views have it.
+  const status = data.changes?.lineStatus[l.id];
+  return svgEl('g', { class: `relation-group kind-${l.kind} review-${l.review}${style}${status ? ` diff-${status}` : ''}${extraClass}`, 'data-id': l.id, 'data-from': from, 'data-to': to }, children);
 }
 
 /**
@@ -989,12 +996,13 @@ const reviewable = () => state.view !== OVERVIEW && state.view !== CONNECTIONS;
 const REVIEW_TOTAL = data.review.pending + data.review.stale;
 const reviewCounts = () => `${data.review.pending} to confirm · ${data.review.stale} changed in code`;
 const REVIEW_TIP = 'Color lines by review status: amber = not confirmed yet, red = code changed since review';
-if (REVIEW_TOTAL === 0 && PII.total === 0 && HEALTH.length === 0) highlightMenu.wrap.style.display = 'none';
+if (REVIEW_TOTAL === 0 && PII.total === 0 && HEALTH.length === 0 && !CHANGES) highlightMenu.wrap.style.display = 'none';
 // The modes, in the order of their chips under the toolbar; each one only
 // when it has something to show (nothing to review, no personal data, no
 // findings: the entry would switch on a mode that changes nothing).
 function highlightModes() {
   return [
+    CHANGES ? { label: 'Changes', detail: CHANGES.label, tip: CHANGES_TIP, keys: 'C', keywords: ['changes', 'diff', 'added', 'removed'], on: changesOn(), toggle: () => setChangesMode(!changesOn()), off: null } : null,
     REVIEW_TOTAL > 0
       ? { label: 'Review mode', detail: reviewCounts(), tip: REVIEW_TIP, keys: null, keywords: ['review', 'confirm', 'stale'], on: reviewing(), toggle: () => setReviewMode(!reviewing()), off: reviewable() ? null : 'Lines only: not on the map or the matrix' }
       : null,
@@ -1191,8 +1199,8 @@ function viewAsSvg() {
   // The pulse on a table just reached is a moment on screen, not drawing.
   for (const e of view.querySelectorAll('.arrive')) e.classList.remove('arrive');
   const root = svgEl('svg', { width: w, height: h, viewBox: `${x} ${y} ${w} ${h}` }, [svg.querySelector('style').cloneNode(true), view]);
-  // Review colours, the personal data map, health marks and diff colours are classes on the root.
-  const cls = ['review-mode', 'pii-mode', 'health-mode', 'diff-mode'].filter((c) => svg.classList.contains(c));
+  // Review colours, the personal data map, health marks, diff colours and the Changes fade are classes on the root.
+  const cls = ['review-mode', 'pii-mode', 'health-mode', 'diff-mode', 'changes-mode'].filter((c) => svg.classList.contains(c));
   if (cls.length > 0) root.setAttribute('class', cls.join(' '));
   return { text: `<?xml version="1.0" encoding="UTF-8"?>\n${new XMLSerializer().serializeToString(root)}\n`, w, h };
 }
@@ -2418,6 +2426,9 @@ const reviewing = () => svg.classList.contains('review-mode');
 // review colours and icons.
 const strengthSample = () => sample([0, 1, 2, 3, 4].map((i) => svgEl('rect', { class: `seg${i < 3 ? ' on' : ''}`, x: 2 + i * 11, y: 6, width: 9, height: 6, rx: 1 })));
 const connectorSample = (count, crossDb) => sample([connectorEl('M2 14C20 14 26 4 44 4', count, crossDb)]);
+// A table box as the Changes mode fades it (opacities from render.js).
+const fadedSample = (opacity) =>
+  sample([svgEl('g', { opacity }, [svgEl('rect', { class: 'table-box', x: 1, y: 1, width: 62, height: 16, rx: 3 }), svgEl('text', { class: 'table-title', x: 6, y: 9, 'dominant-baseline': 'central', text: 'orders' })])]);
 const LEGEND = [
   ['Domain cards', [
     [strengthSample, 'Relations with that domain: more filled, more relations', (v) => has(v, '.card-related')],
@@ -2425,6 +2436,16 @@ const LEGEND = [
     [() => connectorSample(5, false), 'some relations', (v) => has(v, '.domain')],
     [() => connectorSample(12, false), 'many relations', (v) => has(v, '.domain')],
     [() => connectorSample(3, true), 'Domain in another database', (v) => has(v, '.card-db')],
+  ]],
+  ['Changes', [
+    ...['added', 'changed', 'renamed', 'removed'].map((status) => [
+      () => sample([svgEl('rect', { class: `legend-swatch diff-${status}`, x: 1, y: 3, width: 12, height: 12, rx: 2 })]),
+      `${status[0].toUpperCase()}${status.slice(1)}`,
+      // The banner's own swatches are in every view: only drawn elements count.
+      (v) => has(v, `.diff-${status}:not(.legend-swatch), .col-${status}`),
+    ]),
+    [() => fadedSample(0.55), 'Unchanged, at the end of a changed line', (v) => changesOn() && has(v, '.near-change')],
+    [() => fadedSample(0.16), 'Unchanged (C shows it at full strength)', (v) => changesOn()],
   ]],
   ['Review mode', [
     [() => reviewSample('kind-db_fk review-reviewed', 'reviewed'), REVIEW_WORDS.reviewed, (v) => reviewing() && has(v, '.relation-group.review-reviewed')],
@@ -2601,6 +2622,74 @@ function setPiiMode(on) {
   placeBackPill();
 }
 
+// ---------------------------------------------------------------- changes mode
+
+// The Changes mode of a diff drawing (Highlight › Changes, or C; offered
+// only in a diff that marks something, see CHANGES): tables, lines and
+// domain cards the diff did not change fade, as around a selection, in
+// every view until turned off; the tables at the end of a changed line fade
+// only half (render.js styles both). It is on when the file opens: the
+// renderer puts the class in the static markup. A selection takes over the
+// fading while it lasts, and clearing it brings the fade back. A chip under
+// the toolbar says the mode is on: List shows the changed tables with what
+// changed in each, a click goes to the table and keeps the list open; ×
+// turns the mode off. The mode is a class on the root, so a download keeps it.
+const changesOn = () => svg.classList.contains('changes-mode');
+const CHANGES_TIP = 'Fade the tables and lines this diff did not change';
+const changesChip = overlay('oe-changes-chip-host');
+changesChip.fo.style.display = 'none';
+if (CHANGES) {
+  changesChip.div.append(
+    el('div', { class: 'oe-review-chip oe-changes-chip', title: 'What did not change is faded' }, [
+      el('span', { text: `Changes: ${CHANGES.label}` }),
+      el('button', { class: 'oe-link', text: 'List', title: 'Show the changed tables and what changed in each', on: { click: () => showChangesList() } }),
+      el('button', { class: 'oe-chip-close', text: '×', title: 'Show everything at full strength (C)', 'aria-label': 'Turn the changes highlight off', on: { click: () => setChangesMode(false) } }),
+    ]),
+  );
+}
+
+// Built once and reused, so the scroll position comes back after a jump.
+let changesPanel = null;
+function changesListPanel() {
+  if (changesPanel) return changesPanel;
+  const go = (id) => () => {
+    const scroll = panel.div.scrollTop;
+    goToNode(id);
+    showChangesList(scroll);
+  };
+  changesPanel = [
+    panelHeader({ name: 'Changes', note: `From ${data.changes.from} to ${data.changes.to}: ${CHANGES.label}` }),
+    ...CHANGES.tables.map((t) =>
+      el('div', { class: 'oe-change-table' }, [
+        el('div', { class: 'oe-health-head' }, [
+          el('span', { class: `oe-badge diff-${t.status ?? 'none'}`, text: t.status ?? 'relation', title: t.status ? `Table ${t.status}` : 'Only a relation at this table changed' }),
+          el('button', { class: 'oe-link', text: short(t.id), title: `Go to ${t.id}`, on: { click: go(t.id) } }),
+        ]),
+        el('ul', {}, t.sentences.map((text) => el('li', { text }))),
+      ]),
+    ),
+  ];
+  return changesPanel;
+}
+function showChangesList(scroll = 0) {
+  showPanel(changesListPanel());
+  panel.div.scrollTop = scroll;
+}
+const changesListShown = () => changesPanel !== null && panel.fo.style.display !== 'none' && panel.div.contains(changesPanel[0]);
+
+function setChangesMode(on) {
+  if (!CHANGES) return;
+  svg.classList.toggle('changes-mode', on);
+  changesChip.fo.style.display = on ? '' : 'none';
+  // A selection would hide the fade that was asked for.
+  if (on) clearSelection();
+  else if (changesListShown()) hidePanel();
+  updateHighlightButton();
+  showLegend();
+  layoutOverlays();
+  placeBackPill();
+}
+
 // ---------------------------------------------------------------- health mode
 
 // Schema health (Highlight › Schema health, or H; offered only when the render has
@@ -2634,7 +2723,7 @@ healthChip.div.append(
   ]),
 );
 // Chips of the modes, in the order they sit under the toolbar.
-const modeChips = () => [reviewChip, piiChip, healthChip];
+const modeChips = () => [changesChip, reviewChip, piiChip, healthChip];
 
 // Built once and reused, so the severity filter stays as the reader set it.
 let healthPanel = null;
@@ -3354,6 +3443,7 @@ const SHORTCUTS = [
   ['L', 'Show or hide the legend'],
   ['?', 'This list of keys'],
   ['T', 'Tour: each domain in turn (← → step, Space pauses, Esc ends)'],
+  CHANGES ? ['C', 'Changes: fade what the diff did not change, with the list of changes'] : null,
   PII.total > 0 ? ['P', 'Personal data map: PII columns tinted, the rest faded, with their list'] : null,
   HEALTH.length > 0 ? ['H', 'Schema health: tables with findings marked, with their list'] : null,
   ['←', 'Back to the previous table or view'],
@@ -3458,6 +3548,10 @@ document.addEventListener('keydown', (e) => {
     toggleTourPause();
     return;
   }
+  if (letter === 'c' && plain) {
+    setChangesMode(!changesOn());
+    return;
+  }
   if (letter === 'p' && plain) {
     setPiiMode(!piiOn());
     return;
@@ -3504,13 +3598,15 @@ window.addEventListener('resize', () => {
 
 // Later overlays paint on top: the toolbar's menus over the panel, the
 // search over everything but the tooltip.
-svg.append(legend.fo, help.fo, minimap.fo, backPill.fo, reviewChip.fo, piiChip.fo, healthChip.fo, panel.fo, tourBox.fo, toolbar.fo, spotlight.fo, joinSpot.fo, toast.fo, tip.fo);
+svg.append(legend.fo, help.fo, minimap.fo, backPill.fo, reviewChip.fo, piiChip.fo, healthChip.fo, changesChip.fo, panel.fo, tourBox.fo, toolbar.fo, spotlight.fo, joinSpot.fo, toast.fo, tip.fo);
 // The view drawn visible without script is where the reader starts (all
 // tables unless the workspace configured another view). All tables open at
 // a readable size around the most central table; a diff drawing shows its
 // whole view, banner included.
 const start = [...views].find(([, v]) => v.style.display !== 'none')?.[0] ?? OVERVIEW;
 showView(start);
+// The renderer opens a diff with the Changes mode on (class in the markup): show its chip.
+if (changesOn()) setChangesMode(true);
 if (!openDeepLink(location.hash) && start === ALL_VIEW && !data.changes) readableStart(viewBounds(ALL_VIEW), indexes.get(ALL_VIEW).get(data.mostCentral)?.box ?? null);
 // Another link opened in the same tab (a hash change only) goes there too.
 window.addEventListener('hashchange', () => openDeepLink(location.hash));

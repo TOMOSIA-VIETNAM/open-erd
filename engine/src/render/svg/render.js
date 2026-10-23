@@ -372,6 +372,13 @@ const DIFF_STYLE = [
   '.diff-removed :is(.table-title, .stub-title, .poly-title, .card-title), .column.col-removed text { text-decoration: line-through; }',
   '.column.col-removed .column-name { fill: #c92a2a; }',
   '.relation-group.diff-removed .relation { stroke-dasharray: 6 4; }',
+  // Changes mode (a class on the root, set when a diff drawing opens):
+  // what the diff did not change fades like the rest of a selection; tables
+  // at the end of a changed line only half, so the line still reads. A
+  // selection's own fading takes over while it lasts.
+  `.changes-mode .view:not(.dimmed) :is(.table, .stub, .poly, .domain, .relation-group):not(${Object.keys(DIFF_COLORS).map((s) => `.diff-${s}`).join(', ')}, .near-change) { opacity: 0.16; }`,
+  '.changes-mode .view:not(.dimmed) :is(.table, .stub, .poly).near-change { opacity: 0.55; }',
+  ...Object.entries(DIFF_COLORS).map(([status, c]) => `.oe-badge.diff-${status} { background: ${c.fill}; color: ${c.stroke}; font-weight: 700; }`),
   '.diff-mode .relation-group:not(.diff-added, .diff-removed, .diff-changed) :is(.relation, .marker) { stroke: #c3cad5; stroke-dasharray: none; }',
   '.diff-mode .relation-group:not(.diff-added, .diff-removed, .diff-changed) .edge-label text { fill: #9aa4b5; }',
   '.banner-box { fill: #ffffff; stroke: #94a0b2; stroke-width: 1.2; }',
@@ -474,8 +481,8 @@ function escapeXml(text) {
 const camel = (name) => name.replace(/_(.)/g, (_, c) => c.toUpperCase());
 
 // Marks of a plain render: nothing changed.
-const NO_MARKS = { nodes: new Map(), columns: new Map(), links: new Map(), sentences: { nodes: new Map(), links: new Map() } };
-const diffClass = (marks, id) => (marks.nodes.has(id) ? ` diff-${marks.nodes.get(id)}` : '');
+const NO_MARKS = { nodes: new Map(), columns: new Map(), links: new Map(), sentences: { nodes: new Map(), links: new Map() }, near: new Set() };
+const diffClass = (marks, id) => (marks.nodes.has(id) ? ` diff-${marks.nodes.get(id)}` : marks.near.has(id) ? ' near-change' : '');
 const linkDiffClass = (marks, id) => (marks.links.has(id) ? ` diff-${marks.links.get(id)}` : '');
 // Native tooltip text: the id, then what changed, so a viewer without
 // script still tells what happened to an element.
@@ -1231,8 +1238,11 @@ export function viewerData(model, diagram, diff = null, warnings = missingRelati
   if (health.length > 0) base.health = health.map(({ related, ...f }) => f);
   if (!diff) return base;
   const sorted = (map) => Object.fromEntries([...map].sort(([a], [b]) => compareStrings(a, b)));
-  const { sentences } = diff.marks;
-  return { ...base, changes: { from: diff.from, to: diff.to, summary: diff.summary, nodes: sorted(sentences.nodes), links: sorted(sentences.links) } };
+  const { sentences, nodes: status, links: lineStatus, counts } = diff.marks;
+  return {
+    ...base,
+    changes: { from: diff.from, to: diff.to, summary: diff.summary, nodes: sorted(sentences.nodes), links: sorted(sentences.links), status: sorted(status), lineStatus: sorted(lineStatus), counts },
+  };
 }
 
 /** Every view a render draws: the laid-out ones, then the connections view. */
@@ -1264,7 +1274,8 @@ export function openingView(model, diagram = buildDiagram(model)) {
  * coloured, every view gets the summary banner, the viewer data carries the
  * change sentences, and the view of all tables (the overview when the
  * diagram has none) is the one visible, since that is where changes can be
- * seen without script.
+ * seen without script. When anything is marked, the root also gets
+ * `changes-mode`, which fades what did not change.
  *
  * `{ warnings }`: the possibly missing relations to mark (missingRelations
  * of `model` when left out); a profile render passes the ones found on the
@@ -1278,6 +1289,9 @@ export function renderSvg(model, layout, options = {}) {
   const { diff = null, warnings = missingRelations(model), health = diff ? [] : healthFindings(model), ...sceneOptions } = options;
   const diagram = buildDiagram(model);
   const marks = diff?.marks ?? NO_MARKS;
+  // A diff opens with the Changes mode on (see the viewer), so the static
+  // drawing fades what did not change too.
+  const changed = marks.nodes.size + marks.links.size > 0;
   // A diagram too large for the view of all tables opens a diff on the
   // overview, where the banner still tells what changed.
   const visible = diff ? (hasAllView(diagram) ? ALL_VIEW : OVERVIEW) : openingView(model, diagram).view;
@@ -1293,7 +1307,7 @@ export function renderSvg(model, layout, options = {}) {
   const connections = connectionsSvg(connectionMatrix(model, diagram, domainSummary(model, diagram)), colorOf);
   const { x, y, w, h } = visible === CONNECTIONS_VIEW ? connections.bounds : scenes.find((s) => s.scene.name === visible).scene.bounds;
   return [
-    `<svg xmlns="http://www.w3.org/2000/svg"${diff ? ' class="diff-mode"' : ''} width="${w}" height="${h}" viewBox="${x} ${y} ${w} ${h}">`,
+    `<svg xmlns="http://www.w3.org/2000/svg"${diff ? ` class="diff-mode${changed ? ' changes-mode' : ''}"` : ''} width="${w}" height="${h}" viewBox="${x} ${y} ${w} ${h}">`,
     `<style>${STYLE}</style>`,
     ...scenes.map((s) => viewSvg(s.scene, colorOf, s.scene.name === visible, marks, s.banner, columnWarnings)),
     viewGroup(CONNECTIONS_VIEW, connections.bounds, visible === CONNECTIONS_VIEW, [connections.svg]),

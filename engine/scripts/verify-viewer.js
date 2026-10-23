@@ -163,6 +163,61 @@ if (startView === 'all' && (await evaluate(`JSON.parse(document.getElementById('
       return (s === 1 && (!d.mostCentral || mid) && map && map.style.display !== 'none') || { s, mid, map: map?.style.display }; })()`,
   );
 }
+// Changes mode: a diff opens with it on (chip with the counts, unchanged
+// tables and lines faded, changed ones at full strength); List shows the
+// changed tables and a click there goes to one; a selection takes over the
+// fading and Esc brings it back; the chip's × and C turn it off and on. A
+// plain drawing has no entry, chip or key. It is left off for the steps
+// after, which check the other modes' fading.
+{
+  const changesHost = `document.querySelector('.oe-changes-chip-host').closest('foreignObject')`;
+  const changesOn = `document.documentElement.classList.contains('changes-mode')`;
+  const faded = (sel) => `(() => { const e = ${inView(sel)}; return e === null || getComputedStyle(e).opacity === '0.16' || getComputedStyle(e).opacity; })()`;
+  const full = (sel) => `(() => { const e = ${inView(sel)}; return e === null || getComputedStyle(e).opacity === '1' || getComputedStyle(e).opacity; })()`;
+  const unchanged = '.table:not([class*="diff-"]):not(.near-change)';
+  const changedSel = '.table:is(.diff-added, .diff-changed, .diff-renamed)';
+  if (await evaluate(`JSON.parse(document.getElementById('open-erd-data').textContent).changes !== undefined`)) {
+    const counts = await evaluate(`JSON.parse(document.getElementById('open-erd-data').textContent).changes.counts`);
+    const listed = await evaluate(`Object.keys(JSON.parse(document.getElementById('open-erd-data').textContent).changes.nodes).filter((id) => document.querySelector('.table[data-id="' + CSS.escape(id) + '"]')).length`);
+    await shot(
+      'changes-default-on',
+      `${changesOn} && ${changesHost}.style.display !== 'none' && document.querySelector('.oe-changes-chip').textContent.includes(${JSON.stringify(`${counts.tables} table`)})
+        && ${faded(unchanged)} === true && ${full(changedSel)} === true`,
+    );
+    await click(menuButton('highlight'));
+    await shot('changes-menu-entry', `${menuItem('highlight', 'Changes')}?.getAttribute('aria-checked') === 'true'`);
+    await closeMenu('highlight');
+    await click(`document.querySelector('.oe-changes-chip .oe-link')`);
+    await shot('changes-list', `document.querySelectorAll('.oe-panel .oe-change-table').length === ${listed} && document.querySelectorAll('.oe-panel .oe-change-table li').length > 0`);
+    const target = await evaluate(`document.querySelector('.oe-panel .oe-change-table .oe-link').title.replace(/^Go to /, '')`);
+    await click(`document.querySelector('.oe-panel .oe-change-table .oe-link')`);
+    await pause(400);
+    await shot('changes-list-jump', `document.querySelectorAll('.oe-panel .oe-change-table').length === ${listed} && (() => { const r = ${inView(`.table[data-id="${target}"]`)}.getBoundingClientRect(); return r.right > 0 && r.left < innerWidth && r.bottom > 44 && r.top < innerHeight; })()`);
+    await key('Escape');
+    await click(inView(changedSel), { where: 'top' });
+    await shot('changes-selection-takes-over', `${changesOn} && ${visible}.classList.contains('dimmed')`);
+    await key('Escape');
+    await shot('changes-fade-back', `${changesOn} && !${visible}.classList.contains('dimmed') && ${faded(unchanged)} === true`);
+    // The neighborhood of a changed table fades the same way once its selection is cleared.
+    await click(inView(changedSel), { where: 'top', count: 2 });
+    await key('Escape');
+    await shot('changes-neighborhood', `${viewIs('neighborhood')} && ${changesOn} && ${faded(unchanged)} === true && ${full(changedSel)} === true
+      && (() => { const status = JSON.parse(document.getElementById('open-erd-data').textContent).changes.lineStatus;
+        return [...${visible}.querySelectorAll('.relation-group')].filter((g) => status[g.getAttribute('data-id')]).every((g) => g.classList.contains('diff-' + status[g.getAttribute('data-id')]) && getComputedStyle(g).opacity === '1'); })()`);
+    await viewTab('all');
+    await click(`document.querySelector('.oe-changes-chip .oe-chip-close')`);
+    await shot('changes-off-chip', `!${changesOn} && ${changesHost}.style.display === 'none' && ${full(unchanged)} === true`);
+    await key('c', 'KeyC');
+    await shot('changes-on-key', `${changesOn} && ${changesHost}.style.display !== 'none' && ${faded(unchanged)} === true`);
+    await key('c', 'KeyC');
+  } else {
+    if (await evaluate(`getComputedStyle(${menuButton('highlight')}.parentNode).display !== 'none'`)) await click(menuButton('highlight'));
+    await shot('changes-absent', `${menuItem('highlight', 'Changes')} === undefined && ${changesHost}.style.display === 'none'`);
+    await closeMenu('highlight');
+    await key('c', 'KeyC');
+    await shot('changes-key-does-nothing', `!${changesOn} && ${changesHost}.style.display === 'none'`);
+  }
+}
 if (await evaluate(`JSON.parse(document.getElementById('open-erd-data').textContent).changes !== undefined`)) {
   for (const status of ['changed', 'renamed', 'added', 'removed']) {
     const changed = await evaluate(`${inView(`.table.diff-${status}`)}?.getAttribute('data-id') ?? null`);
@@ -755,6 +810,8 @@ if (await evaluate(`document.querySelector('g.view[data-view="all"]') !== null`)
   await click(`document.querySelector('.domain[data-domain=${JSON.stringify(domain)}]')`);
   await shot('no-all-tables', `${viewIs(`domain:${domain}`)} && document.querySelector('.oe-view-tabs [data-view="all"]') === null`);
 }
+// The legend, open again, may cover the table where the fitted view put it.
+await bringIntoView(inView(`.table[data-id="${table}"]`));
 await click(inView(`.table[data-id="${table}"]`), { where: 'top', count: 2 });
 // Its lines carry crow's feet like the drawn views.
 await shot(
@@ -1013,7 +1070,7 @@ await key('Escape');
 await key('?', 'Slash');
 // P is listed only when some column is marked as personal data, H only
 // when the render has schema health findings.
-await shot('keyboard-shortcuts', `document.querySelectorAll('.oe-panel .oe-keys tr').length === ${11 + (piiTotal > 0) + (healthTotal > 0)} && /J/.test(document.querySelector('.oe-panel .oe-keys').textContent) && /K$/.test(document.querySelector('.oe-panel .oe-keys kbd').textContent) && document.querySelector('.oe-panel .oe-keys').textContent.includes('←')`);
+await shot('keyboard-shortcuts', `document.querySelectorAll('.oe-panel .oe-keys tr').length === ${11 + (piiTotal > 0) + (healthTotal > 0) + (await evaluate(`document.querySelector('.oe-changes-chip') !== null`))} && /J/.test(document.querySelector('.oe-panel .oe-keys').textContent) && /K$/.test(document.querySelector('.oe-panel .oe-keys kbd').textContent) && document.querySelector('.oe-panel .oe-keys').textContent.includes('←')`);
 // A short panel leaves the minimap in its corner; a tall one pushes it left.
 {
   const mm = `(() => { const f = document.querySelector('.oe-minimap')?.closest('foreignObject'); return f && f.style.display !== 'none' ? document.querySelector('.oe-minimap').getBoundingClientRect() : null; })()`;
