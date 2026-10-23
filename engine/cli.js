@@ -11,6 +11,7 @@ import { checkLocked, lockFacts, parseLocked, serializeLocked } from './src/mode
 import { applyProfile, resolveProfile } from './src/model/profile.js';
 import { compareFacts, describeDelta, readFacts } from './src/model/facts.js';
 import { applyFacts, needsSyncMarkdown } from './src/model/apply-facts.js';
+import { describeFactsChange, diffFacts, factsDiffSummary } from './src/model/facts-diff.js';
 import { parseVerification, serializeVerification, verificationSummary } from './src/model/verification.js';
 import { formatWarning, missingRelations, warningsFor } from './src/model/missing.js';
 import { healthFindings, healthFor, healthSummary } from './src/model/health.js';
@@ -29,6 +30,8 @@ const SNAPSHOT_FILE = (path) => path === CONFIG_FILE || path === LAYOUT_FILE || 
 // What `--format` accepts: plain lines for a terminal, or Markdown (for a
 // pull request comment) on stdout with progress lines on stderr.
 const FORMATS = ['text', 'markdown'];
+// Where the extract facts files live in a workspace.
+const FACTS_DIR = 'extract/facts';
 
 const git = (workspace, ...args) =>
   promisify(execFile)('git', ['-C', workspace, ...args], { maxBuffer: 256 * 1024 * 1024 }).then((r) => r.stdout);
@@ -62,6 +65,14 @@ const COMMANDS = {
       'anything a reviewed fact uses); never writes the workspace itself',
     options: { workspace: { type: 'string' }, facts: { type: 'string' }, out: { type: 'string' }, format: { type: 'string' } },
     run: runApplyFacts,
+  },
+  'facts-diff': {
+    usage: 'facts-diff --workspace <dir> [--from <ref>] [--format text|json]',
+    summary:
+      `print what changed in the extract facts (${FACTS_DIR}/*.json) between a git ref of the workspace (default HEAD) and the files on disk: ` +
+      'tables, columns, indexes, associations, polymorphic associations, enums and hints added, removed or changed, one line each, sorted (--format json: the same as JSON)',
+    options: { workspace: { type: 'string' }, from: { type: 'string' }, format: { type: 'string' } },
+    run: runFactsDiff,
   },
   layout: {
     usage: `layout --workspace <dir> [--relayout <view>]... [--relayout '${EVERY_VIEW}']`,
@@ -205,27 +216,77 @@ async function runLock({ workspace }) {
  * printing why (no directory, no file, a file that is not JSON).
  */
 async function readFactsFiles(dir) {
+  const files = await readFactsDir(dir);
+  if (files?.length === 0) {
+    console.error(`no facts files (*.json) in ${dir}: run the extract scripts first`);
+    return null;
+  }
+  return files;
+}
+
+/** Like readFactsFiles, but no directory or no file is an empty list. */
+async function readFactsDir(dir) {
   let names;
   try {
-    names = (await readdir(dir)).filter((n) => n.endsWith('.json')).sort(compareStrings);
+    names = (await readdir(dir)).filter((n) => n.endsWith('.json'));
   } catch (e) {
     if (e.code !== 'ENOENT') throw e;
     names = [];
   }
-  if (names.length === 0) {
-    console.error(`no facts files (*.json) in ${dir}: run the extract scripts first`);
-    return null;
-  }
+  const texts = [];
+  for (const file of names) texts.push({ file, text: await readFile(join(dir, file), 'utf8') });
+  return parseFactsFiles(texts);
+}
+
+/** `[{ file, text }]` parsed and sorted by file name; null after printing a file that is not JSON. */
+function parseFactsFiles(texts, label = '') {
   const files = [];
-  for (const file of names) {
+  for (const { file, text } of [...texts].sort((a, b) => compareStrings(a.file, b.file))) {
     try {
-      files.push({ file, data: JSON.parse(await readFile(join(dir, file), 'utf8')) });
+      files.push({ file, data: JSON.parse(text) });
     } catch (e) {
-      console.error(`${file}: not valid JSON: ${e.message}`);
+      console.error(`${label}${file}: not valid JSON: ${e.message}`);
       return null;
     }
   }
   return files;
+}
+
+/** Facts files of the workspace at git ref `ref`, read with git show; null after printing why. */
+async function readFactsAt(workspace, ref) {
+  const texts = [];
+  try {
+    const paths = (await git(workspace, 'ls-tree', '--name-only', ref, '--', `${FACTS_DIR}/`)).split('\n').filter((p) => p.endsWith('.json'));
+    for (const path of paths) texts.push({ file: basename(path), text: await git(workspace, 'show', `${ref}:./${path}`) });
+  } catch (e) {
+    console.error(`cannot read ${FACTS_DIR} at "${ref}" of ${workspace}: ${e.stderr?.trim() || e.message}`);
+    return null;
+  }
+  return parseFactsFiles(texts, `${ref}: `);
+}
+
+const FACTS_DIFF_FORMATS = ['text', 'json'];
+
+async function runFactsDiff({ workspace, from = 'HEAD', format = 'text' }) {
+  if (!FACTS_DIFF_FORMATS.includes(format)) {
+    console.error(`--format must be one of ${FACTS_DIFF_FORMATS.join(', ')}`);
+    return 1;
+  }
+  const before = await readFactsAt(workspace, from);
+  const after = await readFactsDir(join(workspace, FACTS_DIR));
+  if (!before || !after) return 1;
+  const { changes, errors } = diffFacts(before, after);
+  for (const e of errors) console.error(`${e.side === 'from' ? `${from}: ` : ''}${formatError(e)}`);
+  if (errors.length > 0) return 1;
+  if (format === 'json') {
+    const parse = (text) => (text === undefined ? undefined : JSON.parse(text));
+    const out = changes.map((c) => (c.change === 'changed' ? { ...c, before: parse(c.before), after: parse(c.after) } : c));
+    console.log(JSON.stringify({ from, to: 'working copy', changes: out }, null, 2));
+    return 0;
+  }
+  console.log(`${FACTS_DIR}: ${from} → working copy: ${factsDiffSummary(changes)}`);
+  for (const c of changes) console.log(`  ${describeFactsChange(c)}`);
+  return 0;
 }
 
 // A check that passes on nothing would hide exactly what it exists to

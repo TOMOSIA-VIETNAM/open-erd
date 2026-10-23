@@ -11545,10 +11545,10 @@ var require_util = __commonJS({
       return objectToString(re) === "[object RegExp]";
     }
     exports2.isRegExp = isRegExp;
-    function isObject4(arg) {
+    function isObject5(arg) {
       return typeof arg === "object" && arg !== null;
     }
-    exports2.isObject = isObject4;
+    exports2.isObject = isObject5;
     function isDate(d) {
       return objectToString(d) === "[object Date]";
     }
@@ -36700,13 +36700,13 @@ var require_lodash = __commonJS({
       return nativeObjectToString.call(value2);
     }
     function isFunction(value2) {
-      if (!isObject4(value2)) {
+      if (!isObject5(value2)) {
         return false;
       }
       var tag = baseGetTag(value2);
       return tag == funcTag || tag == genTag || tag == asyncTag || tag == proxyTag;
     }
-    function isObject4(value2) {
+    function isObject5(value2) {
       var type = typeof value2;
       return value2 != null && (type == "object" || type == "function");
     }
@@ -37128,7 +37128,7 @@ var require_lodash2 = __commonJS({
       return equalObjects(object, other, bitmask, customizer, equalFunc, stack);
     }
     function baseIsNative(value2) {
-      if (!isObject4(value2) || isMasked(value2)) {
+      if (!isObject5(value2) || isMasked(value2)) {
         return false;
       }
       var pattern = isFunction(value2) ? reIsNative : reIsHostCtor;
@@ -37385,7 +37385,7 @@ var require_lodash2 = __commonJS({
       return baseIsEqual(value2, other);
     }
     function isFunction(value2) {
-      if (!isObject4(value2)) {
+      if (!isObject5(value2)) {
         return false;
       }
       var tag = baseGetTag(value2);
@@ -37394,7 +37394,7 @@ var require_lodash2 = __commonJS({
     function isLength(value2) {
       return typeof value2 == "number" && value2 > -1 && value2 % 1 == 0 && value2 <= MAX_SAFE_INTEGER;
     }
-    function isObject4(value2) {
+    function isObject5(value2) {
       var type = typeof value2;
       return value2 != null && (type == "object" || type == "function");
     }
@@ -38281,7 +38281,7 @@ var require_lodash7 = __commonJS({
       return -1;
     }
     function baseIsNative(value2) {
-      if (!isObject4(value2) || isMasked(value2)) {
+      if (!isObject5(value2) || isMasked(value2)) {
         return false;
       }
       var pattern = isFunction(value2) || isHostObject(value2) ? reIsNative : reIsHostCtor;
@@ -38365,10 +38365,10 @@ var require_lodash7 = __commonJS({
       return value2 === other || value2 !== value2 && other !== other;
     }
     function isFunction(value2) {
-      var tag = isObject4(value2) ? objectToString.call(value2) : "";
+      var tag = isObject5(value2) ? objectToString.call(value2) : "";
       return tag == funcTag || tag == genTag;
     }
-    function isObject4(value2) {
+    function isObject5(value2) {
       var type = typeof value2;
       return !!value2 && (type == "object" || type == "function");
     }
@@ -38750,7 +38750,7 @@ var require_lodash8 = __commonJS({
       if (value2 === other) {
         return true;
       }
-      if (value2 == null || other == null || !isObject4(value2) && !isObjectLike(other)) {
+      if (value2 == null || other == null || !isObject5(value2) && !isObjectLike(other)) {
         return value2 !== value2 && other !== other;
       }
       return baseIsEqualDeep(value2, other, baseIsEqual, customizer, bitmask, stack);
@@ -38816,7 +38816,7 @@ var require_lodash8 = __commonJS({
       return true;
     }
     function baseIsNative(value2) {
-      if (!isObject4(value2) || isMasked(value2)) {
+      if (!isObject5(value2) || isMasked(value2)) {
         return false;
       }
       var pattern = isFunction(value2) || isHostObject(value2) ? reIsNative : reIsHostCtor;
@@ -39129,7 +39129,7 @@ var require_lodash8 = __commonJS({
       return value2 === proto;
     }
     function isStrictComparable(value2) {
-      return value2 === value2 && !isObject4(value2);
+      return value2 === value2 && !isObject5(value2);
     }
     function matchesStrictComparable(key, srcValue) {
       return function(object) {
@@ -39208,13 +39208,13 @@ var require_lodash8 = __commonJS({
       return isObjectLike(value2) && isArrayLike(value2);
     }
     function isFunction(value2) {
-      var tag = isObject4(value2) ? objectToString.call(value2) : "";
+      var tag = isObject5(value2) ? objectToString.call(value2) : "";
       return tag == funcTag || tag == genTag;
     }
     function isLength(value2) {
       return typeof value2 == "number" && value2 > -1 && value2 % 1 == 0 && value2 <= MAX_SAFE_INTEGER;
     }
-    function isObject4(value2) {
+    function isObject5(value2) {
       var type = typeof value2;
       return !!value2 && (type == "object" || type == "function");
     }
@@ -46806,7 +46806,7 @@ var require_lodash9 = __commonJS({
       }
     }
     function baseKeysIn(object) {
-      if (!isObject4(object)) {
+      if (!isObject5(object)) {
         return nativeKeysIn(object);
       }
       var isProto = isPrototype(object), result = [];
@@ -46866,7 +46866,7 @@ var require_lodash9 = __commonJS({
       return !!length && (typeof value2 == "number" || reIsUint.test(value2)) && (value2 > -1 && value2 % 1 == 0 && value2 < length);
     }
     function isIterateeCall(value2, index, object) {
-      if (!isObject4(object)) {
+      if (!isObject5(object)) {
         return false;
       }
       var type = typeof index;
@@ -46902,13 +46902,13 @@ var require_lodash9 = __commonJS({
       return isObjectLike(value2) && isArrayLike(value2);
     }
     function isFunction(value2) {
-      var tag = isObject4(value2) ? objectToString.call(value2) : "";
+      var tag = isObject5(value2) ? objectToString.call(value2) : "";
       return tag == funcTag || tag == genTag;
     }
     function isLength(value2) {
       return typeof value2 == "number" && value2 > -1 && value2 % 1 == 0 && value2 <= MAX_SAFE_INTEGER;
     }
-    function isObject4(value2) {
+    function isObject5(value2) {
       var type = typeof value2;
       return !!value2 && (type == "object" || type == "function");
     }
@@ -48794,13 +48794,13 @@ var require_lodash10 = __commonJS({
       return isObjectLike(value2) && isArrayLike(value2);
     }
     function isFunction(value2) {
-      var tag = isObject4(value2) ? objectToString.call(value2) : "";
+      var tag = isObject5(value2) ? objectToString.call(value2) : "";
       return tag == funcTag || tag == genTag;
     }
     function isLength(value2) {
       return typeof value2 == "number" && value2 > -1 && value2 % 1 == 0 && value2 <= MAX_SAFE_INTEGER;
     }
-    function isObject4(value2) {
+    function isObject5(value2) {
       var type = typeof value2;
       return !!value2 && (type == "object" || type == "function");
     }
@@ -49123,7 +49123,7 @@ var require_lodash11 = __commonJS({
       return result;
     }
     function baseIsNative(value2) {
-      if (!isObject4(value2) || isMasked(value2)) {
+      if (!isObject5(value2) || isMasked(value2)) {
         return false;
       }
       var pattern = isFunction(value2) || isHostObject(value2) ? reIsNative : reIsHostCtor;
@@ -49193,13 +49193,13 @@ var require_lodash11 = __commonJS({
       return isObjectLike(value2) && isArrayLike(value2);
     }
     function isFunction(value2) {
-      var tag = isObject4(value2) ? objectToString.call(value2) : "";
+      var tag = isObject5(value2) ? objectToString.call(value2) : "";
       return tag == funcTag || tag == genTag;
     }
     function isLength(value2) {
       return typeof value2 == "number" && value2 > -1 && value2 % 1 == 0 && value2 <= MAX_SAFE_INTEGER;
     }
-    function isObject4(value2) {
+    function isObject5(value2) {
       var type = typeof value2;
       return !!value2 && (type == "object" || type == "function");
     }
@@ -49485,7 +49485,7 @@ var require_lodash12 = __commonJS({
       return result;
     }
     function baseIsNative(value2) {
-      if (!isObject4(value2) || isMasked(value2)) {
+      if (!isObject5(value2) || isMasked(value2)) {
         return false;
       }
       var pattern = isFunction(value2) || isHostObject(value2) ? reIsNative : reIsHostCtor;
@@ -49598,13 +49598,13 @@ var require_lodash12 = __commonJS({
       return isObjectLike(value2) && isArrayLike(value2);
     }
     function isFunction(value2) {
-      var tag = isObject4(value2) ? objectToString.call(value2) : "";
+      var tag = isObject5(value2) ? objectToString.call(value2) : "";
       return tag == funcTag || tag == genTag;
     }
     function isLength(value2) {
       return typeof value2 == "number" && value2 > -1 && value2 % 1 == 0 && value2 <= MAX_SAFE_INTEGER;
     }
-    function isObject4(value2) {
+    function isObject5(value2) {
       var type = typeof value2;
       return !!value2 && (type == "object" || type == "function");
     }
@@ -58629,12 +58629,12 @@ var require_implementation2 = __commonJS({
         }
       };
       keysShim = function keys(object) {
-        var isObject4 = object !== null && typeof object === "object";
+        var isObject5 = object !== null && typeof object === "object";
         var isFunction = toStr.call(object) === "[object Function]";
         var isArguments = isArgs(object);
-        var isString = isObject4 && toStr.call(object) === "[object String]";
+        var isString = isObject5 && toStr.call(object) === "[object String]";
         var theKeys = [];
-        if (!isObject4 && !isFunction && !isArguments) {
+        if (!isObject5 && !isFunction && !isArguments) {
           throw new TypeError("Object.keys called on a non-object");
         }
         var skipProto = hasProtoEnumBug && isFunction;
@@ -59310,7 +59310,7 @@ var require_isPropertyKey = __commonJS({
 var require_isObject = __commonJS({
   "node_modules/es-object-atoms/isObject.js"(exports2, module2) {
     "use strict";
-    module2.exports = function isObject4(x) {
+    module2.exports = function isObject5(x) {
       return !!x && (typeof x === "function" || typeof x === "object");
     };
   }
@@ -59323,9 +59323,9 @@ var require_Get = __commonJS({
     var $TypeError = require_type();
     var inspect = require_object_inspect();
     var isPropertyKey = require_isPropertyKey();
-    var isObject4 = require_isObject();
+    var isObject5 = require_isObject();
     module2.exports = function Get(O, P) {
-      if (!isObject4(O)) {
+      if (!isObject5(O)) {
         throw new $TypeError("Assertion failed: Type(O) is not Object");
       }
       if (!isPropertyKey(P)) {
@@ -59471,10 +59471,10 @@ var require_HasOwnProperty = __commonJS({
     "use strict";
     var $TypeError = require_type();
     var hasOwn = require_hasown();
-    var isObject4 = require_isObject();
+    var isObject5 = require_isObject();
     var isPropertyKey = require_isPropertyKey();
     module2.exports = function HasOwnProperty(O, P) {
-      if (!isObject4(O)) {
+      if (!isObject5(O)) {
         throw new $TypeError("Assertion failed: `O` must be an Object");
       }
       if (!isPropertyKey(P)) {
@@ -59927,7 +59927,7 @@ var require_Set = __commonJS({
   "node_modules/es-abstract/2025/Set.js"(exports2, module2) {
     "use strict";
     var $TypeError = require_type();
-    var isObject4 = require_isObject();
+    var isObject5 = require_isObject();
     var isPropertyKey = require_isPropertyKey();
     var SameValue = require_SameValue();
     var noThrowOnStrictViolation = (function() {
@@ -59939,7 +59939,7 @@ var require_Set = __commonJS({
       }
     })();
     module2.exports = function Set2(O, P, V, Throw) {
-      if (!isObject4(O)) {
+      if (!isObject5(O)) {
         throw new $TypeError("Assertion failed: `O` must be an Object");
       }
       if (!isPropertyKey(P)) {
@@ -61482,11 +61482,11 @@ var require_ToPropertyDescriptor = __commonJS({
     "use strict";
     var hasOwn = require_hasown();
     var $TypeError = require_type();
-    var isObject4 = require_isObject();
+    var isObject5 = require_isObject();
     var IsCallable = require_IsCallable();
     var ToBoolean = require_ToBoolean();
     module2.exports = function ToPropertyDescriptor(Obj) {
-      if (!isObject4(Obj)) {
+      if (!isObject5(Obj)) {
         throw new $TypeError("ToPropertyDescriptor requires an object");
       }
       var desc = {};
@@ -61529,7 +61529,7 @@ var require_DefinePropertyOrThrow = __commonJS({
   "node_modules/es-abstract/2025/DefinePropertyOrThrow.js"(exports2, module2) {
     "use strict";
     var $TypeError = require_type();
-    var isObject4 = require_isObject();
+    var isObject5 = require_isObject();
     var isPropertyDescriptor = require_property_descriptor();
     var DefineOwnProperty = require_DefineOwnProperty();
     var FromPropertyDescriptor = require_FromPropertyDescriptor();
@@ -61538,7 +61538,7 @@ var require_DefinePropertyOrThrow = __commonJS({
     var SameValue = require_SameValue();
     var ToPropertyDescriptor = require_ToPropertyDescriptor();
     module2.exports = function DefinePropertyOrThrow(O, P, desc) {
-      if (!isObject4(O)) {
+      if (!isObject5(O)) {
         throw new $TypeError("Assertion failed: Type(O) is not Object");
       }
       if (!isPropertyKey(P)) {
@@ -61606,17 +61606,17 @@ var require_SpeciesConstructor = __commonJS({
     var GetIntrinsic = require_get_intrinsic();
     var $species = GetIntrinsic("%Symbol.species%", true);
     var $TypeError = require_type();
-    var isObject4 = require_isObject();
+    var isObject5 = require_isObject();
     var IsConstructor = require_IsConstructor();
     module2.exports = function SpeciesConstructor(O, defaultConstructor) {
-      if (!isObject4(O)) {
+      if (!isObject5(O)) {
         throw new $TypeError("Assertion failed: Type(O) is not Object");
       }
       var C = O.constructor;
       if (typeof C === "undefined") {
         return defaultConstructor;
       }
-      if (!isObject4(C)) {
+      if (!isObject5(C)) {
         throw new $TypeError("O.constructor is not an Object");
       }
       var S = $species ? C[$species] : void 0;
@@ -62463,13 +62463,13 @@ var require_implementation5 = __commonJS({
     "use strict";
     var GetIntrinsic = require_get_intrinsic();
     var IsCallable = require_IsCallable2();
-    var isObject4 = require_isObject2();
+    var isObject5 = require_isObject2();
     var whichBuiltinType = require_which_builtin_type();
     var $TypeError = require_type();
     var gPO = require_get_proto();
     var $Object = require_es_object_atoms();
     module2.exports = function getPrototypeOf(O) {
-      if (!isObject4(O)) {
+      if (!isObject5(O)) {
         throw new $TypeError("Reflect.getPrototypeOf called on non-object");
       }
       if (gPO) {
@@ -62797,7 +62797,7 @@ var require_ValidateTypedArray = __commonJS({
   "node_modules/es-abstract/2025/ValidateTypedArray.js"(exports2, module2) {
     "use strict";
     var $TypeError = require_type();
-    var isObject4 = require_isObject();
+    var isObject5 = require_isObject();
     var IsTypedArrayOutOfBounds = require_IsTypedArrayOutOfBounds();
     var MakeTypedArrayWithBufferWitnessRecord = require_MakeTypedArrayWithBufferWitnessRecord();
     var isTypedArray = require_is_typed_array();
@@ -62805,7 +62805,7 @@ var require_ValidateTypedArray = __commonJS({
       if (order !== "SEQ-CST" && order !== "UNORDERED") {
         throw new $TypeError("Assertion failed: `order` must be ~SEQ-CST~ or ~UNORDERED~");
       }
-      if (!isObject4(O)) {
+      if (!isObject5(O)) {
         throw new $TypeError("Assertion failed: `O` must be an Object");
       }
       if (!isTypedArray(O)) {
@@ -65130,9 +65130,9 @@ var require_thenables = __commonJS({
     module2.exports = function(Promise2, INTERNAL) {
       var util = require_util4();
       var errorObj2 = util.errorObj;
-      var isObject4 = util.isObject;
+      var isObject5 = util.isObject;
       function tryConvertToPromise(obj2, context) {
-        if (isObject4(obj2)) {
+        if (isObject5(obj2)) {
           if (obj2 instanceof Promise2) return obj2;
           var then = getThen(obj2);
           if (then === errorObj2) {
@@ -68140,7 +68140,7 @@ var require_props = __commonJS({
     "use strict";
     module2.exports = function(Promise2, PromiseArray, tryConvertToPromise, apiRejection) {
       var util = require_util4();
-      var isObject4 = util.isObject;
+      var isObject5 = util.isObject;
       var es52 = require_es5();
       var Es6Map;
       if (typeof Map === "function") Es6Map = Map;
@@ -68221,7 +68221,7 @@ var require_props = __commonJS({
       function props(promises) {
         var ret2;
         var castValue = tryConvertToPromise(promises);
-        if (!isObject4(castValue)) {
+        if (!isObject5(castValue)) {
           return apiRejection("cannot await properties of a non-object\n\n    See http://goo.gl/MqrFmX\n");
         } else if (castValue instanceof Promise2) {
           ret2 = castValue._then(
@@ -171887,7 +171887,7 @@ function readFacts(files) {
           return;
         }
         for (const f of COLUMN_FIELDS) if (c[f] !== void 0 && c[f] !== null) reported.add(f);
-        columns.push(Object.fromEntries([["name", c.name], ...COLUMN_FIELDS.map((f) => [f, c[f]])]));
+        columns.push(Object.fromEntries([["name", c.name], ...COLUMN_FIELDS.map((f) => [f, c[f]]), ...c.generated == null ? [] : [["generated", c.generated]]]));
       });
       const indexes = [
         ...list(t.indexes).filter((x) => isObject2(x) && Array.isArray(x.columns)),
@@ -172676,6 +172676,119 @@ function needsSyncMarkdown(needsSync) {
   return [`**Left for \`${SYNC}\`** (${needsSync.length}):`, "", ...needsSync.map((n) => `- \`${cell2(n.path)}\`: ${cell2(n.reason)}`), ""].join("\n");
 }
 
+// src/model/facts-diff.js
+var SCOPES2 = ["file", "table", "column", "index", "association", "polymorphic", "enum", "hint", "other"];
+var COLUMN_DIFF_FIELDS = [...COLUMN_FIELDS, "generated"];
+var FREE_FORM = {
+  polymorphic: { scope: "polymorphic", identity: ["database", "table", "name"], path: (t, e) => `${t} ${e.name ?? "?"}` },
+  enums: { scope: "enum", identity: ["database", "table", "column"], path: (t, e) => `${t}.${e.column ?? "?"}` },
+  hints: { scope: "hint", identity: ["database", "table", "column", "text"], path: (t, e) => `${t}${e.column ? `.${e.column}` : ""}: ${e.text ?? ""}` }
+};
+var KNOWN_KEYS = /* @__PURE__ */ new Set(["source", "database", "tables", "associations", ...Object.keys(FREE_FORM)]);
+var isObject3 = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+function canonical(v) {
+  if (Array.isArray(v)) return `[${v.map(canonical).join(",")}]`;
+  if (isObject3(v)) {
+    const keys = Object.keys(v).filter((k) => v[k] !== void 0).sort(compareStrings);
+    return `{${keys.map((k) => `${JSON.stringify(k)}:${canonical(v[k])}`).join(",")}}`;
+  }
+  return JSON.stringify(v);
+}
+var tableLabel = (database, schema, name) => [database, schema, name].filter((x) => x !== null && x !== void 0).join(".");
+var sorted = (list2) => [...new Set(list2)].sort(compareStrings);
+function entriesOf(files) {
+  const facts = readFacts(files);
+  const errors = [...facts.errors];
+  const entries = /* @__PURE__ */ new Map();
+  const add2 = (scope, path, fields, parent, detail) => {
+    const key = `${scope}\0${path}`;
+    if (!entries.has(key)) entries.set(key, { scope, path, parent, fields, detail });
+  };
+  for (const { file } of files) add2("file", file, {});
+  for (const t of facts.tables) {
+    const table2 = tableLabel(t.database, t.schema, t.name);
+    const size = `${t.columns.length} column(s)${t.indexes.length > 0 ? `, ${t.indexes.length} index(es)` : ""}`;
+    add2("table", table2, { evidence: canonical(sorted(t.evidence)) }, void 0, size);
+    for (const c of t.columns) {
+      const fields = {};
+      for (const f of COLUMN_DIFF_FIELDS) {
+        const v = f === "generated" ? c.generated == null ? void 0 : String(c.generated) : value(f, c[f]);
+        if (v !== void 0) fields[f] = canonical(v);
+      }
+      const flags = ["pk", "nullable", "unique", "auto_increment"].filter((f) => c[f] === true);
+      const detail = [c.type, ...flags, ...fields.default ? [`default ${fields.default}`] : []].join(", ");
+      add2("column", `${table2}.${c.name}`, fields, `table\0${table2}`, detail);
+    }
+    for (const i of t.indexes) add2("index", `${table2} index ${indexPath(i)}`, i.name ? { name: canonical(i.name) } : {}, `table\0${table2}`);
+  }
+  const associations = /* @__PURE__ */ new Map();
+  for (const a of facts.associations) {
+    const end = (e) => `${tableLabel(e.database, null, e.table)}.${e.columns.join(", ")}`;
+    const path = `${end(a.from)} -> ${end(a.to)}`;
+    const known = associations.get(path) ?? { constraint: false, evidence: [] };
+    associations.set(path, { constraint: known.constraint || a.constraint, evidence: [...known.evidence, ...a.evidence] });
+  }
+  for (const [path, a] of associations) add2("association", path, { constraint: canonical(a.constraint), evidence: canonical(sorted(a.evidence)) });
+  for (const { file, data } of files) {
+    if (!isObject3(data)) continue;
+    const databaseOf = new Map((Array.isArray(data.tables) ? data.tables : []).filter(isObject3).map((t) => [t.name, t.database ?? data.database ?? null]));
+    for (const [section, { scope, identity, path }] of Object.entries(FREE_FORM)) {
+      (Array.isArray(data[section]) ? data[section] : []).forEach((e, i) => {
+        if (!isObject3(e) || typeof e.table !== "string") {
+          errors.push({ file, path: `${section}[${i}]`, message: "needs a table" });
+          return;
+        }
+        const table2 = tableLabel(e.database ?? databaseOf.get(e.table) ?? data.database ?? null, null, e.table);
+        const fields = {};
+        for (const [k, v] of Object.entries(e)) {
+          if (identity.includes(k) || v === void 0) continue;
+          if (isObject3(v)) for (const [kk, vv] of Object.entries(v)) fields[`${k}.${kk}`] = canonical(vv);
+          else fields[k] = canonical(v);
+        }
+        add2(scope, path(table2, e), fields);
+      });
+    }
+    for (const key of Object.keys(data).filter((k) => !KNOWN_KEYS.has(k))) add2("other", `${file}: ${key}`, { value: canonical(data[key]) });
+  }
+  return { entries, errors };
+}
+function diffFacts(from, to) {
+  const before = entriesOf(from);
+  const after = entriesOf(to);
+  const errors = [...before.errors.map((e) => ({ ...e, side: "from" })), ...after.errors.map((e) => ({ ...e, side: "to" }))];
+  const changes = [];
+  for (const [key, e] of after.entries) {
+    if (!before.entries.has(key)) changes.push({ change: "added", key, parent: e.parent, scope: e.scope, path: e.path, ...e.detail ? { detail: e.detail } : {} });
+  }
+  for (const [key, e] of before.entries) {
+    const other = after.entries.get(key);
+    if (!other) {
+      changes.push({ change: "removed", key, parent: e.parent, scope: e.scope, path: e.path, ...e.detail ? { detail: e.detail } : {} });
+      continue;
+    }
+    for (const field of sorted([...Object.keys(e.fields), ...Object.keys(other.fields)])) {
+      if (e.fields[field] !== other.fields[field]) changes.push({ change: "changed", scope: e.scope, path: e.path, field, before: e.fields[field], after: other.fields[field] });
+    }
+  }
+  const whole = new Set(changes.filter((c) => c.scope === "table").map((c) => c.key));
+  const result = changes.filter((c) => !whole.has(c.parent)).map(({ key, parent, ...c }) => c).sort((a, b) => compareStrings(sortKey2(a), sortKey2(b)));
+  return { changes: result, errors };
+}
+var sortKey2 = (c) => [String(SCOPES2.indexOf(c.scope)).padStart(2, "0"), c.path, c.field ?? "", c.change].join("\0");
+var show3 = (text2) => text2 === void 0 ? "(none)" : text2;
+function describeFactsChange(c) {
+  if (c.change === "changed") {
+    if (c.scope === "other") return `changed ${c.path} (not compared field by field; see the file)`;
+    return `changed ${c.scope} ${c.path}: ${c.field} ${show3(c.before)} \u2192 ${show3(c.after)}`;
+  }
+  if (c.scope === "other") return `${c.change} ${c.path}`;
+  return `${c.change} ${c.scope} ${c.path}${c.detail ? ` (${c.detail})` : ""}`;
+}
+function factsDiffSummary(changes) {
+  const count2 = (kind) => changes.filter((c) => c.change === kind).length;
+  return changes.length === 0 ? "no changes" : ["added", "removed", "changed"].map((k) => `${count2(k)} ${k}`).join(", ");
+}
+
 // src/model/verification.js
 var import_yaml4 = __toESM(require_dist(), 1);
 function parseVerification(text2) {
@@ -172965,9 +173078,9 @@ function centralityScores(model) {
 }
 function median(values) {
   if (values.length === 0) return 0;
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+  const sorted2 = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted2.length / 2);
+  return sorted2.length % 2 === 1 ? sorted2[mid] : (sorted2[mid - 1] + sorted2[mid]) / 2;
 }
 function centralTables(model, candidates, clusterOf) {
   const scores = centralityScores(model);
@@ -173895,7 +174008,7 @@ function internalLinks(name, read) {
 var LAYOUT_FILE = "layout.json";
 var LAYOUT_SCHEMA_VERSION = 1;
 var NODE_FIELDS = ["x", "y", "w", "h"];
-function isObject3(v) {
+function isObject4(v) {
   return v !== null && typeof v === "object" && !Array.isArray(v);
 }
 function parseLayout(text2) {
@@ -173908,20 +174021,20 @@ function parseLayout(text2) {
   const fail = (path, message) => {
     throw new Error(`${LAYOUT_FILE}: ${path}: ${message}`);
   };
-  if (!isObject3(data)) fail("(root)", "must be an object");
+  if (!isObject4(data)) fail("(root)", "must be an object");
   if (data.schema_version !== LAYOUT_SCHEMA_VERSION) fail("schema_version", `must be ${LAYOUT_SCHEMA_VERSION}`);
-  if (!isObject3(data.colors)) fail("colors", "must be an object");
+  if (!isObject4(data.colors)) fail("colors", "must be an object");
   for (const [cluster, index] of Object.entries(data.colors)) {
     if (!Number.isInteger(index) || index < 0) fail(`colors["${cluster}"]`, "must be a non-negative integer");
   }
-  if (!isObject3(data.views)) fail("views", "must be an object");
+  if (!isObject4(data.views)) fail("views", "must be an object");
   for (const [view, body] of Object.entries(data.views)) {
-    if (!isObject3(body) || !isObject3(body.clusters)) fail(`views.${view}.clusters`, "must be an object");
+    if (!isObject4(body) || !isObject4(body.clusters)) fail(`views.${view}.clusters`, "must be an object");
     for (const [cluster, nodes] of Object.entries(body.clusters)) {
-      if (!isObject3(nodes)) fail(`views.${view}.clusters["${cluster}"]`, "must be an object");
+      if (!isObject4(nodes)) fail(`views.${view}.clusters["${cluster}"]`, "must be an object");
       for (const [id, node] of Object.entries(nodes)) {
         const path = `views.${view}.clusters["${cluster}"]["${id}"]`;
-        if (!isObject3(node)) fail(path, "must be an object");
+        if (!isObject4(node)) fail(path, "must be an object");
         for (const field of NODE_FIELDS) {
           if (!Number.isInteger(node[field])) fail(`${path}.${field}`, "must be an integer");
         }
@@ -176440,9 +176553,9 @@ function viewerData(model, diagram, diff = null, warnings = missingRelations(mod
   const base = { project, nodes, links, hubLinks, domainLinks: domains, domainNotes, databases, review: review2, mostCentral: diagram.mostCentral };
   if (health.length > 0) base.health = health.map(({ related, ...f }) => f);
   if (!diff) return base;
-  const sorted = (map) => Object.fromEntries([...map].sort(([a], [b]) => compareStrings(a, b)));
+  const sorted2 = (map) => Object.fromEntries([...map].sort(([a], [b]) => compareStrings(a, b)));
   const { sentences } = diff.marks;
-  return { ...base, changes: { from: diff.from, to: diff.to, summary: diff.summary, nodes: sorted(sentences.nodes), links: sorted(sentences.links) } };
+  return { ...base, changes: { from: diff.from, to: diff.to, summary: diff.summary, nodes: sorted2(sentences.nodes), links: sorted2(sentences.links) } };
 }
 var renderedViews = (diagram) => [...viewNames(diagram), CONNECTIONS_VIEW];
 function openingView(model, diagram = buildDiagram(model)) {
@@ -177019,6 +177132,7 @@ function renderDrawio(model, layout, { svgUrl, ...options } = {}) {
 var WORKTREE = "WORKTREE";
 var SNAPSHOT_FILE = (path) => path === CONFIG_FILE || path === LAYOUT_FILE || /^model\/[^/]+\.yaml$/.test(path);
 var FORMATS = ["text", "markdown"];
+var FACTS_DIR = "extract/facts";
 var git = (workspace, ...args) => promisify(execFile)("git", ["-C", workspace, ...args], { maxBuffer: 256 * 1024 * 1024 }).then((r) => r.stdout);
 var COMMANDS = {
   validate: {
@@ -177044,6 +177158,12 @@ var COMMANDS = {
     summary: "write a copy of the workspace into --out with the mechanical differences from the extract facts applied (tables, columns, indexes, constraint-backed relations; new tables in domain Unassigned) and list what is left for /open-erd:sync (renames, notes, relations without a constraint, anything a reviewed fact uses); never writes the workspace itself",
     options: { workspace: { type: "string" }, facts: { type: "string" }, out: { type: "string" }, format: { type: "string" } },
     run: runApplyFacts
+  },
+  "facts-diff": {
+    usage: "facts-diff --workspace <dir> [--from <ref>] [--format text|json]",
+    summary: `print what changed in the extract facts (${FACTS_DIR}/*.json) between a git ref of the workspace (default HEAD) and the files on disk: tables, columns, indexes, associations, polymorphic associations, enums and hints added, removed or changed, one line each, sorted (--format json: the same as JSON)`,
+    options: { workspace: { type: "string" }, from: { type: "string" }, format: { type: "string" } },
+    run: runFactsDiff
   },
   layout: {
     usage: `layout --workspace <dir> [--relayout <view>]... [--relayout '${EVERY_VIEW}']`,
@@ -177161,27 +177281,69 @@ async function runLock({ workspace }) {
   return 0;
 }
 async function readFactsFiles(dir) {
+  const files = await readFactsDir(dir);
+  if (files?.length === 0) {
+    console.error(`no facts files (*.json) in ${dir}: run the extract scripts first`);
+    return null;
+  }
+  return files;
+}
+async function readFactsDir(dir) {
   let names;
   try {
-    names = (await readdir(dir)).filter((n) => n.endsWith(".json")).sort(compareStrings);
+    names = (await readdir(dir)).filter((n) => n.endsWith(".json"));
   } catch (e) {
     if (e.code !== "ENOENT") throw e;
     names = [];
   }
-  if (names.length === 0) {
-    console.error(`no facts files (*.json) in ${dir}: run the extract scripts first`);
-    return null;
-  }
+  const texts = [];
+  for (const file of names) texts.push({ file, text: await readFile(join(dir, file), "utf8") });
+  return parseFactsFiles(texts);
+}
+function parseFactsFiles(texts, label = "") {
   const files = [];
-  for (const file of names) {
+  for (const { file, text: text2 } of [...texts].sort((a, b) => compareStrings(a.file, b.file))) {
     try {
-      files.push({ file, data: JSON.parse(await readFile(join(dir, file), "utf8")) });
+      files.push({ file, data: JSON.parse(text2) });
     } catch (e) {
-      console.error(`${file}: not valid JSON: ${e.message}`);
+      console.error(`${label}${file}: not valid JSON: ${e.message}`);
       return null;
     }
   }
   return files;
+}
+async function readFactsAt(workspace, ref) {
+  const texts = [];
+  try {
+    const paths = (await git(workspace, "ls-tree", "--name-only", ref, "--", `${FACTS_DIR}/`)).split("\n").filter((p) => p.endsWith(".json"));
+    for (const path of paths) texts.push({ file: basename(path), text: await git(workspace, "show", `${ref}:./${path}`) });
+  } catch (e) {
+    console.error(`cannot read ${FACTS_DIR} at "${ref}" of ${workspace}: ${e.stderr?.trim() || e.message}`);
+    return null;
+  }
+  return parseFactsFiles(texts, `${ref}: `);
+}
+var FACTS_DIFF_FORMATS = ["text", "json"];
+async function runFactsDiff({ workspace, from = "HEAD", format = "text" }) {
+  if (!FACTS_DIFF_FORMATS.includes(format)) {
+    console.error(`--format must be one of ${FACTS_DIFF_FORMATS.join(", ")}`);
+    return 1;
+  }
+  const before = await readFactsAt(workspace, from);
+  const after = await readFactsDir(join(workspace, FACTS_DIR));
+  if (!before || !after) return 1;
+  const { changes, errors } = diffFacts(before, after);
+  for (const e of errors) console.error(`${e.side === "from" ? `${from}: ` : ""}${formatError(e)}`);
+  if (errors.length > 0) return 1;
+  if (format === "json") {
+    const parse2 = (text2) => text2 === void 0 ? void 0 : JSON.parse(text2);
+    const out = changes.map((c) => c.change === "changed" ? { ...c, before: parse2(c.before), after: parse2(c.after) } : c);
+    console.log(JSON.stringify({ from, to: "working copy", changes: out }, null, 2));
+    return 0;
+  }
+  console.log(`${FACTS_DIR}: ${from} \u2192 working copy: ${factsDiffSummary(changes)}`);
+  for (const c of changes) console.log(`  ${describeFactsChange(c)}`);
+  return 0;
 }
 async function runVerify({ workspace, facts: factsDir }) {
   const model = await loadModel(workspace);

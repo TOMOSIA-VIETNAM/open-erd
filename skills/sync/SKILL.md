@@ -30,14 +30,20 @@ No `open-erd.yaml` in the workspace → offer `/open-erd:init`.
 
 For each source, run its script (approval rule in rules.md: an unchanged,
 committed script runs without asking; a new or edited one is shown first).
-Then:
+Then list what the scripts now read differently from the last commit:
 
 ```bash
-git -C <ws> diff --stat -- extract/facts
-git -C <ws> diff -- extract/facts/<source>.json
+node <plugin root>/dist/open-erd.mjs facts-diff --workspace <ws>
 ```
 
-That diff is the list of code changes to apply. No diff and no new hints →
+It prints one line per change (`added table ...`, `changed column
+<table>.<column>: type "a" → "b"`, `removed association ...`, enum values,
+polymorphic targets, hints), sorted. That list is the code changes to apply.
+A new table's columns and indexes are not listed one by one: read them from
+`extract/facts/<source>.json`. An `added`, `removed` or `changed <file>:
+<key>` line (a part of the facts the engine does not itemise, such as `sti`)
+means: compare that key in
+the file with `git -C <ws> show HEAD:extract/facts/<file>`. `no changes` →
 skip to step 6, do not commit, and tell the user nothing changed.
 
 If the stack gained something the script misses (new folder, new idiom), fix
@@ -48,7 +54,7 @@ Refresh it only if the user agrees this time (same rules as init).
 
 ## 3. Apply changes to the model
 
-For each change in the facts diff, update `model/*.yaml`:
+For each line `facts-diff` printed, update `model/*.yaml`:
 
 | Change | Fact not reviewed (`pending`/`stale`) | Fact `review: reviewed` |
 |---|---|---|

@@ -33,7 +33,7 @@ node engine/scripts/screenshot-views.js <ws>/out/erd.svg <shots dir>  # PNG of e
 
 Render into a copy (e.g. of `engine/test/fixtures/workspace-multi`), not the fixture itself. Look at the PNGs; a passing script is not a layout check. `verify-viewer` fails on a single-domain workspace (`workspace-valid`) at the overview connector step; that is a limitation of the script.
 
-Engine CLI (`node dist/open-erd.mjs --help`): `validate`, `lock`, `verify`, `apply-facts`, `layout`, `render [--profile]`, `diff --from <ref> --to <ref|WORKTREE> | --to-workspace <dir> [--format markdown]`.
+Engine CLI (`node dist/open-erd.mjs --help`): `validate`, `lock`, `verify`, `apply-facts`, `facts-diff [--from <ref>] [--format json]`, `layout`, `render [--profile]`, `diff --from <ref> --to <ref|WORKTREE> | --to-workspace <dir> [--format markdown]`.
 
 ## Engine architecture
 
