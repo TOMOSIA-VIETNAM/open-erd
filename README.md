@@ -9,7 +9,8 @@
   <strong>An ERD of any project, drawn by an agent from its source code.</strong><br>
   <strong>Even when the database has no foreign keys.</strong><br>
   <sub>Rails · Laravel · Django · Prisma · TypeORM · Sequelize · Mongoose · raw SQL</sub><br>
-  <code>/open-erd:init</code> · <code>/open-erd:sync</code> · <code>/open-erd:ask</code>
+  <code>/open-erd:init</code> · <code>/open-erd:sync</code> · <code>/open-erd:ask</code><br><br>
+  <a href="https://tomosia-vietnam.github.io/open-erd/"><strong>▶ Try the live demo</strong></a> — a real 105-table schema, right in your browser
 </p>
 
 <p align="center">
@@ -32,7 +33,7 @@ draw.io copies, and it stays current with one command.
   <img src="./docs/images/demo/overview-to-domain.gif" width="760" alt="The overview of an e-commerce schema: one card per domain; a click opens the Orders domain">
 </p>
 
-<sub>Demo data: the open-source <a href="https://github.com/solidusio/solidus">Solidus</a> e-commerce app, 105 tables in 14 domains.</sub>
+<sub>Demo data: the open-source <a href="https://github.com/solidusio/solidus">Solidus</a> e-commerce app, 105 tables in 14 domains. <a href="https://tomosia-vietnam.github.io/open-erd/">Open it yourself</a> · <a href="./docs/demo/erd.xlsx">erd.xlsx</a> · <a href="./docs/demo/erd.drawio">erd.drawio</a></sub>
 
 ## How it works
 
