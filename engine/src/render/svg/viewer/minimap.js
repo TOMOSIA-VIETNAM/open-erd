@@ -33,3 +33,17 @@ export function fitsInside(bounds, rect) {
 export function centreOn(p, cam, viewport, top = 0, right = 0) {
   return { s: cam.s, x: (viewport.w - right) / 2 - p.x * cam.s, y: top + (viewport.h - top) / 2 - p.y * cam.s };
 }
+
+/**
+ * The camera that shows box `focus` in the visible area below the toolbar
+ * (`top` px): at scale 1 when it fits there with `pad` px above and below,
+ * else shrunk to fit, but never below `minScale` (where its text is still
+ * readable). Centred; when even `minScale` is too large, its top sits `pad`
+ * px under `top` and its bottom runs off the area.
+ */
+export function frameFocus(focus, viewport, top, minScale, pad) {
+  const h = viewport.h - top;
+  const s = Math.max(minScale, Math.min(1, (h - 2 * pad) / focus.h));
+  const y = focus.h * s + 2 * pad <= h ? top + h / 2 - (focus.y + focus.h / 2) * s : top + pad - focus.y * s;
+  return { s, x: viewport.w / 2 - (focus.x + focus.w / 2) * s, y };
+}

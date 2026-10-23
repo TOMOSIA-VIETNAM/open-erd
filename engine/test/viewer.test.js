@@ -10,7 +10,7 @@ import { HINT_OFFSET, HINT_SIZE, HINT_STEP, ICON_GUTTER, tableBox } from '../src
 const { enumMeaning } = columnsModule;
 import { buildScene, renderSvg, viewerData } from '../src/render/svg/render.js';
 import { applyProfile } from '../src/model/profile.js';
-import { centreOn, fitsInside, minimapSize, visibleRect } from '../src/render/svg/viewer/minimap.js';
+import { centreOn, fitsInside, frameFocus, minimapSize, visibleRect } from '../src/render/svg/viewer/minimap.js';
 import { endTransforms, radialLayout, straightLink } from '../src/render/svg/viewer/radial.js';
 import { tourIndex, tourSteps } from '../src/render/svg/viewer/tour.js';
 import { piiSummary } from '../src/render/svg/viewer/pii.js';
@@ -274,6 +274,18 @@ test('minimap: sized from the view bounds, its rectangle is the part on screen, 
   const cam = centreOn({ x: 1000, y: 500 }, { x: 0, y: 0, s: 2 }, viewport, 44, 464);
   assert.equal(cam.s, 2);
   assert.deepEqual([(468 - cam.x) / 2, (44 + 428 - cam.y) / 2], [1000, 500]);
+});
+
+test('a table a view opens on: scale 1 when it fits, shrunk while readable, else its top under the toolbar', () => {
+  const viewport = { w: 1400, h: 800 };
+  // Fits at scale 1: centred in the area below the toolbar.
+  assert.deepEqual(frameFocus({ x: 100, y: 200, w: 240, h: 300 }, viewport, 44, 0.9, 8), { s: 1, x: 700 - 220, y: 44 + 378 - 350 });
+  // A little too tall: shrunk to fit with the gap above and below, still centred.
+  const tall = frameFocus({ x: 0, y: 0, w: 240, h: 760 }, viewport, 44, 0.9, 8);
+  assert.equal(tall.s, 740 / 760);
+  assert.equal(tall.y + 760 * tall.s, 44 + 756 - 8);
+  // Too tall even at the smallest readable scale: that scale, top just under the toolbar.
+  assert.deepEqual(frameFocus({ x: 0, y: 100, w: 240, h: 2000 }, viewport, 44, 0.9, 8), { s: 0.9, x: 700 - 108, y: 52 - 90 });
 });
 
 test('tour: one step per domain in the overview order the matrix rows carry, central table, note or name and table count', async () => {

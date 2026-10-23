@@ -9,7 +9,7 @@ import { CANVAS_LIMITS, PIXEL_RATIO, canvasScale, exportBaseName } from './downl
 import { findJoinPaths, hopCondition, pathNames, pathThrough, sqlSkeleton } from './join-path.js';
 import { parseHash } from './deep-link.js';
 import { collectionDocument, createTableSql, isDocumentStore, markdownTable } from './schema-copy.js';
-import { centreOn, fitsInside, minimapSize, visibleRect } from './minimap.js';
+import { centreOn, fitsInside, frameFocus, minimapSize, visibleRect } from './minimap.js';
 import { columnBadges, panelTabs } from './panel-parts.js';
 import { emptyHistory, goBack, goForward, tableTrail, visit } from './history.js';
 import { endTransforms, radialLayout, straightLink } from './radial.js';
@@ -50,6 +50,8 @@ const ZOOM_MAX_PIXELS = 30;
 const LINE_PIXELS = 16;
 const FOCUS_MARGIN = 160;
 const FOCUS_MAX_SCALE = 1.2;
+// Gap kept above and below a table a large view opens on.
+const FOCUS_PAD = 8;
 const RING_GAP = 40;
 const NEIGHBORHOOD_MARGIN = 60;
 const SEARCH_LIMIT = 40;
@@ -318,17 +320,17 @@ function showView(name) {
 }
 
 // A large view opens where its text can be read: the whole view when it
-// fits at a readable size, else at scale 1 centred on `focus` (a box), or
-// from the top left corner when there is none.
+// fits at a readable size, else on `focus` (a box) at scale 1, shrunk while
+// readable to keep all of it on screen (a long central table above the
+// tour's caption), or from the top left corner when there is no focus.
 function readableStart(bounds, focus, maxScale = MAX_FIT_SCALE) {
   const { w } = viewport();
   const h = viewport().h - tourRoom();
   const fit = Math.min((w - 2 * FIT_PADDING) / bounds.w, (h - TOOLBAR_HEIGHT - 2 * FIT_PADDING) / bounds.h, maxScale);
   if (fit * SMALLEST_TEXT >= READABLE_TEXT) return zoomToRect(bounds, maxScale);
-  const s = 1;
   state.cam = focus
-    ? { s, x: w / 2 - (focus.x + focus.w / 2) * s, y: TOOLBAR_HEIGHT + (h - TOOLBAR_HEIGHT) / 2 - (focus.y + focus.h / 2) * s }
-    : { s, x: FIT_PADDING - bounds.x * s, y: TOOLBAR_HEIGHT + FIT_PADDING - bounds.y * s };
+    ? frameFocus(focus, { w, h }, TOOLBAR_HEIGHT, READABLE_TEXT / SMALLEST_TEXT, FOCUS_PAD)
+    : { s: 1, x: FIT_PADDING - bounds.x, y: TOOLBAR_HEIGHT + FIT_PADDING - bounds.y };
   applyCamera();
 }
 
@@ -2849,7 +2851,9 @@ function setHealthMode(on) {
 // puts back the view the reader was on; going anywhere else ends the tour
 // there. Nothing is added to the history, and the caption lives outside the
 // drawing, so a download never holds it.
-const TOUR_WIDTH = 640;
+// Wide enough for a business note of a sentence or two on one line, so the
+// caption stays low and leaves the central table room above it.
+const TOUR_WIDTH = 800;
 // Room around the caption card inside its area, for the card's shadow.
 const TOUR_ROOM = 8;
 const tourBox = overlay('oe-tour-host');
