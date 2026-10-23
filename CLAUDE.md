@@ -2,9 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-open-erd is a Claude Code plugin that draws an ERD from any project's source code. Two halves:
+open-erd is a Claude Code plugin that draws an ERD from any project's source code. Three parts:
 
 - **Skills** (`skills/<name>/SKILL.md`, registered by directory; no list in `.claude-plugin/plugin.json`): the AI side. Claude writes a read-only extract script per source repo, turns its facts into `model/*.yaml`, and calls the engine. Shared rules live once in `skills/_shared/rules.md` (workflow, approvals, verification) and `skills/_shared/model.md` (model format, facts file format); skills point to sections there instead of repeating them.
+- **Adapter layer** (other agents, e.g. Codex): `.agents/skills/open-erd-<cmd>/SKILL.md` (one short entry per command), `adapters/root.md` (resolves the plugin root, maps Claude Code tool and command names; the only file naming another platform), `.codex-plugin/`, `.agents/plugins/`, `install.sh`, `scripts/install-local.sh`. **Adapters carry no behaviour**: an entry only says "read `ROOT/skills/<cmd>/SKILL.md` and follow it"; every rule stays in `skills/`. A new command needs a new entry (its `description` mirrors the skill's, with `$open-erd-<cmd>` for `/open-erd:<cmd>`); a file the skills newly read at run time goes into `SHIP` in `install.sh`. `engine/test/platform-layer.test.js` enforces all of this. Never put these entries under `skills/`: Claude Code registers every directory there as a command.
 - **Engine** (`engine/`, Node ≥ 20.10, ESM): deterministic, no AI. Model → layout → SVG / XLSX / draw.io / diff. Bundled to `dist/open-erd.mjs`, which is **committed** and is what skills and CI run.
 
 ## Commands
@@ -57,5 +58,5 @@ Engine CLI (`node dist/open-erd.mjs --help`): `validate`, `lock`, `verify`, `app
 - Text widths come from committed Inter metrics (`src/text/`), not the DOM.
 - Skills never read DB credentials and only run extract scripts after approval (rules in `skills/_shared/rules.md`). Every AI-written model change is verified by a second agent before commit (`rules.md`, "Verification"; prompt in `skills/_shared/verifier.md`).
 - `fixtures/<stack>/` are small source apps with hand-written `expected/` models, scored by `evals/`.
-- Docs: `README.md` is short and for users; details go to `docs/USAGE.md`, developer notes to `docs/DEVELOPMENT.md`. `notebooks/backlogs/` holds plans and specs. Code, comments, skills and docs must not reference backlog items or their numbering.
+- Docs: `README.md` is short and for users; details go to `docs/USAGE.md`, developer notes to `docs/DEVELOPMENT.md`. `notebooks/` (git-ignored, local only) holds plans and specs. Code, comments, skills and docs must not reference backlog items or their numbering.
 - The repo is public: never copy a real project's workspace, model or screenshots into it.

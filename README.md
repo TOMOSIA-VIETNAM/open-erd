@@ -63,6 +63,8 @@ It asks where to keep the ERD (a separate folder with its own git history),
 shows the read-only script it wants to run on your code, and asks before
 running it. Your source repositories are never modified.
 
+Codex (untested) and the full install, update and uninstall steps: [docs/install.md](docs/install.md).
+
 ## What you get
 
 ### Find any table in a second
