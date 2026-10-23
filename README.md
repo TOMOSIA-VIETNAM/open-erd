@@ -53,11 +53,15 @@ In Claude Code:
 /plugin install open-erd@open-erd
 ```
 
-Then, in your project:
+In Codex:
 
+```bash
+codex plugin marketplace add TOMOSIA-VIETNAM/open-erd
+codex plugin add open-erd@open-erd
 ```
-/open-erd:init
-```
+
+Then, in your project, start a new session and run `/open-erd:init` (Claude
+Code) or `$open-erd-init` (Codex).
 
 It asks where to keep the ERD (a separate folder with its own git history),
 shows the read-only script it wants to run on your code, and asks before
@@ -85,7 +89,7 @@ From a shell: `claude plugin marketplace update open-erd && claude plugin update
 After a new version, run `/open-erd:render` once in each ERD workspace to
 get the new viewer.
 
-Codex (untested) and the full install, update and uninstall steps: [docs/install.md](docs/install.md).
+Codex: update with `codex plugin marketplace upgrade open-erd`, then a new session. Every other way to install (a one-line script, a local clone), update and uninstall: [docs/install.md](docs/install.md).
 
 <details>
 <summary>Uninstall</summary>
