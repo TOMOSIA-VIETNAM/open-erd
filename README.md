@@ -1,8 +1,47 @@
-# open-erd
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./docs/images/logo/logo-lockup-dark.svg">
+    <img src="./docs/images/logo/logo-lockup.svg" alt="open-erd" width="420">
+  </picture>
+</p>
 
-ERD for any project, drawn from its source code — even without foreign keys.
+<p align="center">
+  <strong>An ERD of any project, drawn by an agent from its source code.</strong><br>
+  <strong>Even when the database has no foreign keys.</strong><br>
+  <sub>Rails · Laravel · Django · Prisma · TypeORM · Sequelize · Mongoose · raw SQL</sub><br>
+  <code>/open-erd:init</code> · <code>/open-erd:sync</code> · <code>/open-erd:ask</code>
+</p>
 
-![All tables](docs/images/table-highlight.png)
+<p align="center">
+  <a href="./LICENSE"><img alt="License: MIT" src="https://img.shields.io/github/license/TOMOSIA-VIETNAM/open-erd?style=flat-square&color=blue"></a>
+  <a href="#install"><img alt="Claude Code" src="https://img.shields.io/badge/Claude_Code-plugin-D97757?style=flat-square&logo=anthropic&logoColor=white"></a>
+  <a href="#what-you-get"><img alt="Output" src="https://img.shields.io/badge/output-SVG_·_Excel_·_draw.io-141B2D?style=flat-square"></a>
+</p>
+
+Most real databases don't tell the whole story. Relations live in model code,
+polymorphic columns point at five tables, half the foreign keys were never
+declared, and the ERD in the wiki is two years old.
+
+**open-erd reads your code the way a new teammate would — models,
+migrations, associations — and draws the diagram for you.** Every fact it
+writes is checked by a second agent against the code before it is committed.
+You get one interactive file you can open in any browser, plus Excel and
+draw.io copies, and it stays current with one command.
+
+<p align="center">
+  <img src="./docs/images/demo/overview-to-domain.gif" width="760" alt="The overview of an e-commerce schema: one card per domain; a click opens the Orders domain">
+</p>
+
+<sub>Demo data: the open-source <a href="https://github.com/solidusio/solidus">Solidus</a> e-commerce app, 105 tables in 14 domains.</sub>
+
+## How it works
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./docs/images/flow-dark.svg">
+    <img src="./docs/images/flow.svg" width="760" alt="init reads your code, open out/erd.svg in the browser, sync after code changes, review what the AI guessed; ask questions or get an ERD diff on every pull request at any time">
+  </picture>
+</p>
 
 ## Install
 
@@ -13,33 +52,94 @@ In Claude Code:
 /plugin install open-erd@open-erd
 ```
 
-## Use
+Then, in your project:
 
-1. **Create the ERD** (once per project) — `/open-erd:init`
-2. **Open it** — `out/erd.svg` in Chrome or Safari
-3. **Update after code changes** (run often) — `/open-erd:sync` or `/open-erd:sync <what to focus on>`
-4. **Confirm relations AI guessed** (dashed lines; optional) — `/open-erd:review`
-5. **Ask about the data** — `/open-erd:ask "how does a client win a prize?"`: answer from the ERD, with a link that lights the tables
-6. **Preview ERD changes on pull requests** (optional) — `/open-erd:ci-setup`
-7. **Send feedback** — `/open-erd:feedback <text>`
+```
+/open-erd:init
+```
 
-Want a change? Just say it: *"orders.status: refunded means money returned"*.
+It asks where to keep the ERD (a separate folder with its own git history),
+shows the read-only script it wants to run on your code, and asks before
+running it. Your source repositories are never modified.
 
-Every change is checked against the code by a second agent before it is committed (`verify` in `open-erd.yaml`; see [docs/USAGE.md](docs/USAGE.md#verification)).
+## What you get
 
-## Output
+### Find any table in a second
 
-| File | Open with |
+`⌘K` searches tables and columns and runs every command. Type `a > b` to see
+how two tables join.
+
+<p align="center"><img src="./docs/images/demo/search.gif" width="760" alt="Command palette: typing ship jumps to spree_shipments"></p>
+
+### See how two tables join
+
+Each hop with its condition, warnings when a hop multiplies rows, and a
+ready-to-check `SELECT … JOIN`.
+
+<p align="center"><img src="./docs/images/demo/join-path.gif" width="760" alt="Join path from spree_users to spree_shipments"></p>
+
+### Every table explained
+
+Columns with types, defaults and enum meanings, relations you can follow,
+indexes, and a note on what the table is for. `←` goes back.
+
+<p align="center"><img src="./docs/images/demo/table-panel.gif" width="760" alt="Table panel with columns, relations and notes"></p>
+
+### Know what a change will break
+
+**Impact** shows every table that depends on a table or column, ring by ring.
+
+<p align="center"><img src="./docs/images/demo/impact.gif" width="760" alt="Impact of spree_orders: tables referencing it in rings 1, 2 and 3"></p>
+
+### Where personal data lives
+
+**Highlight › Personal data** tints every PII column across the schema, with a
+list per domain. The `public` sharing profile leaves them out entirely.
+
+<p align="center"><img src="./docs/images/demo/pii.gif" width="760" alt="Personal data map"></p>
+
+### Schema health, without a score
+
+Missing foreign keys, unindexed references, redundant indexes — each with a
+one-line reason and reference SQL for your database.
+
+<p align="center"><img src="./docs/images/demo/health.gif" width="760" alt="Schema health findings"></p>
+
+### Present it
+
+Press `T` for a tour: one domain after another, with its description.
+
+<p align="center"><img src="./docs/images/demo/tour.gif" width="760" alt="Tour through the domains"></p>
+
+### Also
+
+- **`/open-erd:ask "how does a customer get a refund?"`** — an answer from the
+  ERD, with a link that opens the viewer on the tables it used.
+- **`/open-erd:ci-setup`** — every pull request that touches the schema gets
+  one comment with the ERD changes and a `diff.svg`. No AI in CI.
+- **Excel** (`out/erd.xlsx`) — one sheet per table, plus Relations, PII,
+  Health. **draw.io** (`out/erd.drawio`) — to rearrange or annotate.
+- Change anything by just saying it: *"orders.status: refunded means the money
+  was returned"*.
+
+## Commands
+
+| Command | When |
 |---|---|
-| `out/erd.svg` | Browser — interactive diagram |
-| `out/erd.xlsx` | Excel — one sheet per table |
-| `out/erd.drawio` | draw.io — edit the layout |
+| `/open-erd:init` | Once per project: creates the ERD |
+| `/open-erd:sync [focus]` | After code changes — run it often |
+| `/open-erd:review` | Confirm relations the AI inferred (dashed lines) |
+| `/open-erd:ask "<question>"` | Questions about the data model |
+| `/open-erd:ci-setup` | ERD diff comment on pull requests |
+| `/open-erd:render` · `diff` · `snapshot` | Re-draw, compare two versions, tag a version |
+| `/open-erd:feedback <text>` | Tell us what to improve |
 
-![Overview](docs/images/overview.png)
+## Safe by design
 
-## Shortcuts
-
-`⌘K` search or run a command · `⌘J` join path · `⌘A` all tables · `⌘C` copy table SQL · `Backspace` back
+- Reads files only; never boots your app, never writes to your repositories.
+- Database metadata only with your approval each time, read-only; credentials
+  are never stored.
+- Nothing is pushed anywhere unless you ask.
 
 ---
 
