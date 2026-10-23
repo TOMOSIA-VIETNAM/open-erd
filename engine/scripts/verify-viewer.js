@@ -104,7 +104,8 @@ const inView = (sel) => `${visible}.querySelector(${JSON.stringify(sel)})`;
 const viewIs = (name) => `${visible}.getAttribute('data-view') === ${JSON.stringify(name)}`;
 
 // Toolbar menus: the button of a dropdown and an item of its menu by the
-// start of its label (`views`, `more`, `download`).
+// start of its label (`db` for the breadcrumb's database switcher,
+// `highlight`, `more`).
 const menuButton = (menu) => `document.querySelector('.oe-drop:has(.oe-${menu}-menu) > button')`;
 const menuItem = (menu, label) => `[...document.querySelectorAll('.oe-${menu}-menu .oe-item')].find((b) => b.textContent.startsWith(${JSON.stringify(label)}))`;
 const menuOpen = (menu) => `getComputedStyle(document.querySelector('.oe-${menu}-menu')).display !== 'none'`;
@@ -355,7 +356,21 @@ await shot(
 
 // The database crumb centres that database's whole frame on the overview. Small
 // frames hit the zoom cap, so "centred and fully visible" is the check, not size.
-await click(`document.querySelectorAll('.oe-crumbs .oe-link')[1]`);
+// With several databases the crumb is a switcher: its menu, left-aligned
+// under it, lists them all with this one checked.
+const dbName = domain.split('/')[0];
+const dbLabel = dbName[0].toUpperCase() + dbName.slice(1);
+const dbCrumb = `document.querySelector('.oe-db-crumb')`;
+const multiDb = await evaluate(`${dbCrumb} !== null`);
+if (multiDb) {
+  await click(dbCrumb);
+  await shot(
+    'database-crumb-menu',
+    `${menuOpen('db')} && ${menuItem('db', dbLabel)}.classList.contains('checked') && ${menuItem('db', 'All databases')} !== undefined && !${menuItem('db', 'All databases')}.classList.contains('checked')
+      && (() => { const m = document.querySelector('.oe-db-menu').getBoundingClientRect(); const b = ${dbCrumb}.getBoundingClientRect(); return (Math.abs(m.left - b.left) < 6 && m.top >= b.bottom && m.right <= innerWidth) || { m: m.left, b: b.left }; })() === true`,
+  );
+  await click(menuItem('db', dbLabel));
+} else await click(`document.querySelectorAll('.oe-crumbs .oe-link')[1]`);
 await shot('database-crumb', `${viewIs('overview')} && (() => {
   const r = document.querySelector('.database[data-database=${JSON.stringify(domain.split('/')[0])}] .db-frame').getBoundingClientRect();
   const top = document.querySelector('.oe-toolbar')?.getBoundingClientRect().bottom ?? 0;
@@ -363,17 +378,21 @@ await shot('database-crumb', `${viewIs('overview')} && (() => {
   const centred = Math.abs((r.left + r.right) / 2 - innerWidth / 2) < innerWidth * 0.2;
   return visible && centred;
 })()`);
-// The views menu jumps to a database's frame too, named as on the frame
-// (first letter upper case; ids keep their case).
-const dbName = domain.split('/')[0];
-const dbLabel = dbName[0].toUpperCase() + dbName.slice(1);
-await click(menuButton('views'));
-// Views are toolbar tabs; the menu only jumps to databases.
-await shot('views-menu', `${menuItem('views', 'Overview')} === undefined && ${menuItem('views', 'All tables')} === undefined && ${menuItem('views', dbLabel)} !== undefined && document.querySelectorAll('.oe-view-tabs .oe-btn').length >= 2`);
-await click(menuItem('views', dbLabel));
-await shot('views-menu-database', `${viewIs('overview')} && !${menuOpen('views')} && (() => {
-  const r = document.querySelector('.database[data-database=${JSON.stringify(dbName)}] .db-frame').getBoundingClientRect();
-  return r.left >= 0 && r.right <= innerWidth && r.bottom <= innerHeight; })()`);
+// On the views showing every database the switcher reads "All databases"
+// and jumps to a database's frame too, named as on the frame (first letter
+// upper case; ids keep their case). There is no Databases button.
+if (multiDb) {
+  await click(dbCrumb);
+  await shot(
+    'database-crumb-all',
+    `${dbCrumb}.textContent === 'All databases' && ${menuItem('db', 'All databases')}.classList.contains('checked') && ${menuItem('db', dbLabel)} !== undefined
+      && ![...document.querySelectorAll('.oe-toolbar button')].some((b) => b.textContent.trim() === 'Databases')`,
+  );
+  await click(menuItem('db', dbLabel));
+  await shot('database-crumb-switch', `${viewIs('overview')} && !${menuOpen('db')} && (() => {
+    const r = document.querySelector('.database[data-database=${JSON.stringify(dbName)}] .db-frame').getBoundingClientRect();
+    return r.left >= 0 && r.right <= innerWidth && r.bottom <= innerHeight; })()`);
+}
 await click(`document.querySelector('.domain[data-domain=${JSON.stringify(domain)}]')`);
 await shot('database-crumb-name', `document.querySelectorAll('.oe-crumbs .oe-link')[1].textContent === ${JSON.stringify(dbLabel)}`);
 
@@ -394,7 +413,7 @@ await shot(
 );
 // The detail view: notes in full (no ellipsis), the bolt on indexed columns
 // and the list icon on columns with values, as in the table box; the
-// toolbar's Join path shows its shortcut like Search.
+// toolbar has no Join path button (the palette and the panel have it).
 await shot(
   'panel-full-notes-icons',
   `(() => { const n = ${data}.nodes[${JSON.stringify(table)}]; const p = document.querySelector('.oe-panel'); const note = p.querySelector('.oe-ph-note');
@@ -403,8 +422,8 @@ await shot(
     const icons = rows.every((r) => { const c = n.columns.find((x) => x.name === r.getAttribute('data-column')); const idx = (n.indexes ?? []).some((i) => i.columns.includes(c.name));
       return (r.querySelector('.hint .icon-index') !== null) === idx && (r.querySelector('.hint .hint-enum') !== null) === Boolean(c.enum); });
     const notes = rows.every((r) => { const c = n.columns.find((x) => x.name === r.getAttribute('data-column')); const l2 = r.querySelector('.l2:not(.internal):not(.oe-warn)'); return (c.note ? l2?.textContent === c.note : l2 === null) && full(l2); });
-    const kbd = [...document.querySelectorAll('.oe-toolbar .oe-tool')].find((b) => b.textContent.startsWith('Join path'))?.querySelector('kbd');
-    return full(note) && icons && notes && kbd && /J$/.test(kbd.textContent) || { icons, notes, kbd: Boolean(kbd) }; })()`,
+    const button = [...document.querySelectorAll('.oe-toolbar button')].some((b) => b.textContent.startsWith('Join path'));
+    return full(note) && icons && notes && !button || { icons, notes, button }; })()`,
 );
 // Column rows: NULL only on nullable columns, "= default" when a default exists.
 await shot(
@@ -487,7 +506,7 @@ if (offsets[0] === offsets[1]) failures.push(`flow does not move: ${offsets}`);
     downloads = join(resolve(outDir), 'downloads', String(count));
     await mkdir(downloads, { recursive: true });
     await send('Page.setDownloadBehavior', { behavior: 'allow', downloadPath: downloads });
-    await choose('download', label);
+    await choose('more', label);
   };
   const saved = async (name) => {
     for (let i = 0; i < 100; i++) {
@@ -501,30 +520,35 @@ if (offsets[0] === offsets[1]) failures.push(`flow does not move: ${offsets}`);
   };
   const bounds = await evaluate(`${visible}.getAttribute('data-bounds').split(' ').map(Number)`);
   const base = `${domain.split('/')[0]}-${domain.split('/').slice(1).join('/')}`.toLowerCase().replace(/[^\p{L}\p{N}_]+/gu, '-').replace(/^-+|-+$/g, '');
-  await click(menuButton('download'));
-  await shot('download-menu', `document.querySelectorAll('.oe-download-menu .oe-item').length === 3 && ${inView('.flow')} !== null && ${menuButton('download')}.title.startsWith('Download')`);
-  await pick('This view as SVG');
+  // Downloads sit in the ⋯ menu, under their heading.
+  await click(menuButton('more'));
+  await shot(
+    'download-menu',
+    `['As SVG', 'As PNG', 'As JPEG'].every((l) => [...document.querySelectorAll('.oe-more-menu .oe-item')].some((b) => b.textContent === l)) && ${inView('.flow')} !== null
+      && ${menuButton('more')}.title.includes('download') && document.querySelector('.oe-more-menu .oe-menu-sub').textContent === 'Download this view'`,
+  );
+  await pick('As SVG');
   const plain = (await saved(`${base}.svg`)).toString();
   const views = (plain.match(/<g class="view"/g) ?? []).length;
   if (views !== 1 || plain.includes('<script') || plain.includes('foreignObject') || plain.includes('class="fold-toggle') || /class="[^"]*\b(dimmed|flowing)\b/.test(plain) || !plain.includes('@font-face')) {
     failures.push(`download svg: ${JSON.stringify({ views, script: plain.includes('<script'), highlight: /\b(dimmed|flowing)\b/.test(plain) })}`);
   }
-  await click(`document.querySelector('.oe-download-menu .oe-check input')`);
-  await pick('This view as SVG');
+  await click(`document.querySelector('.oe-more-menu .oe-check input')`);
+  await pick('As SVG');
   const kept = (await saved(`${base}.svg`)).toString();
   if (!/class="[^"]*\bflowing\b/.test(kept) || !/class="view[^"]*\bdimmed\b/.test(kept)) failures.push('download svg with highlight lost the highlight');
-  await click(`document.querySelector('.oe-download-menu .oe-check input')`);
-  await pick('This view as PNG');
+  await click(`document.querySelector('.oe-more-menu .oe-check input')`);
+  await pick('As PNG');
   const png = await saved(`${base}.png`);
   const [pw, ph] = [png.readUInt32BE(16), png.readUInt32BE(20)];
   const status = await evaluate(`document.querySelector('.oe-status').textContent`);
   const full = pw === Math.floor(bounds[2] * 2) && ph === Math.floor(bounds[3] * 2);
   if (!(full ? !status.includes('downscaled') : status.includes('downscaled'))) failures.push(`download png ${pw}x${ph} for ${bounds}: ${status}`);
-  await pick('This view as JPEG');
+  await pick('As JPEG');
   const jpg = await saved(`${base}.jpg`);
   await shot('download-saved', `${jpg[0] === 0xff && jpg[1] === 0xd8} && document.querySelector('.oe-status').textContent.startsWith('Saved ${base}.jpg')`);
   await key('Escape');
-  await shot('download-menu-closed', `!${menuOpen('download')}`);
+  await shot('download-menu-closed', `!${menuOpen('more')}`);
 }
 
 await click(`${visible}.querySelector(':scope > rect')`, { where: 'top' });
@@ -612,8 +636,13 @@ await shot('spotlight-slash', `${spotlightShown} && document.querySelector('.oe-
 await key('Escape');
 await searchFor(query);
 await shot('search-jump', `${inView('.table.selected')} !== null && !${spotlightShown}`);
-// The toolbar's search is a compact trigger naming the shortcut.
-await shot('search-trigger', `/^Search(⌘F|Ctrl\\+F)$/.test(document.querySelector('.oe-search-trigger').textContent) && document.querySelector('.oe-toolbar input[type="search"]') === null || document.querySelector('.oe-search-trigger').textContent`);
+// Columns marked as personal data and schema health findings: the palette,
+// the Highlight menu and the shortcut list offer their modes only when some exist.
+const piiTotal = await evaluate(`Object.values(${data}.nodes).reduce((n, x) => n + (x.columns ?? []).filter((c) => c.pii).length, 0)`);
+const healthTotal = await evaluate(`(${data}.health ?? []).length`);
+
+// The toolbar's search is a compact trigger naming the palette's shortcut.
+await shot('search-trigger', `/^Search or jump…(⌘K|Ctrl\\+K)$/.test(document.querySelector('.oe-search-trigger').textContent) && document.querySelector('.oe-toolbar input[type="search"]') === null || document.querySelector('.oe-search-trigger').textContent`);
 
 // Business/Technical mode is gone.
 await shot('no-business-mode', `![...document.querySelectorAll('button')].some((b) => /^(Business|Technical)$/.test(b.textContent)) && !document.documentElement.classList.contains('business')`);
@@ -659,19 +688,30 @@ if (await evaluate(`document.querySelector('g.view[data-view="all"]') !== null`)
   await shot('legend-l-key', `document.querySelector('.oe-legend') === null && document.querySelector('.oe-legend-pill') !== null`);
   await key('l', 'KeyL');
   await shot('legend-l-key-again', `document.querySelector('.oe-legend') !== null`);
-  // Review mode, in the ⋯ menu with the counts, only when something waits
-  // for review: pending lines turn amber, the legend shows the review icons
-  // and a chip says the mode is on; its × turns it off.
+  // Review mode, in the Highlight menu with the counts, only when something
+  // waits for review: pending lines turn amber, the legend shows the review
+  // icons and a chip says the mode is on; its × turns it off. With no mode
+  // to offer at all there is no Highlight button.
   const counts = await evaluate(`${data}.review`);
-  await click(menuButton('more'));
+  const highlightShown = await evaluate(`getComputedStyle(${menuButton('highlight')}.parentNode).display !== 'none'`);
+  const modesTotal = await evaluate(`(() => { const d = ${data}; return d.review.pending + d.review.stale + (d.health ?? []).length + Object.values(d.nodes).reduce((n, x) => n + (x.columns ?? []).filter((c) => c.pii).length, 0); })()`);
+  if (highlightShown !== modesTotal > 0) failures.push(`Highlight button shown: ${highlightShown}, modes: ${modesTotal}`);
   if (counts.pending + counts.stale === 0) {
-    await shot('review-mode-hidden', `${menuItem('more', 'Review mode')} === undefined && !/null|undefined/.test(document.querySelector('.oe-more-menu').textContent) && document.querySelector('.oe-review-chip').closest('foreignObject').style.display === 'none'`);
-    await closeMenu('more');
+    if (highlightShown) await click(menuButton('highlight'));
+    await shot('review-mode-hidden', `${menuItem('highlight', 'Review mode')} === undefined && !/null|undefined/.test(document.querySelector('.oe-highlight-menu').textContent) && document.querySelector('.oe-review-chip').closest('foreignObject').style.display === 'none'`);
+    await closeMenu('highlight');
   } else {
+    await click(menuButton('highlight'));
     const pending = await evaluate(`${inView('.relation-group.review-pending:not(.kind-view_source) path.relation')} !== null`);
-    await shot('review-mode-item', `${menuItem('more', 'Review mode')}.textContent.startsWith('Review mode · ${counts.pending} to confirm · ${counts.stale} changed in code') && ${menuItem('more', 'Review mode')}.textContent.includes('amber = not confirmed yet') && !/null|undefined/.test(document.querySelector('.oe-more-menu').textContent)`);
-    await click(menuItem('more', 'Review mode'));
-    await closeMenu('more');
+    await shot(
+      'review-mode-item',
+      `${menuItem('highlight', 'Review mode')}.textContent === 'Review mode${counts.pending} to confirm · ${counts.stale} changed in code' && ${menuItem('highlight', 'Review mode')}.title.includes('amber = not confirmed yet')
+        && !/null|undefined/.test(document.querySelector('.oe-highlight-menu').textContent) && !${menuButton('highlight')}.classList.contains('active')`,
+    );
+    await click(menuItem('highlight', 'Review mode'));
+    // The menu stays open with the mode checked; the button reads as on.
+    await shot('review-mode-checked', `${menuOpen('highlight')} && ${menuItem('highlight', 'Review mode')}.getAttribute('aria-checked') === 'true' && ${menuButton('highlight')}.classList.contains('active')`);
+    await closeMenu('highlight');
     await shot(
       'review-mode',
       `document.documentElement.classList.contains('review-mode') && document.querySelector('.oe-review-chip').closest('foreignObject').style.display !== 'none'
@@ -718,9 +758,7 @@ if (await evaluate(`document.querySelector('g.view[data-view="all"]') !== null`)
 } else {
   await click(`document.querySelector('.oe-crumbs .oe-link')`);
   await click(`document.querySelector('.domain[data-domain=${JSON.stringify(domain)}]')`);
-  await click(menuButton('views'));
   await shot('no-all-tables', `${viewIs(`domain:${domain}`)} && document.querySelector('.oe-view-tabs [data-view="all"]') === null`);
-  await closeMenu('views');
 }
 await click(inView(`.table[data-id="${table}"]`), { where: 'top', count: 2 });
 // Its lines carry crow's feet like the drawn views.
@@ -741,6 +779,19 @@ await shot(
     const controls = [...bar.querySelectorAll('button')].filter((b) => b.offsetParent !== null && !b.closest('.oe-menu') && !b.closest('.oe-crumbs'));
     return bar.scrollWidth <= bar.clientWidth && right.getBoundingClientRect().right <= 1280 && crumbs.getBoundingClientRect().width >= 200
       && controls.every((b) => b.title || b.getAttribute('aria-label') || b.textContent.trim()) && controls.filter((b) => b.classList.contains('oe-tool')).every((b) => b.title) || { scroll: bar.scrollWidth, client: bar.clientWidth, crumbs: crumbs.getBoundingClientRect().width }; })()`,
+);
+// At 760 px the view tabs and the search shrink to icons and Highlight to
+// its icon and caret; still nothing overflows and every control is on screen.
+await send('Emulation.setDeviceMetricsOverride', { width: 760, height: 640, deviceScaleFactor: 1, mobile: false });
+await evaluate(`window.dispatchEvent(new Event('resize'))`);
+await pause(200);
+await shot(
+  'toolbar-760',
+  `(() => { const bar = document.querySelector('.oe-toolbar'); const crumbs = document.querySelector('.oe-crumbs');
+    const controls = [...bar.querySelectorAll('button')].filter((b) => b.offsetParent !== null && !b.closest('.oe-menu') && !b.closest('.oe-crumbs'));
+    const hidden = (sel) => [...bar.querySelectorAll(sel)].every((e) => e.offsetParent === null);
+    return bar.scrollWidth <= bar.clientWidth && controls.every((b) => { const r = b.getBoundingClientRect(); return r.left >= 0 && r.right <= 760; }) && crumbs.getBoundingClientRect().width >= 100
+      && hidden('.oe-view-tabs .label') && hidden('.oe-search-trigger .label') && hidden('.oe-search-trigger kbd') && hidden('.oe-highlight-btn .label') || { scroll: bar.scrollWidth, client: bar.clientWidth, crumbs: crumbs.getBoundingClientRect().width }; })()`,
 );
 await send('Emulation.setDeviceMetricsOverride', { ...VIEWPORT, deviceScaleFactor: 1, mobile: false });
 await evaluate(`window.dispatchEvent(new Event('resize'))`);
@@ -848,7 +899,7 @@ if (impactTarget) {
   const downloads = join(resolve(outDir), 'downloads', 'impact');
   await mkdir(downloads, { recursive: true });
   await send('Page.setDownloadBehavior', { behavior: 'allow', downloadPath: downloads });
-  await choose('download', 'This view as SVG');
+  await choose('more', 'As SVG');
   let file = null;
   for (let i = 0; i < 100 && !file; i++) {
     file = (await readdir(downloads)).find((f) => f.endsWith('-impact.svg'));
@@ -857,7 +908,7 @@ if (impactTarget) {
   await pause(200);
   const plain = file ? (await readFile(join(downloads, file))).toString() : '';
   if (!/data-view="impact"/.test(plain) || !/class="table[^"]* ring-1/.test(plain) || !plain.includes('--impact-ring-1') || /foreignObject/.test(plain)) failures.push(`impact download: ${file}`);
-  await closeMenu('download');
+  await closeMenu('more');
   // Back walks the jump first (the table selected in the view), then leaves.
   await click(backButton);
   await shot('impact-back-jump', `${viewIs('impact')} && ${visible}.querySelector('.table.selected') === null && document.querySelectorAll('.oe-panel .oe-impact-ring').length === ${rings.length}`);
@@ -1049,9 +1100,7 @@ if (await evaluate(`document.querySelector('g.view[data-view="all"]') !== null`)
 await choose('more', 'Keyboard shortcuts');
 // P is listed only when some column is marked as personal data, H only
 // when the render has schema health findings.
-const piiTotal = await evaluate(`Object.values(${data}.nodes).reduce((n, x) => n + (x.columns ?? []).filter((c) => c.pii).length, 0)`);
-const healthTotal = await evaluate(`(${data}.health ?? []).length`);
-await shot('keyboard-shortcuts', `document.querySelectorAll('.oe-panel .oe-keys tr').length === ${9 + (piiTotal > 0) + (healthTotal > 0)} && /J/.test(document.querySelector('.oe-panel .oe-keys').textContent) && document.querySelector('.oe-panel .oe-keys').textContent.includes('Alt+←')`);
+await shot('keyboard-shortcuts', `document.querySelectorAll('.oe-panel .oe-keys tr').length === ${10 + (piiTotal > 0) + (healthTotal > 0)} && /J/.test(document.querySelector('.oe-panel .oe-keys').textContent) && /K$/.test(document.querySelector('.oe-panel .oe-keys kbd').textContent) && document.querySelector('.oe-panel .oe-keys').textContent.includes('Alt+←')`);
 // A short panel leaves the minimap in its corner; a tall one pushes it left.
 {
   const mm = `(() => { const f = document.querySelector('.oe-minimap')?.closest('foreignObject'); return f && f.style.display !== 'none' ? document.querySelector('.oe-minimap').getBoundingClientRect() : null; })()`;
@@ -1199,15 +1248,16 @@ await shot(
   const piiOn = `document.documentElement.classList.contains('pii-mode')`;
   await key('Escape');
   if (await evaluate(`document.querySelector('g.view[data-view="all"]') !== null`)) await viewTab('all');
-  await click(menuButton('more'));
+  if (await evaluate(`getComputedStyle(${menuButton('highlight')}.parentNode).display !== 'none'`)) await click(menuButton('highlight'));
   if (piiTotal === 0) {
-    await shot('pii-hidden', `${menuItem('more', 'Personal data')} === undefined && ${piiHost}.style.display === 'none'`);
-    await closeMenu('more');
+    await shot('pii-hidden', `${menuItem('highlight', 'Personal data')} === undefined && ${piiHost}.style.display === 'none'`);
+    await closeMenu('highlight');
     await key('p', 'KeyP');
     await shot('pii-key-does-nothing', `!${piiOn} && ${piiHost}.style.display === 'none'`);
   } else {
-    await click(menuItem('more', 'Personal data'));
-    await closeMenu('more');
+    await shot('pii-menu', `${menuItem('highlight', 'Personal data')}.textContent.startsWith('Personal data (PII)${piiTotal} column') && ${menuItem('highlight', 'Personal data')}.querySelector('kbd').textContent === 'P'`);
+    await click(menuItem('highlight', 'Personal data'));
+    await closeMenu('highlight');
     // Every pii row of a full table on screen is tinted; a table without any fades.
     const tinted = `(() => { const d = ${data}; const v = ${visible};
       const want = [...v.querySelectorAll('.table')].reduce((n, g) => n + (d.nodes[g.getAttribute('data-id')]?.columns ?? []).filter((c) => c.pii && g.querySelector('.column[data-column="' + CSS.escape(c.name) + '"]')).length, 0);
@@ -1233,7 +1283,7 @@ await shot(
     const downloads = join(resolve(outDir), 'downloads', 'pii');
     await mkdir(downloads, { recursive: true });
     await send('Page.setDownloadBehavior', { behavior: 'allow', downloadPath: downloads });
-    await choose('download', 'This view as SVG');
+    await choose('more', 'As SVG');
     let file = null;
     for (let i = 0; i < 100 && !file; i++) {
       file = (await readdir(downloads)).find((f) => f.endsWith('.svg'));
@@ -1241,8 +1291,9 @@ await shot(
     }
     await pause(200);
     const saved = file ? (await readFile(join(downloads, file))).toString() : '';
-    if (!/<svg [^>]*class="pii-mode"/.test(saved) || !/class="column pii"/.test(saved) || /foreignObject/.test(saved)) failures.push(`download with the personal data map: ${file}`);
-    await closeMenu('download');
+    // The root may hold other modes too (diff-mode in a diff drawing).
+    if (!/<svg [^>]*class="[^"]*\bpii-mode\b/.test(saved) || !/class="column pii"/.test(saved) || /foreignObject/.test(saved)) failures.push(`download with the personal data map: ${file}`);
+    await closeMenu('more');
     await key('p', 'KeyP');
     const plainTable = `${inView('.table:not(.has-pii)')}`;
     await shot('pii-off-key', `!${piiOn} && ${piiHost}.style.display === 'none' && (${plainTable} === null || getComputedStyle(${plainTable}).opacity === '1') && getComputedStyle(${inView('.column.pii .row-hit')}).fill !== 'rgb(255, 217, 204)'`);
@@ -1258,7 +1309,7 @@ await shot(
   await evaluate('document.activeElement?.blur()');
 }
 
-// Schema health: ⋯ › Schema health (and H) marks every table with a finding
+// Schema health: Highlight › Schema health (and H) marks every table with a finding
 // with a triangle, shows a chip and the list of findings; the severity
 // filter (shown with two severities or more) hides the others; a click on a column in the list goes there and
 // keeps the list open; H or the chip's × turns it off. Without findings
@@ -1268,15 +1319,15 @@ await shot(
   const healthOn = `document.documentElement.classList.contains('health-mode')`;
   await key('Escape');
   if (await evaluate(`document.querySelector('g.view[data-view="all"]') !== null`)) await viewTab('all');
-  await click(menuButton('more'));
+  if (await evaluate(`getComputedStyle(${menuButton('highlight')}.parentNode).display !== 'none'`)) await click(menuButton('highlight'));
   if (healthTotal === 0) {
-    await shot('health-hidden', `${menuItem('more', 'Schema health')} === undefined && ${healthHost}.style.display === 'none'`);
-    await closeMenu('more');
+    await shot('health-hidden', `${menuItem('highlight', 'Schema health')} === undefined && ${healthHost}.style.display === 'none'`);
+    await closeMenu('highlight');
     await key('h', 'KeyH');
     await shot('health-key-does-nothing', `!${healthOn} && ${healthHost}.style.display === 'none'`);
   } else {
-    await click(menuItem('more', 'Schema health'));
-    await closeMenu('more');
+    await click(menuItem('highlight', 'Schema health'));
+    await closeMenu('highlight');
     // Every table on screen with a finding shows its triangle, and only those.
     const marked = `(() => { const d = ${data}; const v = ${visible}; const tables = new Set(d.health.map((f) => f.table));
       const want = [...v.querySelectorAll('.table')].filter((g) => tables.has(g.getAttribute('data-id'))).length;
@@ -1313,6 +1364,33 @@ await shot(
   await evaluate('document.activeElement?.blur()');
 }
 
+// Highlight from the keyboard: Enter on the button opens the menu with the
+// focus on its first mode, Enter toggles it (the menu stays, checked, and
+// the mode's chip shows), Esc closes it and gives the focus back.
+if (await evaluate(`getComputedStyle(${menuButton('highlight')}.parentNode).display !== 'none'`)) {
+  const enter = async () => {
+    await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r' });
+    await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+    await pause(200);
+  };
+  const first = `document.querySelector('.oe-highlight-menu .oe-item')`;
+  const chipShown = `[...document.querySelectorAll('.oe-review-chip')].some((c) => c.closest('foreignObject').style.display !== 'none')`;
+  await key('Escape');
+  await evaluate(`${menuButton('highlight')}.focus()`);
+  await enter();
+  await shot('highlight-keyboard-open', `${menuOpen('highlight')} && document.activeElement === ${first} && ${first}.getAttribute('aria-checked') === 'false'`);
+  await enter();
+  await shot('highlight-keyboard-toggle', `${menuOpen('highlight')} && ${first}.getAttribute('aria-checked') === 'true' && document.activeElement === ${first} && ${chipShown} && ${menuButton('highlight')}.classList.contains('active')`);
+  await key('Escape');
+  await shot('highlight-keyboard-close', `!${menuOpen('highlight')} && document.activeElement === ${menuButton('highlight')}`);
+  await enter();
+  await enter();
+  await key('Escape');
+  await shot('highlight-keyboard-off', `!${chipShown} && !${menuButton('highlight')}.classList.contains('active')`);
+  await evaluate('document.activeElement?.blur()');
+  await key('Escape');
+}
+
 // Tour: T walks the domains in the overview's order (the matrix rows),
 // each in its view with a caption (its note when it has one; name and table
 // count always) at the bottom, clear of the toolbar and of its central
@@ -1322,7 +1400,9 @@ await shot(
 {
   const order = await evaluate(`[...document.querySelectorAll('g.view[data-view="connections"] .mx-rows .mx-head')].map((g) => g.getAttribute('data-domain'))`);
   if (order.length < 2) {
-    await shot('tour-hidden', `getComputedStyle(document.querySelector('.oe-tour-btn')).display === 'none'`);
+    await click(menuButton('more'));
+    await shot('tour-hidden', `${menuItem('more', 'Tour')} === undefined`);
+    await closeMenu('more');
   } else {
     const startedOn = await evaluate(`${visible}.getAttribute('data-view')`);
     const startCam = await camera();
@@ -1336,7 +1416,11 @@ await shot(
       const hit = Boolean(c) && c.bottom > card.top && c.top < card.bottom && c.right > card.left && c.left < card.right;
       const off = card.top < 44 || card.bottom > innerHeight || card.left < 0 || card.right > innerWidth;
       const aside = ['.oe-legend-host', '.oe-minimap-host', '.oe-back-host'].every((s) => document.querySelector(s).closest('foreignObject').style.display === 'none');
-      return (!hit && !off && aside && document.querySelector('.oe-tour-btn').classList.contains('on')) || { hit, off, aside }; })()`;
+      return (!hit && !off && aside) || { hit, off, aside }; })()`;
+    // ⋯ lists the tour with its key; T starts it.
+    await click(menuButton('more'));
+    await shot('tour-menu-item', `${menuItem('more', 'Tour')}.textContent === 'TourT' && ${menuItem('more', 'Tour')}.getAttribute('aria-checked') === 'false'`);
+    await closeMenu('more');
     await key('t', 'KeyT');
     await shot('tour-start', `${caption(0)} === true && ${tourClear}`);
     await pause(6400);
@@ -1363,7 +1447,7 @@ await shot(
     await send('Page.setDownloadBehavior', { behavior: 'allow', downloadPath: downloads });
     // A fresh step: its central table is still pulsing when the file is drawn.
     await key('ArrowRight');
-    await choose('download', 'This view as SVG');
+    await choose('more', 'As SVG');
     let file = null;
     for (let i = 0; i < 100 && !file; i++) {
       file = (await readdir(downloads)).find((f) => f.endsWith('.svg'));
@@ -1372,14 +1456,93 @@ await shot(
     await pause(200);
     const plain = file ? (await readFile(join(downloads, file))).toString() : '';
     if (!file || /foreignObject|class="[^"]*\b(oe-tour|arrive)\b/.test(plain)) failures.push(`download during the tour: ${file} ${(/foreignObject|class="[^"]*\b(oe-tour|arrive)\b/.exec(plain) ?? [])[0]}`);
-    await closeMenu('download');
+    await closeMenu('more');
     await key('Escape');
     const endCam = await camera();
     await shot(
       'tour-esc-restores',
-      `${viewIs(startedOn)} && ${JSON.stringify(endCam)}.s === ${startCam.s} && ${Math.abs(endCam.x - startCam.x) < 0.01 && Math.abs(endCam.y - startCam.y) < 0.01} && document.querySelector('.oe-tour').closest('foreignObject').style.display === 'none' && !document.querySelector('.oe-tour-btn').classList.contains('on')`,
+      `${viewIs(startedOn)} && ${JSON.stringify(endCam)}.s === ${startCam.s} && ${Math.abs(endCam.x - startCam.x) < 0.01 && Math.abs(endCam.y - startCam.y) < 0.01} && document.querySelector('.oe-tour').closest('foreignObject').style.display === 'none'`,
     );
   }
+}
+
+await key('Escape');
+// The palette: Cmd+K (Ctrl+K) or a click on the search trigger. Empty, it
+// groups the views and databases to go to and the commands of this file,
+// each with its shortcut; ⌘F keeps to tables and columns. Typing filters
+// the commands too; "a > b" offers the join path; Esc gives the focus back.
+{
+  const rows = `[...document.querySelectorAll('.oe-spotlight-list .oe-result')]`;
+  const row = (label) => `${rows}.find((r) => r.querySelector('.name').textContent.startsWith(${JSON.stringify(label)}))`;
+  const groups = `[...document.querySelectorAll('.oe-spotlight-list .oe-spotlight-group')].map((g) => g.textContent)`;
+  const typeInto = async (text) => {
+    await evaluate(`(() => { const i = document.querySelector('.oe-spotlight-input'); i.value = ${JSON.stringify(text)}; i.dispatchEvent(new Event('input')); })()`);
+    await pause(150);
+  };
+  const ctrlK = await evaluate(`(() => { const e = new KeyboardEvent('keydown', { key: 'k', ${FIND_MODIFIER === 4 ? 'metaKey' : 'ctrlKey'}: true, bubbles: true, cancelable: true }); document.dispatchEvent(e); const r = e.defaultPrevented; document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); return r; })()`);
+  if (ctrlK !== true) failures.push('the palette shortcut does not prevent the browser default');
+  const domains = await evaluate(`document.querySelectorAll('g.view[data-view="connections"] .mx-rows .mx-head').length`);
+  const dbs = await evaluate(`Object.keys(${data}.databases).length`);
+  // It opens on the last text, selected; emptied, it lists the commands.
+  await click(`document.querySelector('.oe-search-trigger')`);
+  await typeInto('');
+  await shot(
+    'palette-empty',
+    `(() => { const g = ${groups}; const kbd = (l) => (${rows}.find((r) => r.querySelector('.name').textContent === l)?.querySelector('kbd')?.textContent ?? '');
+      const want = ['Join path…', 'Download as SVG', 'Download as PNG', 'Download as JPEG', 'Keyboard shortcuts'];
+      return ${spotlightShown} && document.activeElement === document.querySelector('.oe-spotlight-input') && document.querySelector('.oe-spotlight-input').placeholder === 'Search tables and columns, or run a command'
+        && g[0] === 'Go to' && g[1] === 'Actions' && ${rows}[0].classList.contains('active') && want.every((l) => ${rows}.some((r) => r.querySelector('.name').textContent === l))
+        && /J$/.test(kbd('Join path…')) && (${row('Tour')} !== undefined) === ${domains >= 2} && (${row('Personal data')} !== undefined) === ${piiTotal > 0} && (${row('Schema health')} !== undefined) === ${healthTotal > 0}
+        && ${rows}.filter((r) => r.querySelector('.name').textContent.endsWith(' database')).length === ${dbs > 1 ? dbs : 0} || { g, rows: ${rows}.map((r) => r.textContent) }; })()`,
+  );
+  await key('ArrowDown');
+  await shot('palette-arrow', `${rows}[1].classList.contains('active') && !${rows}[0].classList.contains('active')`);
+  // Hover moves the highlight; a click runs the row.
+  await evaluate(`${row('Keyboard shortcuts')}.scrollIntoView({ block: 'nearest' })`);
+  await mouse('mouseMoved', await centre(row('Keyboard shortcuts')));
+  await pause(100);
+  await shot('palette-hover', `${row('Keyboard shortcuts')}.classList.contains('active')`);
+  await click(row('Keyboard shortcuts'));
+  await shot('palette-click-runs', `!${spotlightShown} && document.querySelector('.oe-panel .oe-keys') !== null`);
+  await key('Escape');
+  // Typed: a command by a word of its label (and the table hits first when a name starts with it).
+  await modKey('k');
+  await typeInto('connec');
+  await shot('palette-typed', `${row('Connections')} !== undefined && ${groups}.includes('Go to')`);
+  await key('Enter');
+  await shot('palette-enter-runs', `${viewIs('connections')} && !${spotlightShown}`);
+  // "a > b": the join path between the two tables, run with Enter.
+  const pair = await evaluate(`(() => { const d = ${data}; const names = Object.keys(d.nodes).filter((id) => d.nodes[id].kind === 'table').map((id) => id.split('.')[2]);
+    const unique = (id) => names.filter((n) => n === id.split('.')[2]).length === 1;
+    const l = d.links.find((x) => x.kind !== 'view_source' && x.kind !== 'polymorphic' && !x.via && x.from !== x.to && d.nodes[x.from]?.kind === 'table' && d.nodes[x.to]?.kind === 'table' && unique(x.from) && unique(x.to));
+    return l ? [l.from, l.to] : null; })()`);
+  if (pair) {
+    const [a, b] = pair.map((id) => id.split('.')[2]);
+    await modKey('k');
+    await typeInto(`${a} > ${b}`);
+    await shot('palette-join', `${groups}[0] === 'Join path' && ${rows}[0].querySelector('.name').textContent === ${JSON.stringify(`Join path ${a} → ${b}`)} && ${row('Join path…')} !== undefined`);
+    await key('Enter');
+    await shot('palette-join-runs', `!${spotlightShown} && (() => { const t = document.querySelector('.oe-panel')?.textContent ?? ''; return t.startsWith('Join path') && t.includes(${JSON.stringify(a)}) && t.includes(${JSON.stringify(b)}); })()`);
+    await key('Escape');
+    // "Join path…" opens the join box with From taken.
+    await modKey('k');
+    await typeInto(`${a} → `);
+    await click(row('Join path…'));
+    await shot('palette-join-box', `document.querySelector('.oe-join-spot').closest('foreignObject').style.display !== 'none' && document.querySelector('.oe-join-from input').value === ${JSON.stringify(a)} && document.activeElement === document.querySelector('.oe-join-to input')`);
+    await key('Escape');
+  }
+  // ⌘F: tables and columns only, no commands.
+  await findKey();
+  await typeInto('');
+  await shot('palette-search-only', `${spotlightShown} && document.querySelector('.oe-spotlight-input').placeholder === 'Search tables and columns' && ${rows}.length === 0 && document.querySelector('.oe-spotlight-empty').textContent === 'Type a table or column name'`);
+  await typeInto('keyboard');
+  await shot('palette-search-no-commands', `${row('Keyboard shortcuts')} === undefined`);
+  await key('Escape');
+  // Esc gives the focus back to the trigger it was opened from.
+  await click(`document.querySelector('.oe-search-trigger')`);
+  await key('Escape');
+  await shot('palette-focus-back', `!${spotlightShown} && document.activeElement === document.querySelector('.oe-search-trigger')`);
+  await evaluate('document.activeElement?.blur()');
 }
 
 // Deep links: erd.svg#table=<id> opens on that table, selected, with its

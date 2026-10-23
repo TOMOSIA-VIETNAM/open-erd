@@ -39,7 +39,7 @@ Every change is checked against the code by a second agent before it is committe
 
 ## Shortcuts
 
-`⌘F` search · `⌘J` join path · `⌘A` all tables · `⌘C` copy table SQL · `Backspace` back
+`⌘K` search or run a command · `⌘J` join path · `⌘A` all tables · `⌘C` copy table SQL · `Backspace` back
 
 ---
 
