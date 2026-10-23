@@ -43,7 +43,8 @@ entry in `extraKnownMarketplaces` of its managed settings.
 After an update, run `/open-erd:render` in each workspace: `erd.svg` carries the viewer of the
 engine that rendered it.
 
-To uninstall: `/plugin uninstall open-erd@open-erd`.
+To uninstall: `/plugin uninstall open-erd@open-erd`, then optionally `/plugin marketplace remove open-erd`
+(from a shell: `claude plugin uninstall open-erd@open-erd`). ERD workspaces are not touched.
 
 ## Codex
 
@@ -66,6 +67,9 @@ To update: `codex plugin marketplace upgrade open-erd`, then start a new session
 
 Use either this route or the local install below, not both: both put the same `open-erd-*` skills
 in front of Codex.
+
+To uninstall: `codex plugin remove open-erd@open-erd`, then optionally
+`codex plugin marketplace remove open-erd`. Open a new Codex session afterwards.
 
 ### Local install
 
