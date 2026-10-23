@@ -943,7 +943,6 @@ const ICONS = {
   copy: 'M5.5 5.5H12.5V13.5H5.5ZM3.5 10.5V2.5H10.5',
   // A marker pen: the highlight modes.
   highlight: 'M9.5 2.5L13.5 6.5L7.5 12.5H3.5V8.5ZM2.5 14.5H13.5',
-  keyboard: 'M2 4.5H14V11.5H2ZM4.5 7H4.6M7 7H7.1M9.5 7H9.6M12 7H12.1M5 9.5H11',
   // Swatches with their lines: the legend.
   legend: 'M2.5 3H4.5V5H2.5ZM2.5 7H4.5V9H2.5ZM2.5 11H4.5V13H2.5ZM7 4H13.5M7 8H13.5M7 12H13.5',
   // The three ways to see the schema: tables, the domain map, the matrix.
@@ -1007,7 +1006,7 @@ const toggleTour = () => (tour.on ? endTour(true) : startTour());
 // items, Esc closes the menu and gives the focus back to its button; a menu
 // opened from the keyboard puts the focus on its first item.
 const menus = [];
-const menuItems = (menu) => [...menu.querySelectorAll('.oe-item:not(:disabled), .oe-check input')];
+const menuItems = (menu) => [...menu.querySelectorAll('.oe-item:not(:disabled)')];
 function dropdown(button, cls) {
   const menu = el('div', { class: `oe-menu ${cls}`, role: 'menu', style: 'display:none' });
   const wrap = el('div', { class: 'oe-drop' }, [button, menu]);
@@ -1136,14 +1135,12 @@ function updateHighlightButton() {
 // open so labels and checks reflect the current state. Downloads keep the
 // menu open: its last line says what was saved.
 const downloadStatus = el('div', { class: 'oe-status' });
-const keepHighlight = el('input', { type: 'checkbox' });
-const keepHighlightRow = el('label', { class: 'oe-check', title: 'Keep the highlighted tables and lines in the file' }, [keepHighlight, el('span', { text: 'Keep highlight and selection' })]);
 const DOWNLOADS = [
   ['svg', 'SVG', 'Vector drawing of this view only, without the interactive viewer'],
   ['png', 'PNG', 'Image at twice the screen resolution, transparent outside the drawing'],
   ['jpg', 'JPEG', 'Smaller image on a white background'],
 ];
-const moreMenu = dropdown(toolButton('more', '', 'More: tour, download, copy schema, collapse or expand domains, minimap, keyboard shortcuts'), 'oe-more-menu');
+const moreMenu = dropdown(toolButton('more', '', 'More: tour, download, collapse or expand domains, minimap'), 'oe-more-menu');
 moreMenu.onOpen = () => {
   const foldable = clusterGroups(currentView()).length > 0;
   const fold = (on) => () => {
@@ -1155,25 +1152,16 @@ moreMenu.onOpen = () => {
     moreMenu.onOpen();
     layoutOverlays();
   };
-  const selected = selectedTable();
   fillMenu(moreMenu.menu, [
     TOUR_STEPS.length >= 2 ? menuItem('Tour', 'Each domain in turn, zoomed on its central table (T)', () => (closeMenus(), toggleTour()), { checked: tour.on, keys: 'T' }) : null,
     TOUR_STEPS.length >= 2 ? el('div', { class: 'oe-menu-sep' }) : null,
     menuHeading('Download this view'),
     ...DOWNLOADS.map(([format, name, title]) => menuItem(`As ${name}`, title, () => download(format))),
-    keepHighlightRow,
     downloadStatus,
     el('div', { class: 'oe-menu-sep' }),
-    menuItem(selected ? `Copy ${short(selected)} as ${copyWhat(selected)}` : 'Copy schema', selected ? 'The selected table with its indexes' : 'Select a table first', () => (closeMenus(), copySelectedSchema()), {
-      disabled: !selected,
-      detail: selected ? null : 'Select a table first',
-      keys: `${MOD_KEY}C`,
-    }),
     menuItem('Collapse all', foldable ? 'Fold every domain in this view; a click on a domain header folds just that one' : 'Nothing to fold in this view', fold(true), { disabled: !foldable }),
     menuItem('Expand all', foldable ? 'Unfold every domain in this view' : 'Nothing to fold in this view', fold(false), { disabled: !foldable }),
     menuItem('Minimap', 'Small map of the whole view, shown while it does not fit on screen', toggle(() => setMinimap(!map.on)), { checked: map.on }),
-    el('div', { class: 'oe-menu-sep' }),
-    menuItem('Keyboard shortcuts', 'Keys that work in this file', () => (closeMenus(), showShortcuts())),
   ]);
 };
 
@@ -1295,24 +1283,18 @@ function showDatabase(db) {
 
 // ---------------------------------------------------------------- download
 
-const HIGHLIGHT_CLASSES = ['hl', 'selected', 'flow-target', 'flowing', 'hl-column', 'dimmed', 'center-selected'];
 const isHidden = (e) => e.classList.contains('oe-hidden') || /display:\s*none/.test(e.getAttribute('style') ?? '');
 
 /**
  * The view on screen as a standalone static SVG: that view only, in its own
  * coordinates, with the stylesheet (and so the embedded font) but no viewer
- * script, no data and no overlays. Folded domains stay folded; the
- * highlight and selection are kept only when asked.
+ * script, no data and no overlays. What the reader sees is what is saved:
+ * folded domains stay folded, the selection and highlights stay lit.
  */
-function viewAsSvg(keep) {
+function viewAsSvg() {
   const { x, y, w, h } = viewBounds(state.view);
   const view = currentView().cloneNode(true);
   view.removeAttribute('style');
-  if (!keep) {
-    for (const e of [view, ...view.querySelectorAll('*')]) e.classList.remove(...HIGHLIGHT_CLASSES);
-    for (const e of view.querySelectorAll('.flow')) e.remove();
-    for (const e of view.querySelectorAll('.poly-routes, .hub-routes')) e.style.display = 'none';
-  }
   // A static file folds nothing: no toggles, titles back where they were drawn.
   for (const e of view.querySelectorAll('.fold-toggle, .fold-hit')) e.remove();
   for (const e of view.querySelectorAll('.cluster-label[data-x]')) e.setAttribute('x', e.getAttribute('data-x'));
@@ -1381,7 +1363,7 @@ async function download(format) {
         ? `${state.impact.table}${state.impact.column ? `.${state.impact.column}` : ''}`
         : state.center;
   const name = `${exportBaseName(data.project, state.view, join)}.${format}`;
-  const svgFile = viewAsSvg(keepHighlight.checked);
+  const svgFile = viewAsSvg();
   if (format === 'svg') {
     saveBlob(new Blob([svgFile.text], { type: 'image/svg+xml' }), name);
     return downloadReport(`Saved ${name}`);
@@ -1503,7 +1485,6 @@ function paletteCommands() {
       .map((m) => ({ group: 'Actions', icon: 'highlight', label: m.label, detail: `${m.on ? 'On' : 'Off'} · ${m.detail}`, keys: m.keys, keywords: ['highlight', ...m.keywords], run: m.toggle })),
     ...DOWNLOADS.map(([format, name]) => ({ group: 'Actions', icon: 'download', label: `Download as ${name}`, detail: 'This view', keywords: ['export', 'save', 'image'], run: () => download(format) })),
     selected ? { group: 'Actions', icon: 'copy', label: `Copy ${short(selected)} as ${copyWhat(selected)}`, detail: 'With its indexes', keys: `${MOD_KEY}C`, keywords: ['copy schema', 'sql', 'ddl'], run: copySelectedSchema } : null,
-    { group: 'Actions', icon: 'keyboard', label: 'Keyboard shortcuts', keywords: ['keys', 'help'], run: showShortcuts },
   ].filter(Boolean);
 }
 
@@ -3508,7 +3489,7 @@ const SHORTCUTS = [
   [`${FIND_KEY} or /`, 'Search tables and columns'],
   [`${MOD_KEY}J`, 'Join path between two tables'],
   [`${MOD_KEY}A`, 'All tables'],
-  [`${MOD_KEY}C`, 'Copy the selected table as SQL (with its indexes)'],
+  [`${MOD_KEY}C`, 'Copy schema: the selected table as SQL, or as a JSON schema for MongoDB, with its indexes'],
   ['L', 'Show or hide the legend'],
   ['?', 'This list of keys'],
   ['T', 'Tour: each domain in turn (← → step, Space pauses, Esc ends)'],

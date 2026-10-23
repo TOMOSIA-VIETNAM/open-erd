@@ -495,7 +495,7 @@ const offsets = await evaluate(`new Promise((done) => { const f = ${inView('.flo
 if (offsets[0] === offsets[1]) failures.push(`flow does not move: ${offsets}`);
 
 // Download menu, with the flow still running: the SVG holds this view only,
-// without script; "keep highlight" keeps the flow; PNG is twice the view's
+// without script, as it is on screen (the flow and the dimming kept); PNG is twice the view's
 // size (or downscaled, and the menu says so); JPEG is a JPEG.
 {
   // One folder per download, so a repeated name is not renamed by Chrome.
@@ -529,15 +529,11 @@ if (offsets[0] === offsets[1]) failures.push(`flow does not move: ${offsets}`);
   );
   await pick('As SVG');
   const plain = (await saved(`${base}.svg`)).toString();
-  const views = (plain.match(/<g class="view"/g) ?? []).length;
-  if (views !== 1 || plain.includes('<script') || plain.includes('foreignObject') || plain.includes('class="fold-toggle') || /class="[^"]*\b(dimmed|flowing)\b/.test(plain) || !plain.includes('@font-face')) {
-    failures.push(`download svg: ${JSON.stringify({ views, script: plain.includes('<script'), highlight: /\b(dimmed|flowing)\b/.test(plain) })}`);
+  const views = (plain.match(/<g class="view[ "]/g) ?? []).length;
+  const kept = /class="[^"]*\bflowing\b/.test(plain) && /class="view[^"]*\bdimmed\b/.test(plain);
+  if (views !== 1 || plain.includes('<script') || plain.includes('foreignObject') || plain.includes('class="fold-toggle') || !kept || !plain.includes('@font-face')) {
+    failures.push(`download svg: ${JSON.stringify({ views, script: plain.includes('<script'), kept })}`);
   }
-  await click(`document.querySelector('.oe-more-menu .oe-check input')`);
-  await pick('As SVG');
-  const kept = (await saved(`${base}.svg`)).toString();
-  if (!/class="[^"]*\bflowing\b/.test(kept) || !/class="view[^"]*\bdimmed\b/.test(kept)) failures.push('download svg with highlight lost the highlight');
-  await click(`document.querySelector('.oe-more-menu .oe-check input')`);
   await pick('As PNG');
   const png = await saved(`${base}.png`);
   const [pw, ph] = [png.readUInt32BE(16), png.readUInt32BE(20)];
@@ -1106,7 +1102,7 @@ await shot(
     return document.querySelector('.oe-panel .oe-keys') !== null && Math.abs(b.bottom - (innerHeight - 12)) < 3 && (!l || (b.left >= l.right + 4 && Math.abs(b.bottom - l.bottom) < 3)); })()`,
 );
 await key('Escape');
-await choose('more', 'Keyboard shortcuts');
+await key('?', 'Slash');
 // P is listed only when some column is marked as personal data, H only
 // when the render has schema health findings.
 await shot('keyboard-shortcuts', `document.querySelectorAll('.oe-panel .oe-keys tr').length === ${11 + (piiTotal > 0) + (healthTotal > 0)} && /J/.test(document.querySelector('.oe-panel .oe-keys').textContent) && /K$/.test(document.querySelector('.oe-panel .oe-keys kbd').textContent) && document.querySelector('.oe-panel .oe-keys').textContent.includes('←')`);
@@ -1498,7 +1494,7 @@ await key('Escape');
   await shot(
     'palette-empty',
     `(() => { const g = ${groups}; const kbd = (l) => (${rows}.find((r) => r.querySelector('.name').textContent === l)?.querySelector('kbd')?.textContent ?? '');
-      const want = ['Join path…', 'Download as SVG', 'Download as PNG', 'Download as JPEG', 'Keyboard shortcuts'];
+      const want = ['Join path…', 'Download as SVG', 'Download as PNG', 'Download as JPEG'];
       return ${spotlightShown} && document.activeElement === document.querySelector('.oe-spotlight-input') && document.querySelector('.oe-spotlight-input').placeholder === 'Search tables and columns, or run a command'
         && g[0] === 'Go to' && g[1] === 'Actions' && ${rows}[0].classList.contains('active') && want.every((l) => ${rows}.some((r) => r.querySelector('.name').textContent === l))
         && /J$/.test(kbd('Join path…')) && (${row('Tour')} !== undefined) === ${domains >= 2} && (${row('Personal data')} !== undefined) === ${piiTotal > 0} && (${row('Schema health')} !== undefined) === ${healthTotal > 0}
@@ -1507,13 +1503,12 @@ await key('Escape');
   await key('ArrowDown');
   await shot('palette-arrow', `${rows}[1].classList.contains('active') && !${rows}[0].classList.contains('active')`);
   // Hover moves the highlight; a click runs the row.
-  await evaluate(`${row('Keyboard shortcuts')}.scrollIntoView({ block: 'nearest' })`);
-  await mouse('mouseMoved', await centre(row('Keyboard shortcuts')));
+  await evaluate(`${row('Map')}.scrollIntoView({ block: 'nearest' })`);
+  await mouse('mouseMoved', await centre(row('Map')));
   await pause(100);
-  await shot('palette-hover', `${row('Keyboard shortcuts')}.classList.contains('active')`);
-  await click(row('Keyboard shortcuts'));
-  await shot('palette-click-runs', `!${spotlightShown} && document.querySelector('.oe-panel .oe-keys') !== null`);
-  await key('Escape');
+  await shot('palette-hover', `${row('Map')}.classList.contains('active')`);
+  await click(row('Map'));
+  await shot('palette-click-runs', `!${spotlightShown} && ${viewIs('overview')}`);
   // Typed: a command by a word of its label (and the table hits first when a name starts with it).
   await modKey('k');
   await typeInto('connec');
@@ -1544,8 +1539,8 @@ await key('Escape');
   await findKey();
   await typeInto('');
   await shot('palette-search-only', `${spotlightShown} && document.querySelector('.oe-spotlight-input').placeholder === 'Search tables and columns' && ${rows}.length === 0 && document.querySelector('.oe-spotlight-empty').textContent === 'Type a table or column name'`);
-  await typeInto('keyboard');
-  await shot('palette-search-no-commands', `${row('Keyboard shortcuts')} === undefined`);
+  await typeInto('download');
+  await shot('palette-search-no-commands', `${row('Download as SVG')} === undefined`);
   await key('Escape');
   // Esc gives the focus back to the trigger it was opened from.
   await click(`document.querySelector('.oe-search-trigger')`);
