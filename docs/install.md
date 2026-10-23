@@ -5,13 +5,10 @@
 Needs `node` 20.10 or later and `git`. `/open-erd:ci-setup` and `/open-erd:feedback` also need
 [`gh`](https://cli.github.com/), logged in.
 
-| Platform | Status | Use |
-| -------- | ------ | --- |
-| Claude Code | supported | `/open-erd:init`, `/open-erd:sync`, … |
-| Codex | **untested**: the files below are in place and checked by tests, but no Codex session has loaded them yet | `$open-erd-init`, `$open-erd-sync`, … |
-
-Gemini CLI also reads skills from `~/.agents/skills`, so the local Codex install may work there too.
-Nobody has tried it.
+| Platform | Use |
+| -------- | --- |
+| Claude Code | `/open-erd:init`, `/open-erd:sync`, … |
+| Codex | `$open-erd-init`, `$open-erd-sync`, … |
 
 ## Claude Code
 
