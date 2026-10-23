@@ -21,6 +21,9 @@ path:
 3. `ls -d ~/.claude/plugins/cache/*/open-erd/*/` — when several versions exist,
    prefer the one containing a `.in_use` file, else the most recently modified.
 
+On any other agent platform, `<plugin root>` is the `ROOT` resolved by
+`adapters/root.md`, which also maps the tool names used below.
+
 Check it with `node <plugin root>/dist/open-erd.mjs --help`. Shell variables do
 not survive between tool calls: write the absolute path into every command.
 
@@ -151,7 +154,8 @@ who did not write the model.
 1. Collect the `warning: possibly missing relation: ...` lines `validate`
    printed (may be none).
 2. Start one reviewer subagent with a fresh context (Claude Code `Agent`
-   tool, general-purpose; not a fork of this conversation). Give it only:
+   tool, general-purpose, or as `adapters/root.md` maps it; not a fork of this
+   conversation). Give it only:
    the source names and paths from `open-erd.local.yaml`, the workspace path,
    the absolute `<plugin root>`, the warning lines verbatim, and this task:
    - Read `<ws>/model/*.yaml` and `<plugin root>/skills/_shared/model.md`
@@ -231,7 +235,8 @@ plus untracked files from `git -C <ws> status --porcelain -- model`. In
    empty record.
 
    Start one verifier subagent with a fresh context (Claude Code `Agent`
-   tool, general-purpose; not a fork of this conversation) whose prompt is
+   tool, general-purpose, or as `adapters/root.md` maps it; not a fork of this
+   conversation) whose prompt is
    `<plugin root>/skills/_shared/verifier.md` followed by: the source names
    and paths from `open-erd.local.yaml`, the workspace path, the absolute
    `<plugin root>`, and the fact list (each line: model path, what the model
