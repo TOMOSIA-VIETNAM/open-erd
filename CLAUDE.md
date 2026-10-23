@@ -47,7 +47,7 @@ Engine CLI (`node dist/open-erd.mjs --help`): `validate`, `lock`, `verify`, `app
 
 ## Viewer
 
-- Source: `engine/src/render/svg/viewer/` (`index.js` is large; pure helpers in sibling modules such as `join-path.js`, `impact.js`, `tour.js`, `pii.js`, `palette.js`, `deep-link.js`, each with a node test). CSS lives in `src/render/svg/render.js`.
+- Source: `engine/src/render/svg/viewer/` (`index.js` is large; pure helpers in sibling modules such as `join-path.js`, `tour.js`, `pii.js`, `palette.js`, `deep-link.js`, each with a node test). CSS lives in `src/render/svg/render.js`.
 - It is bundled into `src/render/svg/viewer-bundle.json` and inlined into every `erd.svg` together with the model data. **After editing the viewer run `npm run build`**; `test/viewer.test.js` fails when the committed bundle is stale.
 - The SVG must still show a static view without JavaScript; downloads (`viewAsSvg`) save the view as it is on screen, without overlays.
 - Overlays are `foreignObject`s positioned in `layoutOverlays()`. Keyboard shortcuts are listed in `SHORTCUTS` (shown by the `?` button/key) and in `docs/USAGE.md`; keep both in sync with the keydown handler.

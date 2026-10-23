@@ -62,17 +62,6 @@ const VIEWER_STYLE = `.row-hit { fill: transparent; }
 .view.dimmed.center-selected :is(.table, .poly).ring-2:not(.hl) { opacity: 1; }
 .view.dimmed.center-selected .ring-2:not(.hl) > rect:last-of-type { stroke: #d9dee6; }
 .view.dimmed.center-selected .relation-group.ring-2:not(.hl) { opacity: 0.5; }
-/* Impact view: the changed table outlined dark, each table depending on it
-   in the colour of its ring (1 = references it directly). The legend and
-   the panel's ring headings use the same colours. */
-svg { --impact-ring-1: #c62f3e; --impact-ring-2: #e57a1f; --impact-ring-3: #c9a227; }
-.view[data-view="impact"] .ring-0 > rect:last-of-type { stroke: #172033; stroke-width: 3; }
-.view[data-view="impact"] :is(.ring-1, .ring-2, .ring-3) > rect:last-of-type { stroke-width: 4; }
-.view[data-view="impact"] .ring-1 > rect:last-of-type, .legend-ring-1 { stroke: var(--impact-ring-1); }
-.view[data-view="impact"] .ring-2 > rect:last-of-type, .legend-ring-2 { stroke: var(--impact-ring-2); }
-.view[data-view="impact"] .ring-3 > rect:last-of-type, .legend-ring-3 { stroke: var(--impact-ring-3); }
-.legend-ring { fill: #ffffff; stroke-width: 3; }
-.legend-ring-0 { stroke: #172033; }
 .hl > rect:last-of-type { stroke: #5b8def; stroke-width: 2; }
 .selected > rect:last-of-type { stroke: #1d4ed8; stroke-width: 3; }
 .arrive > rect:last-of-type { stroke: #e8590c; stroke-width: 3; animation: oe-arrive 0.4s ease-in-out 4 alternate; }
@@ -210,18 +199,6 @@ svg { --impact-ring-1: #c62f3e; --impact-ring-2: #e57a1f; --impact-ring-3: #c9a2
 .oe-star { color: #d99a00; }
 .oe-popover { position: absolute; top: calc(100% + 4px); left: 0; right: auto; width: max-content; min-width: 140px; z-index: 3; }
 .oe-panel .oe-drop { position: relative; }
-.oe-impact-ring { border-top: 1px solid #f0f2f6; padding: 8px 0; }
-.oe-impact-head { display: flex; align-items: center; gap: 6px; font-weight: 600; color: #172033; }
-.oe-impact-head .n { color: #66728a; font-weight: 400; }
-.oe-impact-swatch { flex: none; width: 12px; height: 12px; border-radius: 3px; border: 3px solid; box-sizing: border-box; }
-.oe-impact-swatch.ring-1 { border-color: var(--impact-ring-1); }
-.oe-impact-swatch.ring-2 { border-color: var(--impact-ring-2); }
-.oe-impact-swatch.ring-3 { border-color: var(--impact-ring-3); }
-.oe-impact-table { margin: 6px 0 0 18px; }
-.oe-impact-table > .oe-link { overflow-wrap: anywhere; }
-.oe-impact-table .via { display: block; margin-top: 2px; font-size: 11.5px; color: #66728a; overflow-wrap: anywhere; }
-.oe-col .oe-impact-btn { cursor: pointer; background: #fdecee; color: #a3202e; }
-.oe-col .oe-impact-btn:hover { background: #f9d6db; }
 .legend-central { fill: #fde7a8; stroke: #a87a00; }
 .legend-pii { fill: #ffd9cc; }
 .legend-pii-text { font-size: 12px; fill: #a8341a; }

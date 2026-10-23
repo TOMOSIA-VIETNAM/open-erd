@@ -1,5 +1,5 @@
 // The address an erd.svg opens on: `#<key>=<value>` (#table=, #column=,
-// #view=, #impact=, #tables=, #path=). Pure and DOM-free: the viewer acts on
+// #view=, #tables=, #path=). Pure and DOM-free: the viewer acts on
 // the result, node:test checks the parsing.
 
 /**

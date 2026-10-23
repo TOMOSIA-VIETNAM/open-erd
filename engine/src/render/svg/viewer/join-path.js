@@ -39,20 +39,15 @@ const pkColumns = (node) => (node?.columns ?? []).filter((c) => c.pk).map((c) =>
  *     typeColumn? (polymorphic: the owner's column to filter on) }
  * and `hubs`, the tables hub relations point at. Every edge points from the
  * referencing table `a` to the referenced table `b`. A view's line to a
- * table it reads is no join and is left out, unless `viewSources` asks for
- * it (impact of a change): then it is an edge from the view to the table
- * with no columns.
+ * table it reads is no join and is left out.
  */
-export function joinGraph(data, { viewSources = false } = {}) {
+export function joinGraph(data) {
   const edges = [];
   // Ids come from the data, never from its order, so ties break the same way
   // however the lists are ordered.
   const edge = (e, part = '') => edges.push({ ...e, id: `${e.line.id}${part}` });
   for (const l of data.links) {
-    if (l.kind === VIEW_SOURCE) {
-      if (viewSources) edge({ a: l.from, aColumns: [], b: l.to, bColumns: [], kind: l.kind, review: l.review, line: { type: 'link', id: l.id } });
-      continue;
-    }
+    if (l.kind === VIEW_SOURCE) continue;
     if (l.kind === POLYMORPHIC) {
       const poly = data.nodes[l.to];
       for (const target of poly.targets) {
