@@ -32,8 +32,7 @@ const slug = (text) =>
 /**
  * `<db-or-project>-<view>` as a file name without extension: a domain view
  * is named after its database and domain, a neighborhood after its centre
- * table's database and name, an impact view after its changed table (and
- * column), and the views of the whole system after
+ * table's database and name, and the views of the whole system after
  * `project` (one database's name, or the project's).
  */
 export function exportBaseName(project, view, center = null) {
@@ -45,11 +44,6 @@ export function exportBaseName(project, view, center = null) {
     // A table id `<db>.<schema>.<table>`, or a polymorphic node `<table id>«name»`.
     const [db, , name] = center.split('.');
     return `${slug(db)}-${slug(name)}-related`;
-  }
-  if (view === 'impact' && center) {
-    // The changed table's id, with `.<column>` when a column changed.
-    const [db, , name, ...column] = center.split('.');
-    return `${slug(db)}-${slug([name, ...column].join('-'))}-impact`;
   }
   if (view === 'join-path' && center) return `${slug(project)}-join-${slug(center)}`;
   return `${slug(project)}-${view === 'all' ? 'all-tables' : slug(view)}`;

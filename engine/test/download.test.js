@@ -33,8 +33,6 @@ test('download names: <db-or-project>-<view>, lower case, safe characters only',
   assert.equal(exportBaseName('erd', 'neighborhood', 'shop._.comments«commentable»'), 'shop-comments-commentable-related');
   assert.equal(exportBaseName('../x', 'overview'), 'x-overview');
   assert.equal(exportBaseName('qlear', 'join-path', 'orders-to-users'), 'qlear-join-orders-to-users');
-  assert.equal(exportBaseName('erd', 'impact', 'shop._.orders'), 'shop-orders-impact');
-  assert.equal(exportBaseName('erd', 'impact', 'auth.public.users.id'), 'auth-users-id-impact');
 });
 
 test('the viewer data names the project: one database, else the one source, else erd', async () => {

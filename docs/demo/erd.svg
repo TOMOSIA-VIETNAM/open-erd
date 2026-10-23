@@ -150,17 +150,6 @@ text { font-family: 'Inter', sans-serif; font-kerning: none; font-variant-ligatu
 .view.dimmed.center-selected :is(.table, .poly).ring-2:not(.hl) { opacity: 1; }
 .view.dimmed.center-selected .ring-2:not(.hl) > rect:last-of-type { stroke: #d9dee6; }
 .view.dimmed.center-selected .relation-group.ring-2:not(.hl) { opacity: 0.5; }
-/* Impact view: the changed table outlined dark, each table depending on it
-   in the colour of its ring (1 = references it directly). The legend and
-   the panel's ring headings use the same colours. */
-svg { --impact-ring-1: #c62f3e; --impact-ring-2: #e57a1f; --impact-ring-3: #c9a227; }
-.view[data-view="impact"] .ring-0 > rect:last-of-type { stroke: #172033; stroke-width: 3; }
-.view[data-view="impact"] :is(.ring-1, .ring-2, .ring-3) > rect:last-of-type { stroke-width: 4; }
-.view[data-view="impact"] .ring-1 > rect:last-of-type, .legend-ring-1 { stroke: var(--impact-ring-1); }
-.view[data-view="impact"] .ring-2 > rect:last-of-type, .legend-ring-2 { stroke: var(--impact-ring-2); }
-.view[data-view="impact"] .ring-3 > rect:last-of-type, .legend-ring-3 { stroke: var(--impact-ring-3); }
-.legend-ring { fill: #ffffff; stroke-width: 3; }
-.legend-ring-0 { stroke: #172033; }
 .hl > rect:last-of-type { stroke: #5b8def; stroke-width: 2; }
 .selected > rect:last-of-type { stroke: #1d4ed8; stroke-width: 3; }
 .arrive > rect:last-of-type { stroke: #e8590c; stroke-width: 3; animation: oe-arrive 0.4s ease-in-out 4 alternate; }
@@ -298,18 +287,6 @@ svg { --impact-ring-1: #c62f3e; --impact-ring-2: #e57a1f; --impact-ring-3: #c9a2
 .oe-star { color: #d99a00; }
 .oe-popover { position: absolute; top: calc(100% + 4px); left: 0; right: auto; width: max-content; min-width: 140px; z-index: 3; }
 .oe-panel .oe-drop { position: relative; }
-.oe-impact-ring { border-top: 1px solid #f0f2f6; padding: 8px 0; }
-.oe-impact-head { display: flex; align-items: center; gap: 6px; font-weight: 600; color: #172033; }
-.oe-impact-head .n { color: #66728a; font-weight: 400; }
-.oe-impact-swatch { flex: none; width: 12px; height: 12px; border-radius: 3px; border: 3px solid; box-sizing: border-box; }
-.oe-impact-swatch.ring-1 { border-color: var(--impact-ring-1); }
-.oe-impact-swatch.ring-2 { border-color: var(--impact-ring-2); }
-.oe-impact-swatch.ring-3 { border-color: var(--impact-ring-3); }
-.oe-impact-table { margin: 6px 0 0 18px; }
-.oe-impact-table > .oe-link { overflow-wrap: anywhere; }
-.oe-impact-table .via { display: block; margin-top: 2px; font-size: 11.5px; color: #66728a; overflow-wrap: anywhere; }
-.oe-col .oe-impact-btn { cursor: pointer; background: #fdecee; color: #a3202e; }
-.oe-col .oe-impact-btn:hover { background: #f9d6db; }
 .legend-central { fill: #fde7a8; stroke: #a87a00; }
 .legend-pii { fill: #ffd9cc; }
 .legend-pii-text { font-size: 12px; fill: #a8341a; }
@@ -725,10 +702,6 @@ Central: spree_stores</title><rect class="card-box" x="1090" y="570" width="300"
       const [db, , name] = center.split(".");
       return `${slug(db)}-${slug(name)}-related`;
     }
-    if (view === "impact" && center) {
-      const [db, , name, ...column] = center.split(".");
-      return `${slug(db)}-${slug([name, ...column].join("-"))}-impact`;
-    }
     if (view === "join-path" && center) return `${slug(project)}-join-${slug(center)}`;
     return `${slug(project)}-${view === "all" ? "all-tables" : slug(view)}`;
   }
@@ -742,14 +715,11 @@ Central: spree_stores</title><rect class="card-box" x="1090" y="570" width="300"
   var POLYMORPHIC = "polymorphic";
   var cmp = (a, b) => a < b ? -1 : a > b ? 1 : 0;
   var pkColumns = (node) => (node?.columns ?? []).filter((c) => c.pk).map((c) => c.name);
-  function joinGraph(data2, { viewSources = false } = {}) {
+  function joinGraph(data2) {
     const edges = [];
     const edge = (e, part = "") => edges.push({ ...e, id: `${e.line.id}${part}` });
     for (const l of data2.links) {
-      if (l.kind === VIEW_SOURCE) {
-        if (viewSources) edge({ a: l.from, aColumns: [], b: l.to, bColumns: [], kind: l.kind, review: l.review, line: { type: "link", id: l.id } });
-        continue;
-      }
+      if (l.kind === VIEW_SOURCE) continue;
       if (l.kind === POLYMORPHIC) {
         const poly = data2.nodes[l.to];
         for (const target of poly.targets) {
@@ -1175,51 +1145,6 @@ Central: spree_stores</title><rect class="card-box" x="1090" y="570" width="300"
     return Boolean(q) && matches[0]?.score === 0 && !names.some((n) => n.toLowerCase().startsWith(q));
   }
 
-  // src/render/svg/viewer/impact.js
-  var IMPACT_DEPTH = 3;
-  var cmp2 = (a, b) => a < b ? -1 : a > b ? 1 : 0;
-  var incomingCache = /* @__PURE__ */ new WeakMap();
-  function incoming(data2) {
-    if (!incomingCache.has(data2)) {
-      const graph = joinGraph(data2, { viewSources: true });
-      const into = /* @__PURE__ */ new Map();
-      for (const e of graph.edges) {
-        if (e.a === e.b) continue;
-        if (!into.has(e.b)) into.set(e.b, []);
-        into.get(e.b).push(e);
-      }
-      incomingCache.set(data2, { into, hubs: graph.hubs });
-    }
-    return incomingCache.get(data2);
-  }
-  function referencedColumns(data2, table) {
-    return new Set((incoming(data2).into.get(table) ?? []).flatMap((e) => e.bColumns));
-  }
-  function impactRings(data2, table, column = null, depth = IMPACT_DEPTH) {
-    const { into, hubs } = incoming(data2);
-    const seen = /* @__PURE__ */ new Set([table]);
-    const rings2 = [];
-    let previous = [table];
-    for (let ring = 1; ring <= depth; ring++) {
-      const found = /* @__PURE__ */ new Map();
-      previous.forEach((target, i) => {
-        if (ring > 1 && hubs.has(target)) return;
-        for (const e of into.get(target) ?? []) {
-          if (seen.has(e.a)) continue;
-          if (ring === 1 && column !== null && !e.bColumns.includes(column)) continue;
-          if (!found.has(e.a)) found.set(e.a, { parent: i, edges: [] });
-          found.get(e.a).edges.push(e);
-        }
-      });
-      if (found.size === 0) break;
-      const entries = [...found].sort(([a, x], [b, y]) => x.parent - y.parent || cmp2(a, b)).map(([id, { edges }]) => ({ id, edges: edges.sort((x, y) => cmp2(x.id, y.id)), hub: ring < depth && hubs.has(id) }));
-      for (const t of entries) seen.add(t.id);
-      rings2.push(entries);
-      previous = entries.map((t) => t.id);
-    }
-    return rings2;
-  }
-
   // src/render/svg/viewer/index.js
   var SVG_NS = "http://www.w3.org/2000/svg";
   var HTML_NS = "http://www.w3.org/1999/xhtml";
@@ -1229,7 +1154,6 @@ Central: spree_stores</title><rect class="card-box" x="1090" y="570" width="300"
   var DOMAIN_PREFIX = "domain:";
   var NEIGHBORHOOD = "neighborhood";
   var JOIN_VIEW = "join-path";
-  var IMPACT_VIEW = "impact";
   var TOOLBAR_HEIGHT = 44;
   var PANEL_WIDTH = 440;
   var PANEL_MARGIN = 12;
@@ -1360,7 +1284,7 @@ Central: spree_stores</title><rect class="card-box" x="1090" y="570" width="300"
     svg.append(fo);
     return { fo, div };
   }
-  var state = { view: OVERVIEW, hops: 1, center: null, joinPath: null, impact: null, cam: { x: 0, y: 0, s: 1 } };
+  var state = { view: OVERVIEW, hops: 1, center: null, joinPath: null, cam: { x: 0, y: 0, s: 1 } };
   var nav = emptyHistory();
   var viewport = () => ({ w: window.innerWidth, h: window.innerHeight });
   var cameraFrame = 0;
@@ -1436,7 +1360,7 @@ Central: spree_stores</title><rect class="card-box" x="1090" y="570" width="300"
   }
   function snapshot() {
     const tab = panel.div.querySelector(".oe-tab.on")?.getAttribute("data-tab") ?? null;
-    return { view: state.view, center: state.center, hops: state.hops, joinPath: state.joinPath, impact: state.impact, table: selectedTable(), tab, scroll: panel.div.scrollTop };
+    return { view: state.view, center: state.center, hops: state.hops, joinPath: state.joinPath, table: selectedTable(), tab, scroll: panel.div.scrollTop };
   }
   function recordVisit() {
     nav = visit(nav, snapshot());
@@ -1454,16 +1378,12 @@ Central: spree_stores</title><rect class="card-box" x="1090" y="570" width="300"
   function restore(step) {
     if (step.view === NEIGHBORHOOD) buildNeighborhood(step.center, step.hops);
     if (step.view === JOIN_VIEW) buildJoinView(step.joinPath);
-    if (step.view === IMPACT_VIEW) buildImpact(step.impact.table, step.impact.column);
-    if (step.view !== state.view || [NEIGHBORHOOD, JOIN_VIEW, IMPACT_VIEW].includes(step.view)) showView(step.view);
+    if (step.view !== state.view || step.view === NEIGHBORHOOD || step.view === JOIN_VIEW) showView(step.view);
     if (step.table && currentIndex().has(step.table)) {
       focusNode(step.table);
       if (step.tab) panel.div.querySelector(`.oe-tab[data-tab="${step.tab}"]`)?.click();
       panel.div.scrollTop = step.scroll ?? 0;
       arrive(step.table);
-    } else if (step.view === IMPACT_VIEW) {
-      showImpactPanel();
-      zoomToRect(viewBounds(IMPACT_VIEW), MAX_FIT_SCALE);
     } else clearSelection();
     renderToolbar();
   }
@@ -1746,14 +1666,15 @@ Central: spree_stores</title><rect class="card-box" x="1090" y="570" width="300"
     const style = l.kind !== "view_source" && !isConfirmed(l.kind, l.review) ? " unconfirmed" : "";
     return svgEl("g", { class: `relation-group kind-${l.kind} review-${l.review}${style}${extraClass}`, "data-id": l.id, "data-from": from, "data-to": to }, children);
   }
-  function buildRadial(name, center, rings2, lines) {
-    views.get(name)?.remove();
+  function buildNeighborhood(center, hops) {
+    views.get(NEIGHBORHOOD)?.remove();
     const source = fullBoxes;
-    const ringIds = rings2.map((r) => r.filter((id) => source.has(id)));
+    const ringIds = rings(center, hops).map((r) => r.filter((id) => source.has(id)));
     const ids = [center, ...ringIds.flat()];
-    const ringOf = new Map([[center, 0], ...ringIds.flatMap((r, i) => r.map((id) => [id, i + 1]))]);
+    const outer = new Set(ringIds[1] ?? []);
     const size = (id) => ({ id, w: source.get(id).box.w, h: source.get(id).box.h });
     const pos = radialLayout(size(center), ringIds.map((r) => r.map(size)), RING_GAP);
+    const shown = new Set(ids);
     const offsets2 = /* @__PURE__ */ new Map();
     const nodes = svgEl("g", { class: "nodes" });
     const boxes = /* @__PURE__ */ new Map();
@@ -1765,15 +1686,33 @@ Central: spree_stores</title><rect class="card-box" x="1090" y="570" width="300"
       boxes.set(id, { x: pos[id].x, y: pos[id].y, w: box.w, h: box.h });
       const copy = g.cloneNode(true);
       copy.classList.remove("hl", "selected", "flow-target", "oe-hidden", "arrive");
-      copy.classList.add(`ring-${ringOf.get(id)}`);
+      if (outer.has(id)) copy.classList.add("ring-2");
       nodes.append(svgEl("g", { transform: `translate(${dx} ${dy})` }, [copy]));
     }
+    const relations = svgEl("g", { class: "relations" });
     const ends = (a, b) => straightLink(boxes.get(a), boxes.get(b));
-    const relationLine = (l, from, to) => {
-      const ring = Math.max(ringOf.get(from), ringOf.get(to));
-      return straightRelation(l, from, to, boxes, ring > 0 ? ` ring-${ring}` : "");
-    };
-    const relations = svgEl("g", { class: "relations" }, lines(new Set(ids), relationLine, ends));
+    const relationLine = (l, from, to) => straightRelation(l, from, to, boxes, outer.has(from) || outer.has(to) ? " ring-2" : "");
+    for (const l of data.links) {
+      if (l.from !== l.to && shown.has(l.from) && shown.has(l.to)) relations.append(relationLine(l, l.from, l.to));
+    }
+    const poly = data.nodes[center]?.kind === "poly" ? data.nodes[center] : null;
+    for (const l of data.hubLinks) {
+      if (l.to === center && l.from !== center && shown.has(l.from)) relations.append(relationLine(l, l.from, center));
+    }
+    for (const t of poly ? poly.targets.filter((x) => shown.has(x)) : []) {
+      relations.append(relationLine({ id: `${center}->${t}`, cardinality: "n-1", optional: poly.optional, kind: "polymorphic", review: poly.review }, center, t));
+    }
+    for (const id of ids.filter((n) => n !== center && data.nodes[n]?.kind === "poly")) {
+      const targets = data.nodes[id].targets.filter((t) => shown.has(t));
+      if (targets.length === 0) continue;
+      relations.append(
+        svgEl(
+          "g",
+          { class: "poly-routes", "data-poly": id, style: "display:none" },
+          targets.map((t) => svgEl("path", { class: `poly-route${isConfirmed("polymorphic", data.nodes[id].review) ? "" : " unconfirmed"}`, "data-target": t, d: linePath(ends(id, t)) }))
+        )
+      );
+    }
     const all = [...boxes.values()];
     const x0 = Math.min(...all.map((b) => b.x)) - NEIGHBORHOOD_MARGIN;
     const y0 = Math.min(...all.map((b) => b.y)) - NEIGHBORHOOD_MARGIN;
@@ -1781,39 +1720,12 @@ Central: spree_stores</title><rect class="card-box" x="1090" y="570" width="300"
     const y1 = Math.max(...all.map((b) => b.y + b.h)) + NEIGHBORHOOD_MARGIN;
     const view = svgEl(
       "g",
-      { class: "view", "data-view": name, "data-bounds": `${x0} ${y0} ${x1 - x0} ${y1 - y0}`, style: "display:none" },
+      { class: "view", "data-view": NEIGHBORHOOD, "data-bounds": `${x0} ${y0} ${x1 - x0} ${y1 - y0}`, style: "display:none" },
       [svgEl("rect", { x: x0, y: y0, width: x1 - x0, height: y1 - y0, fill: "#ffffff" }), relations, nodes]
     );
     camera.append(view);
-    views.set(name, view);
-    indexes.set(name, indexView(view, offsets2));
-  }
-  function buildNeighborhood(center, hops) {
-    buildRadial(NEIGHBORHOOD, center, rings(center, hops), (shown, relationLine, ends) => {
-      const out = [];
-      for (const l of data.links) {
-        if (l.from !== l.to && shown.has(l.from) && shown.has(l.to)) out.push(relationLine(l, l.from, l.to));
-      }
-      const poly = data.nodes[center]?.kind === "poly" ? data.nodes[center] : null;
-      for (const l of data.hubLinks) {
-        if (l.to === center && l.from !== center && shown.has(l.from)) out.push(relationLine(l, l.from, center));
-      }
-      for (const t of poly ? poly.targets.filter((x) => shown.has(x)) : []) {
-        out.push(relationLine({ id: `${center}->${t}`, cardinality: "n-1", optional: poly.optional, kind: "polymorphic", review: poly.review }, center, t));
-      }
-      for (const id of [...shown].filter((n) => n !== center && data.nodes[n]?.kind === "poly")) {
-        const targets = data.nodes[id].targets.filter((t) => shown.has(t));
-        if (targets.length === 0) continue;
-        out.push(
-          svgEl(
-            "g",
-            { class: "poly-routes", "data-poly": id, style: "display:none" },
-            targets.map((t) => svgEl("path", { class: `poly-route${isConfirmed("polymorphic", data.nodes[id].review) ? "" : " unconfirmed"}`, "data-target": t, d: linePath(ends(id, t)) }))
-          )
-        );
-      }
-      return out;
-    });
+    views.set(NEIGHBORHOOD, view);
+    indexes.set(NEIGHBORHOOD, indexView(view, offsets2));
     state.center = center;
     state.hops = hops;
   }
@@ -1826,77 +1738,6 @@ Central: spree_stores</title><rect class="card-box" x="1090" y="570" width="300"
     showView(NEIGHBORHOOD);
     selectNode(id);
     zoomToRect(viewBounds(NEIGHBORHOOD), MAX_FIT_SCALE);
-  }
-  var IMPACT_RINGS = ["references it directly", "references a ring 1 table", "references a ring 2 table"];
-  var LINK_BY_ID = new Map([...data.links, ...data.hubLinks].map((l) => [l.id, l]));
-  var impact = null;
-  var impactName = ({ table, column }) => `${short(table)}${column ? `.${column}` : ""}`;
-  var edgeLine = (e) => e.line.type === "poly" ? { id: e.id, cardinality: "n-1", optional: data.nodes[e.line.poly].optional, kind: "polymorphic", review: e.review } : LINK_BY_ID.get(e.line.id);
-  function buildImpact(table, column) {
-    const rings2 = impactRings(data, table, column);
-    buildRadial(
-      IMPACT_VIEW,
-      table,
-      rings2.map((r) => r.map((t) => t.id)),
-      (shown, relationLine) => rings2.flat().flatMap((t) => t.edges.filter((e) => shown.has(e.a) && shown.has(e.b)).map((e) => relationLine(edgeLine(e), e.a, e.b)))
-    );
-    state.impact = { table, column };
-    impact = { table, column, rings: rings2 };
-  }
-  function edgeText(e) {
-    if (e.kind === "view_source") return `reads ${short(e.b)}`;
-    return `${e.aColumns.join(", ")} → ${short(e.b)}.${e.bColumns.join(", ")}${e.kind === "polymorphic" ? " (polymorphic)" : ""}`;
-  }
-  function impactPanel() {
-    const { table, column, rings: rings2 } = impact;
-    const total = rings2.reduce((n, r) => n + r.length, 0);
-    const hidden = rings2.flat().filter((t) => !fullBoxes.has(t.id)).length;
-    const go = (id) => () => {
-      const scroll = panel.div.scrollTop;
-      goToNode(id);
-      if (state.view === IMPACT_VIEW) showImpactPanel(scroll);
-    };
-    const scope = column ? `Ring 1 counts the relations keyed on ${column}; further rings any relation to a table of the ring before.` : null;
-    return [
-      panelHeader({
-        name: `Impact of ${impactName(impact)}`,
-        tip: `${table}${column ? `.${column}` : ""}`,
-        cluster: clusterOf(table),
-        note: total === 0 ? "Nothing references it." : `${plural(total, "table")} ${total === 1 ? "depends" : "depend"} on it, up to ${IMPACT_DEPTH} relations away.`,
-        extra: [
-          scope ? el("div", { class: "oe-ph-sub", text: scope }) : null,
-          hidden > 0 ? el("div", { class: "oe-ph-sub", text: `${plural(hidden, "join table")} drawn as a line between the tables it joins: listed, not drawn.` }) : null
-        ]
-      }),
-      ...rings2.map(
-        (ring, i) => el("div", { class: "oe-impact-ring", "data-ring": i + 1 }, [
-          el("div", { class: "oe-impact-head" }, [el("span", { class: `oe-impact-swatch ring-${i + 1}` }), el("span", { text: `Ring ${i + 1} · ${IMPACT_RINGS[i]}` }), el("span", { class: "n", text: `(${ring.length})` })]),
-          ...ring.map(
-            (t) => el("div", { class: "oe-impact-table" }, [
-              fullBoxes.has(t.id) ? el("button", { class: "oe-link", text: short(t.id), title: `Go to ${t.id}`, on: { click: go(t.id) } }) : el("span", { text: short(t.id), title: t.id }),
-              dbOf2(t.id) !== dbOf2(table) ? el("span", { class: "muted", text: ` · ${dbDisplayName(dbOf2(t.id))}` }) : null,
-              fullBoxes.has(t.id) ? null : el("span", { class: "muted", text: " · join table" }),
-              ...t.edges.map((e) => el("span", { class: "via", text: edgeText(e) })),
-              t.hub ? el("span", { class: "via", text: "Hub table: the tables referencing it are not followed." }) : null
-            ])
-          )
-        ])
-      )
-    ];
-  }
-  function showImpactPanel(scroll = 0) {
-    showPanel(impactPanel());
-    panel.div.scrollTop = scroll;
-    shareHash(`impact=${impact.table}${impact.column ? `.${impact.column}` : ""}`);
-  }
-  function openImpact(table, column = null) {
-    if (!fullBoxes.has(table)) return;
-    endTour(false);
-    if (state.view !== IMPACT_VIEW || state.impact.table !== table || state.impact.column !== column) recordVisit();
-    buildImpact(table, column);
-    showView(IMPACT_VIEW);
-    showImpactPanel();
-    zoomToRect(viewBounds(IMPACT_VIEW), MAX_FIT_SCALE);
   }
   var ICONS = {
     back: "M10 3L5 8L10 13",
@@ -2098,7 +1939,7 @@ Central: spree_stores</title><rect class="card-box" x="1090" y="570" width="300"
   }
   function renderToolbar() {
     const parts = [crumb("Overview", state.view === OVERVIEW ? null : () => navigate(OVERVIEW))];
-    const cluster = state.view.startsWith(DOMAIN_PREFIX) ? state.view.slice(DOMAIN_PREFIX.length) : state.view === NEIGHBORHOOD ? clusterOf(state.center) : state.view === IMPACT_VIEW ? clusterOf(state.impact.table) : null;
+    const cluster = state.view.startsWith(DOMAIN_PREFIX) ? state.view.slice(DOMAIN_PREFIX.length) : state.view === NEIGHBORHOOD ? clusterOf(state.center) : null;
     if (state.view === ALL_VIEW) parts.push(crumb(`All tables · ${plural(tableCount(null), "table")}`));
     if (state.view === CONNECTIONS) parts.push(crumb("Connections"));
     const db = cluster ? cluster.split("/")[0] : null;
@@ -2109,11 +1950,10 @@ Central: spree_stores</title><rect class="card-box" x="1090" y="570" width="300"
     } else if (cluster) parts.push(crumb(dbDisplayName(db), () => showDatabase(db)));
     if (cluster) {
       parts.push(
-        state.view === NEIGHBORHOOD || state.view === IMPACT_VIEW ? crumb(domainName(cluster), () => navigate(domainView(cluster), { focus: state.view === NEIGHBORHOOD ? state.center : state.impact.table })) : crumb(`${domainName(cluster)} · ${plural(tableCount(cluster), "table")}`)
+        state.view === NEIGHBORHOOD ? crumb(domainName(cluster), () => navigate(domainView(cluster), { focus: state.center })) : crumb(`${domainName(cluster)} · ${plural(tableCount(cluster), "table")}`)
       );
     }
     if (state.view === NEIGHBORHOOD) parts.push(crumb(`Tables related to ${short(state.center)}`));
-    if (state.view === IMPACT_VIEW) parts.push(crumb(`Impact of ${impactName(state.impact)}`, () => (clearSelection(), showImpactPanel())));
     if (state.view === JOIN_VIEW) parts.push(crumb(`Join path: ${short(state.joinPath.nodes[0])} → ${short(state.joinPath.nodes.at(-1))}`));
     crumbs.replaceChildren(...parts.flatMap((p, i) => i === 0 ? [p] : [el("span", { class: "sep", text: "›" }), p]));
     backButton.disabled = nav.back.length === 0;
@@ -2124,13 +1964,12 @@ Central: spree_stores</title><rect class="card-box" x="1090" y="570" width="300"
     hopButtons.forEach((b, i) => b.classList.toggle("on", state.hops === RELATED.options[i].hops));
     layoutOverlays();
   }
-  var NAVIGATED = (name) => name.startsWith(DOMAIN_PREFIX) || [NEIGHBORHOOD, JOIN_VIEW, IMPACT_VIEW, CONNECTIONS].includes(name);
+  var NAVIGATED = (name) => name.startsWith(DOMAIN_PREFIX) || [NEIGHBORHOOD, JOIN_VIEW, CONNECTIONS].includes(name);
   function viewLabel(snap) {
     if (snap.view === OVERVIEW) return "Overview";
     if (snap.view === ALL_VIEW) return "All tables";
     if (snap.view === CONNECTIONS) return "Connections";
     if (snap.view === NEIGHBORHOOD) return `Tables related to ${short(snap.center)}`;
-    if (snap.view === IMPACT_VIEW) return `Impact of ${impactName(snap.impact)}`;
     if (snap.view === JOIN_VIEW) return `Join path ${short(snap.joinPath.nodes[0])} → ${short(snap.joinPath.nodes.at(-1))}`;
     return domainName(snap.view.slice(DOMAIN_PREFIX.length));
   }
@@ -2232,7 +2071,7 @@ ${new XMLSerializer().serializeToString(root)}
     else showToast(text);
   }
   async function download(format) {
-    const join2 = state.view === JOIN_VIEW ? `${short(state.joinPath.nodes[0])}-to-${short(state.joinPath.nodes.at(-1))}` : state.view === IMPACT_VIEW ? `${state.impact.table}${state.impact.column ? `.${state.impact.column}` : ""}` : state.center;
+    const join2 = state.view === JOIN_VIEW ? `${short(state.joinPath.nodes[0])}-to-${short(state.joinPath.nodes.at(-1))}` : state.center;
     const name = `${exportBaseName(data.project, state.view, join2)}.${format}`;
     const svgFile = viewAsSvg();
     if (format === "svg") {
@@ -2523,19 +2362,15 @@ ${new XMLSerializer().serializeToString(root)}
       else openTableSet(ids);
       return true;
     }
-    if (key === "view" && views.has(value) && ![NEIGHBORHOOD, JOIN_VIEW, IMPACT_VIEW].includes(value)) {
+    if (key === "view" && views.has(value) && value !== NEIGHBORHOOD && value !== JOIN_VIEW) {
       navigate(value);
       return true;
     }
-    if (key !== "table" && key !== "column" && key !== "impact") return false;
+    if (key !== "table" && key !== "column") return false;
     const parts = value.split(".");
     const id = parts.slice(0, 3).join(".");
-    const column = key === "table" ? null : parts.slice(3).join(".") || null;
+    const column = key === "column" ? parts.slice(3).join(".") : null;
     if (data.nodes[id]?.kind !== "table") return false;
-    if (key === "impact") {
-      openImpact(id, column && data.nodes[id].columns.some((c) => c.name === column) ? column : null);
-      return true;
-    }
     const home = views.has(ALL_VIEW) ? ALL_VIEW : homeView(id);
     navigate(home, { focus: id, column });
     if (column && data.nodes[id].columns.some((c) => c.name === column)) {
@@ -2713,7 +2548,7 @@ ${new XMLSerializer().serializeToString(root)}
   }
   var keyIcon = (key) => key ? svgEl("svg", { class: "oe-key", width: 14, height: 14, viewBox: "0 0 14 14" }, parsed((key === "pk" ? keyIconSvg : linkIconSvg)(7, 7))) : null;
   var hintIcon = (draw, title) => el("span", { class: "hint", title }, [svgEl("svg", { width: 10, height: 12, viewBox: "0 0 10 12" }, parsed(draw(5, 6)))]);
-  function columnRow(n, c, open, onImpact = null) {
+  function columnRow(n, c, open) {
     const values = Object.entries(c.enum ?? {});
     const list = values.length > 0 ? el("div", { class: "oe-enum-list", style: c.name === open ? "" : "display:none" }, values.map(([v, meaning]) => el("div", {}, [el("code", { class: "oe-code", text: v }), meaning ? el("span", { text: ` — ${meaning}` }) : null]))) : null;
     const chips = columnBadges(c).map(
@@ -2729,7 +2564,6 @@ ${new XMLSerializer().serializeToString(root)}
         values.length > 0 ? hintIcon(enumIconSvg, "Column with listed values") : null,
         indexed ? hintIcon(indexIconSvg, "Column in an index (see Indexes)") : null,
         ...chips,
-        onImpact ? el("button", { class: "oe-badge oe-impact-btn", text: "Impact", title: `Impact: the tables depending on ${c.name}, ring by ring`, on: { click: onImpact } }) : null,
         el("span", { class: "type", text: c.type })
       ]),
       // The panel is the detail view: notes in full, the team's note muted under.
@@ -2754,14 +2588,8 @@ ${new XMLSerializer().serializeToString(root)}
       el("div", { class: "oe-seg", title: RELATED.title }, RELATED.options.map((o) => el("button", { class: "oe-btn", text: o.text, title: `Related tables: ${o.title}`, on: { click: () => openNeighborhood(id, o.hops) } }))),
       toolButton("join", "", "Find a join path from this table", () => openJoin(id), " oe-join-from"),
       copySchemaButton(id, n, status),
-      impactButton(id),
       status
     ]);
-  }
-  function impactButton(id) {
-    const none = impactRings(data, id, null, 1).length === 0;
-    const title = none ? "Impact: nothing references this table" : `Impact: the tables depending on this one, ring by ring up to ${IMPACT_DEPTH} relations away`;
-    return el("button", { class: "oe-btn oe-impact", text: "Impact", title, ...none ? { disabled: "" } : {}, on: { click: () => openImpact(id) } });
   }
   function tableTrailRow(id) {
     const tables = tableTrail(nav, { table: id });
@@ -2795,8 +2623,7 @@ ${new XMLSerializer().serializeToString(root)}
       sharedIn.length > 0 ? chipGroup(`Referenced as a shared table${drawnHub ? ", lines shown while selected" : ""}`, chipEntries(id, sharedIn, (l) => l.from), "shared-in") : null
     ];
     const count = out.length + into.length + self.length + sharedOut.length + sharedIn.length;
-    const keyed = referencedColumns(data, id);
-    const bodies = { columns: () => n.columns.map((c) => columnRow(n, c, column, keyed.has(c.name) ? () => openImpact(id, c.name) : null)), relations, indexes: () => indexList(n) };
+    const bodies = { columns: () => n.columns.map((c) => columnRow(n, c, column)), relations, indexes: () => indexList(n) };
     return [
       tableTrailRow(id),
       panelHeader({
@@ -2966,7 +2793,7 @@ ${new XMLSerializer().serializeToString(root)}
     const names = [state.view, ALL_VIEW, ...clusters, ...[...views.keys()].filter((n) => n.startsWith(DOMAIN_PREFIX))];
     const { w, h } = viewport();
     return names.find((name) => {
-      if (!views.has(name) || [OVERVIEW, NEIGHBORHOOD, IMPACT_VIEW].includes(name)) return false;
+      if (!views.has(name) || name === OVERVIEW || name === NEIGHBORHOOD) return false;
       if (name === JOIN_VIEW && state.joinPath !== join.paths[join.index]) return false;
       if (!stepNodes(steps).every((id) => indexes.get(name).has(id)) || !steps.every((s, i) => stepSegments(name, s, i))) return false;
       const b = joinBounds(indexes.get(name), steps);
@@ -3152,7 +2979,7 @@ ${new XMLSerializer().serializeToString(root)}
   }
   var legend = overlay("oe-legend-host");
   var LEGEND_ROOM = 8;
-  var LEGEND_FOLDED_VIEWS = [OVERVIEW, NEIGHBORHOOD, IMPACT_VIEW];
+  var LEGEND_FOLDED_VIEWS = [OVERVIEW, NEIGHBORHOOD];
   legend.fo.style.display = "none";
   var legendOpen = true;
   var legendFolded = false;
@@ -3170,7 +2997,6 @@ ${new XMLSerializer().serializeToString(root)}
   var has = (view, selector) => view.querySelector(selector) !== null;
   var endKinds = (view) => new Set([...view.querySelectorAll(".marker[data-ends]")].flatMap((g) => g.getAttribute("data-ends").split(" ")));
   var reviewing = () => svg.classList.contains("review-mode");
-  var impactShown = (view) => view.getAttribute("data-view") === IMPACT_VIEW;
   var strengthSample = () => sample([0, 1, 2, 3, 4].map((i) => svgEl("rect", { class: `seg${i < 3 ? " on" : ""}`, x: 2 + i * 11, y: 6, width: 9, height: 6, rx: 1 })));
   var connectorSample = (count, crossDb) => sample([connectorEl("M2 14C20 14 26 4 44 4", count, crossDb)]);
   var LEGEND = [
@@ -3192,10 +3018,6 @@ ${new XMLSerializer().serializeToString(root)}
     ]],
     ["Schema health", [
       [() => sample([svgEl("rect", { class: "stub-box", x: 1, y: 6, width: 54, height: 11, rx: 3 }), svgEl("path", { class: "col-warn", d: "M49 12L55 1L61 12Z" })]), "Table with a health finding", (v) => healthOn() && has(v, ".has-health")]
-    ]],
-    ["Impact", [
-      [() => sample([svgEl("rect", { class: "legend-ring legend-ring-0", x: 2, y: 2, width: 60, height: 14, rx: 3 })]), "Table or column changed", impactShown],
-      ...IMPACT_RINGS.map((text, i) => [() => sample([svgEl("rect", { class: `legend-ring legend-ring-${i + 1}`, x: 2, y: 2, width: 60, height: 14, rx: 3 })]), `Ring ${i + 1}: ${text}`, (v) => impactShown(v) && has(v, `.table.ring-${i + 1}`)])
     ]],
     ["Line ends", [
       ["one", "Exactly one"],

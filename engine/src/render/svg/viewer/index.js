@@ -16,7 +16,6 @@ import { endTransforms, radialLayout, straightLink } from './radial.js';
 import { TOUR_STEP_MS, tourIndex, tourSteps } from './tour.js';
 import { piiSummary } from './pii.js';
 import { commandsFirst, matchCommands, parseJoinQuery } from './palette.js';
-import { IMPACT_DEPTH, impactRings, referencedColumns } from './impact.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const HTML_NS = 'http://www.w3.org/1999/xhtml';
@@ -27,8 +26,6 @@ const DOMAIN_PREFIX = 'domain:';
 const NEIGHBORHOOD = 'neighborhood';
 // View the viewer builds for a join path no drawn view holds.
 const JOIN_VIEW = 'join-path';
-// View the viewer builds for the tables depending on a table or column.
-const IMPACT_VIEW = 'impact';
 const TOOLBAR_HEIGHT = 44;
 // Wide enough for a table's column grid.
 const PANEL_WIDTH = 440;
@@ -222,8 +219,7 @@ function overlay(cls) {
   return { fo, div };
 }
 
-// `impact`: the table (and column, or null) the impact view is about.
-const state = { view: OVERVIEW, hops: 1, center: null, joinPath: null, impact: null, cam: { x: 0, y: 0, s: 1 } };
+const state = { view: OVERVIEW, hops: 1, center: null, joinPath: null, cam: { x: 0, y: 0, s: 1 } };
 // Steps behind and ahead (see history.js): Back and Forward walk views and,
 // inside them, the tables the reader jumped between.
 let nav = emptyHistory();
@@ -338,7 +334,7 @@ function readableStart(bounds, focus, maxScale = MAX_FIT_SCALE) {
 // the selected table, its panel's tab and scroll position.
 function snapshot() {
   const tab = panel.div.querySelector('.oe-tab.on')?.getAttribute('data-tab') ?? null;
-  return { view: state.view, center: state.center, hops: state.hops, joinPath: state.joinPath, impact: state.impact, table: selectedTable(), tab, scroll: panel.div.scrollTop };
+  return { view: state.view, center: state.center, hops: state.hops, joinPath: state.joinPath, table: selectedTable(), tab, scroll: panel.div.scrollTop };
 }
 function recordVisit() {
   nav = visit(nav, snapshot());
@@ -362,16 +358,12 @@ function navigate(name, { focus, column } = {}) {
 function restore(step) {
   if (step.view === NEIGHBORHOOD) buildNeighborhood(step.center, step.hops);
   if (step.view === JOIN_VIEW) buildJoinView(step.joinPath);
-  if (step.view === IMPACT_VIEW) buildImpact(step.impact.table, step.impact.column);
-  if (step.view !== state.view || [NEIGHBORHOOD, JOIN_VIEW, IMPACT_VIEW].includes(step.view)) showView(step.view);
+  if (step.view !== state.view || step.view === NEIGHBORHOOD || step.view === JOIN_VIEW) showView(step.view);
   if (step.table && currentIndex().has(step.table)) {
     focusNode(step.table);
     if (step.tab) panel.div.querySelector(`.oe-tab[data-tab="${step.tab}"]`)?.click();
     panel.div.scrollTop = step.scroll ?? 0;
     arrive(step.table);
-  } else if (step.view === IMPACT_VIEW) {
-    showImpactPanel();
-    zoomToRect(viewBounds(IMPACT_VIEW), MAX_FIT_SCALE);
   } else clearSelection();
   renderToolbar();
 }
@@ -734,23 +726,20 @@ function straightRelation(l, from, to, boxes, extraClass = '') {
 }
 
 /**
- * (Re)builds the radial view `name` around `center` from copies of the
- * boxes drawn in the full view, ring after ring (`rings`: lists of ids; one
- * without a full box is left out) placed by radialLayout. Each copy gets
- * the class `ring-<n>` of its ring, the centre `ring-0`. `lines(shown,
- * relationLine, ends)` returns the line groups: relationLine(l, from, to)
- * draws one straight, with the ring class of its outer end; ends(a, b) is
- * the straight segment between two boxes.
+ * (Re)builds the neighborhood view around `center` from copies of the boxes
+ * drawn in the full view, placed by radialLayout with straight lines. The
+ * tables (and their lines) two relations away get the class `ring-2`.
  */
-function buildRadial(name, center, rings, lines) {
-  views.get(name)?.remove();
+function buildNeighborhood(center, hops) {
+  views.get(NEIGHBORHOOD)?.remove();
   const source = fullBoxes;
-  const ringIds = rings.map((r) => r.filter((id) => source.has(id)));
+  const ringIds = rings(center, hops).map((r) => r.filter((id) => source.has(id)));
   const ids = [center, ...ringIds.flat()];
-  const ringOf = new Map([[center, 0], ...ringIds.flatMap((r, i) => r.map((id) => [id, i + 1]))]);
+  const outer = new Set(ringIds[1] ?? []);
   const size = (id) => ({ id, w: source.get(id).box.w, h: source.get(id).box.h });
   const pos = radialLayout(size(center), ringIds.map((r) => r.map(size)), RING_GAP);
 
+  const shown = new Set(ids);
   const offsets = new Map();
   const nodes = svgEl('g', { class: 'nodes' });
   const boxes = new Map();
@@ -762,15 +751,35 @@ function buildRadial(name, center, rings, lines) {
     boxes.set(id, { x: pos[id].x, y: pos[id].y, w: box.w, h: box.h });
     const copy = g.cloneNode(true);
     copy.classList.remove('hl', 'selected', 'flow-target', 'oe-hidden', 'arrive');
-    copy.classList.add(`ring-${ringOf.get(id)}`);
+    if (outer.has(id)) copy.classList.add('ring-2');
     nodes.append(svgEl('g', { transform: `translate(${dx} ${dy})` }, [copy]));
   }
+  const relations = svgEl('g', { class: 'relations' });
   const ends = (a, b) => straightLink(boxes.get(a), boxes.get(b));
-  const relationLine = (l, from, to) => {
-    const ring = Math.max(ringOf.get(from), ringOf.get(to));
-    return straightRelation(l, from, to, boxes, ring > 0 ? ` ring-${ring}` : '');
-  };
-  const relations = svgEl('g', { class: 'relations' }, lines(new Set(ids), relationLine, ends));
+  const relationLine = (l, from, to) => straightRelation(l, from, to, boxes, outer.has(from) || outer.has(to) ? ' ring-2' : '');
+  for (const l of data.links) {
+    if (l.from !== l.to && shown.has(l.from) && shown.has(l.to)) relations.append(relationLine(l, l.from, l.to));
+  }
+  // The centre's own extras: hub relations pointing at it, or a polymorphic
+  // centre's line to each target (each row's id points at one target's key).
+  const poly = data.nodes[center]?.kind === 'poly' ? data.nodes[center] : null;
+  for (const l of data.hubLinks) {
+    if (l.to === center && l.from !== center && shown.has(l.from)) relations.append(relationLine(l, l.from, center));
+  }
+  for (const t of poly ? poly.targets.filter((x) => shown.has(x)) : []) {
+    relations.append(relationLine({ id: `${center}->${t}`, cardinality: 'n-1', optional: poly.optional, kind: 'polymorphic', review: poly.review }, center, t));
+  }
+  for (const id of ids.filter((n) => n !== center && data.nodes[n]?.kind === 'poly')) {
+    const targets = data.nodes[id].targets.filter((t) => shown.has(t));
+    if (targets.length === 0) continue;
+    relations.append(
+      svgEl(
+        'g',
+        { class: 'poly-routes', 'data-poly': id, style: 'display:none' },
+        targets.map((t) => svgEl('path', { class: `poly-route${isConfirmed('polymorphic', data.nodes[id].review) ? '' : ' unconfirmed'}`, 'data-target': t, d: linePath(ends(id, t)) })),
+      ),
+    );
+  }
   const all = [...boxes.values()];
   const x0 = Math.min(...all.map((b) => b.x)) - NEIGHBORHOOD_MARGIN;
   const y0 = Math.min(...all.map((b) => b.y)) - NEIGHBORHOOD_MARGIN;
@@ -778,43 +787,12 @@ function buildRadial(name, center, rings, lines) {
   const y1 = Math.max(...all.map((b) => b.y + b.h)) + NEIGHBORHOOD_MARGIN;
   const view = svgEl(
     'g',
-    { class: 'view', 'data-view': name, 'data-bounds': `${x0} ${y0} ${x1 - x0} ${y1 - y0}`, style: 'display:none' },
+    { class: 'view', 'data-view': NEIGHBORHOOD, 'data-bounds': `${x0} ${y0} ${x1 - x0} ${y1 - y0}`, style: 'display:none' },
     [svgEl('rect', { x: x0, y: y0, width: x1 - x0, height: y1 - y0, fill: '#ffffff' }), relations, nodes],
   );
   camera.append(view);
-  views.set(name, view);
-  indexes.set(name, indexView(view, offsets));
-}
-
-/** (Re)builds the neighborhood view: `center` and the tables up to `hops` relations away. */
-function buildNeighborhood(center, hops) {
-  buildRadial(NEIGHBORHOOD, center, rings(center, hops), (shown, relationLine, ends) => {
-    const out = [];
-    for (const l of data.links) {
-      if (l.from !== l.to && shown.has(l.from) && shown.has(l.to)) out.push(relationLine(l, l.from, l.to));
-    }
-    // The centre's own extras: hub relations pointing at it, or a polymorphic
-    // centre's line to each target (each row's id points at one target's key).
-    const poly = data.nodes[center]?.kind === 'poly' ? data.nodes[center] : null;
-    for (const l of data.hubLinks) {
-      if (l.to === center && l.from !== center && shown.has(l.from)) out.push(relationLine(l, l.from, center));
-    }
-    for (const t of poly ? poly.targets.filter((x) => shown.has(x)) : []) {
-      out.push(relationLine({ id: `${center}->${t}`, cardinality: 'n-1', optional: poly.optional, kind: 'polymorphic', review: poly.review }, center, t));
-    }
-    for (const id of [...shown].filter((n) => n !== center && data.nodes[n]?.kind === 'poly')) {
-      const targets = data.nodes[id].targets.filter((t) => shown.has(t));
-      if (targets.length === 0) continue;
-      out.push(
-        svgEl(
-          'g',
-          { class: 'poly-routes', 'data-poly': id, style: 'display:none' },
-          targets.map((t) => svgEl('path', { class: `poly-route${isConfirmed('polymorphic', data.nodes[id].review) ? '' : ' unconfirmed'}`, 'data-target': t, d: linePath(ends(id, t)) })),
-        ),
-      );
-    }
-    return out;
-  });
+  views.set(NEIGHBORHOOD, view);
+  indexes.set(NEIGHBORHOOD, indexView(view, offsets));
   state.center = center;
   state.hops = hops;
 }
@@ -832,95 +810,6 @@ function openNeighborhood(id, hops = state.hops) {
   selectNode(id);
   // Fit again now that the panel is open.
   zoomToRect(viewBounds(NEIGHBORHOOD), MAX_FIT_SCALE);
-}
-
-// ---------------------------------------------------------------- impact
-
-// What a change to a table or one of its columns reaches (see impact.js):
-// ring 1 references it, ring 2 references ring 1, up to IMPACT_DEPTH. The
-// view is a neighborhood with those rings, each table outlined in its
-// ring's colour and only the relations that put it there drawn; the panel
-// lists every table ring by ring with the columns linking it. A collapsed
-// join table has no box: it is listed, not drawn.
-const IMPACT_RINGS = ['references it directly', 'references a ring 1 table', 'references a ring 2 table'];
-const LINK_BY_ID = new Map([...data.links, ...data.hubLinks].map((l) => [l.id, l]));
-// The rings on screen: { table, column, rings } (see impactRings).
-let impact = null;
-const impactName = ({ table, column }) => `${short(table)}${column ? `.${column}` : ''}`;
-// A join graph edge as the line it stands for; a polymorphic one as the
-// line from the owner to that target, as a polymorphic neighborhood draws it.
-const edgeLine = (e) => (e.line.type === 'poly' ? { id: e.id, cardinality: 'n-1', optional: data.nodes[e.line.poly].optional, kind: 'polymorphic', review: e.review } : LINK_BY_ID.get(e.line.id));
-
-function buildImpact(table, column) {
-  const rings = impactRings(data, table, column);
-  buildRadial(IMPACT_VIEW, table, rings.map((r) => r.map((t) => t.id)), (shown, relationLine) =>
-    rings.flat().flatMap((t) => t.edges.filter((e) => shown.has(e.a) && shown.has(e.b)).map((e) => relationLine(edgeLine(e), e.a, e.b))),
-  );
-  state.impact = { table, column };
-  impact = { table, column, rings };
-}
-
-// How a table reaches its ring: `column → table.column` per edge.
-function edgeText(e) {
-  if (e.kind === 'view_source') return `reads ${short(e.b)}`;
-  return `${e.aColumns.join(', ')} → ${short(e.b)}.${e.bColumns.join(', ')}${e.kind === 'polymorphic' ? ' (polymorphic)' : ''}`;
-}
-
-function impactPanel() {
-  const { table, column, rings } = impact;
-  const total = rings.reduce((n, r) => n + r.length, 0);
-  const hidden = rings.flat().filter((t) => !fullBoxes.has(t.id)).length;
-  // A jump selects the table (in this view when drawn) and keeps the list.
-  const go = (id) => () => {
-    const scroll = panel.div.scrollTop;
-    goToNode(id);
-    if (state.view === IMPACT_VIEW) showImpactPanel(scroll);
-  };
-  const scope = column ? `Ring 1 counts the relations keyed on ${column}; further rings any relation to a table of the ring before.` : null;
-  return [
-    panelHeader({
-      name: `Impact of ${impactName(impact)}`,
-      tip: `${table}${column ? `.${column}` : ''}`,
-      cluster: clusterOf(table),
-      note: total === 0 ? 'Nothing references it.' : `${plural(total, 'table')} ${total === 1 ? 'depends' : 'depend'} on it, up to ${IMPACT_DEPTH} relations away.`,
-      extra: [
-        scope ? el('div', { class: 'oe-ph-sub', text: scope }) : null,
-        hidden > 0 ? el('div', { class: 'oe-ph-sub', text: `${plural(hidden, 'join table')} drawn as a line between the tables it joins: listed, not drawn.` }) : null,
-      ],
-    }),
-    ...rings.map((ring, i) =>
-      el('div', { class: 'oe-impact-ring', 'data-ring': i + 1 }, [
-        el('div', { class: 'oe-impact-head' }, [el('span', { class: `oe-impact-swatch ring-${i + 1}` }), el('span', { text: `Ring ${i + 1} · ${IMPACT_RINGS[i]}` }), el('span', { class: 'n', text: `(${ring.length})` })]),
-        ...ring.map((t) =>
-          el('div', { class: 'oe-impact-table' }, [
-            fullBoxes.has(t.id) ? el('button', { class: 'oe-link', text: short(t.id), title: `Go to ${t.id}`, on: { click: go(t.id) } }) : el('span', { text: short(t.id), title: t.id }),
-            dbOf(t.id) !== dbOf(table) ? el('span', { class: 'muted', text: ` · ${dbDisplayName(dbOf(t.id))}` }) : null,
-            fullBoxes.has(t.id) ? null : el('span', { class: 'muted', text: ' · join table' }),
-            ...t.edges.map((e) => el('span', { class: 'via', text: edgeText(e) })),
-            t.hub ? el('span', { class: 'via', text: 'Hub table: the tables referencing it are not followed.' }) : null,
-          ]),
-        ),
-      ]),
-    ),
-  ];
-}
-// The address names the impact view whenever its list is on screen.
-function showImpactPanel(scroll = 0) {
-  showPanel(impactPanel());
-  panel.div.scrollTop = scroll;
-  shareHash(`impact=${impact.table}${impact.column ? `.${impact.column}` : ''}`);
-}
-
-/** Opens the impact view of `table`, or of its `column`, with its list. */
-function openImpact(table, column = null) {
-  if (!fullBoxes.has(table)) return;
-  endTour(false);
-  if (state.view !== IMPACT_VIEW || state.impact.table !== table || state.impact.column !== column) recordVisit();
-  buildImpact(table, column);
-  showView(IMPACT_VIEW);
-  showImpactPanel();
-  // Fit again now that the panel is open.
-  zoomToRect(viewBounds(IMPACT_VIEW), MAX_FIT_SCALE);
 }
 
 // ---------------------------------------------------------------- toolbar
@@ -1182,9 +1071,7 @@ function renderToolbar() {
     ? state.view.slice(DOMAIN_PREFIX.length)
     : state.view === NEIGHBORHOOD
       ? clusterOf(state.center)
-      : state.view === IMPACT_VIEW
-        ? clusterOf(state.impact.table)
-        : null;
+      : null;
   if (state.view === ALL_VIEW) parts.push(crumb(`All tables · ${plural(tableCount(null), 'table')}`));
   if (state.view === CONNECTIONS) parts.push(crumb('Connections'));
   const db = cluster ? cluster.split('/')[0] : null;
@@ -1197,14 +1084,12 @@ function renderToolbar() {
   } else if (cluster) parts.push(crumb(dbDisplayName(db), () => showDatabase(db)));
   if (cluster) {
     parts.push(
-      state.view === NEIGHBORHOOD || state.view === IMPACT_VIEW
-        ? crumb(domainName(cluster), () => navigate(domainView(cluster), { focus: state.view === NEIGHBORHOOD ? state.center : state.impact.table }))
+      state.view === NEIGHBORHOOD
+        ? crumb(domainName(cluster), () => navigate(domainView(cluster), { focus: state.center }))
         : crumb(`${domainName(cluster)} · ${plural(tableCount(cluster), 'table')}`),
     );
   }
   if (state.view === NEIGHBORHOOD) parts.push(crumb(`Tables related to ${short(state.center)}`));
-  // A link: it brings the list (with the table count) back once a table's panel replaced it.
-  if (state.view === IMPACT_VIEW) parts.push(crumb(`Impact of ${impactName(state.impact)}`, () => (clearSelection(), showImpactPanel())));
   if (state.view === JOIN_VIEW) parts.push(crumb(`Join path: ${short(state.joinPath.nodes[0])} → ${short(state.joinPath.nodes.at(-1))}`));
   crumbs.replaceChildren(...parts.flatMap((p, i) => (i === 0 ? [p] : [el('span', { class: 'sep', text: '›' }), p])));
   backButton.disabled = nav.back.length === 0;
@@ -1218,13 +1103,12 @@ function renderToolbar() {
 
 // In a view reached by navigation, a pill at the top left of the canvas
 // names where Back goes ("← All tables"); the toolbar's Back does the same.
-const NAVIGATED = (name) => name.startsWith(DOMAIN_PREFIX) || [NEIGHBORHOOD, JOIN_VIEW, IMPACT_VIEW, CONNECTIONS].includes(name);
+const NAVIGATED = (name) => name.startsWith(DOMAIN_PREFIX) || [NEIGHBORHOOD, JOIN_VIEW, CONNECTIONS].includes(name);
 function viewLabel(snap) {
   if (snap.view === OVERVIEW) return 'Overview';
   if (snap.view === ALL_VIEW) return 'All tables';
   if (snap.view === CONNECTIONS) return 'Connections';
   if (snap.view === NEIGHBORHOOD) return `Tables related to ${short(snap.center)}`;
-  if (snap.view === IMPACT_VIEW) return `Impact of ${impactName(snap.impact)}`;
   if (snap.view === JOIN_VIEW) return `Join path ${short(snap.joinPath.nodes[0])} → ${short(snap.joinPath.nodes.at(-1))}`;
   return domainName(snap.view.slice(DOMAIN_PREFIX.length));
 }
@@ -1358,12 +1242,7 @@ function downloadReport(text) {
 }
 
 async function download(format) {
-  const join =
-    state.view === JOIN_VIEW
-      ? `${short(state.joinPath.nodes[0])}-to-${short(state.joinPath.nodes.at(-1))}`
-      : state.view === IMPACT_VIEW
-        ? `${state.impact.table}${state.impact.column ? `.${state.impact.column}` : ''}`
-        : state.center;
+  const join = state.view === JOIN_VIEW ? `${short(state.joinPath.nodes[0])}-to-${short(state.joinPath.nodes.at(-1))}` : state.center;
   const name = `${exportBaseName(data.project, state.view, join)}.${format}`;
   const svgFile = viewAsSvg();
   if (format === 'svg') {
@@ -1718,20 +1597,15 @@ function openDeepLink(hash) {
     else openTableSet(ids);
     return true;
   }
-  if (key === 'view' && views.has(value) && ![NEIGHBORHOOD, JOIN_VIEW, IMPACT_VIEW].includes(value)) {
+  if (key === 'view' && views.has(value) && value !== NEIGHBORHOOD && value !== JOIN_VIEW) {
     navigate(value);
     return true;
   }
-  if (key !== 'table' && key !== 'column' && key !== 'impact') return false;
+  if (key !== 'table' && key !== 'column') return false;
   const parts = value.split('.');
   const id = parts.slice(0, 3).join('.');
-  const column = key === 'table' ? null : parts.slice(3).join('.') || null;
+  const column = key === 'column' ? parts.slice(3).join('.') : null;
   if (data.nodes[id]?.kind !== 'table') return false;
-  // #impact=<table id>[.<column>]: the impact view of that table or column.
-  if (key === 'impact') {
-    openImpact(id, column && data.nodes[id].columns.some((c) => c.name === column) ? column : null);
-    return true;
-  }
   const home = views.has(ALL_VIEW) ? ALL_VIEW : homeView(id);
   navigate(home, { focus: id, column });
   if (column && data.nodes[id].columns.some((c) => c.name === column)) {
@@ -1981,7 +1855,7 @@ const keyIcon = (key) => (key ? svgEl('svg', { class: 'oe-key', width: 14, heigh
 // values out under the row; a click on the note shows all of it.
 const hintIcon = (draw, title) => el('span', { class: 'hint', title }, [svgEl('svg', { width: 10, height: 12, viewBox: '0 0 10 12' }, parsed(draw(5, 6)))]);
 
-function columnRow(n, c, open, onImpact = null) {
+function columnRow(n, c, open) {
   const values = Object.entries(c.enum ?? {});
   const list = values.length > 0 ? el('div', { class: 'oe-enum-list', style: c.name === open ? '' : 'display:none' }, values.map(([v, meaning]) => el('div', {}, [el('code', { class: 'oe-code', text: v }), meaning ? el('span', { text: ` — ${meaning}` }) : null]))) : null;
   const chips = columnBadges(c).map((b) =>
@@ -1997,7 +1871,6 @@ function columnRow(n, c, open, onImpact = null) {
       values.length > 0 ? hintIcon(enumIconSvg, 'Column with listed values') : null,
       indexed ? hintIcon(indexIconSvg, 'Column in an index (see Indexes)') : null,
       ...chips,
-      onImpact ? el('button', { class: 'oe-badge oe-impact-btn', text: 'Impact', title: `Impact: the tables depending on ${c.name}, ring by ring`, on: { click: onImpact } }) : null,
       el('span', { class: 'type', text: c.type }),
     ]),
     // The panel is the detail view: notes in full, the team's note muted under.
@@ -2028,16 +1901,8 @@ function tableActions(id, n) {
     el('div', { class: 'oe-seg', title: RELATED.title }, RELATED.options.map((o) => el('button', { class: 'oe-btn', text: o.text, title: `Related tables: ${o.title}`, on: { click: () => openNeighborhood(id, o.hops) } }))),
     toolButton('join', '', 'Find a join path from this table', () => openJoin(id), ' oe-join-from'),
     copySchemaButton(id, n, status),
-    impactButton(id),
     status,
   ]);
-}
-
-// Impact of changing the table: offered when something references it.
-function impactButton(id) {
-  const none = impactRings(data, id, null, 1).length === 0;
-  const title = none ? 'Impact: nothing references this table' : `Impact: the tables depending on this one, ring by ring up to ${IMPACT_DEPTH} relations away`;
-  return el('button', { class: 'oe-btn oe-impact', text: 'Impact', title, ...(none ? { disabled: '' } : {}), on: { click: () => openImpact(id) } });
 }
 
 // The last tables visited, newest at the right (cut at the left when long),
@@ -2075,9 +1940,7 @@ function nodePanel(id, column = null) {
     sharedIn.length > 0 ? chipGroup(`Referenced as a shared table${drawnHub ? ', lines shown while selected' : ''}`, chipEntries(id, sharedIn, (l) => l.from), 'shared-in') : null,
   ];
   const count = out.length + into.length + self.length + sharedOut.length + sharedIn.length;
-  // A column some relation points at gets an Impact button.
-  const keyed = referencedColumns(data, id);
-  const bodies = { columns: () => n.columns.map((c) => columnRow(n, c, column, keyed.has(c.name) ? () => openImpact(id, c.name) : null)), relations, indexes: () => indexList(n) };
+  const bodies = { columns: () => n.columns.map((c) => columnRow(n, c, column)), relations, indexes: () => indexList(n) };
   return [
     tableTrailRow(id),
     panelHeader({
@@ -2302,7 +2165,7 @@ function joinViewFor(steps) {
   const names = [state.view, ALL_VIEW, ...clusters, ...[...views.keys()].filter((n) => n.startsWith(DOMAIN_PREFIX))];
   const { w, h } = viewport();
   return names.find((name) => {
-    if (!views.has(name) || [OVERVIEW, NEIGHBORHOOD, IMPACT_VIEW].includes(name)) return false;
+    if (!views.has(name) || name === OVERVIEW || name === NEIGHBORHOOD) return false;
     if (name === JOIN_VIEW && state.joinPath !== join.paths[join.index]) return false;
     if (!stepNodes(steps).every((id) => indexes.get(name).has(id)) || !steps.every((s, i) => stepSegments(name, s, i))) return false;
     const b = joinBounds(indexes.get(name), steps);
@@ -2520,11 +2383,10 @@ function copyText(text, status, what, then = () => {}) {
 // screen draws (review colours only in review mode), rebuilt whenever the
 // view or the mode changes. Open by default, folded to its pill in the
 // views it would cover part of from its corner: the overview (cards reach
-// the bottom left), a neighbourhood and an impact view (rings fitted to the
-// whole screen; the impact panel names the ring colours).
+// the bottom left) and a neighbourhood (rings fitted to the whole screen).
 const legend = overlay('oe-legend-host');
 const LEGEND_ROOM = 8;
-const LEGEND_FOLDED_VIEWS = [OVERVIEW, NEIGHBORHOOD, IMPACT_VIEW];
+const LEGEND_FOLDED_VIEWS = [OVERVIEW, NEIGHBORHOOD];
 legend.fo.style.display = 'none';
 // The reader's choice, and whether the view on screen folds it anyway
 // (until the reader opens or hides it there).
@@ -2550,7 +2412,6 @@ const has = (view, selector) => view.querySelector(selector) !== null;
 // End marker kinds the view draws, as its marker groups list them.
 const endKinds = (view) => new Set([...view.querySelectorAll('.marker[data-ends]')].flatMap((g) => g.getAttribute('data-ends').split(' ')));
 const reviewing = () => svg.classList.contains('review-mode');
-const impactShown = (view) => view.getAttribute('data-view') === IMPACT_VIEW;
 // What lines and boxes mean. Solid and dashed lines explain themselves;
 // the legend covers what a reader cannot guess: card strength bars and
 // connectors, line ends, the icons in boxes, and, in review mode only, the
@@ -2576,10 +2437,6 @@ const LEGEND = [
   ]],
   ['Schema health', [
     [() => sample([svgEl('rect', { class: 'stub-box', x: 1, y: 6, width: 54, height: 11, rx: 3 }), svgEl('path', { class: 'col-warn', d: 'M49 12L55 1L61 12Z' })]), 'Table with a health finding', (v) => healthOn() && has(v, '.has-health')],
-  ]],
-  ['Impact', [
-    [() => sample([svgEl('rect', { class: 'legend-ring legend-ring-0', x: 2, y: 2, width: 60, height: 14, rx: 3 })]), 'Table or column changed', impactShown],
-    ...IMPACT_RINGS.map((text, i) => [() => sample([svgEl('rect', { class: `legend-ring legend-ring-${i + 1}`, x: 2, y: 2, width: 60, height: 14, rx: 3 })]), `Ring ${i + 1}: ${text}`, (v) => impactShown(v) && has(v, `.table.ring-${i + 1}`)]),
   ]],
   ['Line ends', [
     ['one', 'Exactly one'],

@@ -88,12 +88,6 @@ indexes, and a note on what the table is for. `←` goes back.
 
 <p align="center"><img src="./docs/images/demo/table-panel.gif" width="760" alt="Table panel with columns, relations and notes"></p>
 
-### Know what a change will break
-
-**Impact** shows every table that depends on a table or column, ring by ring.
-
-<p align="center"><img src="./docs/images/demo/impact.gif" width="760" alt="Impact of spree_orders: tables referencing it in rings 1, 2 and 3"></p>
-
 ### Where personal data lives
 
 **Highlight › Personal data** tints every PII column across the schema, with a
