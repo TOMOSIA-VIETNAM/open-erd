@@ -27,15 +27,28 @@ happened. Do not read the workspace or source to enrich it.
 ## 2. Facts to include
 
 ```bash
-node -p "require('<plugin root>/.claude-plugin/plugin.json').version"
+root='<plugin root>'
+if [ "$(git -C "$root" rev-parse --show-toplevel 2>/dev/null)" = "$(cd -P "$root" 2>/dev/null && pwd -P)" ]; then
+  git -C "$root" rev-parse --short HEAD
+elif [ -f "$root/.codex-marketplace-install.json" ]; then
+  node -p "require('$root/.codex-marketplace-install.json').revision?.slice(0, 12) ?? 'unknown'"
+else
+  case "$root" in
+    */.claude/plugins/cache/*/open-erd/*|*/.codex/plugins/cache/*/open-erd/*) basename "$root" ;;
+    *) echo unknown ;;
+  esac
+fi
 node <plugin root>/dist/open-erd.mjs --version 2>/dev/null || node -p "require('<plugin root>/engine/package.json').version"
 node --version
 uname -sr        # Windows: ver
 ```
 
 `<plugin root>`: `${CLAUDE_PLUGIN_ROOT}`, or two levels above this skill's base
-directory when that is empty. A
-value that cannot be read → `unknown`. Last command: the last
+directory when that is empty. The plugin is versioned by commit: the first
+command prints the commit of a git checkout (a clone, `~/.open-erd`), else
+the version directory name of a Claude Code or Codex plugin cache
+(`~/.claude/plugins/cache/<marketplace>/open-erd/<version>/`), or the
+revision Codex recorded at install. A value that cannot be read → `unknown`. Last command: the last
 `/open-erd:<name>` run in this conversation and whether it succeeded, else
 `none`.
 
@@ -50,7 +63,7 @@ the problem. Body:
 <user's text, cleaned of project identifiers>
 
 ### Environment
-- open-erd plugin: <version>
+- open-erd plugin: <commit>
 - engine: <version>
 - Node: <version>
 - OS: <name and release>

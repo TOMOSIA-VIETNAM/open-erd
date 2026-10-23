@@ -185,7 +185,8 @@ polymorphic entry may also carry `note` and `internal_note`.
 - `default`: the default value as the schema source writes it, as a string.
   A literal when the code gives one (`draft`, `"0"`, `"false"`), else the
   expression as written (`now()`, `gen_random_uuid()`, `nextval('users_id_seq')`,
-  `Date.now`, `cuid()`). Always a YAML string: quote numbers, booleans and
+  `Date.now`, `cuid()`; a lambda or function default whole, never cut).
+  Always a YAML string: quote numbers, booleans and
   `null` (`default: "0"`). An ORM constant resolves to its stored value
   (`Status.DRAFT` -> `draft`). Only when a file shows it; never guess.
 - `auto_increment: true`: the database numbers new rows itself: `SERIAL`,
@@ -384,7 +385,8 @@ Read by the engine:
 - `columns[]`: `name` and `type` required; `nullable`, `pk`, `unique`,
   `auto_increment` (booleans, absent = false), `default` (as the schema
   source writes it; absent or `null` when the source sets none: a Ruby
-  `nil`, a Python `None` is no default). A field no column of the file has
+  `nil`, PHP `null`, Python `None`, JavaScript `null` or `undefined` is no
+  default). A field no column of the file has
   is not compared, so a script that does not extract it reports no
   difference for it; one that does must write it wherever it applies.
 - `associations[]`: `from` and `to` with `table` and `columns` (and

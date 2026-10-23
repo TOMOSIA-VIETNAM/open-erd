@@ -71,6 +71,12 @@ models; `evals/` scores Claude's extraction against them.
   something else uses, possible renames (`possibleRenames` of the diff),
   reviewed facts and relation kind changes go to `needsSync` instead. The
   CLI loads the result before writing `--out` and fails if it does not.
+- `engine/src/model/facts-diff.js`: `diffFacts(from, to)` compares two
+  sets of facts files (not the model) for `facts-diff`, which `/open-erd:sync`
+  reads instead of a raw JSON diff. Tables, columns, indexes and
+  associations go through `readFacts`, so the facts shapes `model.md`
+  accepts for the same structure compare equal; `polymorphic`, `enums` and
+  `hints` are compared field by field; other top-level keys only as a whole.
 - `diff --to-workspace <dir>` reads the "to" side from another directory's
   files; `--format markdown` prints `changesMarkdown` (summary and a table
   capped at `MARKDOWN_ROWS`) on stdout. `skills/ci-setup/workflow.yml` is the

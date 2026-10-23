@@ -72,6 +72,7 @@ node <plugin root>/dist/open-erd.mjs layout   --workspace <ws>
 node <plugin root>/dist/open-erd.mjs render   --workspace <ws> [--profile <name>]
 node <plugin root>/dist/open-erd.mjs diff     --workspace <ws> --from <ref> --to <ref|HEAD|WORKTREE> [--profile <name>]
 node <plugin root>/dist/open-erd.mjs apply-facts --workspace <ws> --out <dir>   # CI preview copy; never writes <ws>
+node <plugin root>/dist/open-erd.mjs facts-diff --workspace <ws> [--from <ref>] [--format json]
 ```
 
 Exit code 0 = success. Non-zero: show the engine's message, fix the cause in
@@ -95,6 +96,12 @@ error says. `lock` rewrites the file from the reviewed facts and only
 `verify` compares the model's tables, columns, indexes and constraint-backed
 relations with `extract/facts/*.json` and prints one `mismatch:` line per
 difference (exit 1); see "Verification".
+
+`facts-diff` prints what changed in `extract/facts/*.json` between a git ref
+of the workspace (default `HEAD`) and the files on disk, one line per change
+(tables, columns, indexes, associations, polymorphic associations, enums,
+hints; a facts file added or removed), sorted; it compares facts with facts,
+not with the model, and writes nothing.
 
 ## Finding the workspace
 

@@ -48,6 +48,11 @@ Script rules:
   writes, no `eval`/`import()` of source files.
 - Parse with small hand-written readers (regex plus bracket matching). It does
   not need to be a full parser; it must handle every file that is in this repo.
+  A value that holds brackets (a lambda or block `-> { ... }`, a hash, nested
+  parentheses, string interpolation `"a_#{x}"`) is read by matching brackets
+  up to the balanced close, skipping brackets inside strings; never with a
+  regex up to the first closing bracket (`\{[^}]*\}`), which cuts
+  `-> { "a_#{x}" }` short and records a broken value.
 - Deterministic: sort tables by name, columns in file order, everything else by
   a stable key; `JSON.stringify(facts, null, 2)`.
 - Paths in evidence are relative to the source root with `/` separators.
@@ -64,6 +69,17 @@ Script rules:
   `generated` (the expression of a generated/computed column). They fill the
   Default, Auto Inc, Generated and Expression columns of the Excel table
   sheets. Per-stack idioms below; never guess one the file does not show.
+  - The language's null as a default is no default: Ruby `nil`, PHP `null`,
+    Python `None`, JavaScript/TypeScript `null` or `undefined` → leave
+    `default` out, never write the string `"nil"` or `"null"` (`verify` would
+    report a default the model rightly does not have).
+  - A default given as code (a Ruby lambda, proc or block, a JavaScript or
+    Python function or callable) is an expression: record it whole as
+    written, whitespace collapsed to single spaces (`-> { "inv_#{SecureRandom.hex(4)}" }`,
+    `Date.now`), never cut and never evaluated. It is still `default`:
+    `generated` is only for a column the database computes from other
+    columns. Exception: in Rails `db/schema.rb`, `default: -> { "now()" }`
+    is how a database expression is written; record the expression (`now()`).
 - For every table record its declared indexes as `indexes: [{ name?, columns,
   unique, where?, using? }]` (shape and rules in `../_shared/model.md`,
   "indexes"): one entry per index statement, columns in index order, the
@@ -105,7 +121,12 @@ column (`default: -> { "now()" }` is the expression `now()`); the implicit
 `id` of `create_table` is `auto_increment` (unless `id: false` or
 `id: :uuid`, whose default is shown as `default: -> { "gen_random_uuid()" }`);
 `t.virtual "x", as: "expr"` is `generated`. Mongoid documents: `field :x,
-default:`. Indexes: `t.index [cols], name:, unique:, where:, using:` inside
+type: T, default:` (`default: nil` is no default; `default: -> { ... }` is
+the whole lambda as written, read by bracket matching). Every Mongoid
+document has an implicit `_id` (`ObjectId`, primary key); a `field :_id,
+...` declaration (usually with `overwrite: true`) replaces it: record one
+`_id` column, primary key, with the declared type and default, never the
+implicit one as well. Indexes: `t.index [cols], name:, unique:, where:, using:` inside
 `create_table` and `add_index :table, [cols], ...` (later `remove_index`
 drops one); in `structure.sql`, `CREATE [UNIQUE] INDEX`. Mongoid: `index({ x:
 1 }, { unique: true })`.

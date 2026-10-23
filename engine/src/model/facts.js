@@ -15,15 +15,15 @@ import { renames } from './lock.js';
 // a field is compared only when the file carries it somewhere (a script
 // written before `default` existed does not report every default as gone).
 
-const COLUMN_FIELDS = ['type', 'nullable', 'pk', 'unique', 'default', 'auto_increment'];
-const BOOLEAN_FIELDS = new Set(['nullable', 'pk', 'unique', 'auto_increment']);
+export const COLUMN_FIELDS = ['type', 'nullable', 'pk', 'unique', 'default', 'auto_increment'];
+export const BOOLEAN_FIELDS = new Set(['nullable', 'pk', 'unique', 'auto_increment']);
 const INDEX_FIELDS = ['name'];
 
 const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const list = (v) => (v === undefined || v === null ? [] : Array.isArray(v) ? v : [v]);
 
 /** A facts or model value as compared: booleans default to false, defaults are strings. */
-function value(field, v) {
+export function value(field, v) {
   if (BOOLEAN_FIELDS.has(field)) return v === true;
   if (v === undefined || v === null) return undefined;
   return String(v);
@@ -65,7 +65,8 @@ export function readFacts(files) {
           return;
         }
         for (const f of COLUMN_FIELDS) if (c[f] !== undefined && c[f] !== null) reported.add(f);
-        columns.push(Object.fromEntries([['name', c.name], ...COLUMN_FIELDS.map((f) => [f, c[f]])]));
+        // `generated` is kept for facts-diff; the model comparison does not read it.
+        columns.push(Object.fromEntries([['name', c.name], ...COLUMN_FIELDS.map((f) => [f, c[f]]), ...(c.generated == null ? [] : [['generated', c.generated]])]));
       });
       // Older scripts write unique keys as `unique: [[a, b]]` on the table.
       const indexes = [
