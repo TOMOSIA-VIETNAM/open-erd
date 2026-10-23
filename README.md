@@ -87,6 +87,35 @@ get the new viewer.
 
 Codex (untested) and the full install, update and uninstall steps: [docs/install.md](docs/install.md).
 
+<details>
+<summary>Uninstall</summary>
+
+Your ERD workspaces stay where they are; only the plugin goes.
+
+Claude Code:
+
+```
+/plugin uninstall open-erd@open-erd
+/plugin marketplace remove open-erd
+```
+
+Codex, installed from the plugin catalog:
+
+```bash
+codex plugin remove open-erd@open-erd
+codex plugin marketplace remove open-erd
+```
+
+Codex, installed with the one-line script:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/TOMOSIA-VIETNAM/open-erd/main/install.sh | bash -s -- --uninstall
+```
+
+The second line of each pair (removing the marketplace) is optional. Open a new session afterwards.
+
+</details>
+
 ## What you get
 
 ### Find any table in a second
