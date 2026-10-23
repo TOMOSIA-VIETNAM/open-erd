@@ -294,8 +294,11 @@ svg { --impact-ring-1: #c62f3e; --impact-ring-2: #e57a1f; --impact-ring-3: #c9a2
 .oe-idx .cols { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #1f2a3d; }
 .oe-idx .iname { font-size: 11px; color: #9aa4b5; overflow-wrap: anywhere; }
 .oe-idx .where { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: #7a8597; flex-basis: 100%; }
-.oe-legend-pill { display: inline-flex; align-items: center; gap: 8px; font: inherit; font-size: 12px; font-weight: 700; padding: 6px 10px; border: 1px solid #c3cad5; border-radius: 8px; background: #ffffff; color: #3d4a5e; box-shadow: 0 6px 18px rgba(20, 30, 50, 0.12); cursor: pointer; transition: transform 0.12s, border-color 0.12s, box-shadow 0.12s; }
-.oe-legend-pill:hover { border-color: #8a96a8; transform: translateY(-1px); box-shadow: 0 8px 22px rgba(20, 30, 50, 0.18); }
+.oe-legend-pill, .oe-help { display: inline-flex; align-items: center; gap: 8px; font: inherit; font-size: 12px; font-weight: 700; padding: 6px 10px; border: 1px solid #c3cad5; border-radius: 8px; background: #ffffff; color: #3d4a5e; box-shadow: 0 6px 18px rgba(20, 30, 50, 0.12); cursor: pointer; transition: transform 0.12s, border-color 0.12s, box-shadow 0.12s; }
+.oe-legend-pill:hover, .oe-help:hover { border-color: #8a96a8; transform: translateY(-1px); box-shadow: 0 8px 22px rgba(20, 30, 50, 0.18); }
+.oe-help { width: 26px; height: 26px; justify-content: center; padding: 0; border-radius: 50%; font-size: 13px; color: #7a8597; border-color: #dfe4ec; box-shadow: none; opacity: 0.6; }
+.oe-help:hover, .oe-help:focus-visible { opacity: 1; color: #3d4a5e; }
+.oe-help span { line-height: 16px; }
 .oe-chevron { color: #7a8597; }
 .oe-back-pill { font: inherit; font-size: 12px; padding: 4px 12px 4px 10px; border: 1px solid #c3cad5; border-radius: 14px; background: #ffffff; color: #1d4ed8; box-shadow: 0 2px 8px rgba(20, 30, 50, 0.12); cursor: pointer; white-space: nowrap; max-width: 360px; overflow: hidden; text-overflow: ellipsis; }
 .oe-back-pill:hover { background: #eef3fb; }
@@ -307,7 +310,7 @@ svg { --impact-ring-1: #c62f3e; --impact-ring-2: #e57a1f; --impact-ring-3: #c9a2
 .oe-tour-note { margin-top: 4px; color: #3d4a5e; line-height: 1.45; overflow-wrap: anywhere; }
 .oe-tour-controls { flex: none; display: flex; gap: 4px; }
 /* Pills float over the drawing: a drag that starts on one selects no text. */
-.oe-toolbar, .oe-back-pill, .oe-legend-pill { -webkit-user-select: none; user-select: none; }
+.oe-toolbar, .oe-back-pill, .oe-legend-pill, .oe-help { -webkit-user-select: none; user-select: none; }
 .oe-panel .sub { color: #7a8597; font-size: 12px; margin-bottom: 8px; overflow-wrap: anywhere; }
 .oe-panel .row { display: flex; gap: 6px; align-items: center; margin: 8px 0; }
 .oe-panel ul { margin: 4px 0 0; padding-left: 16px; }

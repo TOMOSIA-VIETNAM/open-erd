@@ -235,7 +235,7 @@ await shot('overview-card-keyboard-focus', `${ov}.querySelectorAll('.card-links 
 await key('Enter');
 await shot('overview-card-enter-opens', viewIs(`domain:${busiest}`));
 // No Back pill pointing to the overview (the Map tab is one click away);
-// Backspace, Alt+← and the toolbar's Back still go back to it.
+// Backspace, ← and the toolbar's Back still go back to it.
 const backPill = `document.querySelector('.oe-back-pill')`;
 const pillShown = `(${backPill}?.closest('foreignObject').style.display ?? 'none') !== 'none'`;
 await shot('no-back-pill-to-overview', `!${pillShown}`);
@@ -243,10 +243,10 @@ await key('Backspace');
 await shot('backspace-goes-back', `${viewIs('overview')} && !${pillShown}`);
 await evaluate(`${hubCard}.focus()`);
 await key('Enter');
-await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'ArrowLeft', code: 'ArrowLeft', windowsVirtualKeyCode: 37, modifiers: 1 });
-await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'ArrowLeft', code: 'ArrowLeft', windowsVirtualKeyCode: 37, modifiers: 1 });
+await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'ArrowLeft', code: 'ArrowLeft', windowsVirtualKeyCode: 37 });
+await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'ArrowLeft', code: 'ArrowLeft', windowsVirtualKeyCode: 37 });
 await pause(150);
-await shot('alt-left-goes-back', viewIs('overview'));
+await shot('left-arrow-goes-back', viewIs('overview'));
 await mouse('mouseMoved', { x: 5, y: 890 });
 await click(`document.querySelector('.domain[data-domain=${JSON.stringify(busiest)}] .card-box')`, { where: 'top' });
 await click(backButton);
@@ -1097,10 +1097,19 @@ if (await evaluate(`document.querySelector('g.view[data-view="all"]') !== null`)
   await modKey('a');
   await shot('cmd-a-all-tables', `${viewIs('all')} && document.querySelector('.oe-view-tabs [data-view="all"]').classList.contains('on')`);
 }
+// The "?" in the legend's corner opens the same list: bottom-aligned with
+// the legend card (or its pill) and clear of it.
+await click(`document.querySelector('.oe-help')`);
+await shot(
+  'help-button-shortcuts',
+  `(() => { const b = document.querySelector('.oe-help').getBoundingClientRect(); const l = document.querySelector('.oe-legend, .oe-legend-pill')?.getBoundingClientRect();
+    return document.querySelector('.oe-panel .oe-keys') !== null && Math.abs(b.bottom - (innerHeight - 12)) < 3 && (!l || (b.left >= l.right + 4 && Math.abs(b.bottom - l.bottom) < 3)); })()`,
+);
+await key('Escape');
 await choose('more', 'Keyboard shortcuts');
 // P is listed only when some column is marked as personal data, H only
 // when the render has schema health findings.
-await shot('keyboard-shortcuts', `document.querySelectorAll('.oe-panel .oe-keys tr').length === ${10 + (piiTotal > 0) + (healthTotal > 0)} && /J/.test(document.querySelector('.oe-panel .oe-keys').textContent) && /K$/.test(document.querySelector('.oe-panel .oe-keys kbd').textContent) && document.querySelector('.oe-panel .oe-keys').textContent.includes('Alt+←')`);
+await shot('keyboard-shortcuts', `document.querySelectorAll('.oe-panel .oe-keys tr').length === ${11 + (piiTotal > 0) + (healthTotal > 0)} && /J/.test(document.querySelector('.oe-panel .oe-keys').textContent) && /K$/.test(document.querySelector('.oe-panel .oe-keys kbd').textContent) && document.querySelector('.oe-panel .oe-keys').textContent.includes('←')`);
 // A short panel leaves the minimap in its corner; a tall one pushes it left.
 {
   const mm = `(() => { const f = document.querySelector('.oe-minimap')?.closest('foreignObject'); return f && f.style.display !== 'none' ? document.querySelector('.oe-minimap').getBoundingClientRect() : null; })()`;
@@ -1158,8 +1167,8 @@ await key('Escape');
     await shot('table-back-once', selected(tb));
     await click(`document.querySelector('.oe-panel .oe-trail-btn')`);
     await shot('table-back-twice', `${selected(ta)} && document.querySelector('.oe-panel .oe-tab.on')?.getAttribute('data-tab') === 'relations'`);
-    await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39, modifiers: 1 });
-    await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39, modifiers: 1 });
+    await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39 });
+    await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39 });
     await pause(200);
     await shot('table-forward', selected(tb));
     await key('Escape');
