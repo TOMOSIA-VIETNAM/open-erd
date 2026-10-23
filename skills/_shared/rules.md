@@ -6,6 +6,22 @@ Read this before acting. Each `SKILL.md` adds its own steps on top.
 
 - Speak the user's language (the one they write in). Everything written into
   the workspace (model notes, enum meanings, commit messages) is English.
+- Write for someone who knows the product but not the code: every question,
+  status line and report must make sense without reading source code.
+  - First sentence, in plain words: what happened and what you need from the
+    user, or what was done. "The schema reader got 2 MongoDB tables wrong; I
+    fixed it. Run it again?", not "field :_id, overwrite: true yields 2 _id
+    columns".
+  - Name things by what the user sees in the ERD: tables, columns,
+    relations, domains, the diagram, the Excel file. Not framework syntax,
+    script internals or engine command names. The first time a term of this
+    plugin appears in a conversation (extract script, workspace, facts,
+    stale), add a few words saying what it is.
+  - Every option says what happens to the ERD if chosen ("the diagram is
+    updated", "the ERD stays as it was until the next sync").
+  - Technical detail (the code line, the diff, the error text) goes last,
+    after the plain explanation, or in the question's `preview`, for those
+    who want it.
 - Every question to the user goes through the `AskUserQuestion` tool, so the
   user answers with one click (every "ask", "confirm", "approve" or "which
   one" in the skills means this):
