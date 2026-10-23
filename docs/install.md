@@ -55,9 +55,17 @@ skill's description.
 
 ```bash
 codex plugin marketplace add TOMOSIA-VIETNAM/open-erd
+codex plugin add open-erd@open-erd
 ```
 
-Then open `/plugins` in a Codex session and install `open-erd`.
+Adding the marketplace only makes the plugin available; `codex plugin add` installs it (or open
+`/plugins` in a Codex session and install `open-erd` there). Start a new Codex session, then type
+`$open-erd-` to see the commands. `codex plugin list` shows `open-erd@open-erd  installed, enabled`.
+
+To update: `codex plugin marketplace upgrade open-erd`, then start a new session.
+
+Use either this route or the local install below, not both: both put the same `open-erd-*` skills
+in front of Codex.
 
 ### Local install
 
