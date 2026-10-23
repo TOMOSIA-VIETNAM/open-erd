@@ -80,9 +80,12 @@ function relationLink(r) {
   };
 }
 
+/** Id of the many-to-many line drawn for join table `joinId` with keys `a` and `b` (see joinTables). */
+export const collapsedLinkId = (joinId, a, b) => `${a.to.table}(${a.to.columns.join(',')})<-${joinId}->${b.to.table}(${b.to.columns.join(',')})`;
+
 function collapsedLink(joinId, [a, b]) {
   return {
-    id: `${a.to.table}(${a.to.columns.join(',')})<-${joinId}->${b.to.table}(${b.to.columns.join(',')})`,
+    id: collapsedLinkId(joinId, a, b),
     from: { node: a.to.table, column: a.to.columns[0] },
     to: { node: b.to.table, column: b.to.columns[0] },
     // Either side may have any number of rows on the other, including none.

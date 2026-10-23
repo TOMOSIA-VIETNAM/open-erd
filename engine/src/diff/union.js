@@ -1,8 +1,8 @@
 import { clusterKey } from '../layout/clusters.js';
 import { LAYOUT_SCHEMA_VERSION } from '../layout/layout-file.js';
-import { polyLinkId, polyNodeId, relationId } from '../layout/diagram.js';
+import { collapsedLinkId, polyLinkId, polyNodeId, relationId } from '../layout/diagram.js';
 import { compareStrings } from '../model/load.js';
-import { describeChange } from './changes.js';
+import { describeChange, summarize } from './changes.js';
 
 // What the diff diagram draws: one model holding both sides, and which of
 // its nodes, columns and lines changed. Everything of the "to" side is drawn
@@ -88,6 +88,10 @@ const push = (map, key, value) => {
  *   columns    Map table id -> Map column path -> status
  *   links      Map line id -> status
  *   sentences  { nodes: Map node id -> [sentence], links: Map line id -> [sentence] }
+ *   near       Set of node ids (tables, overview domains) with no status of
+ *              their own but at the end of a changed line, or holding such a table
+ *   counts     { tables, columns, relations }: tables with a status, then
+ *              the column and relation totals of the summary line
  * A status is one of DIFF_STATUSES. A table is "changed" when its own
  * fields, columns or enums changed; relation changes colour the line and
  * are listed on both end tables.
@@ -97,6 +101,8 @@ export function diffMarks(union, changes) {
   const columns = new Map();
   const links = new Map();
   const sentences = { nodes: new Map(), links: new Map() };
+  // Tables at the end of a changed line that hold no sentence of it.
+  const lineEnds = new Set();
   const setColumn = (table, path, status) => {
     if (!columns.has(table)) columns.set(table, new Map());
     // Renamed and removed say more than changed.
@@ -120,6 +126,17 @@ export function diffMarks(union, changes) {
       const id = relationId(c.relation);
       links.set(id, { relation_added: 'added', relation_removed: 'removed' }[c.kind] ?? 'changed');
       push(sentences.links, id, text);
+      // A join table's two keys are drawn as one many-to-many line (see
+      // joinTables in layout/diagram.js), which then shows the change. Ids
+      // of pairs that are not drawn that way are never looked up.
+      const join = c.relation.from.table;
+      for (const other of union.relations.filter((r) => r.from.table === join && relationId(r) !== id)) {
+        for (const line of [collapsedLinkId(join, c.relation, other), collapsedLinkId(join, other, c.relation)]) {
+          if (!links.has(line)) links.set(line, 'changed');
+          push(sentences.links, line, text);
+        }
+        lineEnds.add(other.to.table);
+      }
       push(sentences.nodes, c.relation.from.table, text);
       if (c.relation.to.table !== c.relation.from.table) push(sentences.nodes, c.relation.to.table, text);
     } else if (c.association) {
@@ -141,5 +158,13 @@ export function diffMarks(union, changes) {
     else if (list.every((s) => s === 'removed')) nodes.set(key, 'removed');
     else if (list.some((s) => s !== undefined)) nodes.set(key, 'changed');
   }
-  return { nodes, columns, links, sentences };
+  const near = new Set();
+  for (const t of union.tables) {
+    if (nodes.has(t.id) || !(sentences.nodes.has(t.id) || lineEnds.has(t.id))) continue;
+    near.add(t.id);
+    if (!nodes.has(clusterKey(t))) near.add(clusterKey(t));
+  }
+  const { columnsChanged, relationsChanged } = summarize(changes);
+  const counts = { tables: union.tables.filter((t) => nodes.has(t.id)).length, columns: columnsChanged, relations: relationsChanged };
+  return { nodes, columns, links, sentences, near, counts };
 }
