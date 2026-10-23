@@ -60,10 +60,35 @@ difference (exit 1); see "Verification".
 
 ## Finding the workspace
 
-The workspace is the folder holding `open-erd.yaml`. Use, in order: a path the
-user gave, the current directory if it has `open-erd.yaml`, a path mentioned
-earlier in this conversation. Otherwise ask for it. Never guess a default
-location, and never create a workspace outside `/open-erd:init`.
+The workspace is the folder holding `open-erd.yaml`. Try, in order, and stop
+at the first that gives one:
+
+1. A path the user gave.
+2. The current directory, if it has `open-erd.yaml`.
+3. A path mentioned earlier in this conversation.
+4. A workspace whose `open-erd.local.yaml` lists the current source
+   repository. Workspaces usually sit next to the source, not inside it, so
+   look up to three folders above the repository (never above `$HOME`), two
+   levels deep:
+
+   ```bash
+   repo=$(git rev-parse --show-toplevel)
+   dir=$(dirname "$repo")
+   for i in 1 2 3; do
+     [ "$dir" = "$HOME" ] || [ "$dir" = / ] && break
+     find "$dir" -maxdepth 3 -name open-erd.local.yaml -not -path '*/node_modules/*' 2>/dev/null \
+       | xargs grep -l "path: $repo\$" 2>/dev/null
+     dir=$(dirname "$dir")
+   done | sort -u
+   ```
+
+   Each hit's folder is a candidate (it must also hold `open-erd.yaml`). One
+   candidate: use it and say which workspace in one line. Several: list them
+   and ask which one.
+5. Ask for it.
+
+Never guess a default location, and never create a workspace outside
+`/open-erd:init`.
 
 ## Safety (no exceptions)
 
