@@ -1399,7 +1399,8 @@ if (await evaluate(`getComputedStyle(${menuButton('highlight')}.parentNode).disp
 // Tour: T walks the domains in the overview's order (the matrix rows),
 // each in its view with a caption (its note when it has one; name and table
 // count always) at the bottom, clear of the toolbar and of its central
-// table, legend and minimap set aside. It moves on by itself; ← → step and
+// table (unless that table is too tall to fit above it at a readable
+// scale), legend and minimap set aside. It moves on by itself; ← → step and
 // wrap round; Space pauses; a download holds none of it; Esc goes back to
 // the view and camera it started from. One domain makes no tour.
 {
@@ -1419,9 +1420,13 @@ if (await evaluate(`getComputedStyle(${menuButton('highlight')}.parentNode).disp
       const k = ${visible}.getAttribute('data-view').slice(7); const id = Object.keys(d.nodes).find((n) => d.nodes[n].cluster === k && d.nodes[n].central);
       const c = id && ${visible}.querySelector('.table[data-id="' + CSS.escape(id) + '"]').getBoundingClientRect();
       const hit = Boolean(c) && c.bottom > card.top && c.top < card.bottom && c.right > card.left && c.left < card.right;
+      // Running under the caption is only allowed when the table is taller than the strip above it even at the
+      // smallest readable scale (11/12): then it is at that scale with its top just under the toolbar.
+      const s = Number(/scale\\(([-\\d.e]+)\\)/.exec(document.querySelector('.camera').getAttribute('transform'))[1]);
+      const unavoidable = hit && Math.abs(s - 11 / 12) < 0.001 && c.height > card.top - 44 - 16 && c.top >= 44 && c.top <= 44 + 10;
       const off = card.top < 44 || card.bottom > innerHeight || card.left < 0 || card.right > innerWidth;
       const aside = ['.oe-legend-host', '.oe-minimap-host', '.oe-back-host'].every((s) => document.querySelector(s).closest('foreignObject').style.display === 'none');
-      return (!hit && !off && aside) || { hit, off, aside }; })()`;
+      return ((!hit || unavoidable) && !off && aside) || { hit, s, top: c && c.top, height: c && c.height, room: card.top - 44, off, aside }; })()`;
     // ⋯ lists the tour with its key; T starts it.
     await click(menuButton('more'));
     await shot('tour-menu-item', `${menuItem('more', 'Tour')}.textContent === 'TourT' && ${menuItem('more', 'Tour')}.getAttribute('aria-checked') === 'false'`);
