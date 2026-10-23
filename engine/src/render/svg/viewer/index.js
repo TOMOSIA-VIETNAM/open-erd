@@ -1254,7 +1254,7 @@ function updateBackPill() {
   backPill.fo.style.display = show ? '' : 'none';
   if (!show) return;
   const label = prev.table ? short(prev.table) : viewLabel(prev);
-  backPill.div.replaceChildren(el('button', { class: 'oe-back-pill', title: 'Back (Backspace or Alt+←)', text: `← ${label}`, on: { click: back } }));
+  backPill.div.replaceChildren(el('button', { class: 'oe-back-pill', title: 'Back (←)', text: `← ${label}`, on: { click: back } }));
   backPill.fo.setAttribute('width', viewport().w);
   backPill.fo.setAttribute('height', 40);
   const r = backPill.div.firstChild.getBoundingClientRect();
@@ -2068,8 +2068,8 @@ function tableTrailRow(id) {
     t === id ? el('b', { class: 'here', text: short(t), title: t }) : el('button', { class: 'oe-link', text: short(t), title: t, on: { click: () => goToNode(t) } }),
   ]);
   return el('div', { class: 'oe-trail' }, [
-    arrow('←', 'Back (Backspace or Alt+←)', back, nav.back.length > 0),
-    arrow('→', 'Forward (Shift+Backspace or Alt+→)', forward, nav.forward.length > 0),
+    arrow('←', 'Back (←)', back, nav.back.length > 0),
+    arrow('→', 'Forward (→)', forward, nav.forward.length > 0),
     el('div', { class: 'items' }, items),
   ]);
 }
@@ -2639,6 +2639,13 @@ function legendPill() {
   ]);
 }
 
+// A "?" beside the legend (or alone in its corner), so a first-time reader
+// finds the keyboard shortcuts without opening a menu.
+const help = overlay('oe-help-host');
+help.div.append(
+  el('button', { class: 'oe-help', title: 'Keyboard shortcuts (?)', 'aria-label': 'Keyboard shortcuts', on: { click: () => showShortcuts() } }, [el('span', { text: '?' })]),
+);
+
 // The reader opens or hides the legend: kept for the next views.
 function setLegend(open) {
   legendOpen = open;
@@ -2655,6 +2662,7 @@ function showLegend() {
   else legend.div.replaceChildren(legendPill());
   // The tour clears the corner for its caption.
   legend.fo.style.display = empty || tour.on ? 'none' : '';
+  help.fo.style.display = tour.on ? 'none' : '';
   layoutOverlays();
 }
 
@@ -3197,6 +3205,18 @@ function layoutOverlays() {
     legend.fo.setAttribute('y', Math.max(TOOLBAR_HEIGHT + PANEL_MARGIN, h - r.height - PANEL_MARGIN) - LEGEND_ROOM);
     legend.fo.setAttribute('height', Math.ceil(r.height) + 1 + 2 * LEGEND_ROOM);
   }
+  if (help.fo.style.display !== 'none') {
+    // Bottom-aligned just right of the legend card, or in its place.
+    const card = legend.fo.style.display !== 'none' ? legend.div.firstChild.getBoundingClientRect().width + 8 : 0;
+    help.fo.setAttribute('width', 100);
+    help.fo.setAttribute('height', 100);
+    help.div.style.padding = `${LEGEND_ROOM}px`;
+    const r = help.div.firstChild.getBoundingClientRect();
+    help.fo.setAttribute('x', PANEL_MARGIN + Math.ceil(card) - LEGEND_ROOM);
+    help.fo.setAttribute('y', h - r.height - PANEL_MARGIN - LEGEND_ROOM);
+    help.fo.setAttribute('width', Math.ceil(r.width) + 1 + 2 * LEGEND_ROOM);
+    help.fo.setAttribute('height', Math.ceil(r.height) + 1 + 2 * LEGEND_ROOM);
+  }
   if (tour.on) {
     // Centred at the bottom of the canvas left of the panel.
     const cardW = Math.min(TOUR_WIDTH, w - panelRoom() - 2 * PANEL_MARGIN);
@@ -3490,11 +3510,12 @@ const SHORTCUTS = [
   [`${MOD_KEY}A`, 'All tables'],
   [`${MOD_KEY}C`, 'Copy the selected table as SQL (with its indexes)'],
   ['L', 'Show or hide the legend'],
+  ['?', 'This list of keys'],
   ['T', 'Tour: each domain in turn (← → step, Space pauses, Esc ends)'],
   PII.total > 0 ? ['P', 'Personal data map: PII columns tinted, the rest faded, with their list'] : null,
   HEALTH.length > 0 ? ['H', 'Schema health: tables with findings marked, with their list'] : null,
-  ['Backspace or Alt+←', 'Back to the previous table or view'],
-  ['Shift+Backspace or Alt+→', 'Forward again'],
+  ['←', 'Back to the previous table or view'],
+  ['→', 'Forward again'],
   ['Esc', 'Close search, menu or panel'],
 ].filter(Boolean);
 const selectedTable = () => {
@@ -3603,19 +3624,24 @@ document.addEventListener('keydown', (e) => {
     setHealthMode(!healthOn());
     return;
   }
+  if (e.key === '?' && !e.metaKey && !e.ctrlKey && !typing()) {
+    showShortcuts();
+    return;
+  }
   if (letter === 'l' && !e.metaKey && !e.ctrlKey && !e.altKey && !typing()) {
     if (legendSections().length > 0) setLegend(!legendShown());
     return;
   }
-  // Backspace outside a text field, or Alt+←, goes back like the toolbar's Back.
-  // Shift+Backspace or Alt+→ goes forward again.
-  const backspace = e.key === 'Backspace' && !typing() && !e.metaKey && !e.ctrlKey;
-  if ((backspace && e.shiftKey) || (e.key === 'ArrowRight' && e.altKey && !typing())) {
+  // ← (or Backspace) outside a text field and a menu goes back like the
+  // toolbar's Back, → goes forward again. Alt is allowed so the browser's
+  // own Alt+← does not leave the file.
+  const free = !typing() && !e.metaKey && !e.ctrlKey && !openMenu();
+  if (free && e.key === 'ArrowRight') {
     e.preventDefault();
     if (!spotlightOpen()) forward();
     return;
   }
-  if (backspace || (e.key === 'ArrowLeft' && e.altKey && !typing())) {
+  if (free && (e.key === 'ArrowLeft' || e.key === 'Backspace')) {
     e.preventDefault();
     if (!spotlightOpen()) back();
     return;
@@ -3636,7 +3662,7 @@ window.addEventListener('resize', () => {
 
 // Later overlays paint on top: the toolbar's menus over the panel, the
 // search over everything but the tooltip.
-svg.append(legend.fo, minimap.fo, backPill.fo, reviewChip.fo, piiChip.fo, healthChip.fo, panel.fo, tourBox.fo, toolbar.fo, spotlight.fo, joinSpot.fo, toast.fo, tip.fo);
+svg.append(legend.fo, help.fo, minimap.fo, backPill.fo, reviewChip.fo, piiChip.fo, healthChip.fo, panel.fo, tourBox.fo, toolbar.fo, spotlight.fo, joinSpot.fo, toast.fo, tip.fo);
 // The view drawn visible without script is where the reader starts (all
 // tables unless the workspace configured another view). All tables open at
 // a readable size around the most central table; a diff drawing shows its
