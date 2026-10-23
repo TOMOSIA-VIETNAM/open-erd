@@ -15,6 +15,7 @@ import { emptyHistory, goBack, goForward, tableTrail, visit } from './history.js
 import { endTransforms, radialLayout, straightLink } from './radial.js';
 import { TOUR_STEP_MS, tourIndex, tourSteps } from './tour.js';
 import { piiSummary } from './pii.js';
+import { commandsFirst, matchCommands, parseJoinQuery } from './palette.js';
 import { IMPACT_DEPTH, impactRings, referencedColumns } from './impact.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -922,10 +923,12 @@ function openImpact(table, column = null) {
 
 // ---------------------------------------------------------------- toolbar
 
-// Left: Back and the breadcrumb, which gets whatever width is left. Right,
-// never shrinking: the Map | Connections switch (on those two views), the
-// search trigger, Join path, the view switcher, the ⋯ menu (folding,
-// legend, minimap, review mode) and Download.
+// Left: Back and the breadcrumb, which gets whatever width is left; with
+// several databases its database crumb is a switcher. Right, never
+// shrinking: the hop buttons (in a neighborhood), the view tabs, the
+// search and command box (⌘K), Highlight ▾ (review mode, personal data,
+// schema health) and the ⋯ menu (tour, downloads, copy, folding, minimap,
+// shortcuts).
 // Icons are inline SVG paths drawn with the text colour; every control has
 // a tooltip.
 const ICONS = {
@@ -938,6 +941,9 @@ const ICONS = {
   caret: 'M4.5 6.5L8 10L11.5 6.5',
   check: 'M3.5 8.5L6.5 11.5L12.5 4.5',
   copy: 'M5.5 5.5H12.5V13.5H5.5ZM3.5 10.5V2.5H10.5',
+  // A marker pen: the highlight modes.
+  highlight: 'M9.5 2.5L13.5 6.5L7.5 12.5H3.5V8.5ZM2.5 14.5H13.5',
+  keyboard: 'M2 4.5H14V11.5H2ZM4.5 7H4.6M7 7H7.1M9.5 7H9.6M12 7H12.1M5 9.5H11',
   // Swatches with their lines: the legend.
   legend: 'M2.5 3H4.5V5H2.5ZM2.5 7H4.5V9H2.5ZM2.5 11H4.5V13H2.5ZM7 4H13.5M7 8H13.5M7 12H13.5',
   // The three ways to see the schema: tables, the domain map, the matrix.
@@ -969,44 +975,63 @@ const hopGroup = el('div', { class: 'oe-related', title: RELATED.title }, [el('s
 // table, the domain cards (Map) and the domain matrix (Connections). A
 // schema too large for the view of all tables has no first one.
 // Narrow windows show the icons only (their tooltips name them).
-const viewTabs = [
-  [ALL_VIEW, 'table', 'All tables', `Every table of every domain (${MOD_KEY}A)`],
-  [OVERVIEW, 'map', 'Map', 'Domains as cards: what each holds and what it is related to'],
-  [CONNECTIONS, 'matrix', 'Connections', 'Domain × domain matrix: how many relations go from each domain to each other'],
-]
-  .filter(([name]) => views.has(name))
-  .map(([name, icon, text, title]) =>
-    el('button', { class: 'oe-btn oe-tab-view', title: `${text}: ${title}`, 'aria-label': text, 'data-view': name, on: { click: () => navigate(name) } }, [iconSvg(icon, 14), el('span', { class: 'label', text })]),
-  );
+const VIEW_TABS = [
+  [ALL_VIEW, 'table', 'All tables', `Every table of every domain (${MOD_KEY}A)`, `${MOD_KEY}A`],
+  [OVERVIEW, 'map', 'Map', 'Domains as cards: what each holds and what it is related to', null],
+  [CONNECTIONS, 'matrix', 'Connections', 'Domain × domain matrix: how many relations go from each domain to each other', null],
+].filter(([name]) => views.has(name));
+const viewTabs = VIEW_TABS.map(([name, icon, text, title]) =>
+  el('button', { class: 'oe-btn oe-tab-view', title: `${text}: ${title}`, 'aria-label': text, 'data-view': name, on: { click: () => navigate(name) } }, [iconSvg(icon, 14), el('span', { class: 'label', text })]),
+);
 const viewGroup = el('div', { class: 'oe-seg oe-view-tabs' }, viewTabs);
 
+// The search box opens the command palette (see the palette section).
 const FIND_KEY = `${MOD_KEY}F`;
-const searchButton = el('button', { class: 'oe-btn oe-tool oe-search-trigger', title: `Search tables and columns (${FIND_KEY} or /)`, 'aria-label': 'Search tables and columns', on: { click: () => openSpotlight() } }, [
-  iconSvg('search'),
-  el('span', { class: 'label', text: 'Search' }),
-  el('kbd', { text: FIND_KEY }),
-]);
-const joinButton = toolButton('join', 'Join path', `How to join two tables: the condition of each hop (${MOD_KEY}J)`, () => (join.open ? clearSelection() : openJoinSpot(selectedTable())));
-joinButton.append(el('kbd', { text: `${MOD_KEY}J` }));
+const PALETTE_KEY = `${MOD_KEY}K`;
+const searchButton = el(
+  'button',
+  { class: 'oe-btn oe-tool oe-search-trigger', title: `Search tables and columns, or run a command (${PALETTE_KEY})`, 'aria-label': 'Search tables and columns, or run a command', on: { click: () => openSpotlight() } },
+  [iconSvg('search'), el('span', { class: 'label', text: 'Search or jump…' }), el('kbd', { text: PALETTE_KEY })],
+);
 // The tour's steps (see the tour section): one per domain, in the order of
 // the overview's cards, which the connections matrix lists as its rows. A
-// single domain makes no tour: its button is not shown.
+// single domain makes no tour: it is not offered.
 const TOUR_STEPS = tourSteps(
   [...(views.get(CONNECTIONS)?.querySelectorAll('.mx-rows .mx-head') ?? [])].map((g) => g.getAttribute('data-domain')),
   data.nodes,
   data.domainNotes,
 );
-const tourButton = toolButton('play', 'Tour', 'Tour: each domain in turn, zoomed on its central table (T)', () => (tour.on ? endTour(true) : startTour()), ' oe-tour-btn');
-if (TOUR_STEPS.length < 2) tourButton.style.display = 'none';
+const toggleTour = () => (tour.on ? endTour(true) : startTour());
 
-// Dropdown menus of the toolbar; one open at a time.
+// Dropdown menus of the toolbar; one open at a time. ↑ ↓ move between the
+// items, Esc closes the menu and gives the focus back to its button; a menu
+// opened from the keyboard puts the focus on its first item.
 const menus = [];
+const menuItems = (menu) => [...menu.querySelectorAll('.oe-item:not(:disabled), .oe-check input')];
 function dropdown(button, cls) {
   const menu = el('div', { class: `oe-menu ${cls}`, role: 'menu', style: 'display:none' });
   const wrap = el('div', { class: 'oe-drop' }, [button, menu]);
   const entry = { button, menu, wrap, onOpen: null };
   menus.push(entry);
-  button.addEventListener('click', () => setMenu(entry, menu.style.display === 'none'));
+  button.setAttribute('aria-haspopup', 'menu');
+  button.addEventListener('click', (e) => {
+    const open = menu.style.display === 'none';
+    setMenu(entry, open);
+    if (open && e.detail === 0) menuItems(menu)[0]?.focus();
+  });
+  wrap.addEventListener('keydown', (e) => {
+    if (menu.style.display === 'none') return;
+    const items = menuItems(menu);
+    const at = items.indexOf(document.activeElement);
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      items[(at + (e.key === 'ArrowDown' ? 1 : items.length - 1 + (at < 0 ? 1 : 0))) % items.length]?.focus();
+    } else if (e.key === 'Escape') {
+      closeMenus();
+      button.focus();
+    } else return;
+    e.stopPropagation();
+  });
   return entry;
 }
 const openMenu = () => menus.find((m) => m.menu.style.display !== 'none') ?? null;
@@ -1016,42 +1041,109 @@ function setMenu(entry, open) {
     if (on && m.onOpen) m.onOpen();
     m.menu.style.display = on ? '' : 'none';
     m.button.classList.toggle('on', on);
+    m.button.setAttribute('aria-expanded', String(on));
   }
-  if (!(entry === downloadMenu && open)) downloadStatus.textContent = '';
+  if (!(entry === moreMenu && open)) downloadStatus.textContent = '';
   layoutOverlays();
 }
 const closeMenus = () => setMenu(null, false);
 // A menu row: a check mark column (shown for toggles that are on), label,
-// optional second line.
-function menuItem(label, title, onClick, { checked = null, detail = null, disabled = false } = {}) {
-  return el('button', { class: `oe-item${checked ? ' checked' : ''}`, role: checked === null ? 'menuitem' : 'menuitemcheckbox', title, ...(disabled ? { disabled: '' } : {}), on: { click: onClick } }, [
+// optional second line, optional shortcut at the right.
+function menuItem(label, title, onClick, { checked = null, detail = null, disabled = false, keys = null } = {}) {
+  return el('button', { class: `oe-item${checked ? ' checked' : ''}`, role: checked === null ? 'menuitem' : 'menuitemcheckbox', title, ...(checked === null ? {} : { 'aria-checked': String(checked) }), ...(disabled ? { disabled: '' } : {}), on: { click: onClick } }, [
     el('span', { class: 'mark' }, [checked ? iconSvg('check', 14) : null]),
     el('span', { class: 'text' }, [el('span', { text: label }), detail ? el('span', { class: 'detail', text: detail }) : null]),
+    keys ? el('kbd', { text: keys }) : null,
   ]);
 }
-
-// Databases: each one's frame, in the view of all tables when it is on
-// screen, else on the overview. The views themselves are the toolbar tabs.
-const viewsMenu = dropdown(
-  el('button', { class: 'oe-btn oe-tool', title: 'Show one database', 'aria-label': 'Show one database' }, [iconSvg('database'), el('span', { class: 'label', text: 'Databases' }), iconSvg('caret', 12)]),
-  'oe-views-menu',
-);
-const DATABASES = [...views.get(OVERVIEW).querySelectorAll('.database')].map((g) => g.getAttribute('data-database'));
+// A small heading inside a menu.
+const menuHeading = (text) => el('div', { class: 'oe-menu-sub', text });
 // replaceChildren would print a null as text: optional entries are filtered.
 const fillMenu = (menu, items) => menu.replaceChildren(...items.filter(Boolean));
-viewsMenu.onOpen = () =>
-  fillMenu(
-    viewsMenu.menu,
-    DATABASES.map((db) => menuItem(dbDisplayName(db), `Show the ${dbDisplayName(db)} database (${data.databases[db].label})`, () => (closeMenus(), showDatabase(db)), { detail: data.databases[db].label })),
-  );
 
-// The ⋯ menu: view and display settings, rebuilt on every open so labels
-// and checks reflect the current state.
-const moreMenu = dropdown(toolButton('more', '', 'More: collapse or expand domains, legend, minimap, review mode, personal data, schema health'), 'oe-more-menu');
+// Databases: with several, the breadcrumb's database crumb ("All databases"
+// on the views showing them all) opens a list of them; each shows its frame,
+// in the view of all tables when it is on screen, else on the overview.
+// The crumb's menu hangs from the toolbar itself (the breadcrumb clips what
+// overflows it), left-aligned under the crumb.
+const DATABASES = [...views.get(OVERVIEW).querySelectorAll('.database')].map((g) => g.getAttribute('data-database'));
+const dbLabel = el('span', { class: 'label' });
+const dbMenu = dropdown(el('button', { class: 'oe-link oe-db-crumb', title: 'Show one database', 'aria-label': 'Show one database' }, [dbLabel, iconSvg('caret', 12)]), 'oe-db-menu');
+let crumbDb = null;
+dbMenu.onOpen = () => {
+  dbMenu.menu.style.left = `${dbMenu.button.offsetLeft}px`;
+  const whole = state.view === ALL_VIEW ? ALL_VIEW : OVERVIEW;
+  fillMenu(dbMenu.menu, [
+    menuItem('All databases', 'Every database at once', () => (closeMenus(), navigate(whole), zoomToRect(viewBounds(whole), MAX_FIT_SCALE)), { checked: crumbDb === null }),
+    el('div', { class: 'oe-menu-sep' }),
+    ...DATABASES.map((db) =>
+      menuItem(dbDisplayName(db), `Show the ${dbDisplayName(db)} database (${data.databases[db].label})`, () => (closeMenus(), showDatabase(db)), { checked: crumbDb === db, detail: data.databases[db].label }),
+    ),
+  ]);
+};
+
+// Highlight ▾: the modes that colour or mark the drawing in every view,
+// each a toggle with its count. Offered only when one of them has something
+// to show; the button reads as on while a mode is.
+const highlightMenu = dropdown(
+  el('button', { class: 'oe-btn oe-tool oe-highlight-btn', title: 'Highlight: review status, personal data, schema health', 'aria-label': 'Highlight' }, [
+    iconSvg('highlight'),
+    el('span', { class: 'label', text: 'Highlight' }),
+    el('span', { class: 'oe-dot' }),
+    iconSvg('caret', 12),
+  ]),
+  'oe-highlight-menu',
+);
 // Overview cards and the matrix stand for many relations and carry no review colour.
 const reviewable = () => state.view !== OVERVIEW && state.view !== CONNECTIONS;
 const REVIEW_TOTAL = data.review.pending + data.review.stale;
 const reviewCounts = () => `${data.review.pending} to confirm · ${data.review.stale} changed in code`;
+const REVIEW_TIP = 'Color lines by review status: amber = not confirmed yet, red = code changed since review';
+if (REVIEW_TOTAL === 0 && PII.total === 0 && HEALTH.length === 0) highlightMenu.wrap.style.display = 'none';
+// The modes, in the order of their chips under the toolbar; each one only
+// when it has something to show (nothing to review, no personal data, no
+// findings: the entry would switch on a mode that changes nothing).
+function highlightModes() {
+  return [
+    REVIEW_TOTAL > 0
+      ? { label: 'Review mode', detail: reviewCounts(), tip: REVIEW_TIP, keys: null, keywords: ['review', 'confirm', 'stale'], on: reviewing(), toggle: () => setReviewMode(!reviewing()), off: reviewable() ? null : 'Lines only: not on the map or the matrix' }
+      : null,
+    PII.total > 0 ? { label: 'Personal data (PII)', detail: PII_COUNTS, tip: PII_TIP, keys: 'P', keywords: ['pii', 'personal', 'privacy', 'gdpr'], on: piiOn(), toggle: () => setPiiMode(!piiOn()), off: null } : null,
+    HEALTH.length > 0 ? { label: 'Schema health', detail: HEALTH_COUNTS, tip: HEALTH_TIP, keys: 'H', keywords: ['health', 'findings', 'lint', 'index'], on: healthOn(), toggle: () => setHealthMode(!healthOn()), off: null } : null,
+  ].filter(Boolean);
+}
+highlightMenu.onOpen = () =>
+  fillMenu(
+    highlightMenu.menu,
+    highlightModes().map((m) =>
+      menuItem(m.label, m.keys ? `${m.tip} (${m.keys})` : m.tip, () => {
+        const focused = document.activeElement?.closest?.('.oe-item') !== null;
+        const at = menuItems(highlightMenu.menu).indexOf(document.activeElement);
+        m.toggle();
+        highlightMenu.onOpen();
+        if (focused && at >= 0) menuItems(highlightMenu.menu)[at]?.focus();
+        layoutOverlays();
+      }, { checked: m.on, detail: m.off && !m.on ? m.off : m.detail, disabled: Boolean(m.off) && !m.on, keys: m.keys }),
+    ),
+  );
+function updateHighlightButton() {
+  const on = highlightModes().filter((m) => m.on).length;
+  highlightMenu.button.classList.toggle('active', on > 0);
+  highlightMenu.button.title = on > 0 ? `Highlight: ${plural(on, 'mode')} on` : 'Highlight: review status, personal data, schema health';
+}
+
+// The ⋯ menu: occasional actions and display settings, rebuilt on every
+// open so labels and checks reflect the current state. Downloads keep the
+// menu open: its last line says what was saved.
+const downloadStatus = el('div', { class: 'oe-status' });
+const keepHighlight = el('input', { type: 'checkbox' });
+const keepHighlightRow = el('label', { class: 'oe-check', title: 'Keep the highlighted tables and lines in the file' }, [keepHighlight, el('span', { text: 'Keep highlight and selection' })]);
+const DOWNLOADS = [
+  ['svg', 'SVG', 'Vector drawing of this view only, without the interactive viewer'],
+  ['png', 'PNG', 'Image at twice the screen resolution, transparent outside the drawing'],
+  ['jpg', 'JPEG', 'Smaller image on a white background'],
+];
+const moreMenu = dropdown(toolButton('more', '', 'More: tour, download, copy schema, collapse or expand domains, minimap, keyboard shortcuts'), 'oe-more-menu');
 moreMenu.onOpen = () => {
   const foldable = clusterGroups(currentView()).length > 0;
   const fold = (on) => () => {
@@ -1063,42 +1155,31 @@ moreMenu.onOpen = () => {
     moreMenu.onOpen();
     layoutOverlays();
   };
+  const selected = selectedTable();
   fillMenu(moreMenu.menu, [
+    TOUR_STEPS.length >= 2 ? menuItem('Tour', 'Each domain in turn, zoomed on its central table (T)', () => (closeMenus(), toggleTour()), { checked: tour.on, keys: 'T' }) : null,
+    TOUR_STEPS.length >= 2 ? el('div', { class: 'oe-menu-sep' }) : null,
+    menuHeading('Download this view'),
+    ...DOWNLOADS.map(([format, name, title]) => menuItem(`As ${name}`, title, () => download(format))),
+    keepHighlightRow,
+    downloadStatus,
+    el('div', { class: 'oe-menu-sep' }),
+    menuItem(selected ? `Copy ${short(selected)} as ${copyWhat(selected)}` : 'Copy schema', selected ? 'The selected table with its indexes' : 'Select a table first', () => (closeMenus(), copySelectedSchema()), {
+      disabled: !selected,
+      detail: selected ? null : 'Select a table first',
+      keys: `${MOD_KEY}C`,
+    }),
     menuItem('Collapse all', foldable ? 'Fold every domain in this view; a click on a domain header folds just that one' : 'Nothing to fold in this view', fold(true), { disabled: !foldable }),
     menuItem('Expand all', foldable ? 'Unfold every domain in this view' : 'Nothing to fold in this view', fold(false), { disabled: !foldable }),
-    el('div', { class: 'oe-menu-sep' }),
     menuItem('Minimap', 'Small map of the whole view, shown while it does not fit on screen', toggle(() => setMinimap(!map.on)), { checked: map.on }),
+    el('div', { class: 'oe-menu-sep' }),
     menuItem('Keyboard shortcuts', 'Keys that work in this file', () => (closeMenus(), showShortcuts())),
-    // Nothing to review: the entry would switch on a mode that changes nothing.
-    REVIEW_TOTAL > 0 && reviewable()
-      ? menuItem(`Review mode · ${reviewCounts()}`, 'Color lines by review status: amber = not confirmed yet, red = code changed since review', toggle(() => setReviewMode(!reviewing())), {
-          checked: reviewing(),
-          detail: 'Color lines by review status: amber = not confirmed yet, red = code changed since review',
-        })
-      : null,
-    // A model without personal data (or a profile that dropped it) has nothing to show.
-    PII.total > 0 ? menuItem(`Personal data (PII) · ${PII_COUNTS}`, `${PII_TIP} (P)`, toggle(() => setPiiMode(!piiOn())), { checked: piiOn(), detail: PII_TIP }) : null,
-    // No findings, no entry: the list would be empty.
-    HEALTH.length > 0 ? menuItem(`Schema health · ${HEALTH_COUNTS}`, `${HEALTH_TIP} (H)`, toggle(() => setHealthMode(!healthOn())), { checked: healthOn(), detail: HEALTH_TIP }) : null,
   ]);
 };
 
-const downloadStatus = el('div', { class: 'oe-status' });
-const keepHighlight = el('input', { type: 'checkbox' });
-const downloadMenu = dropdown(toolButton('download', '', 'Download the view on screen as SVG, PNG or JPEG'), 'oe-download-menu');
-downloadMenu.menu.append(
-  ...[
-    ['This view as SVG', 'svg', 'Vector drawing of this view only, without the interactive viewer'],
-    ['This view as PNG', 'png', 'Image at twice the screen resolution, transparent outside the drawing'],
-    ['This view as JPEG', 'jpg', 'Smaller image on a white background'],
-  ].map(([text, format, title]) => menuItem(text, title, () => download(format))),
-  el('label', { class: 'oe-check', title: 'Keep the highlighted tables and lines in the file' }, [keepHighlight, el('span', { text: 'Keep highlight and selection' })]),
-  downloadStatus,
-);
-
 toolbar.div.append(
   el('div', { class: 'oe-left' }, [backButton, crumbs]),
-  el('div', { class: 'oe-right' }, [hopGroup, viewGroup, searchButton, joinButton, tourButton, viewsMenu.wrap, moreMenu.wrap, downloadMenu.wrap]),
+  el('div', { class: 'oe-right' }, [hopGroup, viewGroup, searchButton, highlightMenu.wrap, moreMenu.wrap]),
 );
 
 function crumb(text, onClick) {
@@ -1116,10 +1197,15 @@ function renderToolbar() {
         : null;
   if (state.view === ALL_VIEW) parts.push(crumb(`All tables · ${plural(tableCount(null), 'table')}`));
   if (state.view === CONNECTIONS) parts.push(crumb('Connections'));
+  const db = cluster ? cluster.split('/')[0] : null;
+  // There is no database-level view: the database crumb shows a frame on the
+  // overview. With several databases it lists them all, on every view.
+  if (DATABASES.length > 1) {
+    crumbDb = db;
+    dbLabel.textContent = db ? dbDisplayName(db) : 'All databases';
+    parts.splice(1, 0, dbMenu.wrap);
+  } else if (cluster) parts.push(crumb(dbDisplayName(db), () => showDatabase(db)));
   if (cluster) {
-    const db = cluster.split('/')[0];
-    // There is no database-level view; the database crumb shows its frame on the overview.
-    parts.push(crumb(dbDisplayName(db), () => showDatabase(db)));
     parts.push(
       state.view === NEIGHBORHOOD || state.view === IMPACT_VIEW
         ? crumb(domainName(cluster), () => navigate(domainView(cluster), { focus: state.view === NEIGHBORHOOD ? state.center : state.impact.table }))
@@ -1135,6 +1221,7 @@ function renderToolbar() {
   updateBackPill();
   hopGroup.style.display = state.view === NEIGHBORHOOD ? '' : 'none';
   for (const b of viewTabs) b.classList.toggle('on', b.getAttribute('data-view') === state.view);
+  updateHighlightButton();
   hopButtons.forEach((b, i) => b.classList.toggle('on', state.hops === RELATED.options[i].hops));
   layoutOverlays();
 }
@@ -1278,6 +1365,14 @@ async function rasterize({ text, w, h }, type) {
   }
 }
 
+// What a download did: on the last line of the ⋯ menu while it is open,
+// else (a download run from the palette) as a toast.
+function downloadReport(text) {
+  downloadStatus.textContent = text;
+  if (openMenu() === moreMenu) layoutOverlays();
+  else showToast(text);
+}
+
 async function download(format) {
   const join =
     state.view === JOIN_VIEW
@@ -1289,22 +1384,21 @@ async function download(format) {
   const svgFile = viewAsSvg(keepHighlight.checked);
   if (format === 'svg') {
     saveBlob(new Blob([svgFile.text], { type: 'image/svg+xml' }), name);
-    downloadStatus.textContent = `Saved ${name}`;
-    return layoutOverlays();
+    return downloadReport(`Saved ${name}`);
   }
-  downloadStatus.textContent = `Drawing ${name}…`;
-  layoutOverlays();
+  downloadReport(`Drawing ${name}…`);
   try {
     const { blob, size } = await rasterize(svgFile, format === 'png' ? 'image/png' : 'image/jpeg');
     saveBlob(blob, name);
     const px = `${size.width} × ${size.height} px`;
-    downloadStatus.textContent = size.downscaled
-      ? `Saved ${name} (${px}), downscaled to ${Math.round((size.scale / PIXEL_RATIO) * 100)}% of the usual size to stay within this browser's image size limit. Download the SVG for full detail.`
-      : `Saved ${name} (${px})`;
+    downloadReport(
+      size.downscaled
+        ? `Saved ${name} (${px}), downscaled to ${Math.round((size.scale / PIXEL_RATIO) * 100)}% of the usual size to stay within this browser's image size limit. Download the SVG for full detail.`
+        : `Saved ${name} (${px})`,
+    );
   } catch (e) {
-    downloadStatus.textContent = `Could not save ${name}: ${e.message}`;
+    downloadReport(`Could not save ${name}: ${e.message}`);
   }
-  layoutOverlays();
 }
 
 // ---------------------------------------------------------------- search
@@ -1328,29 +1422,41 @@ function search(query) {
   return hits.sort((a, b) => a.rank - b.rank || byId(a.id, b.id) || byId(a.column ?? '', b.column ?? '')).slice(0, SEARCH_LIMIT);
 }
 
-// Spotlight: Cmd+F / Ctrl+F (or "/") opens a search box in the middle of
-// the screen over a dimmed drawing, with tables and columns listed as you
-// type. Arrow keys move through the list, Enter jumps, Escape closes. The
-// browser's own find bar would search the toolbar's text only, so the
-// shortcut is taken over.
+// The palette: ⌘K / Ctrl+K (or the toolbar's search box) opens a box in
+// the middle of the screen over a dimmed drawing. Empty, it lists the views
+// and databases to go to and the commands of this file, each with its
+// shortcut; typed, the tables and columns matching, then the commands
+// matching (commands first when only a command starts with the text).
+// "a > b" (or a → b) offers the join path between the best table matches.
+// ⌘F / Ctrl+F (or "/") opens the same box for tables and columns only:
+// the browser's own find bar would search the toolbar's text only, so the
+// shortcut is taken over. Arrow keys move through the list, Enter opens or
+// runs, Escape closes and gives the focus back.
 const spotlight = overlay('oe-spotlight-host');
 spotlight.fo.style.display = 'none';
-const spotlightInput = el('input', { type: 'search', class: 'oe-spotlight-input', placeholder: 'Search tables and columns', 'aria-label': 'Search tables and columns', autocomplete: 'off', spellcheck: 'false' });
+const PALETTE_PLACEHOLDER = 'Search tables and columns, or run a command';
+const SEARCH_PLACEHOLDER = 'Search tables and columns';
+const spotlightInput = el('input', { type: 'search', class: 'oe-spotlight-input', placeholder: PALETTE_PLACEHOLDER, 'aria-label': PALETTE_PLACEHOLDER, autocomplete: 'off', spellcheck: 'false' });
 const spotlightList = el('div', { class: 'oe-spotlight-list', role: 'listbox' });
-const spotlightHint = el('div', { class: 'oe-spotlight-hint', text: '↑ ↓ to move · Enter to open · Esc to close' });
+const spotlightHint = el('div', { class: 'oe-spotlight-hint' });
 spotlight.div.append(
-  el('div', { class: 'oe-spotlight-backdrop', on: { pointerdown: () => closeSpotlight() } }),
+  el('div', { class: 'oe-spotlight-backdrop', on: { pointerdown: () => closeSpotlight(true) } }),
   el('div', { class: 'oe-spotlight', role: 'dialog', 'aria-label': 'Search' }, [el('div', { class: 'oe-spotlight-field' }, [iconSvg('search', 18), spotlightInput]), spotlightList, spotlightHint]),
 );
-let resultHits = [];
-let resultItems = [];
-let activeResult = 0;
+// `rows`: what Enter or a click on each list row does, in list order.
+const spot = { commands: true, rows: [], items: [], active: 0, back: null };
 const spotlightOpen = () => spotlight.fo.style.display !== 'none';
 
-function openSpotlight() {
+/** Opens the palette; `search` keeps it to tables and columns (⌘F, /). */
+function openSpotlight({ search = false } = {}) {
   closeMenus();
   closeJoinSpot();
   hideTip();
+  if (!spotlightOpen()) spot.back = document.activeElement;
+  spot.commands = !search;
+  spotlightInput.placeholder = search ? SEARCH_PLACEHOLDER : PALETTE_PLACEHOLDER;
+  spotlightInput.setAttribute('aria-label', spotlightInput.placeholder);
+  spotlightHint.textContent = search ? '↑ ↓ to move · Enter to open · Esc to close' : '↑ ↓ to move · Enter to open or run · Esc to close · a > b: join path';
   spotlight.fo.style.display = '';
   layoutOverlays();
   spotlightInput.focus();
@@ -1358,54 +1464,139 @@ function openSpotlight() {
   renderResults();
 }
 
-function closeSpotlight() {
+/** Closes the palette; `refocus` gives the focus back to where it was (Esc, a click outside). */
+function closeSpotlight(refocus = false) {
   if (!spotlightOpen()) return;
   spotlight.fo.style.display = 'none';
   spotlightInput.blur();
+  if (refocus && spot.back?.isConnected && spot.back !== document.body) spot.back.focus();
 }
 
-function pick(hit) {
+function pick(i) {
+  const run = spot.rows[i];
+  if (!run) return;
   closeSpotlight();
-  goToNode(hit.id, hit.column);
+  run();
 }
 
 function setActive(i) {
-  resultItems[activeResult]?.classList.remove('active');
-  activeResult = i;
-  resultItems[activeResult]?.classList.add('active');
-  resultItems[activeResult]?.scrollIntoView({ block: 'nearest' });
+  spot.items[spot.active]?.classList.remove('active');
+  spot.active = i;
+  spot.items[spot.active]?.classList.add('active');
+  spot.items[spot.active]?.scrollIntoView({ block: 'nearest' });
 }
 
-// One row per hit: a table or column icon, the name, then where it is.
-function renderResults() {
-  const hits = search(spotlightInput.value);
-  activeResult = 0;
-  resultHits = hits;
-  resultItems = hits.map((hit, i) => {
-    const n = data.nodes[hit.id];
-    const where = hit.column ? `column of ${short(hit.id)} · ${domainName(n.cluster)}` : `${dbDisplayName(dbOf(hit.id))} › ${domainName(n.cluster)}`;
-    return el('button', { class: `oe-result${i === 0 ? ' active' : ''}`, role: 'option', title: hit.column ? `${hit.id}.${hit.column}` : hit.id, on: { click: () => pick(hit), pointermove: () => activeResult !== i && setActive(i) } }, [
-      el('span', { class: `kind ${hit.column ? 'is-column' : 'is-table'}`, text: hit.column ? 'col' : 'table' }),
-      el('span', { class: 'name', text: hit.column ? `${short(hit.id)}.${hit.column}` : short(hit.id) }),
-      el('span', { class: 'where', text: where }),
-    ]);
+// The commands of the palette, as they stand now (a mode's state, the
+// selection, the view): { group, icon, label, detail?, keys?, keywords?, run }.
+function paletteCommands() {
+  const selected = selectedTable();
+  return [
+    ...VIEW_TABS.map(([name, icon, text, , keys]) => ({ group: 'Go to', icon, label: text, keys, keywords: ['view', name], run: () => navigate(name) })),
+    ...(DATABASES.length > 1
+      ? DATABASES.map((db) => ({ group: 'Go to', icon: 'database', label: `${dbDisplayName(db)} database`, detail: data.databases[db].label, run: () => showDatabase(db) }))
+      : []),
+    { group: 'Actions', icon: 'join', label: 'Join path…', detail: 'How to join two tables, or type a > b', keys: `${MOD_KEY}J`, keywords: ['route', 'between'], run: () => openJoinSpot(selected) },
+    TOUR_STEPS.length >= 2 ? { group: 'Actions', icon: 'play', label: tour.on ? 'Stop the tour' : 'Tour', detail: 'Each domain in turn', keys: 'T', keywords: ['domains', 'present'], run: toggleTour } : null,
+    // A mode with nothing to change in this view (review on the map) is left out.
+    ...highlightModes()
+      .filter((m) => m.on || !m.off)
+      .map((m) => ({ group: 'Actions', icon: 'highlight', label: m.label, detail: `${m.on ? 'On' : 'Off'} · ${m.detail}`, keys: m.keys, keywords: ['highlight', ...m.keywords], run: m.toggle })),
+    ...DOWNLOADS.map(([format, name]) => ({ group: 'Actions', icon: 'download', label: `Download as ${name}`, detail: 'This view', keywords: ['export', 'save', 'image'], run: () => download(format) })),
+    selected ? { group: 'Actions', icon: 'copy', label: `Copy ${short(selected)} as ${copyWhat(selected)}`, detail: 'With its indexes', keys: `${MOD_KEY}C`, keywords: ['copy schema', 'sql', 'ddl'], run: copySelectedSchema } : null,
+    { group: 'Actions', icon: 'keyboard', label: 'Keyboard shortcuts', keywords: ['keys', 'help'], run: showShortcuts },
+  ].filter(Boolean);
+}
+
+// "a > b": the join path between the best table match of each side, and
+// the join path box for picking them by hand (From taken when it matched).
+function joinRows({ from, to }) {
+  const [a] = from ? tableHits(from) : [];
+  const [b] = to ? tableHits(to) : [];
+  const missing = [from && !a ? from : null, to && !b ? to : null].filter(Boolean);
+  const rows = [];
+  if (a && b && a !== b) {
+    rows.push({ icon: 'join', label: `Join path ${short(a)} → ${short(b)}`, detail: `${domainName(data.nodes[a].cluster)} → ${domainName(data.nodes[b].cluster)}`, run: () => openPathThrough([a, b]) });
+  }
+  rows.push({
+    icon: 'join',
+    label: 'Join path…',
+    detail: missing.length > 0 ? `No table matches ${missing.map((m) => `“${m}”`).join(' or ')}` : 'Pick both tables',
+    keys: `${MOD_KEY}J`,
+    run: () => {
+      openJoinSpot(a ?? selectedTable());
+      if (a && to && !b) {
+        joinInputs.to.value = to;
+        renderJoinHits();
+      }
+    },
   });
-  const empty = spotlightInput.value.trim() ? 'No table or column matches' : 'Type a table or column name';
-  spotlightList.replaceChildren(...(resultItems.length > 0 ? resultItems : [el('div', { class: 'oe-spotlight-empty', text: empty })]));
+  return rows;
+}
+
+// One row per table or column hit: its kind, the name, then where it is.
+function hitRow(hit) {
+  const n = data.nodes[hit.id];
+  const where = hit.column ? `column of ${short(hit.id)} · ${domainName(n.cluster)}` : `${dbDisplayName(dbOf(hit.id))} › ${domainName(n.cluster)}`;
+  return [
+    el('span', { class: `kind ${hit.column ? 'is-column' : 'is-table'}`, text: hit.column ? 'col' : 'table' }),
+    el('span', { class: 'name', text: hit.column ? `${short(hit.id)}.${hit.column}` : short(hit.id) }),
+    el('span', { class: 'where', text: where }),
+  ];
+}
+// One row per command: its icon, the label, a detail, the shortcut.
+const commandRow = (c) => [
+  el('span', { class: 'kind is-command' }, [iconSvg(c.icon, 14)]),
+  el('span', { class: 'name', text: c.label }),
+  el('span', { class: 'where', text: c.detail ?? '' }),
+  c.keys ? el('kbd', { text: c.keys }) : null,
+];
+
+function renderResults() {
+  const text = spotlightInput.value;
+  // Sections in list order: [heading, [[parts, run, title], ...]].
+  const sections = [];
+  const join = spot.commands ? parseJoinQuery(text) : null;
+  if (join) sections.push(['Join path', joinRows(join).map((c) => [commandRow(c), c.run, c.label])]);
+  else {
+    const hits = search(text);
+    const hitSection = ['Tables and columns', hits.map((hit) => [hitRow(hit), () => goToNode(hit.id, hit.column), hit.column ? `${hit.id}.${hit.column}` : hit.id])];
+    const matches = spot.commands ? matchCommands(text, paletteCommands()) : [];
+    const groups = [...new Set(matches.map((m) => m.command.group))].map((g) => [g, matches.filter((m) => m.command.group === g).map(({ command: c }) => [commandRow(c), c.run, c.label])]);
+    const names = hits.map((h) => h.column ?? short(h.id));
+    if (commandsFirst(text, matches, names)) sections.push(...groups, hitSection);
+    else sections.push(hitSection, ...groups);
+  }
+  spot.rows = [];
+  spot.items = [];
+  spot.active = 0;
+  const children = [];
+  for (const [heading, rows] of sections.filter(([, rows]) => rows.length > 0)) {
+    // A search for tables only needs no heading over its one list.
+    if (spot.commands) children.push(el('div', { class: 'oe-spotlight-group', text: heading }));
+    for (const [parts, run, title] of rows) {
+      const i = spot.items.length;
+      const item = el('button', { class: `oe-result${i === 0 ? ' active' : ''}`, role: 'option', title, on: { click: () => pick(i), pointermove: () => spot.active !== i && setActive(i) } }, parts.filter(Boolean));
+      spot.rows.push(run);
+      spot.items.push(item);
+      children.push(item);
+    }
+  }
+  const empty = text.trim() ? (spot.commands ? 'No table, column or command matches' : 'No table or column matches') : 'Type a table or column name';
+  spotlightList.replaceChildren(...(spot.items.length > 0 ? children : [el('div', { class: 'oe-spotlight-empty', text: empty })]));
 }
 
 spotlightInput.addEventListener('input', renderResults);
 spotlightInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && resultHits[activeResult]) pick(resultHits[activeResult]);
-  else if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && resultItems.length > 0) {
+  if (e.key === 'Enter') pick(spot.active);
+  else if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && spot.items.length > 0) {
     e.preventDefault();
-    setActive((activeResult + (e.key === 'ArrowDown' ? 1 : resultItems.length - 1)) % resultItems.length);
-  } else if (e.key === 'Escape') closeSpotlight();
+    setActive((spot.active + (e.key === 'ArrowDown' ? 1 : spot.items.length - 1)) % spot.items.length);
+  } else if (e.key === 'Escape') closeSpotlight(true);
   else return;
   e.stopPropagation();
 });
 
-// Join spotlight: Cmd+J / Ctrl+J (or the toolbar's Join path) opens two
+// Join spotlight: Cmd+J / Ctrl+J (or Join path… in the palette) opens two
 // fields, From and To, over the same kind of result list (tables only).
 // Enter or Tab takes the highlighted table and moves to To; Enter on To
 // finds the paths and shows them in the join panel. From starts with the
@@ -1636,7 +1827,6 @@ function hidePanel() {
   const was = panel.fo.style.display !== 'none';
   panel.fo.style.display = 'none';
   join.open = false;
-  joinButton.classList.remove('on');
   // The minimap and the Back pill keep clear of the panel: with it gone
   // they move back to the right edge now, not at the next pan.
   if (was) {
@@ -2052,7 +2242,6 @@ function openJoin(from = null) {
 function showJoin() {
   showPanel(joinPanel());
   join.open = true;
-  joinButton.classList.add('on');
   panel.div.querySelector('.oe-join-field input')?.focus();
 }
 
@@ -2483,13 +2672,14 @@ reviewChip.div.append(
 function setReviewMode(on) {
   svg.classList.toggle('review-mode', on);
   reviewChip.fo.style.display = on ? '' : 'none';
+  updateHighlightButton();
   showLegend();
   layoutOverlays();
 }
 
 // ---------------------------------------------------------------- PII mode
 
-// The personal data map (⋯ › Personal data, or P; offered only when some
+// The personal data map (Highlight › Personal data, or P; offered only when some
 // column is marked `pii`, see PII): tables holding such columns stay
 // readable with those rows tinted, everything else fades, in every view
 // until turned off. A selection takes over the fading while it lasts. A
@@ -2557,6 +2747,7 @@ function setPiiMode(on) {
     showPiiSummary();
     if (whole) zoomToRect(viewBounds(state.view), MAX_FIT_SCALE);
   } else if (piiSummaryShown()) hidePanel();
+  updateHighlightButton();
   showLegend();
   layoutOverlays();
   placeBackPill();
@@ -2564,7 +2755,7 @@ function setPiiMode(on) {
 
 // ---------------------------------------------------------------- health mode
 
-// Schema health (⋯ › Schema health, or H; offered only when the render has
+// Schema health (Highlight › Schema health, or H; offered only when the render has
 // findings, see model/health.js): each table with a finding gets a small
 // amber triangle and its columns in a finding a tint, in every view until
 // turned off. A chip under the toolbar says the mode is on: List reopens
@@ -2652,6 +2843,7 @@ function setHealthMode(on) {
     showHealthList();
     if (whole) zoomToRect(viewBounds(state.view), MAX_FIT_SCALE);
   } else if (healthListShown()) hidePanel();
+  updateHighlightButton();
   showLegend();
   layoutOverlays();
   placeBackPill();
@@ -2659,8 +2851,8 @@ function setHealthMode(on) {
 
 // ---------------------------------------------------------------- tour
 
-// ▶ Tour (or T) shows the domains one after another (TOUR_STEPS): each in
-// its view, opened as the view of all tables opens (whole when readable,
+// The tour (⋯ › Tour, the palette, or T) shows the domains one after
+// another (TOUR_STEPS): each in its view, opened as the view of all tables opens (whole when readable,
 // else around the central table, which pulses), with a caption at the
 // bottom: its name, table count and business note. The next domain comes
 // after TOUR_STEP_MS, the last one is followed by the first. The legend,
@@ -2682,11 +2874,12 @@ function startTour() {
   closeMenus();
   closeSpotlight();
   closeJoinSpot();
+  // Space pauses the tour, but presses a focused button (⋯, from which it may have started).
+  if (document.activeElement?.closest?.('.oe-toolbar')) document.activeElement.blur();
   tour.from = { step: snapshot(), cam: { ...state.cam } };
   tour.on = true;
   tour.paused = false;
   tourBox.fo.style.display = '';
-  tourButton.classList.add('on');
   showTourStep(0);
 }
 
@@ -2696,7 +2889,6 @@ function endTour(back) {
   clearTimeout(tour.timer);
   tour.on = false;
   tourBox.fo.style.display = 'none';
-  tourButton.classList.remove('on');
   if (back) {
     restore(tour.from.step);
     state.cam = tour.from.cam;
@@ -3286,12 +3478,14 @@ document.addEventListener(
   true,
 );
 
-// Cmd+F / Ctrl+F, or "/" outside a text field, opens the search; Escape
-// closes the innermost thing open: search, a menu, then the selection.
+// Cmd+K / Ctrl+K opens the palette; Cmd+F / Ctrl+F, or "/" outside a text
+// field, opens it for tables and columns only. Escape closes the innermost
+// thing open: the palette, a menu, then the selection.
 const typing = () => document.activeElement instanceof HTMLInputElement || document.activeElement instanceof HTMLTextAreaElement;
 // Keyboard shortcuts, also listed under ⋯ › Keyboard shortcuts.
 const SHORTCUTS = [
-  [`${MOD_KEY}F or /`, 'Search tables and columns'],
+  [PALETTE_KEY, 'Search tables and columns, or run a command (join path, tour, download, highlights); type a > b for the join path between two tables'],
+  [`${FIND_KEY} or /`, 'Search tables and columns'],
   [`${MOD_KEY}J`, 'Join path between two tables'],
   [`${MOD_KEY}A`, 'All tables'],
   [`${MOD_KEY}C`, 'Copy the selected table as SQL (with its indexes)'],
@@ -3307,6 +3501,15 @@ const selectedTable = () => {
   const id = currentView().querySelector('.table.selected')?.getAttribute('data-id');
   return data.nodes[id]?.kind === 'table' ? id : null;
 };
+// What a copy of table `id` holds: a JSON schema for a document store, else SQL.
+const copyWhat = (id) => (isDocumentStore(data.databases[dbOf(id)].engine) ? 'JSON schema' : 'SQL');
+// The selected table's CREATE TABLE with indexes (⌘C, ⋯ or the palette).
+function copySelectedSchema() {
+  const id = selectedTable();
+  if (!id) return;
+  const what = copyWhat(id);
+  copyText(tableSql(id), { textContent: '' }, what, () => showToast(`Copied ${what} for ${short(id)}`));
+}
 
 // A short message at the bottom of the screen, gone after a moment.
 const toast = overlay('oe-toast-host');
@@ -3325,7 +3528,8 @@ function showToast(text) {
   toast.fo.setAttribute('width', Math.ceil(r.width) + 2);
   toast.fo.setAttribute('height', Math.ceil(r.height) + 2);
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => (toast.fo.style.display = 'none'), 2500);
+  // Long messages stay longer, to be read.
+  toastTimer = setTimeout(() => (toast.fo.style.display = 'none'), Math.max(2500, text.length * 60));
 }
 const hasTextSelection = () => (window.getSelection()?.toString() ?? '') !== '';
 
@@ -3333,13 +3537,20 @@ document.addEventListener('keydown', (e) => {
   const find = (e.key === 'f' || e.key === 'F') && (IS_MAC ? e.metaKey : e.ctrlKey) && !e.altKey && !e.shiftKey;
   if (find || (e.key === '/' && !typing() && !e.metaKey && !e.ctrlKey)) {
     e.preventDefault();
-    openSpotlight();
+    openSpotlight({ search: true });
     return;
   }
   const mod = (IS_MAC ? e.metaKey : e.ctrlKey) && !e.altKey && !e.shiftKey;
   const letter = e.key.length === 1 ? e.key.toLowerCase() : '';
+  // Cmd+K / Ctrl+K: the palette (Ctrl+K would otherwise go to the browser's address bar).
+  if (mod && letter === 'k') {
+    e.preventDefault();
+    if (spotlightOpen() && spot.commands) closeSpotlight(true);
+    else openSpotlight();
+    return;
+  }
   // Cmd+J / Ctrl+J: the join spotlight. Chrome and Safari let a page take
-  // it over; where a browser keeps it, the toolbar's Join path does the same.
+  // it over; where a browser keeps it, Join path… in the palette does the same.
   if (mod && letter === 'j') {
     e.preventDefault();
     if (joinSpotOpen()) closeJoinSpot();
@@ -3357,10 +3568,7 @@ document.addEventListener('keydown', (e) => {
   // Cmd+C / Ctrl+C with a table selected and no text selected: its SQL.
   if (mod && letter === 'c' && !typing() && !hasTextSelection() && selectedTable()) {
     e.preventDefault();
-    const id = selectedTable();
-    const status = { textContent: '' };
-    const what = isDocumentStore(data.databases[dbOf(id)].engine) ? 'JSON schema' : 'SQL';
-    copyText(tableSql(id), status, what, () => showToast(`Copied ${what} for ${short(id)}`));
+    copySelectedSchema();
     return;
   }
   const card = document.activeElement?.closest?.('.domain');
@@ -3413,7 +3621,7 @@ document.addEventListener('keydown', (e) => {
     return;
   }
   if (e.key !== 'Escape') return;
-  if (spotlightOpen()) return closeSpotlight();
+  if (spotlightOpen()) return closeSpotlight(true);
   if (joinSpotOpen()) return closeJoinSpot();
   if (openMenu()) return closeMenus();
   if (tour.on) return endTour(true);
