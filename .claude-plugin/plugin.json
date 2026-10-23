@@ -1,6 +1,5 @@
 {
   "name": "open-erd",
   "description": "Generate interactive single-file SVG ERDs, Excel sheets and readable diffs from any project's source code.",
-  "version": "0.1.0",
   "license": "MIT"
 }

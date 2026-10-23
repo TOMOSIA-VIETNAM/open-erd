@@ -25,6 +25,24 @@ From the plugin catalog, inside a session:
 or from a shell: `claude plugin marketplace add TOMOSIA-VIETNAM/open-erd`, then
 `claude plugin install open-erd@open-erd`.
 
+Every commit to `main` is a new version (the plugin has no fixed `version` field, so Claude Code
+follows the commit). Updates are off for this marketplace until you turn them on once: `/plugin` →
+**Marketplaces** → **open-erd** → **Enable auto-update**. Claude Code then checks in the background
+and asks you to run `/reload-plugins` when a new version arrives. By hand:
+
+```
+/plugin marketplace update open-erd
+```
+
+then `/plugin` → **Installed** → **open-erd** → **Update now**, and `/reload-plugins`.
+
+From a shell: `claude plugin marketplace update open-erd`, then `claude plugin update open-erd@open-erd`.
+An organisation can turn auto-update on for everyone with `"autoUpdate": true` on the marketplace's
+entry in `extraKnownMarketplaces` of its managed settings.
+
+After an update, run `/open-erd:render` in each workspace: `erd.svg` carries the viewer of the
+engine that rendered it.
+
 To uninstall: `/plugin uninstall open-erd@open-erd`.
 
 ## Codex
