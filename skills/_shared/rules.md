@@ -6,8 +6,27 @@ Read this before acting. Each `SKILL.md` adds its own steps on top.
 
 - Speak the user's language (the one they write in). Everything written into
   the workspace (model notes, enum meanings, commit messages) is English.
-- Ask one question at a time and wait. A question that needs a choice lists the
-  options.
+- Every question to the user goes through the `AskUserQuestion` tool, so the
+  user answers with one click (every "ask", "confirm", "approve" or "which
+  one" in the skills means this):
+  - One decision per call, then wait for the answer. Batch (up to 4) only
+    questions that do not depend on each other's answers.
+  - 2–4 concrete options. The one you recommend comes first, its label ends
+    with "(Recommended)" and its description says why in one sentence; every
+    other option's description says what it changes or costs. Recommend from
+    what you found (the code, the model, the facts), not a guess.
+  - A short `header` (≤ 12 characters) naming the decision. Use `preview`
+    when the user must compare code, a script, YAML or a commit message.
+  - No "Other" option: the tool always lets the user type their own answer
+    (a path, a tag name, a domain name). Questions that only need free text,
+    such as an absolute path with no candidate, still go through the tool
+    with the candidates you found as options.
+  - Approvals that gate an action (running an extract script, writing a
+    workflow, creating an issue, deleting a fact) put the proceeding option
+    first only when the check before it passed; show what will run or be
+    written in the question or its `preview`.
+  - Without the tool on this platform, ask in plain text in the same shape:
+    numbered options, the recommended one first and marked, then wait.
 
 ## Locating the plugin and the engine
 
