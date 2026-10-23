@@ -355,7 +355,6 @@ svg { --impact-ring-1: #c62f3e; --impact-ring-2: #e57a1f; --impact-ring-3: #c9a2
 .oe-minimap .seen { fill: rgba(37, 99, 235, 0.08); stroke: #2563eb; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
 .fold-badge rect { fill: #ffffff; stroke: #c3cad5; }
 .fold-badge-text { font-size: 11px; font-weight: 400; fill: #56627a; }
-.oe-check { display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-top: 1px solid #eef1f5; margin-top: 4px; color: #3d4a5e; cursor: pointer; }
 .oe-status:not(:empty) { padding: 6px 10px; color: #56627a; font-size: 12px; border-top: 1px solid #eef1f5; overflow-wrap: anywhere; }
 .oe-panel .label-inline { color: #7a8597; font-size: 12px; min-width: 36px; }
 .oe-join-field input { font: inherit; flex: 1; padding: 4px 8px; border: 1px solid #c3cad5; border-radius: 6px; }
