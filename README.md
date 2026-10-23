@@ -63,6 +63,28 @@ It asks where to keep the ERD (a separate folder with its own git history),
 shows the read-only script it wants to run on your code, and asks before
 running it. Your source repositories are never modified.
 
+### Keep it updated
+
+New versions ship with every commit to `main`. Claude Code does not update
+plugins from this marketplace on its own until you turn it on, once:
+
+1. Run `/plugin`.
+2. Open the **Marketplaces** tab and select **open-erd**.
+3. Choose **Enable auto-update**.
+
+Claude Code then checks in the background each session and tells you to run
+`/reload-plugins` when a new version is in. To update by hand instead:
+
+```
+/plugin marketplace update open-erd
+```
+
+then `/plugin` → **Installed** → **open-erd** → **Update now**, and `/reload-plugins`.
+
+From a shell: `claude plugin marketplace update open-erd && claude plugin update open-erd@open-erd`.
+After a new version, run `/open-erd:render` once in each ERD workspace to
+get the new viewer.
+
 Codex (untested) and the full install, update and uninstall steps: [docs/install.md](docs/install.md).
 
 ## What you get
