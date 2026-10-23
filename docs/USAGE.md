@@ -116,6 +116,8 @@ After building the model, `init` and `sync` have a second agent, with a fresh co
 | `/open-erd:ci-setup` | Writes a GitHub Actions workflow for a source repository (after you agree) that comments the ERD changes on each pull request; see [Pull request preview](#pull-request-preview). |
 | `/open-erd:feedback <text>` | Opens a GitHub issue on this repository with your feedback, after showing you the draft. Never attaches your project's data. |
 
+The other commands find the workspace by themselves: a path you give, the current folder when it is the workspace, or, run from inside a source repository, a workspace up to three folders above it whose `open-erd.local.yaml` lists that repository (they ask when there are several, or none).
+
 To change the diagram, just say it: "orders.status: refunded means money
 returned", "move Billing next to Orders", "invoices.user_id points to
 customers, not users".
