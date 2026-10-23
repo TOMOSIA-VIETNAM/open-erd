@@ -39,7 +39,7 @@ Files below `ROOT` name Claude Code's tools and commands. What binds is the CAPA
 | `Read`, "open the file" | your file-read tool | `cat` / `sed -n` via shell |
 | `Write`, `Edit` | your file-write / patch tool | shell heredoc — FORBIDDEN on a file you have not read in full |
 | a shell command | your shell tool | — |
-| a question to the user, "ask", "wait" | ask in chat: one message, every option + your recommendation, then WAIT | FORBIDDEN: deciding for the user, or continuing unanswered |
+| a question to the user, `AskUserQuestion`, "ask", "wait" | your structured question tool; else ask in chat: one message, numbered options with your recommendation first and marked, then WAIT | FORBIDDEN: deciding for the user, or continuing unanswered |
 | a subagent / Claude Code `Agent` tool with a fresh context | your subagent tool, started without this conversation | do the step yourself as a separate pass: re-read ONLY the inputs that step hands the subagent (for the verifier: `ROOT/skills/_shared/verifier.md` and the fact list), not your diff or your earlier reasoning; produce the same output the subagent would, and still write every file the step writes. Tell the user once that the second reader ran without a separate agent |
 | `/open-erd:<cmd>` (to run, or to suggest to the user) | the skill `open-erd-<cmd>`; on Codex write it `$open-erd-<cmd>` | — |
 
