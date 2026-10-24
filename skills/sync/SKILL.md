@@ -21,6 +21,8 @@ No `open-erd.yaml` in the workspace → offer `/open-erd:init`.
 
 ## 1. Preconditions
 
+- Note where the workspace starts: `git -C <ws> rev-parse HEAD` → `<before>`
+  (step 7 compares the ERD with it).
 - `git -C <ws> status --porcelain`: uncommitted changes in `model/` or
   `layout.json` → show them and ask whether to keep them in this sync or stop.
 - `open-erd.local.yaml` missing or a source path not found → ask for the path
@@ -138,5 +140,21 @@ verify: confirmed <n>, fixed <n>, unverifiable <n>
 
 (the `verify:` line as `verify` printed it; none when `verify: off`).
 
-Report what changed in plain words, the stale and pending counts, and suggest
-`/open-erd:review` when there are any. End with the feedback line.
+When this sync committed a change to the model, draw what changed, so the
+user does not have to ask for it:
+
+```bash
+node <plugin root>/dist/open-erd.mjs diff --workspace <ws> --from <before> --to HEAD
+```
+
+It writes `out/diff.svg` and `out/diff.xlsx` (not committed: they describe
+this one sync) and prints a summary line. Nothing committed (the model was
+already up to date) → no diff.
+
+Report what changed in plain words, then where to see it: "Open
+`<ws>/out/diff.svg` in a browser: changed tables are coloured, the rest is
+faded" with the summary line, and `<ws>/out/erd.svg` for the full ERD. Give
+the stale and pending counts and suggest `/open-erd:review` when there are
+any. Mention once that `/open-erd:diff` compares any two versions (a tag, an
+older commit) when the user wants a wider comparison than this sync. End with
+the feedback line.
