@@ -180,7 +180,7 @@ Press `T` for a tour: one domain after another, with its description.
 |---|---|
 | `/open-erd:init` | Once per project: creates the ERD |
 | `/open-erd:sync [focus]` | After code changes — run it often |
-| `/open-erd:review` | Confirm relations the AI inferred (dashed lines) |
+| `/open-erd:review` | Confirm or correct the relations the AI guessed (dashed lines), one by one. Not a code review |
 | `/open-erd:ask "<question>"` | Questions about the data model |
 | `/open-erd:ci-setup` | ERD diff comment on pull requests |
 | `/open-erd:diff [from] [to]` | Compare two versions of the ERD: a tag, any commit, or your uncommitted edits |
