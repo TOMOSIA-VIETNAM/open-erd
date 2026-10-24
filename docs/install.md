@@ -37,7 +37,7 @@ From a shell: `claude plugin marketplace update open-erd`, then `claude plugin u
 An organisation can turn auto-update on for everyone with `"autoUpdate": true` on the marketplace's
 entry in `extraKnownMarketplaces` of its managed settings.
 
-After an update, run `/open-erd:render` in each workspace: `erd.svg` carries the viewer of the
+After an update, run `/open-erd:sync` in each workspace (it redraws even when the code did not change): `erd.svg` carries the viewer of the
 engine that rendered it.
 
 To uninstall: `/plugin uninstall open-erd@open-erd`, then optionally `/plugin marketplace remove open-erd`
@@ -45,7 +45,7 @@ To uninstall: `/plugin uninstall open-erd@open-erd`, then optionally `/plugin ma
 
 ## Codex
 
-The same nine commands are skills named `open-erd-<command>`. Codex runs one when you type
+The same seven commands are skills named `open-erd-<command>`. Codex runs one when you type
 `$open-erd-init` (or `$open-erd-diff v1.0-handover`, …), or on its own when your request matches the
 skill's description.
 

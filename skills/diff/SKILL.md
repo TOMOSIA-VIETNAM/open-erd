@@ -1,7 +1,7 @@
 ---
 name: diff
 argument-hint: '[from: tag | commit | HEAD] [to: HEAD | WORKTREE]  e.g. v1.0-handover HEAD'
-description: Show what changed in the database design between two snapshots of an open-erd workspace (a tag such as v1.0-handover, any commit, HEAD, or the uncommitted working copy), writing out/diff.svg and a Changes sheet and summarising the changes in plain words. Use when the user asks what changed in the DB or ERD since a release, a handover or a given commit; /open-erd:sync already draws the diff of its own changes.
+description: Show what changed in the database design between two versions of an open-erd workspace (a tag such as v1.0-handover, any commit, HEAD, or the uncommitted working copy), writing out/diff.svg and a Changes sheet and summarising the changes in plain words. Use when the user asks what changed in the DB or ERD since a release, a handover or a given commit; /open-erd:sync already draws the diff of its own changes.
 ---
 
 # diff
@@ -9,16 +9,20 @@ description: Show what changed in the database design between two snapshots of a
 Read first (if `${CLAUDE_PLUGIN_ROOT}` is empty, the plugin root is two
 levels above this skill's base directory): `${CLAUDE_PLUGIN_ROOT}/skills/_shared/rules.md`.
 
-1. Find the workspace (rules.md). List snapshots:
+1. Find the workspace (rules.md). List the versions to compare (tags, then the
+   latest commits, each a `sync`, `review` or `init`):
 
 ```bash
 git -C <ws> tag --list --sort=-creatordate --format='%(refname:short)  %(creatordate:short)  %(subject)'
-git -C <ws> log --oneline -5
+git -C <ws> log --format='%h  %ad  %s' --date=short -8
 ```
 
-2. Pick `--from` and `--to` from what the user said. Defaults: `--from` = the
-   newest tag, `--to` = `HEAD`; `WORKTREE` when the user asks about
-   uncommitted edits. No tags and no clear refs → show the list and ask.
+2. Pick `--from` and `--to` from what the user said: a tag, a commit, or a
+   date ("since 1 October" → `git -C <ws> rev-list -1 --before=<date> HEAD`).
+   `--to` defaults to `HEAD`; `WORKTREE` when the user asks about uncommitted
+   edits. Nothing said → ask, with the newest tag (or the commit before the
+   last sync) recommended and a few of the listed versions as the other
+   options, each named by its date and subject.
 3. Run:
 
 ```bash

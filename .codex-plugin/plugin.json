@@ -8,19 +8,25 @@
     "name": "TOMOSIA VIETNAM",
     "url": "https://github.com/TOMOSIA-VIETNAM"
   },
-  "keywords": ["erd", "database", "schema", "diagram", "documentation"],
+  "keywords": [
+    "erd",
+    "database",
+    "schema",
+    "diagram",
+    "documentation"
+  ],
   "skills": "./.agents/skills/",
   "interface": {
     "displayName": "open-erd",
     "shortDescription": "Draw an interactive ERD of a project's database from its source code.",
-    "longDescription": "Adds nine skills: create an ERD workspace from source code, keep it in sync, review the relations the AI found, render SVG/XLSX/draw.io, diff two snapshots, tag a snapshot, answer questions from the model, set up a pull-request check in CI, and send feedback. Needs Node 20.10 or later; the engine is bundled.",
+    "longDescription": "Adds seven skills: create an ERD workspace from source code, keep it in sync, review the relations the AI found, compare two versions, answer questions from the model, set up a pull-request check in CI, and send feedback. Needs Node 20.10 or later; the engine is bundled.",
     "developerName": "TOMOSIA VIETNAM",
     "category": "Developer Tools",
     "websiteURL": "https://github.com/TOMOSIA-VIETNAM/open-erd",
     "defaultPrompt": [
       "Draw an ERD of this project with open-erd.",
       "Update the open-erd ERD after the latest code changes.",
-      "What changed in the database since the v1.0 snapshot?"
+      "What changed in the database since the v1.0 tag?"
     ]
   }
 }

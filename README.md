@@ -86,8 +86,8 @@ Claude Code then checks in the background each session and tells you to run
 then `/plugin` → **Installed** → **open-erd** → **Update now**, and `/reload-plugins`.
 
 From a shell: `claude plugin marketplace update open-erd && claude plugin update open-erd@open-erd`.
-After a new version, run `/open-erd:render` once in each ERD workspace to
-get the new viewer.
+After a new version, run `/open-erd:sync` once in each ERD workspace: it
+redraws the files with the new viewer even when the code did not change.
 
 Codex: update with `codex plugin marketplace upgrade open-erd`, then a new session. Every other way to install (a one-line script, a local clone), update and uninstall: [docs/install.md](docs/install.md).
 
@@ -183,7 +183,8 @@ Press `T` for a tour: one domain after another, with its description.
 | `/open-erd:review` | Confirm relations the AI inferred (dashed lines) |
 | `/open-erd:ask "<question>"` | Questions about the data model |
 | `/open-erd:ci-setup` | ERD diff comment on pull requests |
-| `/open-erd:render` · `diff` · `snapshot` | Re-draw, compare two versions, tag a version |
+| `/open-erd:diff [from] [to]` | Compare two versions of the ERD: a tag, any commit, or your uncommitted edits |
+| *"make a public copy of the ERD"* | Just ask: writes `out/erd.public.*` without personal data, code references or internal notes, for sharing outside the team |
 | `/open-erd:feedback <text>` | Tell us what to improve |
 
 ## Safe by design
