@@ -1,5 +1,6 @@
 ---
 name: sync
+argument-hint: '[what to focus on, e.g. "new billing tables"]'
 description: Bring an existing open-erd workspace up to date with the source code. Re-runs the extract scripts, applies what changed to model/*.yaml, asks before recording renames, marks reviewed facts that no longer match the code as stale instead of changing them, re-renders the ERD and commits with each source repo's revision. Use when the code changed since the last ERD, or the user asks to update or refresh the ERD.
 ---
 

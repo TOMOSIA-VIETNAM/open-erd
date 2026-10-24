@@ -1,5 +1,6 @@
 ---
 name: diff
+argument-hint: '[from: tag | commit | HEAD] [to: HEAD | WORKTREE]  e.g. v1.0-handover HEAD'
 description: Show what changed in the database design between two snapshots of an open-erd workspace (a tag such as v1.0-handover, any commit, HEAD, or the uncommitted working copy), writing out/diff.svg and a Changes sheet and summarising the changes in plain words. Use when the user asks what changed in the DB or ERD since a release, a handover or a given commit; /open-erd:sync already draws the diff of its own changes.
 ---
 

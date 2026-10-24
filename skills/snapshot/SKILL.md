@@ -1,5 +1,6 @@
 ---
 name: snapshot
+argument-hint: '[tag name, e.g. v1.0-handover]'
 description: Mark the current state of an open-erd workspace as a named snapshot (a git tag in the workspace, e.g. v1.0-handover) so later diffs can compare against it. Use when the user hands over, releases, or wants to remember the ERD as it is now.
 ---
 

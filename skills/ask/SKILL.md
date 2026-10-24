@@ -1,5 +1,6 @@
 ---
 name: ask
+argument-hint: '"<question about the data>"'
 description: Answer a business or structural question about a project's data (which tables hold what, how two things are linked, what a status means) from its open-erd model alone, naming the tables, columns and relations the answer relies on and giving a link that opens them highlighted in out/erd.svg. Reads no source code and writes no files. Use when the user types /open-erd:ask "<question>" or asks how data in an open-erd workspace fits together.
 ---
 

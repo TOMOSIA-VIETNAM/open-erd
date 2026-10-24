@@ -1,5 +1,6 @@
 ---
 name: feedback
+argument-hint: '<what went wrong or what you want>'
 description: Send feedback or a bug report about the open-erd plugin itself as a GitHub issue on TOMOSIA-VIETNAM/open-erd, using the user's own gh login, after showing the exact draft and getting confirmation. Never attaches the user's model, table names, paths or project data. Use when the user types /open-erd:feedback, says open-erd did something wrong, or wants it to work differently.
 ---
 
