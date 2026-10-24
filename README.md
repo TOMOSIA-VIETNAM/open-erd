@@ -184,7 +184,6 @@ Press `T` for a tour: one domain after another, with its description.
 | `/open-erd:ask "<question>"` | Questions about the data model |
 | `/open-erd:ci-setup` | ERD diff comment on pull requests |
 | `/open-erd:diff [from] [to]` | Compare two versions of the ERD: a tag, any commit, or your uncommitted edits |
-| *"make a public copy of the ERD"* | Just ask: writes `out/erd.public.*` without personal data, code references or internal notes, for sharing outside the team |
 | `/open-erd:feedback <text>` | Tell us what to improve |
 
 ## Safe by design

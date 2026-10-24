@@ -110,7 +110,6 @@ health:
 After building the model, `init` and `sync` have a second agent, with a fresh context, re-read the code for relations the model missed, starting from the warnings of `validate` (a `*_id` column nothing uses, a table nothing connects to). What it finds is added as `pending` for you to review; columns that are not references go into `ignore_missing` in `open-erd.yaml`.
 | `/open-erd:review` | Walks through inferred and stale relations one by one; you confirm or correct in plain words. Reviewed facts are locked. |
 | `/open-erd:diff` | Compares two versions of the workspace: a tag, any commit, `HEAD`, or the uncommitted working copy. |
-| *"make a public copy"* (no command, just ask) | Re-renders with `--profile public`, which drops evidence, PII columns, internal notes and hidden tables, for sharing outside the team. |
 | `/open-erd:ask "<question>"` | Answers a question about the data from the ERD model only (not the code), naming the tables, columns and relations it relies on, with a link that opens them in `erd.svg` (see [Links](#links)). Writes nothing. |
 | `/open-erd:ci-setup` | Writes a GitHub Actions workflow for a source repository (after you agree) that comments the ERD changes on each pull request; see [Pull request preview](#pull-request-preview). |
 | `/open-erd:feedback <text>` | Opens a GitHub issue on this repository with your feedback, after showing you the draft. Never attaches your project's data. |
