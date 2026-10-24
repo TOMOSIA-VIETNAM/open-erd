@@ -313,7 +313,15 @@ plus untracked files from `git -C <ws> status --porcelain -- model`. In
    adds it as the Verification sheet of `out/erd.xlsx`, never to a sharing
    profile that drops evidence or internal notes.
 
-## Last line of init, sync, review, render, diff, ask, ci-setup
+## Sharing a copy outside the team
+
+There is no command for it: when the user asks for a public or shareable
+copy, run `render --workspace <ws> --profile public` (or the profile they
+name), report the `out/erd.<profile>.*` paths it wrote and what the profile
+leaves out (evidence, PII columns, internal notes, hidden tables). Do not
+commit.
+
+## Last line of init, sync, review, diff, ask, ci-setup, and of a shared copy
 
 After the command finishes (success or not), end with exactly one line in the
 user's language inviting feedback on open-erd, containing the literal command

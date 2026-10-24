@@ -43,6 +43,6 @@ ls <ws>/out/erd.svg && find <ws>/model <ws>/open-erd.yaml <ws>/layout.json -newe
 
    `out/erd.svg` missing, or any path printed (the model changed after the
    last render) → say the drawing is out of date and suggest
-   `/open-erd:render`; do not render unasked.
+   `/open-erd:sync` (it redraws the files); do not render unasked.
 5. Write nothing: no workspace file, no commit.
 6. End with the feedback line.
