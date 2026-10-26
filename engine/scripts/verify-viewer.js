@@ -1657,6 +1657,17 @@ await key('Escape');
   await shot('deep-link-picked-tables', `${viewIs(startView)} && ${twoLit}`);
 }
 
+// Tips: left idle, a tip shows in a pill at the bottom (unseen first: the
+// search one); a key press hides it. Nothing else may be open meanwhile.
+{
+  const hintHost = `document.querySelector('.oe-hint-host')?.closest('foreignObject')`;
+  await key('Escape');
+  await pause(16000);
+  await shot('tip-after-idle', `${hintHost}?.style.display === '' && document.querySelector('.oe-hint kbd')?.textContent.endsWith('K') && document.querySelector('.oe-hint-label').textContent === 'Tip'`);
+  await key('Shift', 'ShiftLeft');
+  await shot('tip-hides-on-key', `${hintHost}.style.display === 'none'`);
+}
+
 // Without script the file must still show the static overview.
 await send('Emulation.setScriptExecutionDisabled', { value: true });
 const reloaded = once('Page.loadEventFired');

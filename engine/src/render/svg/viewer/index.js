@@ -15,6 +15,7 @@ import { emptyHistory, goBack, goForward, tableTrail, visit } from './history.js
 import { endTransforms, radialLayout, straightLink } from './radial.js';
 import { TOUR_STEP_MS, tourIndex, tourSteps } from './tour.js';
 import { piiSummary } from './pii.js';
+import { nextTip, tipList } from './tips.js';
 import { changesSummary } from './changes.js';
 import { commandsFirst, matchCommands, parseJoinQuery } from './palette.js';
 
@@ -1053,6 +1054,7 @@ moreMenu.onOpen = () => {
     menuItem('Collapse all', foldable ? 'Fold every domain in this view; a click on a domain header folds just that one' : 'Nothing to fold in this view', fold(true), { disabled: !foldable }),
     menuItem('Expand all', foldable ? 'Unfold every domain in this view' : 'Nothing to fold in this view', fold(false), { disabled: !foldable }),
     menuItem('Minimap', 'Small map of the whole view, shown while it does not fit on screen', toggle(() => setMinimap(!map.on)), { checked: map.on }),
+    menuItem('Tips', 'A tip about a feature while the view is left idle', toggle(() => setTipsOff(!tips.off)), { checked: !tips.off }),
   ]);
 };
 
@@ -2012,7 +2014,7 @@ function nodePanel(id, column = null) {
     }),
     changeList('nodes', id),
     tableActions(id, n),
-    el('div', { class: 'oe-hint muted', text: `${ADD_KEY_HINT} other tables to select several and share them as one link.` }),
+    el('div', { class: 'oe-hint-row muted', text: `${ADD_KEY_HINT} other tables to select several and share them as one link.` }),
     ...tabbed(panelTabs(n, count).map((t) => ({ ...t, body: bodies[t.id] })), column ? 'columns' : undefined),
   ];
 }
@@ -3639,6 +3641,93 @@ function showToast(text) {
 }
 const hasTextSelection = () => (window.getSelection()?.toString() ?? '') !== '';
 
+// ---------------------------------------------------------------- tips
+
+// A tip about a feature (tips.js), in a small pill at the bottom, once the
+// reader has left the view idle for TIP_IDLE_MS: unseen tips first, then
+// round the list. It goes after TIP_SHOW_MS, or at the next click, key or
+// wheel; a moving pointer only restarts the wait. Not during the tour, the
+// palette, the join box or an open menu. × turns tips off (⋯ › Tips turns
+// them on again). Which tips were seen and whether tips are off are kept
+// in this browser's storage for this file's address, so the same tip does
+// not come back first on every visit; without storage tips still work.
+const TIP_IDLE_MS = 15000;
+const TIP_SHOW_MS = 8000;
+const TIPS_KEY = 'open-erd:tips';
+const TIP_FEATURES = { tour: TOUR_STEPS.length >= 2, pii: PII.total > 0, health: HEALTH.length > 0, central: CENTRAL_TOTAL > 0 };
+const TIPS = tipList(MOD_KEY).filter((t) => t.needs === null || TIP_FEATURES[t.needs]);
+const tipsSaved = (() => {
+  try {
+    return JSON.parse(localStorage.getItem(TIPS_KEY)) ?? {};
+  } catch {
+    return {};
+  }
+})();
+const tips = { off: tipsSaved.off === true, seen: Array.isArray(tipsSaved.seen) ? tipsSaved.seen : [], last: null, idle: 0, hide: 0 };
+function saveTips() {
+  try {
+    localStorage.setItem(TIPS_KEY, JSON.stringify({ off: tips.off, seen: tips.seen }));
+  } catch {
+    // No storage (a private window, blocked site data): tips start over next time.
+  }
+}
+const hint = overlay('oe-hint-host');
+hint.fo.style.display = 'none';
+const hintShown = () => hint.fo.style.display !== 'none';
+function showHint() {
+  if (tips.off || tour.on || spotlightOpen() || joinSpotOpen() || openMenu() || document.hidden) return armHint();
+  const t = nextTip(TIPS, tips.seen, tips.last);
+  if (!t) return;
+  tips.last = t.id;
+  if (!tips.seen.includes(t.id)) tips.seen.push(t.id);
+  saveTips();
+  hint.div.replaceChildren(
+    el('div', { class: 'oe-hint', role: 'status' }, [
+      el('span', { class: 'oe-hint-label', text: 'Tip' }),
+      el('span', {}, t.parts.map((p) => (typeof p === 'string' ? document.createTextNode(p) : el('kbd', { text: p.key })))),
+      el('button', { class: 'oe-hint-close', text: '×', title: 'Turn tips off', 'aria-label': 'Turn tips off', on: { click: () => setTipsOff(true) } }),
+    ]),
+  );
+  hint.fo.style.display = '';
+  const vp = viewport();
+  hint.fo.setAttribute('width', vp.w);
+  hint.fo.setAttribute('height', 60);
+  const r = hint.div.firstChild.getBoundingClientRect();
+  hint.fo.setAttribute('x', Math.round((vp.w - r.width) / 2));
+  hint.fo.setAttribute('y', vp.h - r.height - 16);
+  hint.fo.setAttribute('width', Math.ceil(r.width) + 2);
+  hint.fo.setAttribute('height', Math.ceil(r.height) + 2);
+  clearTimeout(tips.hide);
+  tips.hide = setTimeout(hideHint, TIP_SHOW_MS);
+}
+function hideHint() {
+  clearTimeout(tips.hide);
+  hint.fo.style.display = 'none';
+}
+function armHint() {
+  clearTimeout(tips.idle);
+  if (!tips.off) tips.idle = setTimeout(showHint, TIP_IDLE_MS);
+}
+function setTipsOff(off) {
+  tips.off = off;
+  saveTips();
+  hideHint();
+  armHint();
+  if (off) showToast('Tips are off: ⋯ › Tips turns them on again');
+}
+for (const type of ['pointerdown', 'keydown', 'wheel', 'pointermove']) {
+  window.addEventListener(
+    type,
+    (e) => {
+      if (hint.div.contains(e.target)) return;
+      if (type !== 'pointermove' && hintShown()) hideHint();
+      armHint();
+    },
+    { capture: true, passive: true },
+  );
+}
+armHint();
+
 document.addEventListener('keydown', (e) => {
   const find = (e.key === 'f' || e.key === 'F') && (IS_MAC ? e.metaKey : e.ctrlKey) && !e.altKey && !e.shiftKey;
   if (find || (e.key === '/' && !typing() && !e.metaKey && !e.ctrlKey)) {
@@ -3760,7 +3849,7 @@ window.addEventListener('resize', () => {
 
 // Later overlays paint on top: the toolbar's menus over the panel, the
 // search over everything but the tooltip.
-svg.append(legend.fo, help.fo, minimap.fo, backPill.fo, reviewChip.fo, piiChip.fo, healthChip.fo, centralChip.fo, changesChip.fo, panel.fo, tourBox.fo, toolbar.fo, spotlight.fo, joinSpot.fo, toast.fo, tip.fo);
+svg.append(legend.fo, help.fo, minimap.fo, backPill.fo, reviewChip.fo, piiChip.fo, healthChip.fo, centralChip.fo, changesChip.fo, panel.fo, tourBox.fo, toolbar.fo, spotlight.fo, joinSpot.fo, hint.fo, toast.fo, tip.fo);
 // The view drawn visible without script is where the reader starts (all
 // tables unless the workspace configured another view). All tables open at
 // a readable size around the most central table; a diff drawing shows its

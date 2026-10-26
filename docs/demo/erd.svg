@@ -244,6 +244,12 @@ text { font-family: 'Inter', sans-serif; font-kerning: none; font-variant-ligatu
 .oe-result .where { flex: 1 1 0; min-width: 0; text-align: right; color: #7a8597; font-size: 12px; margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .oe-join-spot .oe-spotlight-field { padding: 10px 16px; }
 .oe-field-label { flex: none; width: 44px; font-size: 12px; font-weight: 700; color: #56627a; text-transform: uppercase; letter-spacing: 0.04em; }
+.oe-hint { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: #3b475c; background: rgba(255, 255, 255, 0.94); border: 1px solid #e3e7ee; border-radius: 14px; padding: 4px 6px 4px 12px; box-shadow: 0 2px 8px rgba(31, 42, 61, 0.08); white-space: nowrap; animation: oe-hint-in 0.3s ease-out; }
+.oe-hint-label { font-size: 11px; font-weight: 600; color: #a07a06; }
+.oe-hint kbd { font: inherit; font-size: 11px; color: #3b475c; background: #ffffff; border: 1px solid #d5dbe4; border-bottom-width: 2px; border-radius: 4px; padding: 0 4px; }
+.oe-hint-close { font: inherit; font-size: 14px; line-height: 16px; width: 20px; height: 20px; border: 0; border-radius: 10px; background: none; color: #a0a9b8; cursor: pointer; }
+.oe-hint-close:hover { background: #f1f4f8; color: #56627a; }
+@keyframes oe-hint-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 .oe-toast { display: inline-block; background: #1f2a3d; color: #ffffff; font-size: 13px; padding: 8px 14px; border-radius: 8px; box-shadow: 0 6px 18px rgba(20, 30, 50, 0.25); white-space: nowrap; }
 .oe-keys-group { margin: 14px 0 4px; font-size: 11px; font-weight: 700; color: #7a8597; text-transform: uppercase; letter-spacing: 0.04em; }
 .oe-keys { border-collapse: collapse; width: 100%; }
@@ -359,7 +365,7 @@ text { font-family: 'Inter', sans-serif; font-kerning: none; font-variant-ligatu
 .oe-ph-sub { color: #7a8597; font-size: 12px; margin-top: 3px; overflow-wrap: anywhere; }
 .oe-ph-facts { margin-top: 4px; font-size: 12px; color: #56627a; }
 .oe-actions { display: flex; align-items: center; gap: 6px; margin: 0 0 10px; flex-wrap: wrap; }
-.oe-hint { font-size: 11.5px; margin: -4px 0 10px; }
+.oe-hint-row { font-size: 11.5px; margin: -4px 0 10px; }
 .oe-picked-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px solid #eef1f5; }
 .oe-picked-row .oe-chip-close { margin-left: auto; color: #8a94a6; }
 .oe-actions .oe-tool { height: 28px; width: 28px; }
@@ -1171,6 +1177,33 @@ Central: spree_stores</title><rect class="card-box" x="1090" y="570" width="300"
     const count = (tables) => tables.reduce((sum, t) => sum + t.columns.length, 0);
     const list = [...domains].map(([cluster, tables]) => ({ cluster, count: count(tables), tables: tables.sort((a, b) => b.columns.length - a.columns.length || byKey(a.id, b.id)) })).sort((a, b) => b.count - a.count || byKey(a.cluster, b.cluster));
     return { total: count(list.flatMap((d) => d.tables)), tables: list.reduce((n, d) => n + d.tables.length, 0), domains: list };
+  }
+
+  // src/render/svg/viewer/tips.js
+  function tipList(mod) {
+    return [
+      { id: "search", parts: [{ key: `${mod}K` }, " finds any table or column, and runs every command"], needs: null },
+      { id: "several", parts: [{ key: "Shift" }, "-click more tables to select several and share them as one link"], needs: null },
+      { id: "join", parts: [{ key: `${mod}J` }, " shows how two tables join, with the SQL"], needs: null },
+      { id: "tour", parts: ["Press ", { key: "T" }, " for a tour of every domain"], needs: "tour" },
+      { id: "neighborhood", parts: ["Double-click a table to see it with the tables around it"], needs: null },
+      { id: "line", parts: ["Click a line to read its relation in one sentence"], needs: null },
+      { id: "back", parts: [{ key: "←" }, " goes back to the table or view you came from"], needs: null },
+      { id: "copy", parts: [{ key: `${mod}C` }, " copies the selected table as CREATE TABLE"], needs: null },
+      { id: "pii", parts: ["Press ", { key: "P" }, " to see where personal data lives"], needs: "pii" },
+      { id: "health", parts: ["Press ", { key: "H" }, " for schema health: missing keys and indexes"], needs: "health" },
+      { id: "central", parts: ["Press ", { key: "S" }, " to mark the most connected table of each domain"], needs: "central" },
+      { id: "ranking", parts: ["Ranking lists the tables the rest of the schema leans on most"], needs: null },
+      { id: "link", parts: ["The address follows your selection: copy it to share what you see"], needs: null },
+      { id: "keys", parts: ["Press ", { key: "?" }, " for every keyboard shortcut"], needs: null }
+    ];
+  }
+  function nextTip(tips2, seen, last) {
+    if (tips2.length === 0) return null;
+    const unseen = tips2.find((t) => !seen.includes(t.id));
+    if (unseen) return unseen;
+    const at = tips2.findIndex((t) => t.id === last);
+    return tips2[(at + 1) % tips2.length];
   }
 
   // src/render/svg/viewer/changes.js
@@ -1990,7 +2023,8 @@ Central: spree_stores</title><rect class="card-box" x="1090" y="570" width="300"
       el("div", { class: "oe-menu-sep" }),
       menuItem("Collapse all", foldable ? "Fold every domain in this view; a click on a domain header folds just that one" : "Nothing to fold in this view", fold(true), { disabled: !foldable }),
       menuItem("Expand all", foldable ? "Unfold every domain in this view" : "Nothing to fold in this view", fold(false), { disabled: !foldable }),
-      menuItem("Minimap", "Small map of the whole view, shown while it does not fit on screen", toggle(() => setMinimap(!map.on)), { checked: map.on })
+      menuItem("Minimap", "Small map of the whole view, shown while it does not fit on screen", toggle(() => setMinimap(!map.on)), { checked: map.on }),
+      menuItem("Tips", "A tip about a feature while the view is left idle", toggle(() => setTipsOff(!tips.off)), { checked: !tips.off })
     ]);
   };
   toolbar.div.append(
@@ -2748,7 +2782,7 @@ ${new XMLSerializer().serializeToString(root)}
       }),
       changeList("nodes", id),
       tableActions(id, n),
-      el("div", { class: "oe-hint muted", text: `${ADD_KEY_HINT} other tables to select several and share them as one link.` }),
+      el("div", { class: "oe-hint-row muted", text: `${ADD_KEY_HINT} other tables to select several and share them as one link.` }),
       ...tabbed(panelTabs(n, count).map((t) => ({ ...t, body: bodies[t.id] })), column ? "columns" : void 0)
     ];
   }
@@ -3626,10 +3660,10 @@ ${new XMLSerializer().serializeToString(root)}
     const [into, from] = [Number(tile.getAttribute("data-in")), Number(tile.getAttribute("data-out"))];
     return [el("b", { text: short(id) }), el("div", { text: `${plural2(into, "relation")} point${into === 1 ? "s" : ""} at it · ${from} from it` }), el("div", { class: "muted", text: `${domainName(clusterOf(id))} · click to open the table` })];
   }
-  function connectorTip(a, b, hint = "Click to see the list") {
+  function connectorTip(a, b, hint2 = "Click to see the list") {
     const [main, other] = byDirection(a, b).sort((x, y) => y.relations.length - x.relations.length);
     const backText = other.relations.length > 0 ? ` · ${other.relations.length} back` : "";
-    return [el("div", {}, [el("b", { text: `${domainName(main.from)} → ${domainName(main.to)}` }), el("span", { text: ` · ${plural2(main.relations.length, "relation")}${backText}` })]), el("div", { class: "muted", text: hint })];
+    return [el("div", {}, [el("b", { text: `${domainName(main.from)} → ${domainName(main.to)}` }), el("span", { text: ` · ${plural2(main.relations.length, "relation")}${backText}` })]), el("div", { class: "muted", text: hint2 })];
   }
   function lineTip(g) {
     const [id, from, to] = [g.getAttribute("data-id"), g.getAttribute("data-from"), g.getAttribute("data-to")];
@@ -4054,6 +4088,81 @@ ${new XMLSerializer().serializeToString(root)}
     toastTimer = setTimeout(() => toast.fo.style.display = "none", Math.max(2500, text.length * 60));
   }
   var hasTextSelection = () => (window.getSelection()?.toString() ?? "") !== "";
+  var TIP_IDLE_MS = 15e3;
+  var TIP_SHOW_MS = 8e3;
+  var TIPS_KEY = "open-erd:tips";
+  var TIP_FEATURES = { tour: TOUR_STEPS.length >= 2, pii: PII.total > 0, health: HEALTH.length > 0, central: CENTRAL_TOTAL > 0 };
+  var TIPS = tipList(MOD_KEY).filter((t) => t.needs === null || TIP_FEATURES[t.needs]);
+  var tipsSaved = (() => {
+    try {
+      return JSON.parse(localStorage.getItem(TIPS_KEY)) ?? {};
+    } catch {
+      return {};
+    }
+  })();
+  var tips = { off: tipsSaved.off === true, seen: Array.isArray(tipsSaved.seen) ? tipsSaved.seen : [], last: null, idle: 0, hide: 0 };
+  function saveTips() {
+    try {
+      localStorage.setItem(TIPS_KEY, JSON.stringify({ off: tips.off, seen: tips.seen }));
+    } catch {
+    }
+  }
+  var hint = overlay("oe-hint-host");
+  hint.fo.style.display = "none";
+  var hintShown = () => hint.fo.style.display !== "none";
+  function showHint() {
+    if (tips.off || tour.on || spotlightOpen() || joinSpotOpen() || openMenu() || document.hidden) return armHint();
+    const t = nextTip(TIPS, tips.seen, tips.last);
+    if (!t) return;
+    tips.last = t.id;
+    if (!tips.seen.includes(t.id)) tips.seen.push(t.id);
+    saveTips();
+    hint.div.replaceChildren(
+      el("div", { class: "oe-hint", role: "status" }, [
+        el("span", { class: "oe-hint-label", text: "Tip" }),
+        el("span", {}, t.parts.map((p) => typeof p === "string" ? document.createTextNode(p) : el("kbd", { text: p.key }))),
+        el("button", { class: "oe-hint-close", text: "×", title: "Turn tips off", "aria-label": "Turn tips off", on: { click: () => setTipsOff(true) } })
+      ])
+    );
+    hint.fo.style.display = "";
+    const vp = viewport();
+    hint.fo.setAttribute("width", vp.w);
+    hint.fo.setAttribute("height", 60);
+    const r = hint.div.firstChild.getBoundingClientRect();
+    hint.fo.setAttribute("x", Math.round((vp.w - r.width) / 2));
+    hint.fo.setAttribute("y", vp.h - r.height - 16);
+    hint.fo.setAttribute("width", Math.ceil(r.width) + 2);
+    hint.fo.setAttribute("height", Math.ceil(r.height) + 2);
+    clearTimeout(tips.hide);
+    tips.hide = setTimeout(hideHint, TIP_SHOW_MS);
+  }
+  function hideHint() {
+    clearTimeout(tips.hide);
+    hint.fo.style.display = "none";
+  }
+  function armHint() {
+    clearTimeout(tips.idle);
+    if (!tips.off) tips.idle = setTimeout(showHint, TIP_IDLE_MS);
+  }
+  function setTipsOff(off) {
+    tips.off = off;
+    saveTips();
+    hideHint();
+    armHint();
+    if (off) showToast("Tips are off: ⋯ › Tips turns them on again");
+  }
+  for (const type of ["pointerdown", "keydown", "wheel", "pointermove"]) {
+    window.addEventListener(
+      type,
+      (e) => {
+        if (hint.div.contains(e.target)) return;
+        if (type !== "pointermove" && hintShown()) hideHint();
+        armHint();
+      },
+      { capture: true, passive: true }
+    );
+  }
+  armHint();
   document.addEventListener("keydown", (e) => {
     const find = (e.key === "f" || e.key === "F") && (IS_MAC ? e.metaKey : e.ctrlKey) && !e.altKey && !e.shiftKey;
     if (find || e.key === "/" && !typing() && !e.metaKey && !e.ctrlKey) {
@@ -4161,7 +4270,7 @@ ${new XMLSerializer().serializeToString(root)}
     if (tour.on) frameTourStep();
     else zoomToRect(viewBounds(state.view), MAX_FIT_SCALE);
   });
-  svg.append(legend.fo, help.fo, minimap.fo, backPill.fo, reviewChip.fo, piiChip.fo, healthChip.fo, centralChip.fo, changesChip.fo, panel.fo, tourBox.fo, toolbar.fo, spotlight.fo, joinSpot.fo, toast.fo, tip.fo);
+  svg.append(legend.fo, help.fo, minimap.fo, backPill.fo, reviewChip.fo, piiChip.fo, healthChip.fo, centralChip.fo, changesChip.fo, panel.fo, tourBox.fo, toolbar.fo, spotlight.fo, joinSpot.fo, hint.fo, toast.fo, tip.fo);
   var start = [...views].find(([, v]) => v.style.display !== "none")?.[0] ?? OVERVIEW;
   showView(start);
   if (changesOn()) setChangesMode(true);

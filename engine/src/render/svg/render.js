@@ -153,6 +153,12 @@ const VIEWER_STYLE = `.row-hit { fill: transparent; }
 .oe-result .where { flex: 1 1 0; min-width: 0; text-align: right; color: #7a8597; font-size: 12px; margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .oe-join-spot .oe-spotlight-field { padding: 10px 16px; }
 .oe-field-label { flex: none; width: 44px; font-size: 12px; font-weight: 700; color: #56627a; text-transform: uppercase; letter-spacing: 0.04em; }
+.oe-hint { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: #3b475c; background: rgba(255, 255, 255, 0.94); border: 1px solid #e3e7ee; border-radius: 14px; padding: 4px 6px 4px 12px; box-shadow: 0 2px 8px rgba(31, 42, 61, 0.08); white-space: nowrap; animation: oe-hint-in 0.3s ease-out; }
+.oe-hint-label { font-size: 11px; font-weight: 600; color: #a07a06; }
+.oe-hint kbd { font: inherit; font-size: 11px; color: #3b475c; background: #ffffff; border: 1px solid #d5dbe4; border-bottom-width: 2px; border-radius: 4px; padding: 0 4px; }
+.oe-hint-close { font: inherit; font-size: 14px; line-height: 16px; width: 20px; height: 20px; border: 0; border-radius: 10px; background: none; color: #a0a9b8; cursor: pointer; }
+.oe-hint-close:hover { background: #f1f4f8; color: #56627a; }
+@keyframes oe-hint-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 .oe-toast { display: inline-block; background: #1f2a3d; color: #ffffff; font-size: 13px; padding: 8px 14px; border-radius: 8px; box-shadow: 0 6px 18px rgba(20, 30, 50, 0.25); white-space: nowrap; }
 .oe-keys-group { margin: 14px 0 4px; font-size: 11px; font-weight: 700; color: #7a8597; text-transform: uppercase; letter-spacing: 0.04em; }
 .oe-keys { border-collapse: collapse; width: 100%; }
@@ -268,7 +274,7 @@ const VIEWER_STYLE = `.row-hit { fill: transparent; }
 .oe-ph-sub { color: #7a8597; font-size: 12px; margin-top: 3px; overflow-wrap: anywhere; }
 .oe-ph-facts { margin-top: 4px; font-size: 12px; color: #56627a; }
 .oe-actions { display: flex; align-items: center; gap: 6px; margin: 0 0 10px; flex-wrap: wrap; }
-.oe-hint { font-size: 11.5px; margin: -4px 0 10px; }
+.oe-hint-row { font-size: 11.5px; margin: -4px 0 10px; }
 .oe-picked-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px solid #eef1f5; }
 .oe-picked-row .oe-chip-close { margin-left: auto; color: #8a94a6; }
 .oe-actions .oe-tool { height: 28px; width: 28px; }
