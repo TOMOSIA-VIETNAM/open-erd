@@ -189,7 +189,6 @@ test('heatmap: ranked bars of the referenced tables per database, the others as 
     assert.ok(g.tables.every((t, i) => i === 0 || g.tables[i - 1].in >= t.in));
   }
   assert.equal(groups.find((g) => g.database === 'auth').tables[0].id, 'auth.public.users');
-  assert.equal(tables.find((t) => t.id === 'auth.public.users').central, true);
   // Drawn as a hidden view: a header per database, one row or name per table.
   const view = svg.slice(svg.indexOf('<g class="view" data-view="heatmap"'));
   assert.match(view, /^<g class="view" data-view="heatmap" data-bounds="[^"]+" style="display:none">/);
@@ -197,7 +196,10 @@ test('heatmap: ranked bars of the referenced tables per database, the others as 
   assert.equal((view.match(/<g class="hm-tile/g) ?? []).length, tables.length);
   assert.equal((view.match(/<g class="hm-tile hm-zero"/g) ?? []).length, tables.filter((t) => t.in === 0).length);
   assert.match(view, /<g class="hm-tile" data-id="auth.public.users" data-in="11" data-out="0"><title>auth.public.users: 11 relations point at it, 0 from it<\/title>/);
-  assert.match(view, />★ users</);
+  // No central-table star: it ranks within a domain, the bars across the database.
+  assert.match(view, />users</);
+  assert.doesNotMatch(view, /class="hm-name"[^>]*>★/);
+  assert.match(view, /<title>activity._.events: 1 relation points at it, 1 from it<\/title>/);
   assert.match(view, /No other table refers to these \(\d+\)/);
   assert.notEqual(heatFill(11, 11), heatFill(1, 11));
 });

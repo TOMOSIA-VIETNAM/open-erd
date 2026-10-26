@@ -26,7 +26,6 @@ const NAME_FONT = { size: 13, weight: 400 };
 const COUNT_FONT = { size: 13, weight: 700 };
 const ZERO_FONT = { size: 12, weight: 400 };
 const DB_FONT = { size: 14, weight: 700 };
-const STAR = '★ ';
 const MARGIN = 40;
 
 // Heat stops, pale to deep, interpolated by the square root of count / max.
@@ -43,7 +42,6 @@ const databaseOf = (id) => id.split('.')[0];
 const tableName = (id) => id.split('.').at(-1);
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const round = (v) => Math.round(v * 100) / 100;
-const label = (t) => `${t.central ? STAR : ''}${tableName(t.id)}`;
 
 /** Fill of a bar whose table `count` relations point at, `max` the highest count. */
 export function heatFill(count, max) {
@@ -56,7 +54,7 @@ export function heatFill(count, max) {
 /**
  * Every table of the diagram with its counts, grouped by database (by name),
  * each database's tables most referenced first, ties by id:
- * [{ database, tables: [{ id, in, out, central }] }]. `counts` from
+ * [{ database, tables: [{ id, in, out }] }]. `counts` from
  * referenceCounts. Exported for tests.
  */
 export function heatmapTables(diagram, counts) {
@@ -65,14 +63,14 @@ export function heatmapTables(diagram, counts) {
     if (n.kind !== 'table') continue;
     const db = databaseOf(id);
     if (!byDb.has(db)) byDb.set(db, []);
-    byDb.get(db).push({ id, ...(counts.get(id) ?? { in: 0, out: 0 }), central: Boolean(n.central) });
+    byDb.get(db).push({ id, ...(counts.get(id) ?? { in: 0, out: 0 }) });
   }
   return [...byDb]
     .sort(([a], [b]) => compareStrings(a, b))
     .map(([database, tables]) => ({ database, tables: tables.sort((a, b) => b.in - a.in || compareStrings(a.id, b.id)) }));
 }
 
-const tipOf = (t) => `<title>${escapeXml(`${t.id}: ${plural(t.in, 'relation')} point at it, ${t.out} from it`)}</title>`;
+const tipOf = (t) => `<title>${escapeXml(`${t.id}: ${plural(t.in, 'relation')} point${t.in === 1 ? 's' : ''} at it, ${t.out} from it`)}</title>`;
 const tileAttrs = (t) => `data-id="${escapeXml(t.id)}" data-in="${t.in}" data-out="${t.out}"`;
 
 // A database's header: its name, table and reference counts, a rule below.
@@ -90,7 +88,7 @@ function dbHeader(database, tables, y) {
 function barRow(t, y, nameW, max) {
   const barX = nameW + COL_GAP;
   const barW = WIDTH - barX - COL_GAP - COUNT_W;
-  const name = truncate(label(t), nameW, NAME_FONT).text;
+  const name = truncate(tableName(t.id), nameW, NAME_FONT).text;
   return (
     `<g class="hm-tile" ${tileAttrs(t)}>${tipOf(t)}` +
     `<rect class="hm-hit" x="0" y="${y}" width="${WIDTH}" height="${ROW}" rx="3"/>` +
@@ -115,7 +113,7 @@ function zeroGrid(tables, top, left, explain) {
     parts.push(
       `<g class="hm-tile hm-zero" ${tileAttrs(t)}>${tipOf(t)}` +
         `<rect x="${round(x)}" y="${y}" width="${round(cellW)}" height="${ZERO_CELL}" rx="4"/>` +
-        `<text x="${round(x + ZERO_PAD)}" y="${y + ZERO_CELL / 2}" dominant-baseline="central">${escapeXml(truncate(label(t), cellW - 2 * ZERO_PAD, ZERO_FONT).text)}</text></g>`,
+        `<text x="${round(x + ZERO_PAD)}" y="${y + ZERO_CELL / 2}" dominant-baseline="central">${escapeXml(truncate(tableName(t.id), cellW - 2 * ZERO_PAD, ZERO_FONT).text)}</text></g>`,
     );
   });
   return { svg: parts.join(''), h: gridTop - top + Math.ceil(tables.length / ZERO_COLS) * (ZERO_CELL + ZERO_GAP) };
@@ -129,10 +127,10 @@ export function heatmapSvg(groups) {
   const all = groups.flatMap((g) => g.tables);
   const max = Math.max(1, ...all.map((t) => t.in));
   const hot = all.filter((t) => t.in > 0);
-  const nameW = Math.min(NAME_MAX, Math.max(NAME_MIN, ...hot.map((t) => measureText(label(t), NAME_FONT))));
+  const nameW = Math.min(NAME_MAX, Math.max(NAME_MIN, ...hot.map((t) => measureText(tableName(t.id), NAME_FONT))));
   const out = [
     `<text class="hm-title" x="0" y="0" dominant-baseline="central">Most referenced tables</text>`,
-    `<text class="hm-legend" x="0" y="22" dominant-baseline="central">Each bar counts the relations pointing at the table: columns of other tables that refer to it. ★ = central table of its domain. Hover a row for both counts; click to open the table.</text>`,
+    `<text class="hm-legend" x="0" y="22" dominant-baseline="central">Each bar counts the relations pointing at the table: columns of other tables that refer to it. Hover a row for both counts; click to open the table.</text>`,
   ];
   let y = 60;
   let explained = false;
