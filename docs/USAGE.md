@@ -70,8 +70,11 @@ that name no table are left out (a link with none opens as usual).
 | `tables=<id>,<id>,...` | All tables (in a schema too large for it, the smallest domain view holding them all, else the first table's domain with a note on how many are elsewhere), those tables lit and the rest faded, zoomed to fit them. Esc or a click on empty space clears it. |
 | `path=<id>,<id>,...` | A join path, as the Join path panel shows it. Two tables: the cheapest paths between them. More: the cheapest path between each table and the next, end to end (a direct relation, when there is one, is always the cheapest). When no relations join two neighbours, the tables are lit as with `tables=`. |
 
-The address follows the selected table, so it can be copied and shared as
-is. `/open-erd:ask` answers with a `tables=` or `path=` link.
+Put `view=<view>&` before `table=` or `column=` to open the table in that
+view, for example `#view=domain:shop/Orders&table=shop.public.orders`
+(when the view does not draw the table, its usual view). The address follows
+the selected table and the view it is seen in, so it can be copied and
+shared as is. `/open-erd:ask` answers with a `tables=` or `path=` link.
 
 ## Schema health
 

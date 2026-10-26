@@ -7,7 +7,7 @@ import { dbDisplayName } from '../../../display-name.js';
 import { REVIEW_WORDS, endMarkers, enumIconSvg, indexIconSvg, isConfirmed, keyIconSvg, linkIconSvg, markerSvg, overviewStrokeWidth, reviewIconSvg, starIconSvg } from '../markers.js';
 import { CANVAS_LIMITS, PIXEL_RATIO, canvasScale, exportBaseName } from './download.js';
 import { findJoinPaths, hopCondition, pathNames, pathThrough, sqlSkeleton } from './join-path.js';
-import { parseHash } from './deep-link.js';
+import { formatHash, parseHash } from './deep-link.js';
 import { collectionDocument, createTableSql, isDocumentStore, markdownTable } from './schema-copy.js';
 import { centreOn, fitsInside, frameFocus, minimapSize, visibleRect } from './minimap.js';
 import { columnBadges, panelTabs } from './panel-parts.js';
@@ -611,7 +611,7 @@ function selectNode(id) {
   // it is what the reader asked to see.
   currentView().classList.toggle('center-selected', state.view === NEIGHBORHOOD && id === state.center);
   showPanel(poly ? polyPanel(id, poly) : nodePanel(id));
-  if (!poly) shareHash(`table=${id}`);
+  if (!poly) shareHash([['table', id]]);
 }
 
 function focusNode(id, column) {
@@ -1571,8 +1571,13 @@ for (const slot of ['from', 'to']) {
 // its link back into the address (replaceState: Back does not walk through
 // selections), so the address bar is always a link to what is on screen.
 let lastHash = null;
-function shareHash(value) {
-  const hash = `#${value.replace(/[^A-Za-z0-9_./:,-]/g, encodeURIComponent)}`;
+// Views a link can open: not a neighborhood or a join path, which are built
+// on demand from a table.
+const linkableView = (name) => views.has(name) && name !== NEIGHBORHOOD && name !== JOIN_VIEW;
+// The address names the selection and the view it is seen in, so a copied
+// link opens the same view with the same table selected.
+function shareHash(pairs) {
+  const hash = formatHash(linkableView(state.view) ? [['view', state.view], ...pairs] : pairs);
   if (hash === location.hash) return;
   lastHash = hash;
   try {
@@ -1593,7 +1598,7 @@ function openDeepLink(hash) {
     else openTableSet(ids);
     return true;
   }
-  if (key === 'view' && views.has(value) && value !== NEIGHBORHOOD && value !== JOIN_VIEW) {
+  if (key === 'view' && linkableView(value)) {
     navigate(value);
     return true;
   }
@@ -1602,12 +1607,13 @@ function openDeepLink(hash) {
   const id = parts.slice(0, 3).join('.');
   const column = key === 'column' ? parts.slice(3).join('.') : null;
   if (data.nodes[id]?.kind !== 'table') return false;
-  const home = views.has(ALL_VIEW) ? ALL_VIEW : homeView(id);
+  // The view the link names when that view draws the table, else its home.
+  const home = linkableView(parsed.view) && indexes.get(parsed.view)?.has(id) ? parsed.view : views.has(ALL_VIEW) ? ALL_VIEW : homeView(id);
   navigate(home, { focus: id, column });
   if (column && data.nodes[id].columns.some((c) => c.name === column)) {
     showPanel(nodePanel(id, column));
     panel.div.querySelector('.oe-col.open')?.scrollIntoView({ block: 'nearest' });
-    shareHash(`column=${id}.${column}`);
+    shareHash([['column', `${id}.${column}`]]);
   }
   return true;
 }

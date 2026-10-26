@@ -918,14 +918,23 @@ Central: spree_stores</title><rect class="card-box" x="1090" y="570" width="300"
   }
 
   // src/render/svg/viewer/deep-link.js
+  var encodeValue = (value) => value.replace(/[^A-Za-z0-9_./:,-]/g, encodeURIComponent);
+  function formatHash(pairs) {
+    return `#${pairs.map(([key, value]) => `${key}=${encodeValue(value)}`).join("&")}`;
+  }
   function parseHash(hash) {
-    const text = (hash ?? "").replace(/^#/, "");
-    const at = text.indexOf("=");
-    if (at <= 0) return null;
-    const raw = text.slice(at + 1);
+    const text = (hash ?? "").replace(/^#/, "").replace(/^([A-Za-z]+)%3D/i, "$1=");
+    const pairs = [];
+    for (const part of text.split("&")) {
+      const at = part.indexOf("=");
+      if (at <= 0) return null;
+      pairs.push([part.slice(0, at), part.slice(at + 1)]);
+    }
+    const main = pairs.find(([key]) => key !== "view") ?? pairs[0];
+    const view = main[0] === "view" ? null : pairs.find(([key]) => key === "view")?.[1] ?? null;
     try {
-      const ids = [...new Set(raw.split(",").map((s) => decodeURIComponent(s).trim()).filter(Boolean))];
-      return { key: text.slice(0, at), value: decodeURIComponent(raw), ids };
+      const ids = [...new Set(main[1].split(",").map((s) => decodeURIComponent(s).trim()).filter(Boolean))];
+      return { key: main[0], value: decodeURIComponent(main[1]), ids, view: view === null ? null : decodeURIComponent(view) };
     } catch {
       return null;
     }
@@ -1635,7 +1644,7 @@ Central: spree_stores</title><rect class="card-box" x="1090" y="570" width="300"
     currentView().classList.add("dimmed");
     currentView().classList.toggle("center-selected", state.view === NEIGHBORHOOD && id === state.center);
     showPanel(poly ? polyPanel(id, poly) : nodePanel(id));
-    if (!poly) shareHash(`table=${id}`);
+    if (!poly) shareHash([["table", id]]);
   }
   function focusNode(id, column) {
     const entry = currentIndex().get(id);
@@ -2390,8 +2399,9 @@ ${new XMLSerializer().serializeToString(root)}
     });
   }
   var lastHash = null;
-  function shareHash(value) {
-    const hash = `#${value.replace(/[^A-Za-z0-9_./:,-]/g, encodeURIComponent)}`;
+  var linkableView = (name) => views.has(name) && name !== NEIGHBORHOOD && name !== JOIN_VIEW;
+  function shareHash(pairs) {
+    const hash = formatHash(linkableView(state.view) ? [["view", state.view], ...pairs] : pairs);
     if (hash === location.hash) return;
     lastHash = hash;
     try {
@@ -2411,7 +2421,7 @@ ${new XMLSerializer().serializeToString(root)}
       else openTableSet(ids);
       return true;
     }
-    if (key === "view" && views.has(value) && value !== NEIGHBORHOOD && value !== JOIN_VIEW) {
+    if (key === "view" && linkableView(value)) {
       navigate(value);
       return true;
     }
@@ -2420,12 +2430,12 @@ ${new XMLSerializer().serializeToString(root)}
     const id = parts.slice(0, 3).join(".");
     const column = key === "column" ? parts.slice(3).join(".") : null;
     if (data.nodes[id]?.kind !== "table") return false;
-    const home = views.has(ALL_VIEW) ? ALL_VIEW : homeView(id);
+    const home = linkableView(parsed2.view) && indexes.get(parsed2.view)?.has(id) ? parsed2.view : views.has(ALL_VIEW) ? ALL_VIEW : homeView(id);
     navigate(home, { focus: id, column });
     if (column && data.nodes[id].columns.some((c) => c.name === column)) {
       showPanel(nodePanel(id, column));
       panel.div.querySelector(".oe-col.open")?.scrollIntoView({ block: "nearest" });
-      shareHash(`column=${id}.${column}`);
+      shareHash([["column", `${id}.${column}`]]);
     }
     return true;
   }

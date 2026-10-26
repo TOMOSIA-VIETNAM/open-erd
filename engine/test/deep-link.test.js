@@ -1,15 +1,25 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { parseHash } from '../src/render/svg/viewer/deep-link.js';
+import { formatHash, parseHash } from '../src/render/svg/viewer/deep-link.js';
 
 test('deep link: key, decoded value, and the value as a list of ids', () => {
-  assert.deepEqual(parseHash('#table=shop._.orders'), { key: 'table', value: 'shop._.orders', ids: ['shop._.orders'] });
+  assert.deepEqual(parseHash('#table=shop._.orders'), { key: 'table', value: 'shop._.orders', ids: ['shop._.orders'], view: null });
   // Dotted ids, encoded or not; spaces trimmed, empty items and repeats dropped.
   assert.deepEqual(parseHash('#tables=shop._.orders,%20auth.public.users,,shop._.orders,').ids, ['shop._.orders', 'auth.public.users']);
   assert.deepEqual(parseHash('#path=a.b.c%2Cd,e.f.g').ids, ['a.b.c,d', 'e.f.g']);
   // Only the first = splits key from value.
-  assert.deepEqual(parseHash('#view=domain:shop/x=y'), { key: 'view', value: 'domain:shop/x=y', ids: ['domain:shop/x=y'] });
+  assert.deepEqual(parseHash('#view=domain:shop/x=y'), { key: 'view', value: 'domain:shop/x=y', ids: ['domain:shop/x=y'], view: null });
   assert.deepEqual(parseHash('tables=a.b.c').ids, ['a.b.c']);
+});
+
+test('deep link: the view a selection is seen in, written and read back', () => {
+  // `=` and `&` stay separators; inside a value they are encoded.
+  const hash = formatHash([['view', 'domain:shop/Billing & Tax'], ['table', 'shop._.orders']]);
+  assert.equal(hash, '#view=domain:shop/Billing%20%26%20Tax&table=shop._.orders');
+  assert.deepEqual(parseHash(hash), { key: 'table', value: 'shop._.orders', ids: ['shop._.orders'], view: 'domain:shop/Billing & Tax' });
+  assert.equal(formatHash([['column', 'shop._.orders.status']]), '#column=shop._.orders.status');
+  // An address copied from an older viewer, its = encoded.
+  assert.equal(parseHash('#table%3Dshop.public.assets').value, 'shop.public.assets');
 });
 
 test('deep link: no key, no hash or broken encoding is no link', () => {

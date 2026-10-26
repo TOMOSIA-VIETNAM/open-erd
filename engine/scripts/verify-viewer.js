@@ -12,6 +12,7 @@ import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { launchChrome } from './cdp.js';
+import { formatHash } from '../src/render/svg/viewer/deep-link.js';
 import { findJoinPaths, pathThrough } from '../src/render/svg/viewer/join-path.js';
 
 const VIEWPORT = { width: 1400, height: 900 };
@@ -1582,7 +1583,15 @@ await key('Escape');
   const home = await evaluate(`document.querySelector('g.view[data-view="all"]') ? 'all' : 'domain:' + ${data}.nodes[${JSON.stringify(linked[0])}].cluster`);
   await shot('deep-link-table', `${viewIs(home)} && ${inView(`.table.selected[data-id="${linked[0]}"]`)} !== null && document.querySelector('.oe-panel .oe-ph-name')?.textContent === ${JSON.stringify(linked[0].split('.')[2])}`);
   await open(`#column=${encodeURIComponent(`${linked[0]}.${linked[1]}`)}`);
-  await shot('deep-link-column', `document.querySelector('.oe-panel .oe-col.open')?.getAttribute('data-column') === ${JSON.stringify(linked[1])} && decodeURIComponent(location.hash) === ${JSON.stringify(`#column=${linked[0]}.${linked[1]}`)}`);
+  await shot('deep-link-column', `document.querySelector('.oe-panel .oe-col.open')?.getAttribute('data-column') === ${JSON.stringify(linked[1])} && location.hash === ${JSON.stringify(formatHash([['view', home], ['column', `${linked[0]}.${linked[1]}`]]))}`);
+  // The view goes with the table: a link copied in a domain view opens that
+  // domain view, with the table selected; an older address with = encoded
+  // still opens the table.
+  const domainOf = `domain:${model.nodes[linked[0]].cluster}`;
+  await open(formatHash([['view', domainOf], ['table', linked[0]]]));
+  await shot('deep-link-view-and-table', `${viewIs(domainOf)} && ${inView(`.table.selected[data-id="${linked[0]}"]`)} !== null && location.hash === ${JSON.stringify(formatHash([['view', domainOf], ['table', linked[0]]]))}`);
+  await open(`#table%3D${linked[0]}`);
+  await shot('deep-link-encoded-equals', `${viewIs(home)} && ${inView(`.table.selected[data-id="${linked[0]}"]`)} !== null`);
   // #tables=: tables of different domains lit together, the rest dimmed,
   // fitted, no panel; an unknown id is left out; Esc clears it.
   const tables = Object.keys(model.nodes).filter((id) => model.nodes[id].kind === 'table');
@@ -1631,7 +1640,7 @@ await key('Escape');
   await bringIntoView(inView(`.table[data-id="${other}"]`));
   const before = await evaluate('history.length');
   await click(inView(`.table[data-id="${other}"]`), { where: 'top' });
-  await shot('selection-updates-hash', `decodeURIComponent(location.hash) === ${JSON.stringify(`#table=${other}`)} && history.length === ${before}`);
+  await shot('selection-updates-hash', `location.hash === ${JSON.stringify(formatHash([['view', startView], ['table', other]]))} && history.length === ${before}`);
 }
 
 // Without script the file must still show the static overview.
