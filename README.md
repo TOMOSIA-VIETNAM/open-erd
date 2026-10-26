@@ -19,15 +19,12 @@
   <a href="#what-you-get"><img alt="Output" src="https://img.shields.io/badge/output-SVG_·_Excel_·_draw.io-141B2D?style=flat-square"></a>
 </p>
 
-Most real databases don't tell the whole story. Relations live in model code,
-polymorphic columns point at five tables, half the foreign keys were never
-declared, and the ERD in the wiki is two years old.
-
-**open-erd reads your code the way a new teammate would — models,
-migrations, associations — and draws the diagram for you.** Every fact it
-writes is checked by a second agent against the code before it is committed.
-You get one interactive file you can open in any browser, plus Excel and
-draw.io copies, and it stays current with one command.
+- **Finds the relations the database never declared**: reads models,
+  migrations and associations, polymorphic ones included.
+- **Checks every fact against the code** with a second agent before it is
+  committed.
+- **One interactive `erd.svg`** for any browser, plus Excel and draw.io copies.
+- **Stays current**: `/open-erd:sync` after code changes.
 
 <p align="center">
   <img src="./docs/images/demo/overview-to-domain.gif" width="760" alt="The overview of an e-commerce schema: one card per domain; a click opens the Orders domain">
@@ -36,6 +33,13 @@ draw.io copies, and it stays current with one command.
 <sub>Demo data: the open-source <a href="https://github.com/solidusio/solidus">Solidus</a> e-commerce app, 105 tables in 14 domains. <a href="https://tomosia-vietnam.github.io/open-erd/">Open it yourself</a> · <a href="./docs/demo/erd.xlsx">erd.xlsx</a> · <a href="./docs/demo/erd.drawio">erd.drawio</a></sub>
 
 ## How it works
+
+```
+/open-erd:init    # once per project: pick the ERD folder, approve the extract script and the domains
+/open-erd:sync    # after code changes: extract, update the model, verify, redraw, commit
+```
+
+Open `out/erd.svg` in a browser. `$open-erd-init` and `$open-erd-sync` in Codex.
 
 <p align="center">
   <picture>
@@ -46,50 +50,26 @@ draw.io copies, and it stays current with one command.
 
 ## Install
 
-In Claude Code:
+Claude Code:
 
 ```
 /plugin marketplace add TOMOSIA-VIETNAM/open-erd
 /plugin install open-erd@open-erd
 ```
 
-In Codex:
+- Update: `/plugin marketplace update open-erd` → `/plugin` › **Installed** › **open-erd** › **Update now** → `/reload-plugins`
+- Auto-update: `/plugin` › **Marketplaces** › **open-erd** › **Enable auto-update**
+
+Codex:
 
 ```bash
 codex plugin marketplace add TOMOSIA-VIETNAM/open-erd
 codex plugin add open-erd@open-erd
 ```
 
-Then, in your project, start a new session and run `/open-erd:init` (Claude
-Code) or `$open-erd-init` (Codex).
+- Update: `codex plugin marketplace upgrade open-erd` → new session
 
-It asks where to keep the ERD (a separate folder with its own git history),
-shows the read-only script it wants to run on your code, and asks before
-running it. Your source repositories are never modified.
-
-### Keep it updated
-
-New versions ship with every commit to `main`. Claude Code does not update
-plugins from this marketplace on its own until you turn it on, once:
-
-1. Run `/plugin`.
-2. Open the **Marketplaces** tab and select **open-erd**.
-3. Choose **Enable auto-update**.
-
-Claude Code then checks in the background each session and tells you to run
-`/reload-plugins` when a new version is in. To update by hand instead:
-
-```
-/plugin marketplace update open-erd
-```
-
-then `/plugin` → **Installed** → **open-erd** → **Update now**, and `/reload-plugins`.
-
-From a shell: `claude plugin marketplace update open-erd && claude plugin update open-erd@open-erd`.
-After a new version, run `/open-erd:sync` once in each ERD workspace: it
-redraws the files with the new viewer even when the code did not change.
-
-Codex: update with `codex plugin marketplace upgrade open-erd`, then a new session. Every other way to install (a one-line script, a local clone), update and uninstall: [docs/install.md](docs/install.md).
+After an update, run `/open-erd:sync` in each ERD workspace to redraw it with the new viewer. Other ways to install: [docs/install.md](docs/install.md).
 
 <details>
 <summary>Uninstall</summary>
