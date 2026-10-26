@@ -171873,7 +171873,7 @@ function readFacts(files) {
     const source = typeof data.source === "string" ? data.source : null;
     const evidence2 = (raw) => list(raw).filter((e) => typeof e === "string").map((e) => source ? `${source}:${e}` : e);
     const reported = /* @__PURE__ */ new Set();
-    const databaseOf = /* @__PURE__ */ new Map();
+    const databaseOf2 = /* @__PURE__ */ new Map();
     data.tables.forEach((t, i) => {
       const at = `tables[${i}]`;
       if (!isObject2(t) || typeof t.name !== "string" || !Array.isArray(t.columns)) {
@@ -171895,13 +171895,13 @@ function readFacts(files) {
       ].map((x) => ({ columns: x.columns, ...x.name ? { name: x.name } : {}, ...x.unique ? { unique: true } : {}, ...x.where ? { where: x.where } : {}, ...x.using ? { using: x.using } : {} }));
       if (t.indexes !== void 0 || t.unique !== void 0) reported.add("indexes");
       const database = t.database ?? data.database ?? null;
-      databaseOf.set(t.name, database);
+      databaseOf2.set(t.name, database);
       tables.push({ file, source, database, schema: t.schema ?? null, name: t.name, evidence: evidence2(t.evidence), columns, indexes });
     });
     fields.set(file, reported);
     list(data.associations).forEach((a, i) => {
       if (!isObject2(a)) return;
-      const end = (e) => isObject2(e) && typeof e.table === "string" && Array.isArray(e.columns) ? { database: e.database ?? databaseOf.get(e.table) ?? data.database ?? null, table: e.table, columns: e.columns } : null;
+      const end = (e) => isObject2(e) && typeof e.table === "string" && Array.isArray(e.columns) ? { database: e.database ?? databaseOf2.get(e.table) ?? data.database ?? null, table: e.table, columns: e.columns } : null;
       const [from, to] = [end(a.from), end(a.to)];
       if (!from || !to) {
         errors.push({ file, path: `associations[${i}]`, message: "from and to need a table and columns" });
@@ -172731,14 +172731,14 @@ function entriesOf(files) {
   for (const [path, a] of associations) add2("association", path, { constraint: canonical(a.constraint), evidence: canonical(sorted(a.evidence)) });
   for (const { file, data } of files) {
     if (!isObject3(data)) continue;
-    const databaseOf = new Map((Array.isArray(data.tables) ? data.tables : []).filter(isObject3).map((t) => [t.name, t.database ?? data.database ?? null]));
+    const databaseOf2 = new Map((Array.isArray(data.tables) ? data.tables : []).filter(isObject3).map((t) => [t.name, t.database ?? data.database ?? null]));
     for (const [section, { scope, identity, path }] of Object.entries(FREE_FORM)) {
       (Array.isArray(data[section]) ? data[section] : []).forEach((e, i) => {
         if (!isObject3(e) || typeof e.table !== "string") {
           errors.push({ file, path: `${section}[${i}]`, message: "needs a table" });
           return;
         }
-        const table2 = tableLabel(e.database ?? databaseOf.get(e.table) ?? data.database ?? null, null, e.table);
+        const table2 = tableLabel(e.database ?? databaseOf2.get(e.table) ?? data.database ?? null, null, e.table);
         const fields = {};
         for (const [k, v] of Object.entries(e)) {
           if (identity.includes(k) || v === void 0) continue;
@@ -173185,10 +173185,10 @@ var EMBED_INSET = 6;
 var TAG_GAP = 8;
 var TAGS = { view: "\xABview\xBB", materialized_view: "\xABmaterialized view\xBB" };
 function tableBox(table2, badges = [], facts = [], { fk = /* @__PURE__ */ new Set(), indexed = /* @__PURE__ */ new Set(), central = false } = {}) {
-  const label = table2.id.split(".")[2];
+  const label2 = table2.id.split(".")[2];
   const tagText = TAGS[table2.kind];
   const tagWidth = tagText ? measureText(tagText, TAG_FONT) + TAG_GAP : 0;
-  const titleWidth = ICON_GUTTER + measureText(label, TITLE_FONT);
+  const titleWidth = ICON_GUTTER + measureText(label2, TITLE_FONT);
   const hintsOf = (c, path) => [c.enum && Object.keys(c.enum).length > 0 ? "enum" : null, indexed.has(path) ? "index" : null].filter(Boolean);
   const hintsWidth = (hints) => Math.max(0, hints.length - 1) * HINT_STEP;
   const columnWidth = (c, path) => ICON_GUTTER + measureText(c.name, c.pk ? PK_FONT : COLUMN_FONT) + hintsWidth(hintsOf(c, path)) + NAME_TYPE_GAP + measureText(c.type, TYPE_FONT);
@@ -173251,7 +173251,7 @@ function tableBox(table2, badges = [], facts = [], { fk = /* @__PURE__ */ new Se
     w,
     h: badgeTop + ROW_HEIGHT * badges.length + BOTTOM_PADDING,
     central,
-    title: { ...fit(label, inner - tagWidth - ICON_GUTTER, TITLE_FONT), centerY: HEADER_HEIGHT / 2 },
+    title: { ...fit(label2, inner - tagWidth - ICON_GUTTER, TITLE_FONT), centerY: HEADER_HEIGHT / 2 },
     tag: tagText ? { ...fit(tagText, tagWidth - TAG_GAP, TAG_FONT), centerY: HEADER_HEIGHT / 2 } : null,
     rows,
     insets,
@@ -173894,12 +173894,12 @@ function buildWorkbook(model, { warnings = missingRelations(model), health = hea
       return [db, schema, t.domain, link(name, names.get(t.id), 1), t.kind ?? "table", t.note ?? "", columnEntries(t).length];
     })
   );
-  sheet.getColumn(9).width = Math.max(...summary.map(([label]) => label.length)) + 2;
+  sheet.getColumn(9).width = Math.max(...summary.map(([label2]) => label2.length)) + 2;
   sheet.getColumn(10).width = Math.min(MAX_WIDTH2, Math.max(...summary.map(([, v]) => String(v).length)) + 2);
   sheet.getCell("I1").value = "Summary";
   sheet.getCell("J1").value = "Value";
-  summary.forEach(([label, n], i) => {
-    sheet.getCell(`I${i + 2}`).value = label;
+  summary.forEach(([label2, n], i) => {
+    sheet.getCell(`I${i + 2}`).value = label2;
     sheet.getCell(`J${i + 2}`).value = n;
   });
   const reviewCell = sheet.getCell(`I${summary.length + 2}`);
@@ -175414,21 +175414,24 @@ function fontFaceCss() {
 }
 
 // src/render/svg/heatmap.js
-var WIDTH = 1100;
-var HEIGHT = 680;
-var GAP = 2;
-var PAD = 8;
-var NAME_SIZES = [16, 14, 12];
-var COUNT_FONT = { size: 15, weight: 700 };
+var WIDTH = 900;
+var ROW = 22;
+var BAR_H = 14;
+var COL_GAP = 12;
+var COUNT_W = 40;
+var NAME_MIN = 120;
+var NAME_MAX = 280;
+var DB_GAP2 = 30;
+var ZERO_COLS = 3;
+var ZERO_CELL = 22;
+var ZERO_GAP = 4;
+var ZERO_PAD = 8;
+var NAME_FONT = { size: 13, weight: 400 };
+var COUNT_FONT = { size: 13, weight: 700 };
 var ZERO_FONT = { size: 12, weight: 400 };
-var LEGEND_FONT = { size: 11, weight: 400 };
-var TITLE_FONT2 = { size: 15, weight: 700 };
-var SCALE_W = 220;
-var LEGEND_HEIGHT = 92;
-var ZERO_LINE = 20;
-var ZERO_SEP = "  \xB7  ";
-var MARGIN2 = 40;
+var DB_FONT = { size: 14, weight: 700 };
 var STAR = "\u2605 ";
+var MARGIN2 = 40;
 var HEAT = [
   [255, 236, 190],
   [253, 196, 110],
@@ -175436,117 +175439,95 @@ var HEAT = [
   [196, 40, 30],
   [130, 15, 25]
 ];
-var DARK_FROM = 0.45;
 var escapeXml = (text2) => text2.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+var databaseOf = (id) => id.split(".")[0];
 var tableName = (id) => id.split(".").at(-1);
 var plural2 = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 var round = (v) => Math.round(v * 100) / 100;
-var heatAt = (count2, max) => Math.sqrt(count2 / max);
+var label = (t) => `${t.central ? STAR : ""}${tableName(t.id)}`;
 function heatFill(count2, max) {
-  const t = heatAt(count2, max) * (HEAT.length - 1);
+  const t = Math.sqrt(count2 / max) * (HEAT.length - 1);
   const i = Math.min(HEAT.length - 2, Math.floor(t));
   const f = t - i;
   return `rgb(${HEAT[i].map((c, k) => Math.round(c + (HEAT[i + 1][k] - c) * f)).join(",")})`;
 }
 function heatmapTables(diagram, counts) {
-  return [...diagram.nodes].filter(([, n]) => n.kind === "table").map(([id, n]) => ({ id, ...counts.get(id) ?? { in: 0, out: 0 }, central: Boolean(n.central) })).sort((a, b) => b.in - a.in || compareStrings(a.id, b.id));
-}
-function squarify(items, w, h) {
-  const total = items.reduce((n, i) => n + i.value, 0);
-  const left = items.map((i) => ({ item: i, area: i.value / total * w * h }));
-  const out = [];
-  let box2 = { x: 0, y: 0, w, h };
-  const worst = (row2, side) => {
-    const s = row2.reduce((n, r) => n + r.area, 0);
-    const areas = row2.map((r) => r.area);
-    return Math.max(side * side * Math.max(...areas) / (s * s), s * s / (side * side * Math.min(...areas)));
-  };
-  const place = (row2) => {
-    const s = row2.reduce((n, r) => n + r.area, 0);
-    const across = box2.w >= box2.h;
-    const thick = s / (across ? box2.h : box2.w);
-    let at = across ? box2.y : box2.x;
-    for (const r of row2) {
-      const len = r.area / thick;
-      out.push({ ...r.item, ...across ? { x: box2.x, y: at, w: thick, h: len } : { x: at, y: box2.y, w: len, h: thick } });
-      at += len;
-    }
-    box2 = across ? { x: box2.x + thick, y: box2.y, w: box2.w - thick, h: box2.h } : { x: box2.x, y: box2.y + thick, w: box2.w, h: box2.h - thick };
-  };
-  let row = [];
-  for (const r of left) {
-    const side = Math.min(box2.w, box2.h);
-    if (row.length === 0 || worst([...row, r], side) <= worst(row, side)) row.push(r);
-    else {
-      place(row);
-      row = [r];
-    }
+  const byDb = /* @__PURE__ */ new Map();
+  for (const [id, n] of diagram.nodes) {
+    if (n.kind !== "table") continue;
+    const db = databaseOf(id);
+    if (!byDb.has(db)) byDb.set(db, []);
+    byDb.get(db).push({ id, ...counts.get(id) ?? { in: 0, out: 0 }, central: Boolean(n.central) });
   }
-  if (row.length > 0) place(row);
-  return out;
+  return [...byDb].sort(([a], [b]) => compareStrings(a, b)).map(([database, tables]) => ({ database, tables: tables.sort((a, b) => b.in - a.in || compareStrings(a.id, b.id)) }));
 }
-function blockText(b, dark) {
-  const inner = { w: b.w - 2 * PAD, h: b.h - 2 * PAD };
-  const label = `${b.central ? STAR : ""}${tableName(b.id)}`;
-  const size = NAME_SIZES.find((s) => inner.h >= s + COUNT_FONT.size + 6 && inner.w >= measureText(label.slice(0, 4), { size: s, weight: 400 }));
-  if (!size) return "";
-  const name = truncate(label, inner.w, { size, weight: 400 }).text;
-  const cls = dark ? " on-dark" : "";
-  return `<text class="hm-name${cls}" x="${round(b.x + PAD)}" y="${round(b.y + PAD + size * 0.8)}" style="font-size:${size}px">${escapeXml(name)}</text><text class="hm-num${cls}" x="${round(b.x + PAD)}" y="${round(b.y + PAD + size + 4 + COUNT_FONT.size * 0.8)}">${b.in}</text>`;
+var tipOf = (t) => `<title>${escapeXml(`${t.id}: ${plural2(t.in, "relation")} point at it, ${t.out} from it`)}</title>`;
+var tileAttrs = (t) => `data-id="${escapeXml(t.id)}" data-in="${t.in}" data-out="${t.out}"`;
+function dbHeader(database, tables, y) {
+  const refs = tables.reduce((n, t) => n + t.in, 0);
+  const x = measureText(database, DB_FONT) + 10;
+  return `<text class="hm-db" x="0" y="${y}" dominant-baseline="central">${escapeXml(database)}</text><text class="hm-legend" x="${round(x)}" y="${y}" dominant-baseline="central">${plural2(tables.length, "table")} \xB7 ${plural2(refs, "reference")}</text><line class="hm-rule" x1="0" y1="${y + 14}" x2="${WIDTH}" y2="${y + 14}"/>`;
 }
-function legendSvg(max) {
-  const y = PAD + 58;
-  const stops = HEAT.map((c, i) => `<stop offset="${i / (HEAT.length - 1)}" stop-color="rgb(${c.join(",")})"/>`).join("");
-  const after = `${max} relation${max === 1 ? "" : "s"} pointing at the table`;
-  return [
-    `<text class="hm-title" x="0" y="${PAD + 6}" dominant-baseline="central">Most referenced tables</text>`,
-    `<text class="hm-legend" x="0" y="${PAD + 32}" dominant-baseline="central">Each block is a table; its size and colour grow with the relations pointing at it. \u2605 = central table of its domain.</text>`,
-    `<linearGradient id="hm-scale">${stops}</linearGradient>`,
-    `<text class="hm-legend" x="0" y="${y}" dominant-baseline="central">1</text>`,
-    `<rect x="14" y="${y - 5}" width="${SCALE_W}" height="10" rx="5" fill="url(#hm-scale)"/>`,
-    `<text class="hm-legend" x="${SCALE_W + 22}" y="${y}" dominant-baseline="central">${escapeXml(after)}</text>`
-  ].join("");
+function barRow(t, y, nameW, max) {
+  const barX = nameW + COL_GAP;
+  const barW = WIDTH - barX - COL_GAP - COUNT_W;
+  const name = truncate(label(t), nameW, NAME_FONT).text;
+  return `<g class="hm-tile" ${tileAttrs(t)}>${tipOf(t)}<rect class="hm-hit" x="0" y="${y}" width="${WIDTH}" height="${ROW}" rx="3"/><text class="hm-name" x="${nameW}" y="${y + ROW / 2}" text-anchor="end" dominant-baseline="central">${escapeXml(name)}</text><rect x="${barX}" y="${y + (ROW - BAR_H) / 2}" width="${round(Math.max(4, t.in / max * barW))}" height="${BAR_H}" rx="3" fill="${heatFill(t.in, max)}"/><text class="hm-num" x="${WIDTH - COUNT_W}" y="${y + ROW / 2}" dominant-baseline="central">${t.in}</text></g>`;
 }
-function zeroSvg(tables, top) {
-  if (tables.length === 0) return { svg: "", h: 0 };
-  const parts = [`<text class="hm-legend" x="0" y="${top}" dominant-baseline="central">Not referenced by any table (${tables.length}), so no block to draw: they only point at others, or stand alone</text>`];
-  const sep = measureText(ZERO_SEP, ZERO_FONT);
-  let x = 0;
-  let y = top + ZERO_LINE;
-  for (const t of tables) {
-    const w = measureText(tableName(t.id), ZERO_FONT);
-    if (x > 0 && x + sep + w > WIDTH) {
-      x = 0;
-      y += ZERO_LINE;
-    } else if (x > 0) x += sep;
+function zeroGrid(tables, top, left, explain) {
+  const cellW = (WIDTH - left - (ZERO_COLS - 1) * ZERO_GAP) / ZERO_COLS;
+  const parts = [
+    `<text class="hm-sub" x="${left}" y="${top}" dominant-baseline="central">No other table refers to these (${tables.length})</text>`
+  ];
+  if (explain) parts.push(`<text class="hm-legend" x="${left}" y="${top + 17}" dominant-baseline="central">No column of another table points at them, so they get no bar. They may still point at other tables themselves: hover to see.</text>`);
+  const gridTop = top + (explain ? 32 : 16);
+  tables.forEach((t, i) => {
+    const x = left + i % ZERO_COLS * (cellW + ZERO_GAP);
+    const y = gridTop + Math.floor(i / ZERO_COLS) * (ZERO_CELL + ZERO_GAP);
     parts.push(
-      `<g class="hm-tile hm-zero" data-id="${escapeXml(t.id)}" data-in="0" data-out="${t.out}"><title>${escapeXml(`${t.id}: nothing points at it, ${t.out} from it`)}</title><text x="${round(x)}" y="${y}" dominant-baseline="central">${escapeXml(tableName(t.id))}</text></g>`
+      `<g class="hm-tile hm-zero" ${tileAttrs(t)}>${tipOf(t)}<rect x="${round(x)}" y="${y}" width="${round(cellW)}" height="${ZERO_CELL}" rx="4"/><text x="${round(x + ZERO_PAD)}" y="${y + ZERO_CELL / 2}" dominant-baseline="central">${escapeXml(truncate(label(t), cellW - 2 * ZERO_PAD, ZERO_FONT).text)}</text></g>`
     );
-    x += w;
-  }
-  return { svg: parts.join(""), h: y - top + ZERO_LINE };
+  });
+  return { svg: parts.join(""), h: gridTop - top + Math.ceil(tables.length / ZERO_COLS) * (ZERO_CELL + ZERO_GAP) };
 }
-function heatmapSvg(tables) {
-  const hot = tables.filter((t) => t.in > 0);
-  const max = hot[0]?.in ?? 0;
-  const blocks = squarify(hot.map((t) => ({ ...t, value: t.in })), WIDTH, HEIGHT).map((b) => ({ ...b, y: b.y + LEGEND_HEIGHT }));
-  const out = [`<g class="hm-legend-strip">${legendSvg(Math.max(max, 1))}</g>`];
-  for (const b of blocks) {
-    const dark = heatAt(b.in, max) >= DARK_FROM;
-    out.push(
-      `<g class="hm-tile" data-id="${escapeXml(b.id)}" data-in="${b.in}" data-out="${b.out}"><title>${escapeXml(`${b.id}: ${plural2(b.in, "relation")} point at it, ${b.out} from it`)}</title><rect x="${round(b.x + GAP / 2)}" y="${round(b.y + GAP / 2)}" width="${round(Math.max(0, b.w - GAP))}" height="${round(Math.max(0, b.h - GAP))}" rx="4" fill="${heatFill(b.in, max)}"/>${blockText(b, dark)}</g>`
-    );
+function heatmapSvg(groups) {
+  const all = groups.flatMap((g) => g.tables);
+  const max = Math.max(1, ...all.map((t) => t.in));
+  const hot = all.filter((t) => t.in > 0);
+  const nameW = Math.min(NAME_MAX, Math.max(NAME_MIN, ...hot.map((t) => measureText(label(t), NAME_FONT))));
+  const out = [
+    `<text class="hm-title" x="0" y="0" dominant-baseline="central">Most referenced tables</text>`,
+    `<text class="hm-legend" x="0" y="22" dominant-baseline="central">Each bar counts the relations pointing at the table: columns of other tables that refer to it. \u2605 = central table of its domain. Hover a row for both counts; click to open the table.</text>`
+  ];
+  let y = 60;
+  let explained = false;
+  for (const { database, tables } of groups) {
+    out.push(dbHeader(database, tables, y));
+    y += 24;
+    for (const t of tables.filter((x) => x.in > 0)) {
+      out.push(barRow(t, y, nameW, max));
+      y += ROW;
+    }
+    const zero = tables.filter((t) => t.in === 0);
+    if (zero.length > 0) {
+      const grid = zeroGrid(zero, y + 16, 0, !explained);
+      explained = true;
+      out.push(grid.svg);
+      y += 16 + grid.h;
+    }
+    y += DB_GAP2;
   }
-  const below = LEGEND_HEIGHT + (hot.length > 0 ? HEIGHT : 0) + 28;
-  const zero = zeroSvg(tables.filter((t) => t.in === 0), below);
-  out.push(zero.svg);
-  return { svg: out.join(""), bounds: { x: -MARGIN2, y: -MARGIN2, w: WIDTH + 2 * MARGIN2, h: below + zero.h + 2 * MARGIN2 } };
+  return { svg: out.join(""), bounds: { x: -MARGIN2, y: -MARGIN2, w: WIDTH + 2 * MARGIN2, h: y + MARGIN2 } };
 }
-var HEATMAP_STYLE = `.hm-title { font-size: ${TITLE_FONT2.size}px; font-weight: ${TITLE_FONT2.weight}; fill: #1f2a3d; }
-.hm-legend { font-size: ${LEGEND_FONT.size}px; font-weight: ${LEGEND_FONT.weight}; fill: #56627a; }
-.hm-name { font-weight: 400; fill: #2a3546; }
+var HEATMAP_STYLE = `.hm-title { font-size: 15px; font-weight: 700; fill: #1f2a3d; }
+.hm-db { font-size: ${DB_FONT.size}px; font-weight: ${DB_FONT.weight}; fill: #1f2a3d; }
+.hm-sub { font-size: 12px; font-weight: 600; fill: #3b475c; }
+.hm-legend { font-size: 11px; fill: #56627a; }
+.hm-rule { stroke: #e3e7ee; stroke-width: 1; }
+.hm-hit { fill: transparent; }
+.hm-name { font-size: ${NAME_FONT.size}px; fill: #2a3546; }
 .hm-num { font-size: ${COUNT_FONT.size}px; font-weight: ${COUNT_FONT.weight}; fill: #2a3546; }
-.hm-name.on-dark, .hm-num.on-dark { fill: #ffffff; }
+.hm-zero rect { fill: #f3f5f8; }
 .hm-zero text { font-size: ${ZERO_FONT.size}px; fill: #56627a; }`;
 
 // src/render/svg/markers.js
@@ -175706,8 +175687,9 @@ var VIEWER_STYLE = `.row-hit { fill: transparent; }
 .card-link.cross_db .card-link-line { stroke-dasharray: 8 6; stroke-linecap: butt; }
 .card-link:hover .card-link-line { stroke-opacity: 1; }
 .hm-tile { cursor: pointer; }
-.hm-tile:hover > rect { stroke: #1f2a3d; stroke-width: 2; }
-.hm-zero:hover text { fill: #1d4ed8; text-decoration: underline; }
+.hm-tile:hover > .hm-hit { fill: #eef2f7; }
+.hm-zero:hover rect { fill: #e3e9f2; }
+.hm-zero:hover text { fill: #1d4ed8; }
 .relation-group.flowing .relation { stroke-opacity: 0.35; }
 .flow { fill: none; stroke: #2563eb; stroke-width: 3; stroke-dasharray: 6 10; pointer-events: none; animation: oe-flow 0.8s linear infinite; }
 .poly-route { fill: none; stroke: #6b778a; stroke-width: 1.4; }
@@ -176463,10 +176445,10 @@ function relationSvg(r, marks) {
   const { link: link2 } = r;
   const d = pathData(r.points);
   const markers = markersSvg(r);
-  const label = r.label ? `<g class="edge-label"><rect x="${r.label.x}" y="${r.label.y}" width="${r.label.w}" height="${r.label.h}" rx="3"/><text x="${r.label.cx}" y="${r.label.cy}" dominant-baseline="central" text-anchor="middle">${escapeXml2(r.label.text)}</text></g>` : "";
+  const label2 = r.label ? `<g class="edge-label"><rect x="${r.label.x}" y="${r.label.y}" width="${r.label.w}" height="${r.label.h}" rx="3"/><text x="${r.label.cx}" y="${r.label.cy}" dominant-baseline="central" text-anchor="middle">${escapeXml2(r.label.text)}</text></g>` : "";
   const via = link2.via ? ` data-via="${escapeXml2(link2.via)}"` : "";
   const grouped = link2.group ? ` data-group="${escapeXml2(link2.group)}" data-tables="${json(link2.tables)}" data-label="${escapeXml2(groupLinkText(link2))}"` : "";
-  return `<g class="relation-group kind-${link2.kind} review-${link2.review}${styleClass(link2)}${linkDiffClass(marks, link2.id)}" data-id="${escapeXml2(link2.id)}" data-from="${escapeXml2(link2.from.node)}" data-to="${escapeXml2(link2.to.node)}" data-kind="${link2.kind}" data-review="${link2.review}"${via}${grouped}><title>${escapeXml2(titleText(marks, link2.id, link2.group ? groupLinkText(link2) : link2.via ? `${link2.id} (n-n via ${link2.via})` : link2.id, "links"))}</title><path class="relation" d="${d}"${link2.group ? ` style="stroke-width:${overviewStrokeWidth(link2.relations.length)}"` : ""}/>${markers}${label}</g>`;
+  return `<g class="relation-group kind-${link2.kind} review-${link2.review}${styleClass(link2)}${linkDiffClass(marks, link2.id)}" data-id="${escapeXml2(link2.id)}" data-from="${escapeXml2(link2.from.node)}" data-to="${escapeXml2(link2.to.node)}" data-kind="${link2.kind}" data-review="${link2.review}"${via}${grouped}><title>${escapeXml2(titleText(marks, link2.id, link2.group ? groupLinkText(link2) : link2.via ? `${link2.id} (n-n via ${link2.via})` : link2.id, "links"))}</title><path class="relation" d="${d}"${link2.group ? ` style="stroke-width:${overviewStrokeWidth(link2.relations.length)}"` : ""}/>${markers}${label2}</g>`;
 }
 function polyRoutesSvg(routes) {
   const byPoly = /* @__PURE__ */ new Map();
@@ -176991,8 +176973,8 @@ function nodeCells(n, parent, x, y, ctx) {
   const b = n.box;
   const bar = (filled) => `<span style="color:#5d7fb8">${"\u25A0".repeat(filled)}</span><span style="color:#d5dbe4">${"\u25A0".repeat(STRENGTH_SEGMENTS - filled)}</span>`;
   const related = b.related.map((r) => {
-    const label = colorOf(r.key).label;
-    return `<span style="color:${label}">${escapeHtml(r.name.full)}</span>${r.db ? ` <span style="font-size:9px;color:#56627a">${escapeHtml(r.db)}</span>` : ""} ${bar(r.segments)}`;
+    const label2 = colorOf(r.key).label;
+    return `<span style="color:${label2}">${escapeHtml(r.name.full)}</span>${r.db ? ` <span style="font-size:9px;color:#56627a">${escapeHtml(r.db)}</span>` : ""} ${bar(r.segments)}`;
   });
   const text2 = [
     `<b style="font-size:15px;color:${c.label}">${escapeHtml(b.title.full)}</b> <span style="color:#7a8597">\xB7 ${escapeHtml(b.count.full)}</span>`,
@@ -177049,26 +177031,26 @@ function endpoint2(link2, side, point, byId, heights) {
   if (n.kind === "table" && link2[side].column !== null) return { id: rowId(n.id, link2[side].column), x, y: 0.5 };
   return { id: nodeId(n.id), x, y: fraction((point[1] - n.y) / heights.get(n.id)) };
 }
-function labelAnchor(points, label) {
+function labelAnchor(points, label2) {
   const segments = points.slice(1).map((b, i) => ({ a: points[i], b, len: Math.abs(b[0] - points[i][0]) + Math.abs(b[1] - points[i][1]) }));
   const total = segments.reduce((n, seg) => n + seg.len, 0);
   let best = null;
   let walked = 0;
   for (const { a, b, len } of segments) {
     const clamp = (v, p, q) => Math.min(Math.max(v, Math.min(p, q)), Math.max(p, q));
-    const px = clamp(label.cx, a[0], b[0]);
-    const py = clamp(label.cy, a[1], b[1]);
-    const dist = Math.abs(px - label.cx) + Math.abs(py - label.cy);
+    const px = clamp(label2.cx, a[0], b[0]);
+    const py = clamp(label2.cy, a[1], b[1]);
+    const dist = Math.abs(px - label2.cx) + Math.abs(py - label2.cy);
     if (!best || dist < best.dist) best = { dist, along: walked + Math.abs(px - a[0]) + Math.abs(py - a[1]), px, py };
     walked += len;
   }
-  return { x: total === 0 ? 0 : Math.round((2 * best.along / total - 1) * 1e4) / 1e4, dx: label.cx - best.px, dy: label.cy - best.py };
+  return { x: total === 0 ? 0 : Math.round((2 * best.along / total - 1) * 1e4) / 1e4, dx: label2.cx - best.px, dy: label2.cy - best.py };
 }
-var labelGeometry = (points, label) => label ? ` x="${labelAnchor(points, label).x}"` : "";
+var labelGeometry = (points, label2) => label2 ? ` x="${labelAnchor(points, label2).x}"` : "";
 var waypointsOf = (points, origin) => points.slice(1, -1).map(([px, py]) => `<mxPoint x="${px - origin.x}" y="${py - origin.y}"/>`).join("");
-function labelOffset(points, label) {
-  if (!label) return "";
-  const { dx, dy } = labelAnchor(points, label);
+function labelOffset(points, label2) {
+  if (!label2) return "";
+  const { dx, dy } = labelAnchor(points, label2);
   return dx === 0 && dy === 0 ? "" : `<mxPoint x="${dx}" y="${dy}" as="offset"/>`;
 }
 function edgeCell(r, byId, heights, origin, { id = edgeId(r.link), parent = "1", extra = {} } = {}) {
@@ -177361,13 +177343,13 @@ async function readFactsDir(dir) {
   for (const file of names) texts.push({ file, text: await readFile(join(dir, file), "utf8") });
   return parseFactsFiles(texts);
 }
-function parseFactsFiles(texts, label = "") {
+function parseFactsFiles(texts, label2 = "") {
   const files = [];
   for (const { file, text: text2 } of [...texts].sort((a, b) => compareStrings(a.file, b.file))) {
     try {
       files.push({ file, data: JSON.parse(text2) });
     } catch (e) {
-      console.error(`${label}${file}: not valid JSON: ${e.message}`);
+      console.error(`${label2}${file}: not valid JSON: ${e.message}`);
       return null;
     }
   }

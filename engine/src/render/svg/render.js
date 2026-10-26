@@ -85,8 +85,9 @@ const VIEWER_STYLE = `.row-hit { fill: transparent; }
 .card-link.cross_db .card-link-line { stroke-dasharray: 8 6; stroke-linecap: butt; }
 .card-link:hover .card-link-line { stroke-opacity: 1; }
 .hm-tile { cursor: pointer; }
-.hm-tile:hover > rect { stroke: #1f2a3d; stroke-width: 2; }
-.hm-zero:hover text { fill: #1d4ed8; text-decoration: underline; }
+.hm-tile:hover > .hm-hit { fill: #eef2f7; }
+.hm-zero:hover rect { fill: #e3e9f2; }
+.hm-zero:hover text { fill: #1d4ed8; }
 .relation-group.flowing .relation { stroke-opacity: 0.35; }
 .flow { fill: none; stroke: #2563eb; stroke-width: 3; stroke-dasharray: 6 10; pointer-events: none; animation: oe-flow 0.8s linear infinite; }
 .poly-route { fill: none; stroke: #6b778a; stroke-width: 1.4; }

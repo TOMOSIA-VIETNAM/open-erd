@@ -1,13 +1,13 @@
 import { compareStrings } from '../model/load.js';
 import { domainPairs } from './diagram.js';
 
-// What the overview cards and the heatmap say about domains, derived once
-// from the diagram so cards, heatmap, draw.io and the viewer
-// can never disagree on order or strength.
+// What the overview cards say about domains, derived once from the
+// diagram so cards, draw.io and the viewer can never disagree on order or
+// strength.
 
 /** Related domains named on a card; the viewer's hover shows them all. */
 export const RELATED_ON_CARD = 3;
-/** Segments of a card's strength bar, and shades of a heatmap tile. */
+/** Segments of a card's strength bar. */
 export const STRENGTH_SEGMENTS = 5;
 // Counts at or above this fill every segment even when the schema's
 // strongest pair is weaker, so a schema of thin links shows thin bars.
@@ -35,7 +35,7 @@ const nameOf = (key) => key.slice(key.indexOf('/') + 1);
  *     by key }
  * `order`: cluster keys database by database (model order), each database's
  * domains most connected first, ties by key: the card order of a fresh
- * overview and the domain order of the heatmap.
+ * overview and the domain order of the tour.
  * `max`: the largest relation count between two domains (0 when none).
  */
 export function domainSummary(model, diagram) {
