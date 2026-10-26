@@ -30,6 +30,22 @@ function isHub(config, r) {
   return (hub.tables ?? []).includes(r.to.table) || r.from.columns.some((c) => (hub.columns ?? []).includes(c));
 }
 
+// The relations drawn as badges: hub references that cut across domains.
+// Inside the hub table's own domain a hub reference is that domain's
+// structure, so it stays a line; and a table whose every relation is a hub
+// reference keeps its lines, or it would float with nothing drawn to it.
+function badgeRelations(model) {
+  const tables = new Map(model.tables.map((t) => [t.id, t]));
+  const hub = model.relations.filter(
+    (r) => isHub(model.config, r) && clusterKey(tables.get(r.from.table)) !== clusterKey(tables.get(r.to.table)),
+  );
+  const linked = new Set([
+    ...model.relations.filter((r) => !hub.includes(r)).flatMap((r) => [r.from.table, r.to.table]),
+    ...model.polymorphic.flatMap((a) => [a.table, ...a.targets]),
+  ]);
+  return hub.filter((r) => linked.has(r.from.table));
+}
+
 // Hub relations grouped per referencing table and hub target, in id order.
 function hubBadges(hubRelations) {
   const byTable = new Map();
@@ -191,7 +207,7 @@ function polyLink(a) {
  *   tenant?, association? }
  * links: lines between nodes, [{ id, from: { node, column }, to, cardinality,
  *   optional, kind, review, via? }] in id order
- * hubLinks: the hub relations, same shape, in id order. They are badges in
+ * hubLinks: the relations drawn as badges (badgeRelations), same shape, in id order. They are badges in
  *   every box; the viewer lists them and draws them only on demand (a hub
  *   table selected, its neighborhood), so a central table still shows what
  *   points at it.
@@ -202,7 +218,7 @@ function polyLink(a) {
  *   table has a link
  */
 export function buildDiagram(model) {
-  const hubRelations = model.relations.filter((r) => isHub(model.config, r));
+  const hubRelations = badgeRelations(model);
   const drawn = new Set(model.relations.filter((r) => !hubRelations.includes(r)));
   const joins = model.config.collapse_join_tables ? joinTables(model, drawn) : new Map();
   const badges = hubBadges(hubRelations);

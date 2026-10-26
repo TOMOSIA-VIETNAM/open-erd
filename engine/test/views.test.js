@@ -48,19 +48,30 @@ test('relation kinds and review states carry their own classes; two line styles 
   }
 });
 
-test('hub relations are badges, not lines', async () => {
+test('hub relations across domains are badges, not lines', async () => {
   const { scene, diagram, svg } = await multi();
   const all = scene('all');
   const ids = new Set(all.relations.map((r) => r.id));
-  for (const id of ['shop._.orders(user_id)->auth.public.users(id)', 'shop._.products(created_by)->auth.public.users(id)', 'auth.public.user_profiles(user_id)->auth.public.users(id)']) {
+  for (const id of ['shop._.orders(user_id)->auth.public.users(id)', 'shop._.products(created_by)->auth.public.users(id)']) {
     assert.ok(!ids.has(id), `${id} was routed`);
   }
-  for (const r of all.relations) assert.notEqual(r.link.to.node, 'auth.public.users', r.id);
+  // Inside the hub table's own domain a hub reference is structure: a line.
+  assert.ok(ids.has('auth.public.user_profiles(user_id)->auth.public.users(id)'));
+  for (const r of all.relations) assert.ok(r.link.to.node !== 'auth.public.users' || r.link.from.node === 'auth.public.user_profiles', r.id);
   assert.deepEqual(diagram.nodes.get('shop._.products').box.badges.map(({ target, count, columns }) => ({ target, count, columns })), [
     { target: 'auth.public.users', count: 2, columns: ['created_by', 'updated_by'] },
   ]);
   assert.equal(diagram.nodes.get('shop._.products').box.badges[0].label.text, 'users ×2');
   assert.match(svg, /<title>created_by, updated_by → auth\.public\.users<\/title>/);
+});
+
+test('a table whose only relations are cross-domain hub references keeps them as lines', async () => {
+  const lone = table('shop._.user_notes', 'Content', [['created_by', 'bigint']]);
+  const { scene, diagram } = await multi((m) => normalizeModel({ ...m, tables: [...m.tables, lone], relations: [...m.relations, fk(lone.id, 'created_by', 'auth.public.users')] }));
+  const id = 'shop._.user_notes(created_by)->auth.public.users(id)';
+  assert.ok(scene('all').relations.some((r) => r.id === id));
+  assert.ok(!diagram.hubLinks.some((l) => l.id === id));
+  assert.deepEqual(diagram.nodes.get(lone.id).box.badges ?? [], []);
 });
 
 test('a polymorphic association is one virtual node and one line; targets are data only', async () => {
@@ -140,7 +151,7 @@ test('domain summary: most connected first per database, related by strength, ti
     [
       ['activity/Audit', 1, 0],
       ['activity/Events', 2, 1],
-      ['auth/Identity', 1, 1],
+      ['auth/Identity', 1, 2],
       ['auth/Organizations', 3, 2],
       ['shop/Catalog', 4, 4],
       ['shop/Content', 5, 3],
@@ -240,8 +251,9 @@ test('hub relations into a hub table are routed per view, hidden until it is sel
 });
 
 test('a hub fanned out to more than HUB_ROUTE_LIMIT tables in a view gets no lines there', async () => {
-  const extra = Array.from({ length: HUB_ROUTE_LIMIT }, (_, i) => table(`shop._.extra_${String(i).padStart(2, '0')}`, 'Extra', [['created_by', 'bigint']]));
-  const refs = extra.map((t) => fk(t.id, 'created_by', 'auth.public.users'));
+  // Each extra table also has a drawn line, so its hub reference stays a badge.
+  const extra = Array.from({ length: HUB_ROUTE_LIMIT }, (_, i) => table(`shop._.extra_${String(i).padStart(2, '0')}`, 'Extra', [['created_by', 'bigint'], ['product_id', 'bigint']]));
+  const refs = extra.flatMap((t) => [fk(t.id, 'created_by', 'auth.public.users'), fk(t.id, 'product_id', 'shop._.products')]);
   const { scene, diagram } = await multi((m) => normalizeModel({ ...m, tables: [...m.tables, ...extra], relations: [...m.relations, ...refs] }));
   const into = diagram.hubLinks.filter((l) => l.to.node === 'auth.public.users' && l.from.node !== l.to.node).length;
   assert.ok(into > HUB_ROUTE_LIMIT);

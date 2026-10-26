@@ -173362,6 +173362,17 @@ function isHub(config, r) {
   const hub = config.hub ?? {};
   return (hub.tables ?? []).includes(r.to.table) || r.from.columns.some((c) => (hub.columns ?? []).includes(c));
 }
+function badgeRelations(model) {
+  const tables = new Map(model.tables.map((t) => [t.id, t]));
+  const hub = model.relations.filter(
+    (r) => isHub(model.config, r) && clusterKey(tables.get(r.from.table)) !== clusterKey(tables.get(r.to.table))
+  );
+  const linked = /* @__PURE__ */ new Set([
+    ...model.relations.filter((r) => !hub.includes(r)).flatMap((r) => [r.from.table, r.to.table]),
+    ...model.polymorphic.flatMap((a) => [a.table, ...a.targets])
+  ]);
+  return hub.filter((r) => linked.has(r.from.table));
+}
 function hubBadges(hubRelations) {
   const byTable = /* @__PURE__ */ new Map();
   for (const r of hubRelations) {
@@ -173477,7 +173488,7 @@ function polyLink(a) {
   };
 }
 function buildDiagram(model) {
-  const hubRelations = model.relations.filter((r) => isHub(model.config, r));
+  const hubRelations = badgeRelations(model);
   const drawn = new Set(model.relations.filter((r) => !hubRelations.includes(r)));
   const joins = model.config.collapse_join_tables ? joinTables(model, drawn) : /* @__PURE__ */ new Map();
   const badges = hubBadges(hubRelations);

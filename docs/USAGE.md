@@ -14,7 +14,7 @@ The short guide is the README. This page lists every output, command and behavio
 ![Diff panel for a changed table](docs/images/diff.png)
 
 Readability with 100+ tables: three zoom levels (overview / domain / neighborhood; in a domain view the tables of another domain that has several of them are one box with one bundled line per column),
-shared columns such as `created_by` shown as badges instead of lines,
+shared columns such as `created_by` shown as badges instead of lines (a reference inside the hub table's own domain, and the references of a table with no other relation, stay lines),
 polymorphic associations drawn as one node, relations nobody confirmed yet
 dashed (their evidence, `repo:path#symbol`, is in the To review sheet).
 Adding tables keeps the existing layout's relative order, so people who know

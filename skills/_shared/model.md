@@ -100,6 +100,10 @@ as `orders` or `campaigns`), however many tables reference it: its lines are
 the structure of its domain, and as a hub it turns into badges everywhere.
 Prefer `hub.columns` over `hub.tables`: a column hub hides only those
 cross-cutting references, a table hub hides every reference to the table.
+Propose a hub only when it removes real clutter: references from many tables
+in several domains. A handful of references is clearer as lines. The engine
+keeps as lines, whatever the hub says, a hub reference inside the hub table's
+own domain and the references of a table that has no other relation.
 Propose each hub with the reason it is cross-cutting; do not decide alone.
 The ERD still lists every hub relation in the hub table's panel and draws
 them while that table is selected.
