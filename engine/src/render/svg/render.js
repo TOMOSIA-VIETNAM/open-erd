@@ -187,6 +187,7 @@ const VIEWER_STYLE = `.row-hit { fill: transparent; }
 .oe-rel-card .side .db { margin-left: auto; font-weight: 400; text-transform: none; letter-spacing: 0; }
 .oe-rel-card .name { display: flex; align-items: center; gap: 6px; font-weight: 700; color: #1d4ed8; overflow-wrap: anywhere; }
 .oe-rel-card .col { margin-left: 19px; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; color: #3a4659; overflow-wrap: anywhere; }
+.oe-rel-card .targets { margin-left: 19px; font-size: 12px; color: #56627a; overflow-wrap: anywhere; }
 .oe-rel-arrow { margin: 4px 0 4px 14px; font-size: 12px; color: #56627a; }
 .oe-review-chip { display: inline-flex; align-items: center; gap: 6px; background: #fff4e0; color: #8a5a00; border: 1px solid #f0c987; border-radius: 14px; padding: 3px 4px 3px 10px; font-size: 12px; box-shadow: 0 2px 6px rgba(20, 30, 50, 0.1); white-space: nowrap; }
 .oe-chip-close { font: inherit; font-size: 14px; line-height: 16px; width: 20px; height: 20px; border: 0; border-radius: 10px; background: none; color: #8a5a00; cursor: pointer; }

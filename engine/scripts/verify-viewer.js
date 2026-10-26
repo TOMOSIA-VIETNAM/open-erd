@@ -632,6 +632,15 @@ if (polyView) {
   await click(`document.querySelector('.oe-crumbs .oe-link')`);
   await click(`document.querySelector('.domain[data-domain=${JSON.stringify(polyView)}]')`);
   const poly = await evaluate(`${inView('.poly-routes')}.getAttribute('data-poly')`);
+  // A polymorphic line's panel: one end card names the association with its type and id columns.
+  const polyLine = `[...${visible}.querySelectorAll('.relation-group.kind-polymorphic path.relation-hit')].find((e) => { const m = e.getPointAtLength(e.getTotalLength() / 2).matrixTransform(e.getScreenCTM()); return m.x < innerWidth - 470 && e.closest('.relation-group').contains(document.elementFromPoint(m.x, m.y)); })`;
+  if (await evaluate(`${polyLine} ? true : false`)) {
+    await click(polyLine);
+    await shot('polymorphic-line-panel', `(() => { const cards = [...document.querySelectorAll('.oe-panel .oe-rel-card')]; const p = cards.find((c) => c.querySelector('.name').textContent.includes('«'));
+      return cards.length === 2 && p && p.querySelectorAll('.col').length === 2 && /^One of: /.test(p.querySelector('.targets')?.textContent ?? '') && document.querySelector('.oe-panel .oe-line-facts').textContent.includes('Polymorphic')
+        && /one of \\d+ tables?;/.test(document.querySelector('.oe-panel .oe-rel-sentence').textContent); })()`);
+    await key('Escape');
+  }
   await click(inView(`.poly[data-id="${poly}"]`), { where: 'top' });
   // Its panel: the business note when there is one, never a generic sentence,
   // and the evidence folded.

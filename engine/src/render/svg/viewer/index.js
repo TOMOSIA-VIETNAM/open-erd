@@ -2040,6 +2040,8 @@ function relationSentence(l) {
   const [f, t] = [short(l.from), short(l.to)];
   const one = l.optional ? 'at most one' : 'one';
   if (l.kind === 'view_source') return `${f} is built from ${t}.`;
+  const poly = data.nodes[l.to]?.kind === 'poly' ? data.nodes[l.to] : null;
+  if (poly) return `Each ${f} row points to one row of one of ${plural(poly.targets.length, 'table')}; ${poly.typeColumn} says which.`;
   if (l.cardinality === 'n-n') return `Rows of ${f} and ${t} link many to many${l.via ? `, through ${short(l.via)}` : ''}.`;
   if (l.cardinality === '1-n') return `Each ${f} row has many ${t} rows.`;
   if (l.cardinality === '1-1') return `Each ${f} row points to ${one} ${t} row, and each ${t} row has at most one ${f} row.`;
@@ -2048,12 +2050,13 @@ function relationSentence(l) {
 function relationEnd(side, id, columns, showDb) {
   const n = data.nodes[id];
   const table = n?.kind === 'poly' ? n.table : id;
-  const name = n?.kind === 'poly' ? `${short(n.table)} «${n.name}»` : short(id);
+  const name = n?.kind === 'poly' ? `«${n.name}»` : short(id);
   const cols = n?.kind === 'poly' ? [n.typeColumn, n.idColumn] : (columns ?? []);
   return el('button', { class: 'oe-rel-card', title: `Go to ${table}`, on: { click: () => goToNode(table), pointerenter: () => pulse(currentIndex().get(id)?.el) } }, [
     el('span', { class: 'side' }, [el('span', { text: side }), showDb ? el('span', { class: 'db', text: `${dbDisplayName(dbOf(table))} (${data.databases[dbOf(table)].label})` }) : null]),
     el('span', { class: 'name' }, [iconSvg('table', 13), el('span', { text: name })]),
     ...cols.map((c) => el('code', { class: 'col', text: c })),
+    n?.kind === 'poly' ? el('span', { class: 'targets', text: `One of: ${n.targets.map(short).join(', ')}` }) : null,
   ]);
 }
 function relationPanel(g) {
