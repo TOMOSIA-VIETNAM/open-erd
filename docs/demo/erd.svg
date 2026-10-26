@@ -4151,12 +4151,12 @@ ${new XMLSerializer().serializeToString(root)}
     armHint();
     if (off) showToast("Tips are off: ⋯ › Tips turns them on again");
   }
-  for (const type of ["pointerdown", "keydown", "wheel", "pointermove"]) {
+  for (const type of ["pointerdown", "keydown", "wheel"]) {
     window.addEventListener(
       type,
       (e) => {
         if (hint.div.contains(e.target)) return;
-        if (type !== "pointermove" && hintShown()) hideHint();
+        if (hintShown()) hideHint();
         armHint();
       },
       { capture: true, passive: true }

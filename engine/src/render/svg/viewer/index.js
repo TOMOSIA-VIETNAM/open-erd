@@ -3644,9 +3644,10 @@ const hasTextSelection = () => (window.getSelection()?.toString() ?? '') !== '';
 // ---------------------------------------------------------------- tips
 
 // A tip about a feature (tips.js), in a small pill at the bottom, once the
-// reader has left the view idle for TIP_IDLE_MS: unseen tips first, then
-// round the list. It goes after TIP_SHOW_MS, or at the next click, key or
-// wheel; a moving pointer only restarts the wait. Not during the tour, the
+// reader has not clicked, pressed a key or scrolled for TIP_IDLE_MS (a
+// moving pointer does not count, so it comes while the reader looks the
+// diagram over): unseen tips first, then round the list. It goes after
+// TIP_SHOW_MS, or at the next click, key or scroll. Not during the tour, the
 // palette, the join box or an open menu. × turns tips off (⋯ › Tips turns
 // them on again). Which tips were seen, the last one shown and whether tips
 // are off are kept in this browser's storage, so a visit goes on round the
@@ -3715,12 +3716,12 @@ function setTipsOff(off) {
   armHint();
   if (off) showToast('Tips are off: ⋯ › Tips turns them on again');
 }
-for (const type of ['pointerdown', 'keydown', 'wheel', 'pointermove']) {
+for (const type of ['pointerdown', 'keydown', 'wheel']) {
   window.addEventListener(
     type,
     (e) => {
       if (hint.div.contains(e.target)) return;
-      if (type !== 'pointermove' && hintShown()) hideHint();
+      if (hintShown()) hideHint();
       armHint();
     },
     { capture: true, passive: true },

@@ -1662,7 +1662,11 @@ await key('Escape');
 {
   const hintHost = `document.querySelector('.oe-hint-host')?.closest('foreignObject')`;
   await key('Escape');
-  await pause(16000);
+  // Moving the pointer over the diagram does not hold the tip back.
+  for (let i = 0; i < 8; i++) {
+    await mouse('mouseMoved', { x: 400 + i * 20, y: 400 });
+    await pause(2000);
+  }
   await shot('tip-after-idle', `${hintHost}?.style.display === '' && document.querySelector('.oe-hint kbd')?.textContent.endsWith('K') && document.querySelector('.oe-hint-label').textContent === 'Tip'`);
   await key('Shift', 'ShiftLeft');
   await shot('tip-hides-on-key', `${hintHost}.style.display === 'none'`);
