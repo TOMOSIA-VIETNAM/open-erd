@@ -28,8 +28,10 @@ evidence.
 
 - **Table note**: what one row means for the business, as the code that
   creates and uses the rows shows it.
-- **Column note**: what the value means or is used for, as the code that sets
-  or reads it shows. `Unclear from code.` is right when no code tells.
+- **Column note**: what the value means for the business, else what it does
+  technically, as the code that sets or reads it shows. No note is right when
+  no code tells; a placeholder that describes nothing (`Unclear from code.`,
+  `Unknown.`) is `wrong`, with the fix "remove the note".
 - **Domain note**: what the domain's tables cover together.
 - **Enum meaning**: the code gives that meaning to that stored value (a
   branch, a label, a comment). An empty meaning is right when no code does.

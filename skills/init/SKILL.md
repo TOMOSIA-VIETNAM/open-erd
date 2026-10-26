@@ -90,9 +90,12 @@ Write a `note` on every table, every column and every polymorphic entry,
 not only the important ones: the Excel table sheets show it as the Comment of
 each column. Read how services, controllers, jobs and operations use a table
 before writing its note, and describe that business meaning rather than
-restating the name. Keep each column note short (about 15 words at most), say
-only what code, schema comments or names show, and write `Unclear from code.`
-when nothing does.
+restating the name; where the code shows no business meaning, say what the
+value does technically, in technical terms (readers are developers). Keep
+each column note short (about 15 words at most) and say only what code,
+schema comments or names show; when nothing does, leave the note out rather
+than write a placeholder such as `Unclear from code.` (`model.md`, "Writing
+facts").
 
 ## 5. Domains
 

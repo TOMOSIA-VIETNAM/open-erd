@@ -46,7 +46,7 @@ health:                      # schema health findings to stop reporting
   ignore:
     - unindexed_fk:billing.public.audit_logs          # <rule>:<table id>, whole table
     - missing_fk:billing.public.payments.order_id     # <rule>:<table id>.<column>, that column only
-default_view: all            # all (default) | overview | heatmap | domain:<db>/<domain>; the view the SVG opens on
+default_view: all            # all (default) | overview | ranking | domain:<db>/<domain>; the view the SVG opens on
 verify: ai-only              # ai-only (default) | full | off; checking before each commit, see rules.md "Verification"
 not_in_model:                # tables the extract facts list that the model leaves out on purpose; `verify` skips them
   - billing.public.schema_migrations   # framework table
@@ -96,7 +96,7 @@ A hub is only for references that cut across every domain: audit columns
 (`created_by`, `updated_by`), tenant or company scoping (`tenant_id`,
 `company_id`), and the tables such columns point at (`users`, `tenants`).
 Never make a core business table a hub (one a domain is built around, such
-as `orders` or `campaigns`), however many tables reference it: its lines are
+as `orders` or `products`), however many tables reference it: its lines are
 the structure of its domain, and as a hub it turns into badges everywhere.
 Prefer `hub.columns` over `hub.tables`: a column hub hides only those
 cross-cutting references, a table hub hides every reference to the table.
@@ -289,24 +289,31 @@ polymorphic entry may also carry `note` and `internal_note`.
   enums, the mapped value when an ORM maps names). Write a meaning only when
   the code reveals what the value means for the business (a branch, a label,
   a comment: `paid: Payment confirmed by the gateway (Invoice::STATUSES)`);
-  otherwise leave it empty (`smartsite_standard_one: ""`). Never restate the
+  otherwise leave it empty (`gold: ""`). Never restate the
   value in words or with the class or attribute it came from
-  (`Smartsite standard one (Template.code)`): the ERD hides such meanings.
+  (`Gold (Plan.tier)`): the ERD hides such meanings.
+- **Who reads notes**: developers, testers and others who know software.
+  Write the business meaning first; when the code shows no business meaning,
+  say what the value does technically. Technical terms are welcome when they
+  say it shorter (`Soft-delete timestamp.`, `Counter cache of visits.`,
+  `STI type column.`, `Idempotency key of the webhook.`).
 - **note** on a table: English, one or two sentences on what a row means for
   the business. Learn it from how the code uses the table: the services,
   controllers, jobs and operations that create, change or read its rows,
-  not from its name. `A promotion a company runs for a period; entries and
-  rewards hang off it.` says something; `Stores campaigns.` only restates the
+  not from its name. `What a customer buys in one checkout; its lines,
+  payments and shipments hang off it.` says something; `Stores orders.` only restates the
   name and is not a note. Translate non-English comments and keep the
   original in `note_source`.
-- **note** on a column: every column gets one, so the Excel column grid
-  never has an empty Comment. English, at most about 15 words, saying what the
-  value means or is used for (`Customer billed by this invoice.`, `Set when
-  the gateway confirms payment.`, `Surrogate key.`), learned from the code
-  that sets or reads it; never just the column name in words. Write only what code,
-  schema comments or names show; when nothing does, write `Unclear from
-  code.` rather than guess. Enum value meanings stay in `enum`, not in the
-  note.
+- **note** on a column: English, at most about 15 words, learned from the
+  code that sets or reads it: what the value means for the business
+  (`Customer billed by this invoice.`, `Set when the gateway confirms
+  payment.`), else what it does technically (`Surrogate key.`, `Soft-delete
+  timestamp.`); never just the column name in words. Write only what code,
+  schema comments or names show. When nothing does, leave `note` out: the
+  ERD and the Excel Comment stay empty, which reads as "not described",
+  while a placeholder such as `Unclear from code.` or `Unknown.` reads as a
+  description at a glance. Never write one, and delete any found. Enum value
+  meanings stay in `enum`, not in the note.
 - **note** on a domain (`domains:` in its database's model file): one
   English sentence, about 90 characters at most (the overview card shows two
   lines), saying what the domain covers for the business, learned from how
