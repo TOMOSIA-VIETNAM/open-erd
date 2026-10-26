@@ -4100,10 +4100,10 @@ ${new XMLSerializer().serializeToString(root)}
       return {};
     }
   })();
-  var tips = { off: tipsSaved.off === true, seen: Array.isArray(tipsSaved.seen) ? tipsSaved.seen : [], last: null, idle: 0, hide: 0 };
+  var tips = { off: tipsSaved.off === true, seen: Array.isArray(tipsSaved.seen) ? tipsSaved.seen : [], last: typeof tipsSaved.last === "string" ? tipsSaved.last : null, idle: 0, hide: 0 };
   function saveTips() {
     try {
-      localStorage.setItem(TIPS_KEY, JSON.stringify({ off: tips.off, seen: tips.seen }));
+      localStorage.setItem(TIPS_KEY, JSON.stringify({ off: tips.off, seen: tips.seen, last: tips.last }));
     } catch {
     }
   }

@@ -3648,9 +3648,9 @@ const hasTextSelection = () => (window.getSelection()?.toString() ?? '') !== '';
 // round the list. It goes after TIP_SHOW_MS, or at the next click, key or
 // wheel; a moving pointer only restarts the wait. Not during the tour, the
 // palette, the join box or an open menu. × turns tips off (⋯ › Tips turns
-// them on again). Which tips were seen and whether tips are off are kept
-// in this browser's storage for this file's address, so the same tip does
-// not come back first on every visit; without storage tips still work.
+// them on again). Which tips were seen, the last one shown and whether tips
+// are off are kept in this browser's storage, so a visit goes on round the
+// list where the last one stopped; without storage tips still work.
 const TIP_IDLE_MS = 15000;
 const TIP_SHOW_MS = 8000;
 const TIPS_KEY = 'open-erd:tips';
@@ -3663,10 +3663,10 @@ const tipsSaved = (() => {
     return {};
   }
 })();
-const tips = { off: tipsSaved.off === true, seen: Array.isArray(tipsSaved.seen) ? tipsSaved.seen : [], last: null, idle: 0, hide: 0 };
+const tips = { off: tipsSaved.off === true, seen: Array.isArray(tipsSaved.seen) ? tipsSaved.seen : [], last: typeof tipsSaved.last === 'string' ? tipsSaved.last : null, idle: 0, hide: 0 };
 function saveTips() {
   try {
-    localStorage.setItem(TIPS_KEY, JSON.stringify({ off: tips.off, seen: tips.seen }));
+    localStorage.setItem(TIPS_KEY, JSON.stringify({ off: tips.off, seen: tips.seen, last: tips.last }));
   } catch {
     // No storage (a private window, blocked site data): tips start over next time.
   }
