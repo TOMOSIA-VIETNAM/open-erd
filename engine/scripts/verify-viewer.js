@@ -744,7 +744,7 @@ if (await evaluate(`document.querySelector('g.view[data-view="all"]') !== null`)
   // to offer at all there is no Highlight button.
   const counts = await evaluate(`${data}.review`);
   const highlightShown = await evaluate(`getComputedStyle(${menuButton('highlight')}.parentNode).display !== 'none'`);
-  const modesTotal = await evaluate(`(() => { const d = ${data}; return d.review.pending + d.review.stale + (d.health ?? []).length + Object.values(d.nodes).reduce((n, x) => n + (x.columns ?? []).filter((c) => c.pii).length, 0); })()`);
+  const modesTotal = await evaluate(`(() => { const d = ${data}; return d.review.pending + d.review.stale + (d.health ?? []).length + Object.values(d.nodes).reduce((n, x) => n + (x.columns ?? []).filter((c) => c.pii).length + (x.central ? 1 : 0), 0); })()`);
   if (highlightShown !== modesTotal > 0) failures.push(`Highlight button shown: ${highlightShown}, modes: ${modesTotal}`);
   if (counts.pending + counts.stale === 0) {
     if (highlightShown) await click(menuButton('highlight'));
@@ -1069,8 +1069,8 @@ await shot(
 await key('Escape');
 await key('?', 'Slash');
 // P is listed only when some column is marked as personal data, H only
-// when the render has schema health findings.
-await shot('keyboard-shortcuts', `document.querySelectorAll('.oe-panel .oe-keys tr').length === ${11 + (piiTotal > 0) + (healthTotal > 0) + (await evaluate(`document.querySelector('.oe-changes-chip') !== null`))} && /J/.test(document.querySelector('.oe-panel .oe-keys').textContent) && /K$/.test(document.querySelector('.oe-panel .oe-keys kbd').textContent) && document.querySelector('.oe-panel .oe-keys').textContent.includes('←')`);
+// when the render has schema health findings, S only when a table is starred.
+await shot('keyboard-shortcuts', `document.querySelectorAll('.oe-panel .oe-keys tr').length === ${11 + (piiTotal > 0) + (healthTotal > 0) + (await evaluate(`Object.values(${data}.nodes).some((x) => x.central)`)) + (await evaluate(`document.querySelector('.oe-changes-chip') !== null`))} && /J/.test(document.querySelector('.oe-panel .oe-keys').textContent) && /K$/.test(document.querySelector('.oe-panel .oe-keys kbd').textContent) && document.querySelector('.oe-panel .oe-keys').textContent.includes('←')`);
 // A short panel leaves the minimap in its corner; a tall one pushes it left.
 {
   const mm = `(() => { const f = document.querySelector('.oe-minimap')?.closest('foreignObject'); return f && f.style.display !== 'none' ? document.querySelector('.oe-minimap').getBoundingClientRect() : null; })()`;
@@ -1334,6 +1334,43 @@ await shot(
   await evaluate('document.activeElement?.blur()');
 }
 
+// Central tables: Highlight › Central tables (and S) gives every starred
+// table a gold border and fades the other tables, with a chip and the list
+// of each domain's central tables; a click in the list selects the table
+// and keeps the list; S or the chip's × turns it off.
+{
+  const centralTotal = await evaluate(`Object.values(${data}.nodes).filter((x) => x.central).length`);
+  const centralHost = `document.querySelector('.oe-central-chip').closest('foreignObject')`;
+  const centralOn = `document.documentElement.classList.contains('central-mode')`;
+  await key('Escape');
+  if (await evaluate(`document.querySelector('g.view[data-view="all"]') !== null`)) await viewTab('all');
+  if (centralTotal === 0) {
+    await key('s', 'KeyS');
+    await shot('central-key-does-nothing', `!${centralOn} && ${centralHost}.style.display === 'none'`);
+  } else {
+    await click(menuButton('highlight'));
+    await click(menuItem('highlight', 'Central tables'));
+    await closeMenu('highlight');
+    const marked = `(() => { const v = ${visible}; const op = (g) => Number(getComputedStyle(g).opacity);
+      const central = [...v.querySelectorAll('.table.central')]; const other = [...v.querySelectorAll('.table:not(.central)')];
+      return (central.every((g) => op(g) === 1 && getComputedStyle(g.querySelector(':scope > rect:last-of-type')).strokeWidth === '3px') && other.every((g) => op(g) < 0.5)) || { central: central.length, other: other.length }; })()`;
+    const chips = `[...document.querySelectorAll('.oe-panel .oe-central-domain .oe-chip')]`;
+    await shot('central-on-menu', `${centralOn} && ${centralHost}.style.display !== 'none' && ${marked} === true && document.querySelector('.oe-panel .oe-ph-name')?.textContent === 'Central tables' && ${chips}.length === ${centralTotal}`);
+    const target = await evaluate(`${chips}[0].title.slice('Go to '.length)`);
+    await click(`${chips}[0]`);
+    await pause(200);
+    await shot('central-list-jumps', `${inView(`.table.selected[data-id="${target}"]`)} !== null && document.querySelector('.oe-panel .oe-ph-name')?.textContent === 'Central tables' && ${centralOn}`);
+    await key('Escape');
+    await key('s', 'KeyS');
+    await shot('central-off-key', `!${centralOn} && ${centralHost}.style.display === 'none'`);
+    await key('s', 'KeyS');
+    await shot('central-on-key', `${centralOn} && ${chips}.length === ${centralTotal}`);
+    await click(`document.querySelector('.oe-central-chip .oe-chip-close')`);
+    await shot('central-off-chip', `!${centralOn} && ${centralHost}.style.display === 'none' && document.querySelector('.oe-panel').closest('foreignObject').style.display === 'none'`);
+  }
+  await evaluate('document.activeElement?.blur()');
+}
+
 // Highlight from the keyboard: Enter on the button opens the menu with the
 // focus on its first mode, Enter toggles it (the menu stays, checked, and
 // the mode's chip shows), Esc closes it and gives the focus back.
@@ -1397,7 +1434,9 @@ if (await evaluate(`getComputedStyle(${menuButton('highlight')}.parentNode).disp
     await shot('tour-menu-item', `${menuItem('more', 'Tour')}.textContent === 'TourT' && ${menuItem('more', 'Tour')}.getAttribute('aria-checked') === 'false'`);
     await closeMenu('more');
     await key('t', 'KeyT');
-    await shot('tour-start', `${caption(0)} === true && ${tourClear}`);
+    // Each step fades its view in and pulses its domain's frame, also when the domain is seen whole.
+    await shot('tour-start', `${caption(0)} === true && ${tourClear} && ${visible}.classList.contains('oe-enter') && ${visible}.querySelector('.cluster[data-cluster="' + CSS.escape(${JSON.stringify(order)}[0]) + '"]').classList.contains('arrive')
+      && getComputedStyle(${visible}.querySelector('.cluster.arrive > rect')).stroke === 'rgb(232, 89, 12)'`);
     await pause(6400);
     await shot('tour-auto-next', caption(1));
     await key('ArrowLeft');

@@ -49,6 +49,10 @@ const VIEWER_STYLE = `.row-hit { fill: transparent; }
 .pii-mode .column.pii:not(.hl-column) .row-hit { fill: #ffd9cc; }
 .pii-mode .column.pii .column-name { fill: #a8341a; }
 .pii-mode .domain.has-pii .card-box { stroke: #d9603f; stroke-width: 2; }
+.central-mode .view:not(.dimmed) :is(.table, .stub, .poly, .relation-group):not(.central) { opacity: 0.2; }
+.central-mode .view:not(.dimmed) .table.central:not(.hl) > rect:last-of-type { stroke: #c99a06; stroke-width: 3; }
+.view.oe-enter { animation: oe-enter 0.5s ease-out; }
+@keyframes oe-enter { from { opacity: 0.15; } }
 .pii-mode .mx-head:not(.has-pii) { opacity: 0.35; }
 /* Schema health: a triangle on each table with a finding, its columns in a
    finding tinted, only while the mode is on. */
@@ -64,7 +68,7 @@ const VIEWER_STYLE = `.row-hit { fill: transparent; }
 .view.dimmed.center-selected .relation-group.ring-2:not(.hl) { opacity: 0.5; }
 .hl > rect:last-of-type { stroke: #5b8def; stroke-width: 2; }
 .selected > rect:last-of-type { stroke: #1d4ed8; stroke-width: 3; }
-.arrive > rect:last-of-type { stroke: #e8590c; stroke-width: 3; animation: oe-arrive 0.4s ease-in-out 4 alternate; }
+:is(.arrive:not(.cluster) > rect:last-of-type, .cluster.arrive > rect:first-of-type) { stroke: #e8590c; stroke-width: 3; animation: oe-arrive 0.4s ease-in-out 4 alternate; }
 @keyframes oe-arrive { to { stroke-width: 8; } }
 .flow-target > rect:last-of-type { stroke: #e8590c; stroke-width: 3; animation: oe-pulse 0.9s ease-in-out infinite alternate; }
 .relation-group.hl .relation, .relation-group.hl .marker { stroke: #2563eb; stroke-width: 2; }
@@ -172,6 +176,12 @@ const VIEWER_STYLE = `.row-hit { fill: transparent; }
 .oe-chip-close { font: inherit; font-size: 14px; line-height: 16px; width: 20px; height: 20px; border: 0; border-radius: 10px; background: none; color: #8a5a00; cursor: pointer; }
 .oe-chip-close:hover { background: #fde3b4; }
 .oe-pii-chip { background: #fff0eb; color: #a8341a; border-color: #f3b3a1; }
+.oe-central-chip { background: #fff8e1; color: #8a6400; border-color: #ecd27a; }
+.oe-central-chip .oe-link { font-size: 12px; color: #8a6400; text-decoration: underline; }
+.oe-central-chip .oe-chip-close { color: #8a6400; }
+.oe-central-chip .oe-chip-close:hover { background: #fdeeb5; }
+.oe-central-domain { border-top: 1px solid #f0f2f6; padding: 6px 0; }
+.oe-central-domain > .name { font-weight: 600; color: #172033; overflow-wrap: anywhere; margin-bottom: 4px; }
 .oe-pii-chip .oe-link { font-size: 12px; color: #a8341a; text-decoration: underline; }
 .oe-pii-chip .oe-chip-close { color: #a8341a; }
 .oe-pii-chip .oe-chip-close:hover { background: #ffd9cc; }

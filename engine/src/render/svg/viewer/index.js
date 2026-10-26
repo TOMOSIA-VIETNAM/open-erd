@@ -390,7 +390,10 @@ function forward() {
 // A table reached by a jump pulses briefly, so the eye finds it.
 const ARRIVE_MS = 1600;
 function arrive(id) {
-  const g = currentIndex().get(id)?.el;
+  pulse(currentIndex().get(id)?.el);
+}
+// The orange pulse on the border of `g` (a table box or a domain frame).
+function pulse(g) {
   if (!g) return;
   g.classList.remove('arrive');
   // Restart the animation when the same table is reached twice.
@@ -899,6 +902,8 @@ const TOUR_STEPS = tourSteps(
   data.domainNotes,
 );
 const toggleTour = () => (tour.on ? endTour(true) : startTour());
+// The starred tables (see the central tables section), counted over the tour's domains.
+const CENTRAL_TOTAL = TOUR_STEPS.reduce((n, step) => n + step.centrals.length, 0);
 
 // Dropdown menus of the toolbar; one open at a time. ↑ ↓ move between the
 // items, Esc closes the menu and gives the focus back to its button; a menu
@@ -983,7 +988,7 @@ dbMenu.onOpen = () => {
 // each a toggle with its count. Offered only when one of them has something
 // to show; the button reads as on while a mode is.
 const highlightMenu = dropdown(
-  el('button', { class: 'oe-btn oe-tool oe-highlight-btn', title: 'Highlight: review status, personal data, schema health', 'aria-label': 'Highlight' }, [
+  el('button', { class: 'oe-btn oe-tool oe-highlight-btn', title: 'Highlight: review status, personal data, schema health, central tables', 'aria-label': 'Highlight' }, [
     iconSvg('highlight'),
     el('span', { class: 'label', text: 'Highlight' }),
     el('span', { class: 'oe-dot' }),
@@ -996,7 +1001,7 @@ const reviewable = () => state.view !== OVERVIEW && state.view !== CONNECTIONS;
 const REVIEW_TOTAL = data.review.pending + data.review.stale;
 const reviewCounts = () => `${data.review.pending} to confirm · ${data.review.stale} changed in code`;
 const REVIEW_TIP = 'Color lines by review status: amber = not confirmed yet, red = code changed since review';
-if (REVIEW_TOTAL === 0 && PII.total === 0 && HEALTH.length === 0 && !CHANGES) highlightMenu.wrap.style.display = 'none';
+if (REVIEW_TOTAL === 0 && PII.total === 0 && HEALTH.length === 0 && CENTRAL_TOTAL === 0 && !CHANGES) highlightMenu.wrap.style.display = 'none';
 // The modes, in the order of their chips under the toolbar; each one only
 // when it has something to show (nothing to review, no personal data, no
 // findings: the entry would switch on a mode that changes nothing).
@@ -1008,6 +1013,7 @@ function highlightModes() {
       : null,
     PII.total > 0 ? { label: 'Personal data (PII)', detail: PII_COUNTS, tip: PII_TIP, keys: 'P', keywords: ['pii', 'personal', 'privacy', 'gdpr'], on: piiOn(), toggle: () => setPiiMode(!piiOn()), off: null } : null,
     HEALTH.length > 0 ? { label: 'Schema health', detail: HEALTH_COUNTS, tip: HEALTH_TIP, keys: 'H', keywords: ['health', 'findings', 'lint', 'index'], on: healthOn(), toggle: () => setHealthMode(!healthOn()), off: null } : null,
+    CENTRAL_TOTAL > 0 ? { label: 'Central tables', detail: CENTRAL_COUNTS, tip: CENTRAL_TIP, keys: 'S', keywords: ['central', 'star', 'core', 'main', 'hub'], on: centralOn(), toggle: () => setCentralMode(!centralOn()), off: null } : null,
   ].filter(Boolean);
 }
 highlightMenu.onOpen = () =>
@@ -1027,7 +1033,7 @@ highlightMenu.onOpen = () =>
 function updateHighlightButton() {
   const on = highlightModes().filter((m) => m.on).length;
   highlightMenu.button.classList.toggle('active', on > 0);
-  highlightMenu.button.title = on > 0 ? `Highlight: ${plural(on, 'mode')} on` : 'Highlight: review status, personal data, schema health';
+  highlightMenu.button.title = on > 0 ? `Highlight: ${plural(on, 'mode')} on` : 'Highlight: review status, personal data, schema health, central tables';
 }
 
 // The ⋯ menu: occasional actions and display settings, rebuilt on every
@@ -2723,7 +2729,7 @@ healthChip.div.append(
   ]),
 );
 // Chips of the modes, in the order they sit under the toolbar.
-const modeChips = () => [changesChip, reviewChip, piiChip, healthChip];
+const modeChips = () => [changesChip, reviewChip, piiChip, healthChip, centralChip];
 
 // Built once and reused, so the severity filter stays as the reader set it.
 let healthPanel = null;
@@ -2786,11 +2792,80 @@ function setHealthMode(on) {
   placeBackPill();
 }
 
+// ---------------------------------------------------------------- central tables mode
+
+// The starred tables (Highlight › Central tables, or S; offered when some
+// domain has one): the most connected table of each domain keeps a gold
+// border, everything else fades, in every view until turned off. A
+// selection takes over the fading while it lasts. A chip under the toolbar
+// says the mode is on: List shows each domain with its central tables in
+// the overview's order, a click goes to the table and keeps the list open;
+// × turns it off. The mode is a class on the root, so a download keeps it.
+const centralOn = () => svg.classList.contains('central-mode');
+const CENTRAL_STEPS = TOUR_STEPS.filter((step) => step.centrals.length > 0);
+const CENTRAL_COUNTS = `${plural(CENTRAL_TOTAL, 'table')} in ${plural(CENTRAL_STEPS.length, 'domain')}`;
+const CENTRAL_TIP = 'Mark the most connected table of each domain (the starred ones) and fade everything else';
+const centralChip = overlay('oe-central-chip-host');
+centralChip.fo.style.display = 'none';
+centralChip.div.append(
+  el('div', { class: 'oe-review-chip oe-central-chip', title: 'The starred tables keep a gold border; everything else fades' }, [
+    el('span', { text: `Central: ${CENTRAL_COUNTS}` }),
+    el('button', { class: 'oe-link', text: 'List', title: 'Show the central table of each domain', on: { click: () => showCentralList() } }),
+    el('button', { class: 'oe-chip-close', text: '×', title: 'Turn the central tables highlight off (S)', 'aria-label': 'Turn the central tables highlight off', on: { click: () => setCentralMode(false) } }),
+  ]),
+);
+
+// Built once and reused, so the scroll position comes back after a jump.
+let centralPanel = null;
+function centralListPanel() {
+  if (centralPanel) return centralPanel;
+  const go = (id) => () => {
+    const scroll = panel.div.scrollTop;
+    goToNode(id);
+    showCentralList(scroll);
+  };
+  const named = (cluster) => (DATABASES.length > 1 ? `${dbDisplayName(dbOf(cluster))} · ${domainName(cluster)}` : domainName(cluster));
+  centralPanel = [
+    panelHeader({ name: 'Central tables', note: `${CENTRAL_COUNTS}: the most connected table of each domain` }),
+    ...CENTRAL_STEPS.map((step) =>
+      el('div', { class: 'oe-central-domain' }, [
+        el('div', { class: 'name', text: named(step.cluster), title: step.cluster }),
+        el('div', { class: 'oe-chipbox' }, step.centrals.map((id) => el('button', { class: 'oe-chip', title: `Go to ${id}`, text: short(id), on: { click: go(id) } }))),
+      ]),
+    ),
+  ];
+  return centralPanel;
+}
+function showCentralList(scroll = 0) {
+  showPanel(centralListPanel());
+  panel.div.scrollTop = scroll;
+}
+const centralListShown = () => centralPanel !== null && panel.fo.style.display !== 'none' && panel.div.contains(centralPanel[0]);
+
+function setCentralMode(on) {
+  if (CENTRAL_TOTAL === 0) return;
+  svg.classList.toggle('central-mode', on);
+  centralChip.fo.style.display = on ? '' : 'none';
+  if (on) {
+    // A selection would fade the tables that were asked for.
+    clearSelection();
+    // A view seen whole is fitted again left of the panel, as for the personal data list.
+    const whole = fitsInside(viewBounds(state.view), visibleRect(state.cam, viewport(), TOOLBAR_HEIGHT, 0));
+    showCentralList();
+    if (whole) zoomToRect(viewBounds(state.view), MAX_FIT_SCALE);
+  } else if (centralListShown()) hidePanel();
+  updateHighlightButton();
+  showLegend();
+  layoutOverlays();
+  placeBackPill();
+}
+
 // ---------------------------------------------------------------- tour
 
 // The tour (⋯ › Tour, the palette, or T) shows the domains one after
 // another (TOUR_STEPS): each in its view, opened as the view of all tables opens (whole when readable,
-// else around the central table, which pulses), with a caption at the
+// else around the central table), fading in while the domain's frame and its
+// central table pulse, with a caption at the
 // bottom: its name, table count and business note. The next domain comes
 // after TOUR_STEP_MS, the last one is followed by the first. The legend,
 // minimap and Back pill step aside meanwhile. Esc (or the caption's ×)
@@ -2844,6 +2919,13 @@ function showTourStep(i) {
   renderTour();
   showView(domainView(step.cluster));
   frameTourStep();
+  // Each step announces itself, also when the domain is seen whole: the view
+  // fades in and the domain's frame pulses, then its central table.
+  const view = currentView();
+  view.classList.remove('oe-enter');
+  void view.getBoundingClientRect();
+  view.classList.add('oe-enter');
+  pulse([...view.querySelectorAll('.cluster')].find((g) => keyOf(g) === step.cluster));
   if (step.central && currentIndex().has(step.central)) arrive(step.central);
   scheduleTour();
 }
@@ -3446,6 +3528,7 @@ const SHORTCUTS = [
   CHANGES ? ['C', 'Changes: fade what the diff did not change, with the list of changes'] : null,
   PII.total > 0 ? ['P', 'Personal data map: PII columns tinted, the rest faded, with their list'] : null,
   HEALTH.length > 0 ? ['H', 'Schema health: tables with findings marked, with their list'] : null,
+  CENTRAL_TOTAL > 0 ? ['S', 'Central tables: the starred table of each domain marked, the rest faded, with their list'] : null,
   ['←', 'Back to the previous table or view'],
   ['→', 'Forward again'],
   ['Esc', 'Close search, menu or panel'],
@@ -3560,6 +3643,10 @@ document.addEventListener('keydown', (e) => {
     setHealthMode(!healthOn());
     return;
   }
+  if (letter === 's' && plain) {
+    setCentralMode(!centralOn());
+    return;
+  }
   if (e.key === '?' && !e.metaKey && !e.ctrlKey && !typing()) {
     showShortcuts();
     return;
@@ -3598,7 +3685,7 @@ window.addEventListener('resize', () => {
 
 // Later overlays paint on top: the toolbar's menus over the panel, the
 // search over everything but the tooltip.
-svg.append(legend.fo, help.fo, minimap.fo, backPill.fo, reviewChip.fo, piiChip.fo, healthChip.fo, changesChip.fo, panel.fo, tourBox.fo, toolbar.fo, spotlight.fo, joinSpot.fo, toast.fo, tip.fo);
+svg.append(legend.fo, help.fo, minimap.fo, backPill.fo, reviewChip.fo, piiChip.fo, healthChip.fo, centralChip.fo, changesChip.fo, panel.fo, tourBox.fo, toolbar.fo, spotlight.fo, joinSpot.fo, toast.fo, tip.fo);
 // The view drawn visible without script is where the reader starts (all
 // tables unless the workspace configured another view). All tables open at
 // a readable size around the most central table; a diff drawing shows its

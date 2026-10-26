@@ -297,6 +297,12 @@ test('tour: one step per domain in the overview order the matrix rows carry, cen
   const steps = tourSteps(order, data.nodes, data.domainNotes);
   assert.deepEqual(steps.map((s) => s.cluster), order);
   for (const s of steps) assert.equal(s.central, diagram.centralOf.get(s.cluster) ?? null, s.cluster);
+  // Every starred table, in id order; the first is the one the tour frames.
+  for (const s of steps) {
+    const starred = Object.keys(data.nodes).filter((id) => data.nodes[id].central && data.nodes[id].cluster === s.cluster).sort();
+    assert.deepEqual(s.centrals, starred, s.cluster);
+    assert.equal(s.central, starred[0] ?? null, s.cluster);
+  }
   const identity = steps.find((s) => s.cluster === 'auth/Identity');
   assert.equal(identity.note, 'People who sign in and the profiles and sessions that belong to them.');
   // No note: the name and table count still make a caption.

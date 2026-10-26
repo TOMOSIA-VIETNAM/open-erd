@@ -7,7 +7,8 @@ export const TOUR_STEP_MS = 6000;
 
 /**
  * One step per domain (cluster key) of `order`, in that order:
- * { cluster, central (table id or null), title ("<domain> · N tables"),
+ * { cluster, centrals (its central tables, starred on the diagram, in id
+ * order), central (the first of them or null), title ("<domain> · N tables"),
  * note (the domain's business note or null) }. `nodes` and `notes` are the
  * viewer data's `nodes` and `domainNotes`.
  */
@@ -15,9 +16,11 @@ export function tourSteps(order, nodes, notes = {}) {
   return order.map((cluster) => {
     const tables = Object.keys(nodes).filter((id) => nodes[id].kind === 'table' && nodes[id].cluster === cluster);
     const name = cluster.split('/').slice(1).join('/');
+    const centrals = tables.filter((id) => nodes[id].central).sort();
     return {
       cluster,
-      central: tables.find((id) => nodes[id].central) ?? null,
+      centrals,
+      central: centrals[0] ?? null,
       title: `${name} · ${tables.length} table${tables.length === 1 ? '' : 's'}`,
       note: notes[cluster] ?? null,
     };
