@@ -12,7 +12,7 @@ import { referenceCounts } from '../src/model/centrality.js';
 import { normalizeModel } from '../src/model/load.js';
 import { PALETTE } from '../src/palette.js';
 import { endMarkers } from '../src/render/svg/markers.js';
-import { heatFill, heatmapSections } from '../src/render/svg/heatmap.js';
+import { heatFill, heatmapTables, squarify } from '../src/render/svg/heatmap.js';
 import { HUB_ROUTE_LIMIT, buildScene, groupLinkText, renderSvg } from '../src/render/svg/render.js';
 import { assertSceneGeometry, pathLength } from './helpers/geometry.js';
 import { fk, loadMulti, loadWorkspace, table } from './helpers/shop.js';
@@ -173,29 +173,31 @@ test('domain summary: most connected first per database, related by strength, ti
   assert.deepEqual(again.order, summary.order);
 });
 
-test('heatmap: every table as a tile, by domain in card order, most referenced first', async () => {
+test('heatmap: a treemap of the referenced tables, the others as a line of names', async () => {
   const { model, diagram, svg } = await multi();
   const counts = referenceCounts(model);
   // users is referenced by 11 relations and references nothing; a self-reference counts in neither direction.
   assert.deepEqual(counts.get('auth.public.users'), { in: 11, out: 0 });
   assert.deepEqual(counts.get('shop._.products'), { in: 5, out: 4 });
-  const sections = heatmapSections(domainSummary(model, diagram).order, diagram, counts);
-  assert.deepEqual(sections.map((s) => s.key), domainSummary(model, diagram).order);
-  const catalog = sections.find((s) => s.key === 'shop/Catalog').tables;
-  // Most referenced first, ties by id; the central table carries its star.
-  assert.deepEqual(catalog.map((t) => t.id), ['shop._.products', 'shop._.brands', 'shop._.categories', 'shop._.tags']);
-  assert.equal(catalog[0].central, true);
-  const tables = [...diagram.nodes.values()].filter((n) => n.kind === 'table').length;
-  assert.equal(sections.reduce((n, s) => n + s.tables.length, 0), tables);
-  // Drawn as a hidden view: one tile per table, a head per domain, its legend.
+  const tables = heatmapTables(diagram, counts);
+  // Every table, most referenced first, ties by id; the central table carries its star.
+  assert.equal(tables.length, [...diagram.nodes.values()].filter((n) => n.kind === 'table').length);
+  assert.deepEqual(tables.slice(0, 3).map((t) => t.id), ['auth.public.users', 'shop._.orders', 'shop._.products']);
+  assert.ok(tables.every((t, i) => i === 0 || tables[i - 1].in >= t.in));
+  assert.equal(tables[0].central, true);
+  // The treemap fills its box, each block's area in proportion to its value.
+  const blocks = squarify([{ value: 6 }, { value: 3 }, { value: 2 }, { value: 1 }], 120, 60);
+  assert.equal(blocks.reduce((n, b) => n + b.w * b.h, 0), 7200);
+  for (const b of blocks) assert.ok(Math.abs(b.w * b.h - b.value * 600) < 1e-6);
+  assert.ok(blocks.every((b) => b.x >= 0 && b.y >= 0 && b.x + b.w <= 120 + 1e-9 && b.y + b.h <= 60 + 1e-9));
+  // Drawn as a hidden view: one block or name per table, its legend.
   const view = svg.slice(svg.indexOf('<g class="view" data-view="heatmap"'));
   assert.match(view, /^<g class="view" data-view="heatmap" data-bounds="[^"]+" style="display:none">/);
-  assert.equal((view.match(/<g class="hm-tile/g) ?? []).length, tables);
-  assert.equal((view.match(/<g class="hm-head"/g) ?? []).length, sections.length);
-  assert.match(view, /<g class="hm-tile on-dark" data-id="auth.public.users" data-in="11" data-out="0"><title>auth.public.users: 11 relations point at it, 0 from it<\/title>/);
+  assert.equal((view.match(/<g class="hm-tile/g) ?? []).length, tables.length);
+  assert.equal((view.match(/<g class="hm-tile hm-zero"/g) ?? []).length, tables.filter((t) => t.in === 0).length);
+  assert.match(view, /<g class="hm-tile" data-id="auth.public.users" data-in="11" data-out="0"><title>auth.public.users: 11 relations point at it, 0 from it<\/title>/);
   assert.match(view, />★ users</);
-  assert.match(view, /Relations pointing at the table:/);
-  assert.equal(heatFill(0, 11), heatFill(0, 1));
+  assert.match(view, /Nothing points at \d+ tables:/);
   assert.notEqual(heatFill(11, 11), heatFill(1, 11));
 });
 

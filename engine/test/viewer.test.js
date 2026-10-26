@@ -288,11 +288,10 @@ test('a table a view opens on: scale 1 when it fits, shrunk while readable, else
   assert.deepEqual(frameFocus({ x: 0, y: 100, w: 240, h: 2000 }, viewport, 44, 0.9, 8), { s: 0.9, x: 700 - 108, y: 52 - 90 });
 });
 
-test('tour: one step per domain in the overview order the heatmap carries, central table, note or name and table count', async () => {
+test('tour: one step per domain in the overview order, central table, note or name and table count', async () => {
   const { model, diagram, svg } = await multi();
   const data = JSON.parse(dataBlock(svg));
-  // The viewer reads the order from the heatmap's domain heads.
-  const order = [...svg.matchAll(/<g class="hm-head" data-domain="([^"]+)">/g)].map((m) => m[1]);
+  const order = data.domainOrder;
   assert.deepEqual(order, domainSummary(model, diagram).order);
   const steps = tourSteps(order, data.nodes, data.domainNotes);
   assert.deepEqual(steps.map((s) => s.cluster), order);

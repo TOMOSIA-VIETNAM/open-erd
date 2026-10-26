@@ -879,10 +879,9 @@ const searchButton = el(
   [iconSvg('search'), el('span', { class: 'label', text: 'Search or jump…' }), el('kbd', { text: PALETTE_KEY })],
 );
 // The tour's steps (see the tour section): one per domain, in the order of
-// the overview's cards, which the heatmap lists as its domains. A
-// single domain makes no tour: it is not offered.
+// the overview's cards. A single domain makes no tour: it is not offered.
 const TOUR_STEPS = tourSteps(
-  [...(views.get(HEATMAP)?.querySelectorAll('.hm-head') ?? [])].map((g) => g.getAttribute('data-domain')),
+  data.domainOrder,
   data.nodes,
   data.domainNotes,
 );
@@ -3102,8 +3101,6 @@ function tipLines(target) {
   if (connector) return connectorTip(connector.getAttribute('data-from'), connector.getAttribute('data-to'));
   const tile = target.closest('.hm-tile');
   if (tile) return heatTip(tile);
-  const head = target.closest('.hm-head');
-  if (head) return [el('b', { text: domainName(head.getAttribute('data-domain')) }), el('div', { class: 'muted', text: `${dbDisplayName(dbOf(head.getAttribute('data-domain')))} · click to open the domain` })];
   const related = target.closest('.card-related');
   if (related) {
     const [a, b] = [target.closest('.domain').getAttribute('data-domain'), related.getAttribute('data-domain')];
@@ -3428,7 +3425,7 @@ svg.addEventListener('click', (e) => {
   if (join.open && (!join.from || !join.to) && data.nodes[picked]?.kind === 'table') return setJoinEnd(join.from ? 'to' : 'from', picked);
   const tile = t.closest('.hm-tile');
   if (tile) return navigate(homeView(tile.getAttribute('data-id')), { focus: tile.getAttribute('data-id') });
-  const related = t.closest('.card-related, .hm-head');
+  const related = t.closest('.card-related');
   if (related) return navigate(domainView(related.getAttribute('data-domain')));
   const domain = t.closest('.domain');
   if (domain) return navigate(domainView(domain.getAttribute('data-domain')));

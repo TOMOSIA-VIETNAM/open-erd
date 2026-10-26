@@ -13,7 +13,7 @@ import { healthFindings } from '../../model/health.js';
 import { measureText } from '../../text/measure.js';
 import { FONT_FAMILY, TEXT_STYLE_CSS, fontFaceCss } from '../../text/font.js';
 import { PALETTE } from '../../palette.js';
-import { HEATMAP_STYLE, heatmapSections, heatmapSvg } from './heatmap.js';
+import { HEATMAP_STYLE, heatmapSvg, heatmapTables } from './heatmap.js';
 import { referenceCounts } from '../../model/centrality.js';
 import { ICON_PAINT, UNCONFIRMED_DASH, endMarkers, enumIconSvg, indexIconSvg, isConfirmed, keyIconSvg, linkIconSvg, markerSvg, overviewStrokeWidth, starIconSvg, tableIconSvg } from './markers.js';
 import viewerBundle from './viewer-bundle.json' with { type: 'json' };
@@ -84,9 +84,9 @@ const VIEWER_STYLE = `.row-hit { fill: transparent; }
 .card-link-line { fill: none; stroke: #2563eb; stroke-opacity: 0.6; stroke-linecap: round; }
 .card-link.cross_db .card-link-line { stroke-dasharray: 8 6; stroke-linecap: butt; }
 .card-link:hover .card-link-line { stroke-opacity: 1; }
-.hm-tile, .hm-head { cursor: pointer; }
+.hm-tile { cursor: pointer; }
 .hm-tile:hover > rect { stroke: #1f2a3d; stroke-width: 2; }
-.hm-head:hover .hm-name { fill: #1d4ed8; text-decoration: underline; }
+.hm-zero:hover text { fill: #1d4ed8; text-decoration: underline; }
 .relation-group.flowing .relation { stroke-opacity: 0.35; }
 .flow { fill: none; stroke: #2563eb; stroke-width: 3; stroke-dasharray: 6 10; pointer-events: none; animation: oe-flow 0.8s linear infinite; }
 .poly-route { fill: none; stroke: #6b778a; stroke-width: 1.4; }
@@ -1267,7 +1267,9 @@ export function viewerData(model, diagram, diff = null, warnings = missingRelati
   const project = model.databases.length === 1 ? model.databases[0].database : sources.length === 1 ? sources[0].name : 'erd';
   // Business note of each domain, for its card's tooltip.
   const domainNotes = Object.fromEntries(model.databases.flatMap((db) => Object.entries(db.domains ?? {}).filter(([, d]) => d.note).map(([name, d]) => [`${db.database}/${name}`, d.note])));
-  const base = { project, nodes, links, hubLinks, domainLinks: domains, domainNotes, databases, review, mostCentral: diagram.mostCentral };
+  // Domains in the overview's card order, for the tour.
+  const domainOrder = domainSummary(model, diagram).order;
+  const base = { project, nodes, links, hubLinks, domainLinks: domains, domainNotes, domainOrder, databases, review, mostCentral: diagram.mostCentral };
   // Schema health findings for the Health list; left out when there are none.
   if (health.length > 0) base.health = health.map(({ related, ...f }) => f);
   if (!diff) return base;
@@ -1338,7 +1340,7 @@ export function renderSvg(model, layout, options = {}) {
   // Indices past the palette cycle, which only happens once every tint is taken.
   const colorOf = (key) => PALETTE[layout.colors[key] % PALETTE.length];
   const columnWarnings = warningsByTable(warnings).columns;
-  const heatmap = heatmapSvg(heatmapSections(domainSummary(model, diagram).order, diagram, referenceCounts(model)), colorOf);
+  const heatmap = heatmapSvg(heatmapTables(diagram, referenceCounts(model)));
   const { x, y, w, h } = visible === HEATMAP_VIEW ? heatmap.bounds : scenes.find((s) => s.scene.name === visible).scene.bounds;
   return [
     `<svg xmlns="http://www.w3.org/2000/svg"${diff ? ` class="diff-mode${changed ? ' changes-mode' : ''}"` : ''} width="${w}" height="${h}" viewBox="${x} ${y} ${w} ${h}">`,

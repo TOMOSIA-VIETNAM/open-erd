@@ -316,7 +316,7 @@ await mouse('mouseMoved', { x: 5, y: 890 });
 await viewTab('heatmap');
 const hx = `document.querySelector('g.view[data-view="heatmap"]')`;
 await shot('heatmap', `!${pillShown} && ${viewIs('heatmap')} && ${hx}.querySelectorAll('.hm-tile').length === Object.values(${data}.nodes).filter((n) => n.kind === 'table').length && document.querySelector('.oe-view-tabs [data-view="heatmap"]').classList.contains('on')`);
-const hot = `${hx}.querySelector('.hm-tile')`;
+const hot = `${hx}.querySelector('.hm-tile:not(.hm-zero)')`;
 const hotId = await evaluate(`${hot}.getAttribute('data-id')`);
 await mouse('mouseMoved', await centre(hot));
 await pause(150);
@@ -1393,7 +1393,7 @@ if (await evaluate(`getComputedStyle(${menuButton('highlight')}.parentNode).disp
   await key('Escape');
 }
 
-// Tour: T walks the domains in the overview's order (the heatmap's domains),
+// Tour: T walks the domains in the overview's order,
 // each in its view with a caption (its note when it has one; name and table
 // count always) at the bottom, clear of the toolbar and of its central
 // table (unless that table is too tall to fit above it at a readable
@@ -1401,7 +1401,7 @@ if (await evaluate(`getComputedStyle(${menuButton('highlight')}.parentNode).disp
 // wrap round; Space pauses; a download holds none of it; Esc goes back to
 // the view and camera it started from. One domain makes no tour.
 {
-  const order = await evaluate(`[...document.querySelectorAll('g.view[data-view="heatmap"] .hm-head')].map((g) => g.getAttribute('data-domain'))`);
+  const order = await evaluate(`${data}.domainOrder`);
   if (order.length < 2) {
     await click(menuButton('more'));
     await shot('tour-hidden', `${menuItem('more', 'Tour')} === undefined`);
@@ -1490,7 +1490,7 @@ await key('Escape');
   };
   const ctrlK = await evaluate(`(() => { const e = new KeyboardEvent('keydown', { key: 'k', ${FIND_MODIFIER === 4 ? 'metaKey' : 'ctrlKey'}: true, bubbles: true, cancelable: true }); document.dispatchEvent(e); const r = e.defaultPrevented; document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); return r; })()`);
   if (ctrlK !== true) failures.push('the palette shortcut does not prevent the browser default');
-  const domains = await evaluate(`document.querySelectorAll('g.view[data-view="heatmap"] .hm-head').length`);
+  const domains = await evaluate(`${data}.domainOrder.length`);
   const dbs = await evaluate(`Object.keys(${data}.databases).length`);
   // It opens on the last text, selected; emptied, it lists the commands.
   await click(`document.querySelector('.oe-search-trigger')`);
