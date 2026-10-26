@@ -268,6 +268,9 @@ const VIEWER_STYLE = `.row-hit { fill: transparent; }
 .oe-ph-sub { color: #7a8597; font-size: 12px; margin-top: 3px; overflow-wrap: anywhere; }
 .oe-ph-facts { margin-top: 4px; font-size: 12px; color: #56627a; }
 .oe-actions { display: flex; align-items: center; gap: 6px; margin: 0 0 10px; flex-wrap: wrap; }
+.oe-hint { font-size: 11.5px; margin: -4px 0 10px; }
+.oe-picked-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px solid #eef1f5; }
+.oe-picked-row .oe-chip-close { margin-left: auto; color: #8a94a6; }
 .oe-actions .oe-tool { height: 28px; width: 28px; }
 .oe-actions-label { font-size: 12px; color: #7a8597; }
 .oe-ph-sep { color: #7a8597; }

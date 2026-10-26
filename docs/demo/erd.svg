@@ -359,6 +359,9 @@ text { font-family: 'Inter', sans-serif; font-kerning: none; font-variant-ligatu
 .oe-ph-sub { color: #7a8597; font-size: 12px; margin-top: 3px; overflow-wrap: anywhere; }
 .oe-ph-facts { margin-top: 4px; font-size: 12px; color: #56627a; }
 .oe-actions { display: flex; align-items: center; gap: 6px; margin: 0 0 10px; flex-wrap: wrap; }
+.oe-hint { font-size: 11.5px; margin: -4px 0 10px; }
+.oe-picked-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px solid #eef1f5; }
+.oe-picked-row .oe-chip-close { margin-left: auto; color: #8a94a6; }
 .oe-actions .oe-tool { height: 28px; width: 28px; }
 .oe-actions-label { font-size: 12px; color: #7a8597; }
 .oe-ph-sep { color: #7a8597; }
@@ -1600,6 +1603,7 @@ Central: spree_stores</title><rect class="card-box" x="1090" y="570" width="300"
     return null;
   }
   function clearSelection() {
+    picked = [];
     stopFlows();
     for (const v of views.values()) {
       v.classList.remove("dimmed", "center-selected");
@@ -2418,7 +2422,7 @@ ${new XMLSerializer().serializeToString(root)}
       const ids = parsed2.ids.filter((id2) => data.nodes[id2]?.kind === "table");
       if (ids.length === 0) return false;
       if (key === "path" && ids.length > 1) openPathThrough(ids);
-      else openTableSet(ids);
+      else openTableSet(ids, parsed2.view);
       return true;
     }
     if (key === "view" && linkableView(value)) {
@@ -2439,11 +2443,20 @@ ${new XMLSerializer().serializeToString(root)}
     }
     return true;
   }
-  function openTableSet(ids) {
+  function openTableSet(ids, view = null) {
     const full = (name2, id) => indexes.get(name2).has(id) && !indexes.get(name2).get(id).el.classList.contains("stub");
     const domains = [...views.keys()].filter((n) => n.startsWith(DOMAIN_PREFIX) && ids.every((id) => full(n, id)));
-    const name = views.has(ALL_VIEW) ? ALL_VIEW : domains.sort((a, b) => indexes.get(a).size - indexes.get(b).size)[0] ?? homeView(ids[0]);
+    const name = linkableView(view) && ids.every((id) => full(view, id)) ? view : views.has(ALL_VIEW) ? ALL_VIEW : domains.sort((a, b) => indexes.get(a).size - indexes.get(b).size)[0] ?? homeView(ids[0]);
     navigate(name);
+    const shown = showPicked(ids);
+    legendFolded = true;
+    showLegend();
+    zoomToRect(boundsOf(currentIndex(), shown), FOCUS_MAX_SCALE);
+    if (shown.length < ids.length) showToast(`${ids.length - shown.length} of ${plural2(ids.length, "table")} are in other domains`);
+  }
+  var picked = [];
+  var ADD_KEY_HINT = "Shift-click";
+  function showPicked(ids) {
     clearSelection();
     const index = currentIndex();
     const shown = ids.filter((id) => index.has(id));
@@ -2452,10 +2465,41 @@ ${new XMLSerializer().serializeToString(root)}
     for (const g of relationGroups()) if (set.has(g.getAttribute("data-from")) && set.has(g.getAttribute("data-to"))) g.classList.add("hl");
     for (const id of shown) index.get(id).el.classList.add("hl");
     currentView().classList.add("dimmed");
-    legendFolded = true;
-    showLegend();
-    zoomToRect(boundsOf(index, shown), FOCUS_MAX_SCALE);
-    if (shown.length < ids.length) showToast(`${ids.length - shown.length} of ${plural2(ids.length, "table")} are in other domains`);
+    picked = shown;
+    if (shown.length > 0) {
+      showPanel(pickedPanel(shown));
+      shareHash([["tables", shown.join(",")]]);
+    }
+    return shown;
+  }
+  function togglePicked(id) {
+    const base = picked.length > 0 ? picked : [selectedTable()].filter(Boolean);
+    const next = base.includes(id) ? base.filter((x) => x !== id) : [...base, id];
+    if (next.length === 0) clearSelection();
+    else if (next.length === 1) selectNode(next[0]);
+    else showPicked(next);
+  }
+  function pickedPanel(ids) {
+    const status = el("span", { class: "oe-status-inline muted" });
+    return [
+      panelHeader({ name: `${ids.length} tables selected`, note: `${ADD_KEY_HINT} a table to add it or take it out. The address names these tables: copy it to share them.` }),
+      el("div", { class: "oe-actions" }, [
+        el("button", { class: "oe-btn", text: "Copy link", title: "Copy the address of these tables", on: { click: () => copyText(location.href, status, "the link") } }),
+        ids.length === 2 ? el("button", { class: "oe-btn", text: "Join path", title: "How these two tables join", on: { click: () => openPathThrough(ids) } }) : null,
+        status
+      ]),
+      el(
+        "div",
+        { class: "oe-picked" },
+        ids.map(
+          (id) => el("div", { class: "oe-picked-row" }, [
+            el("button", { class: "oe-link", text: short(id), title: `Go to ${id}`, on: { click: () => goToNode(id) } }),
+            domainChip(data.nodes[id].cluster),
+            el("button", { class: "oe-chip-close", text: "×", title: `Take ${short(id)} out`, "aria-label": `Take ${short(id)} out`, on: { click: () => togglePicked(id) } })
+          ])
+        )
+      )
+    ];
   }
   function openPathThrough(ids) {
     if (ids.length === 2) {
@@ -2704,6 +2748,7 @@ ${new XMLSerializer().serializeToString(root)}
       }),
       changeList("nodes", id),
       tableActions(id, n),
+      el("div", { class: "oe-hint muted", text: `${ADD_KEY_HINT} other tables to select several and share them as one link.` }),
       ...tabbed(panelTabs(n, count).map((t) => ({ ...t, body: bodies[t.id] })), column ? "columns" : void 0)
     ];
   }
@@ -3655,7 +3700,7 @@ ${new XMLSerializer().serializeToString(root)}
       n?.note ? el("div", { text: n.note }) : null,
       ...(n?.facts ?? []).map((f) => factLine(f, "div")),
       warningLine(n?.warning),
-      el("div", { class: "muted", text: "Click to highlight · double-click for its neighborhood" })
+      el("div", { class: "muted", text: `Click to highlight · ${ADD_KEY_HINT} to select several · double-click for its neighborhood` })
     ];
   }
   function hideTip() {
@@ -3873,8 +3918,8 @@ ${new XMLSerializer().serializeToString(root)}
       return;
     }
     const t = e.target;
-    const picked = t.closest(".group-row[data-table]")?.getAttribute("data-table") ?? t.closest(".table, .stub")?.getAttribute("data-id");
-    if (join.open && (!join.from || !join.to) && data.nodes[picked]?.kind === "table") return setJoinEnd(join.from ? "to" : "from", picked);
+    const picked2 = t.closest(".group-row[data-table]")?.getAttribute("data-table") ?? t.closest(".table, .stub")?.getAttribute("data-id");
+    if (join.open && (!join.from || !join.to) && data.nodes[picked2]?.kind === "table") return setJoinEnd(join.from ? "to" : "from", picked2);
     const tile = t.closest(".rk-item");
     if (tile) return navigate(homeView(tile.getAttribute("data-id")), { focus: tile.getAttribute("data-id") });
     const related = t.closest(".card-related");
@@ -3890,6 +3935,7 @@ ${new XMLSerializer().serializeToString(root)}
     const stub = t.closest(".stub");
     if (stub) return navigate(homeView(stub.getAttribute("data-id")), { focus: stub.getAttribute("data-id") });
     const node = t.closest(".table, .poly");
+    if (node && (e.shiftKey || e.metaKey || e.ctrlKey) && data.nodes[node.getAttribute("data-id")]?.kind === "table") return togglePicked(node.getAttribute("data-id"));
     const column = t.closest(".column");
     if (node && column && data.nodes[node.getAttribute("data-id")]?.kind === "table") {
       const id = node.getAttribute("data-id");
@@ -3961,6 +4007,7 @@ ${new XMLSerializer().serializeToString(root)}
       [[FIND_KEY, "/"], "Search tables and columns"],
       [[`${MOD_KEY}J`], "Join path between two tables"],
       [[`${MOD_KEY}A`], "Show all tables"],
+      [[ADD_KEY_HINT], "Add a table to the selection or take it out; the address shares them"],
       [["←", "→"], "Back, forward"]
     ]],
     ["Highlight", [

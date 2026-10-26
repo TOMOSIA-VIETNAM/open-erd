@@ -60,15 +60,16 @@ async function centre(find, where = 'centre') {
   if (!p) throw new Error(`no element for ${find}`);
   return p;
 }
-async function mouse(type, { x, y }, clickCount = 1) {
-  await send('Input.dispatchMouseEvent', { type, x, y, button: type === 'mouseMoved' ? 'none' : 'left', clickCount });
+async function mouse(type, { x, y }, clickCount = 1, modifiers = 0) {
+  await send('Input.dispatchMouseEvent', { type, x, y, button: type === 'mouseMoved' ? 'none' : 'left', clickCount, modifiers });
 }
-async function click(find, { where, count = 1 } = {}) {
+// `modifiers`: the CDP bit mask (8 = Shift).
+async function click(find, { where, count = 1, modifiers = 0 } = {}) {
   const p = await centre(find, where);
   await mouse('mouseMoved', p);
   for (let i = 1; i <= count; i++) {
-    await mouse('mousePressed', p, i);
-    await mouse('mouseReleased', p, i);
+    await mouse('mousePressed', p, i, modifiers);
+    await mouse('mouseReleased', p, i, modifiers);
   }
   await pause(150);
 }
@@ -1070,7 +1071,7 @@ await key('Escape');
 await key('?', 'Slash');
 // P is listed only when some column is marked as personal data, H only
 // when the render has schema health findings, S only when a table is starred.
-await shot('keyboard-shortcuts', `document.querySelectorAll('.oe-panel .oe-keys-group').length === 3 && document.querySelectorAll('.oe-panel .oe-keys tr').length === ${10 + (piiTotal > 0) + (healthTotal > 0) + (await evaluate(`Object.values(${data}.nodes).some((x) => x.central)`)) + (await evaluate(`document.querySelector('.oe-changes-chip') !== null`))} && /J/.test(document.querySelector('.oe-panel .oe-keys').textContent) && /K$/.test(document.querySelector('.oe-panel .oe-keys kbd').textContent) && document.querySelector('.oe-panel .oe-keys').textContent.includes('←')`);
+await shot('keyboard-shortcuts', `document.querySelectorAll('.oe-panel .oe-keys-group').length === 3 && document.querySelectorAll('.oe-panel .oe-keys tr').length === ${11 + (piiTotal > 0) + (healthTotal > 0) + (await evaluate(`Object.values(${data}.nodes).some((x) => x.central)`)) + (await evaluate(`document.querySelector('.oe-changes-chip') !== null`))} && /J/.test(document.querySelector('.oe-panel .oe-keys').textContent) && /K$/.test(document.querySelector('.oe-panel .oe-keys kbd').textContent) && document.querySelector('.oe-panel .oe-keys').textContent.includes('←')`);
 // A short panel leaves the minimap in its corner; a tall one pushes it left.
 {
   const mm = `(() => { const f = document.querySelector('.oe-minimap')?.closest('foreignObject'); return f && f.style.display !== 'none' ? document.querySelector('.oe-minimap').getBoundingClientRect() : null; })()`;
@@ -1593,7 +1594,7 @@ await key('Escape');
   await open(`#table%3D${linked[0]}`);
   await shot('deep-link-encoded-equals', `${viewIs(home)} && ${inView(`.table.selected[data-id="${linked[0]}"]`)} !== null`);
   // #tables=: tables of different domains lit together, the rest dimmed,
-  // fitted, no panel; an unknown id is left out; Esc clears it.
+  // fitted, the panel listing them; an unknown id is left out; Esc clears it.
   const tables = Object.keys(model.nodes).filter((id) => model.nodes[id].kind === 'table');
   const spread = [...new Map(tables.map((id) => [model.nodes[id].cluster, id])).values()].slice(0, 3);
   await open(`#tables=${[...spread, 'no.such.table'].map(encodeURIComponent).join(',')}`);
@@ -1603,7 +1604,7 @@ await key('Escape');
       const r = lit.map((g) => g?.getBoundingClientRect());
       const onScreen = r.every((b) => b && b.left >= 0 && b.right <= innerWidth && b.top >= 44 && b.bottom <= innerHeight);
       return lit.every((g) => g?.classList.contains('hl')) && ${visible}.classList.contains('dimmed') && ${visible}.querySelector('.table.selected') === null
-        && document.querySelector('.oe-panel').closest('foreignObject').style.display === 'none' && onScreen || { lit: lit.map((g) => g?.getAttribute('class')), onScreen }; })()`,
+        && document.querySelector('.oe-panel .oe-ph-name')?.textContent === '${spread.length} tables selected' && onScreen || { lit: lit.map((g) => g?.getAttribute('class')), onScreen }; })()`,
   );
   await key('Escape');
   await shot('deep-link-tables-esc', `!${visible}.classList.contains('dimmed') && ${visible}.querySelector('.table.hl') === null`);
@@ -1641,6 +1642,19 @@ await key('Escape');
   const before = await evaluate('history.length');
   await click(inView(`.table[data-id="${other}"]`), { where: 'top' });
   await shot('selection-updates-hash', `location.hash === ${JSON.stringify(formatHash([['view', startView], ['table', other]]))} && history.length === ${before}`);
+  // Shift-click adds a table to the selection: both lit, a panel listing
+  // them, the address naming both; again takes it out. The address opens
+  // the same two tables.
+  const third = await evaluate(`[...${visible}.querySelectorAll('.table')].map((g) => g.getAttribute('data-id')).find((id) => id !== ${JSON.stringify(other)} && id !== ${JSON.stringify(linked[0])})`);
+  const both = formatHash([['view', startView], ['tables', `${other},${third}`]]);
+  const twoLit = `${inView(`.table.hl[data-id="${other}"]`)} !== null && ${inView(`.table.hl[data-id="${third}"]`)} !== null && document.querySelector('.oe-panel .oe-ph-name')?.textContent === '2 tables selected' && document.querySelectorAll('.oe-panel .oe-picked-row').length === 2`;
+  await bringIntoView(inView(`.table[data-id="${third}"]`));
+  await click(inView(`.table[data-id="${third}"]`), { where: 'top', modifiers: 8 });
+  await shot('shift-click-adds', `${twoLit} && location.hash === ${JSON.stringify(both)}`);
+  await click(inView(`.table[data-id="${third}"]`), { where: 'top', modifiers: 8 });
+  await shot('shift-click-removes', `${inView(`.table.selected[data-id="${other}"]`)} !== null && location.hash === ${JSON.stringify(formatHash([['view', startView], ['table', other]]))}`);
+  await open(both);
+  await shot('deep-link-picked-tables', `${viewIs(startView)} && ${twoLit}`);
 }
 
 // Without script the file must still show the static overview.

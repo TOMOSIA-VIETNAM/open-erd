@@ -35,6 +35,7 @@ the diagram still recognise it.
 | ⌘F or `/` | The palette for tables and columns only |
 | ⌘J | Join path: From and To fields (Tab or Enter moves on, Enter on To finds the path); starts from the selected table. Where a browser keeps ⌘J for itself, use Join path… in the palette |
 | ⌘A | All tables (in a text field it selects the text as usual) |
+| Shift-click (or ⌘/Ctrl-click) a table | Adds it to the selection, or takes it out: the tables are lit together, the panel lists them (Copy link; Join path for two) and the address names them (`tables=`), so a copied link shows the same tables |
 | ← → | Back to the previous table or view, forward again |
 | **Highlight** | |
 | P | Personal data map: columns marked `pii` tinted, the rest faded, with their list (only when the model has such columns) |
@@ -67,7 +68,7 @@ that name no table are left out (a link with none opens as usual).
 | `table=<table id>` | That table, selected, with its panel. |
 | `column=<table id>.<column>` | The same, with that column unfolded in the panel. |
 | `view=<view>` | A view: `all`, `overview`, `ranking`, `domain:<db>/<domain>`. |
-| `tables=<id>,<id>,...` | All tables (in a schema too large for it, the smallest domain view holding them all, else the first table's domain with a note on how many are elsewhere), those tables lit and the rest faded, zoomed to fit them. Esc or a click on empty space clears it. |
+| `tables=<id>,<id>,...` | All tables (in a schema too large for it, the smallest domain view holding them all, else the first table's domain with a note on how many are elsewhere), those tables lit and the rest faded, zoomed to fit them, with a panel listing them. With `view=<view>&` before it, that view when it draws them all. Shift-click writes this link. Esc or a click on empty space clears it. |
 | `path=<id>,<id>,...` | A join path, as the Join path panel shows it. Two tables: the cheapest paths between them. More: the cheapest path between each table and the next, end to end (a direct relation, when there is one, is always the cheapest). When no relations join two neighbours, the tables are lit as with `tables=`. |
 
 Put `view=<view>&` before `table=` or `column=` to open the table in that

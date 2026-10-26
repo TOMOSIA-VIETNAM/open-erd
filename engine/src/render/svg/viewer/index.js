@@ -560,6 +560,7 @@ function headerClick(e) {
 // ---------------------------------------------------------------- selection
 
 function clearSelection() {
+  picked = [];
   stopFlows();
   for (const v of views.values()) {
     v.classList.remove('dimmed', 'center-selected');
@@ -1595,7 +1596,7 @@ function openDeepLink(hash) {
     const ids = parsed.ids.filter((id) => data.nodes[id]?.kind === 'table');
     if (ids.length === 0) return false;
     if (key === 'path' && ids.length > 1) openPathThrough(ids);
-    else openTableSet(ids);
+    else openTableSet(ids, parsed.view);
     return true;
   }
   if (key === 'view' && linkableView(value)) {
@@ -1623,11 +1624,29 @@ function openDeepLink(hash) {
 // view of the first table, with a note on how many are elsewhere), the
 // tables lit and the rest dimmed as a selection does, fitted to them. Esc
 // or a click on the empty canvas clears it like any selection.
-function openTableSet(ids) {
+// `view` (from the link) when it draws every table in full, else all
+// tables, else the smallest domain view that does, else the first table's.
+function openTableSet(ids, view = null) {
   const full = (name, id) => indexes.get(name).has(id) && !indexes.get(name).get(id).el.classList.contains('stub');
   const domains = [...views.keys()].filter((n) => n.startsWith(DOMAIN_PREFIX) && ids.every((id) => full(n, id)));
-  const name = views.has(ALL_VIEW) ? ALL_VIEW : domains.sort((a, b) => indexes.get(a).size - indexes.get(b).size)[0] ?? homeView(ids[0]);
+  const name = linkableView(view) && ids.every((id) => full(view, id)) ? view : views.has(ALL_VIEW) ? ALL_VIEW : (domains.sort((a, b) => indexes.get(a).size - indexes.get(b).size)[0] ?? homeView(ids[0]));
   navigate(name);
+  const shown = showPicked(ids);
+  // The legend sits bottom left, where the fitted tables would run under
+  // it: folded in this view only, the reader's choice stays.
+  legendFolded = true;
+  showLegend();
+  zoomToRect(boundsOf(currentIndex(), shown), FOCUS_MAX_SCALE);
+  if (shown.length < ids.length) showToast(`${ids.length - shown.length} of ${plural(ids.length, 'table')} are in other domains`);
+}
+
+// Several tables lit together: a link's #tables=, or Shift-click (⌘ or Ctrl
+// too) adding a table to the selection or taking it out. The panel lists
+// them and the address names them, so a copied link shows the same tables.
+let picked = [];
+const ADD_KEY_HINT = 'Shift-click';
+/** Lights the tables of `ids` drawn in the view, fades the rest; returns them. */
+function showPicked(ids) {
   clearSelection();
   const index = currentIndex();
   const shown = ids.filter((id) => index.has(id));
@@ -1636,12 +1655,41 @@ function openTableSet(ids) {
   for (const g of relationGroups()) if (set.has(g.getAttribute('data-from')) && set.has(g.getAttribute('data-to'))) g.classList.add('hl');
   for (const id of shown) index.get(id).el.classList.add('hl');
   currentView().classList.add('dimmed');
-  // The legend sits bottom left, where the fitted tables would run under
-  // it: folded in this view only, the reader's choice stays.
-  legendFolded = true;
-  showLegend();
-  zoomToRect(boundsOf(index, shown), FOCUS_MAX_SCALE);
-  if (shown.length < ids.length) showToast(`${ids.length - shown.length} of ${plural(ids.length, 'table')} are in other domains`);
+  picked = shown;
+  if (shown.length > 0) {
+    showPanel(pickedPanel(shown));
+    shareHash([['tables', shown.join(',')]]);
+  }
+  return shown;
+}
+function togglePicked(id) {
+  const base = picked.length > 0 ? picked : [selectedTable()].filter(Boolean);
+  const next = base.includes(id) ? base.filter((x) => x !== id) : [...base, id];
+  if (next.length === 0) clearSelection();
+  else if (next.length === 1) selectNode(next[0]);
+  else showPicked(next);
+}
+function pickedPanel(ids) {
+  const status = el('span', { class: 'oe-status-inline muted' });
+  return [
+    panelHeader({ name: `${ids.length} tables selected`, note: `${ADD_KEY_HINT} a table to add it or take it out. The address names these tables: copy it to share them.` }),
+    el('div', { class: 'oe-actions' }, [
+      el('button', { class: 'oe-btn', text: 'Copy link', title: 'Copy the address of these tables', on: { click: () => copyText(location.href, status, 'the link') } }),
+      ids.length === 2 ? el('button', { class: 'oe-btn', text: 'Join path', title: 'How these two tables join', on: { click: () => openPathThrough(ids) } }) : null,
+      status,
+    ]),
+    el(
+      'div',
+      { class: 'oe-picked' },
+      ids.map((id) =>
+        el('div', { class: 'oe-picked-row' }, [
+          el('button', { class: 'oe-link', text: short(id), title: `Go to ${id}`, on: { click: () => goToNode(id) } }),
+          domainChip(data.nodes[id].cluster),
+          el('button', { class: 'oe-chip-close', text: '×', title: `Take ${short(id)} out`, 'aria-label': `Take ${short(id)} out`, on: { click: () => togglePicked(id) } }),
+        ]),
+      ),
+    ),
+  ];
 }
 
 // #path=: a join path through the tables in the order given, as the join
@@ -1964,6 +2012,7 @@ function nodePanel(id, column = null) {
     }),
     changeList('nodes', id),
     tableActions(id, n),
+    el('div', { class: 'oe-hint muted', text: `${ADD_KEY_HINT} other tables to select several and share them as one link.` }),
     ...tabbed(panelTabs(n, count).map((t) => ({ ...t, body: bodies[t.id] })), column ? 'columns' : undefined),
   ];
 }
@@ -3168,7 +3217,7 @@ function tipLines(target) {
     n?.note ? el('div', { text: n.note }) : null,
     ...(n?.facts ?? []).map((f) => factLine(f, 'div')),
     warningLine(n?.warning),
-    el('div', { class: 'muted', text: 'Click to highlight · double-click for its neighborhood' }),
+    el('div', { class: 'muted', text: `Click to highlight · ${ADD_KEY_HINT} to select several · double-click for its neighborhood` }),
   ];
 }
 
@@ -3445,6 +3494,7 @@ svg.addEventListener('click', (e) => {
   const stub = t.closest('.stub');
   if (stub) return navigate(homeView(stub.getAttribute('data-id')), { focus: stub.getAttribute('data-id') });
   const node = t.closest('.table, .poly');
+  if (node && (e.shiftKey || e.metaKey || e.ctrlKey) && data.nodes[node.getAttribute('data-id')]?.kind === 'table') return togglePicked(node.getAttribute('data-id'));
   const column = t.closest('.column');
   if (node && column && data.nodes[node.getAttribute('data-id')]?.kind === 'table') {
     const id = node.getAttribute('data-id');
@@ -3536,6 +3586,7 @@ const SHORTCUTS = [
     [[FIND_KEY, '/'], 'Search tables and columns'],
     [[`${MOD_KEY}J`], 'Join path between two tables'],
     [[`${MOD_KEY}A`], 'Show all tables'],
+    [[ADD_KEY_HINT], 'Add a table to the selection or take it out; the address shares them'],
     [['←', '→'], 'Back, forward'],
   ]],
   ['Highlight', [
