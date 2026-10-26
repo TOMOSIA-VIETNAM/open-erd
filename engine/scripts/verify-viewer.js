@@ -288,11 +288,11 @@ await pause(100);
 await shot('overview-card-keyboard-focus', `${ov}.querySelectorAll('.card-links .card-link').length === ${relatedOf(busiest)}.length`);
 await key('Enter');
 await shot('overview-card-enter-opens', viewIs(`domain:${busiest}`));
-// No Back pill pointing to the overview (the Map tab is one click away);
-// Backspace, ← and the toolbar's Back still go back to it.
+// A domain opened from the overview has a Back pill naming it; Backspace,
+// ← and the toolbar's Back go back to it too.
 const backPill = `document.querySelector('.oe-back-pill')`;
 const pillShown = `(${backPill}?.closest('foreignObject').style.display ?? 'none') !== 'none'`;
-await shot('no-back-pill-to-overview', `!${pillShown}`);
+await shot('back-pill-to-overview', `${pillShown} && ${backPill}.textContent === '← Overview'`);
 await key('Backspace');
 await shot('backspace-goes-back', `${viewIs('overview')} && !${pillShown}`);
 await evaluate(`${hubCard}.focus()`);
@@ -635,7 +635,8 @@ if (indexed) {
     await shot(
       'line-review-icon',
       `(() => { const f = document.querySelector('.oe-panel .oe-line-facts'); const icon = f?.querySelector('.oe-review');
-        return icon && ['Confirmed', 'Not confirmed yet', 'Code changed since confirmed'].includes(icon.title) && !/\\b(pending|reviewed|stale)\\b/.test(f.textContent); })()`,
+        return icon && ['Confirmed', 'Not confirmed yet', 'Code changed since confirmed'].includes(icon.title) && f.textContent.includes(icon.title) && !/\\b(pending|reviewed|stale)\\b/.test(f.textContent)
+          && document.querySelectorAll('.oe-panel .oe-rel-card').length === 2 && /^Each |^Rows of /.test(document.querySelector('.oe-panel .oe-rel-sentence')?.textContent ?? ''); })()`,
     );
     await key('Escape');
   }
@@ -778,7 +779,7 @@ if (await evaluate(`document.querySelector('g.view[data-view="all"]') !== null`)
     await click(inView(`.relation-group[data-id="${cross}"] path.relation-hit`));
     await shot(
       'cross-db-line',
-      `/^\\S+ → \\S+$/.test(${inView(`.relation-group[data-id="${cross}"] .edge-label text`)}.textContent) && /Cross-DB: \\S+ \\(.+\\) → \\S+ \\(.+\\)/.test(document.querySelector('.oe-panel').textContent)`,
+      `/^\\S+ → \\S+$/.test(${inView(`.relation-group[data-id="${cross}"] .edge-label text`)}.textContent) && [...document.querySelectorAll('.oe-panel .oe-rel-card .db')].every((d) => /^\\S+ \\(.+\\)$/.test(d.textContent)) && document.querySelectorAll('.oe-panel .oe-rel-card .db').length === 2`,
     );
     await key('Escape');
   }
@@ -1070,7 +1071,7 @@ await key('Escape');
 await key('?', 'Slash');
 // P is listed only when some column is marked as personal data, H only
 // when the render has schema health findings, S only when a table is starred.
-await shot('keyboard-shortcuts', `document.querySelectorAll('.oe-panel .oe-keys tr').length === ${11 + (piiTotal > 0) + (healthTotal > 0) + (await evaluate(`Object.values(${data}.nodes).some((x) => x.central)`)) + (await evaluate(`document.querySelector('.oe-changes-chip') !== null`))} && /J/.test(document.querySelector('.oe-panel .oe-keys').textContent) && /K$/.test(document.querySelector('.oe-panel .oe-keys kbd').textContent) && document.querySelector('.oe-panel .oe-keys').textContent.includes('←')`);
+await shot('keyboard-shortcuts', `document.querySelectorAll('.oe-panel .oe-keys-group').length === 3 && document.querySelectorAll('.oe-panel .oe-keys tr').length === ${10 + (piiTotal > 0) + (healthTotal > 0) + (await evaluate(`Object.values(${data}.nodes).some((x) => x.central)`)) + (await evaluate(`document.querySelector('.oe-changes-chip') !== null`))} && /J/.test(document.querySelector('.oe-panel .oe-keys').textContent) && /K$/.test(document.querySelector('.oe-panel .oe-keys kbd').textContent) && document.querySelector('.oe-panel .oe-keys').textContent.includes('←')`);
 // A short panel leaves the minimap in its corner; a tall one pushes it left.
 {
   const mm = `(() => { const f = document.querySelector('.oe-minimap')?.closest('foreignObject'); return f && f.style.display !== 'none' ? document.querySelector('.oe-minimap').getBoundingClientRect() : null; })()`;
@@ -1237,8 +1238,8 @@ await shot(
     const listed = `[...document.querySelectorAll('.oe-panel .oe-pii-domain > summary .n')].reduce((n, e) => n + Number(e.textContent), 0)`;
     await shot('pii-on-menu', `${piiOn} && ${piiHost}.style.display !== 'none' && document.querySelector('.oe-pii-chip').textContent.startsWith('PII: ${piiTotal} column') && ${tinted} === true
       && document.querySelector('.oe-panel .oe-ph-name')?.textContent === 'Personal data (PII)' && ${listed} === ${piiTotal}`);
-    const target = await evaluate(`(() => { const t = document.querySelector('.oe-panel .oe-pii-table'); return [t.querySelector('.oe-link').title.slice('Go to '.length), t.querySelector('.oe-chip').textContent]; })()`);
-    await click(`document.querySelector('.oe-panel .oe-pii-table .oe-chip')`);
+    const target = await evaluate(`(() => { const t = document.querySelector('.oe-panel .oe-pii-table'); return [t.querySelector('.oe-pii-tname').title.slice('Go to '.length), t.querySelector('.oe-pii-col').textContent]; })()`);
+    await click(`document.querySelector('.oe-panel .oe-pii-table .oe-pii-col')`);
     await pause(200);
     await shot('pii-list-jumps', `${inView(`.table.selected[data-id="${target[0]}"] .column.hl-column[data-column="${target[1]}"]`)} !== null && document.querySelector('.oe-panel .oe-ph-name')?.textContent === 'Personal data (PII)' && ${piiOn}`);
     await key('Escape');

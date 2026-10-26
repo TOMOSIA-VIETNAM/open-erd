@@ -1129,12 +1129,10 @@ function viewLabel(snap) {
 const backPill = overlay('oe-back-host');
 backPill.fo.style.display = 'none';
 // Shown in a view reached by navigation, and wherever the step behind was a
-// table: it then names that table.
-// Never on the overview, never pointing back to it: the overview is one
-// click away on the toolbar's Map tab.
+// table: it then names that table. Never on the overview itself.
 function backPillShown() {
   const prev = nav.back.at(-1);
-  return !tour.on && Boolean(prev) && state.view !== OVERVIEW && prev.view !== OVERVIEW && (NAVIGATED(state.view) || Boolean(prev.table));
+  return !tour.on && Boolean(prev) && state.view !== OVERVIEW && (NAVIGATED(state.view) || Boolean(prev.table));
 }
 function updateBackPill() {
   const prev = nav.back.at(-1);
@@ -1689,7 +1687,10 @@ new ResizeObserver(() => {
 function showShortcuts() {
   showPanel([
     panelHeader({ name: 'Keyboard shortcuts' }),
-    el('table', { class: 'oe-keys' }, SHORTCUTS.map(([keys, what]) => el('tr', {}, [el('td', {}, [el('kbd', { text: keys })]), el('td', { text: what })]))),
+    ...SHORTCUTS.flatMap(([title, rows]) => [
+      el('div', { class: 'oe-keys-group', text: title }),
+      el('table', { class: 'oe-keys' }, rows.map(([keys, what]) => el('tr', {}, [el('td', {}, keys.map((k) => el('kbd', { text: k }))), el('td', { text: what })]))),
+    ]),
   ]);
 }
 panel.fo.style.display = 'none';
@@ -2048,18 +2049,51 @@ function groupLinePanel(g) {
 }
 const groupTables = (box) => JSON.parse(box.getAttribute('data-tables'));
 
+// A clicked line's panel: what kind of fact it is, the relation in one
+// sentence, then a card per end (table, its columns, its database); hovering
+// a card pulses that table on the drawing, a click goes to it.
+const CARDINALITY_WORDS = { '1-1': 'one to one', '1-n': 'one to many', 'n-1': 'many to one', 'n-n': 'many to many' };
+const KIND_WORDS = { db_fk: 'Database foreign key', declared: 'Declared in code', inferred: 'Found in code', cross_db: 'Across databases', polymorphic: 'Polymorphic', view_source: 'View source' };
+function relationSentence(l) {
+  const [f, t] = [short(l.from), short(l.to)];
+  const one = l.optional ? 'at most one' : 'one';
+  if (l.kind === 'view_source') return `${f} is built from ${t}.`;
+  if (l.cardinality === 'n-n') return `Rows of ${f} and ${t} link many to many${l.via ? `, through ${short(l.via)}` : ''}.`;
+  if (l.cardinality === '1-n') return `Each ${f} row has many ${t} rows.`;
+  if (l.cardinality === '1-1') return `Each ${f} row points to ${one} ${t} row, and each ${t} row has at most one ${f} row.`;
+  return `Each ${f} row points to ${one} ${t} row.`;
+}
+function relationEnd(side, id, columns, showDb) {
+  const n = data.nodes[id];
+  const table = n?.kind === 'poly' ? n.table : id;
+  const name = n?.kind === 'poly' ? `${short(n.table)} «${n.name}»` : short(id);
+  const cols = n?.kind === 'poly' ? [n.typeColumn, n.idColumn] : (columns ?? []);
+  return el('button', { class: 'oe-rel-card', title: `Go to ${table}`, on: { click: () => goToNode(table), pointerenter: () => pulse(currentIndex().get(id)?.el) } }, [
+    el('span', { class: 'side' }, [el('span', { text: side }), showDb ? el('span', { class: 'db', text: `${dbDisplayName(dbOf(table))} (${data.databases[dbOf(table)].label})` }) : null]),
+    el('span', { class: 'name' }, [iconSvg('table', 13), el('span', { text: name })]),
+    ...cols.map((c) => el('code', { class: 'col', text: c })),
+  ]);
+}
 function relationPanel(g) {
   if (g.hasAttribute('data-group')) return groupLinePanel(g);
   const id = g.getAttribute('data-id');
   const [from, to] = [g.getAttribute('data-from'), g.getAttribute('data-to')];
   const l = data.links.find((x) => x.id === id) ?? data.hubLinks.find((x) => x.id === id);
+  const crossDb = dbOf(from) !== dbOf(to);
   return [
     el('h3', { text: `${short(from)} → ${short(to)}` }),
-    el('div', { class: 'sub', text: id }),
-    l ? el('p', { class: 'oe-line-facts' }, [el('span', { text: `${linkSummary(l)}${l.via ? ` · via ${l.via}` : ''}` }), l.kind === 'view_source' ? null : reviewIcon(l.review)]) : null,
-    dbOf(from) !== dbOf(to) ? el('p', { text: `Cross-DB: ${crossing(from, to)}` }) : null,
+    l
+      ? el('div', { class: 'oe-line-facts' }, [
+          l.kind === 'view_source' ? null : el('span', { class: `oe-badge review-${l.review}` }, [reviewIcon(l.review), el('span', { text: REVIEW_WORDS[l.review] })]),
+          el('span', { class: 'oe-badge', text: KIND_WORDS[l.kind] ?? l.kind }),
+          crossDb && l.kind !== 'cross_db' ? el('span', { class: 'oe-badge', text: 'Cross-DB' }) : null,
+        ])
+      : null,
+    l ? el('p', { class: 'oe-rel-sentence', text: relationSentence(l) }) : null,
+    relationEnd('From', from, l?.fromColumns, crossDb),
+    el('div', { class: 'oe-rel-arrow', text: `↓ ${l && l.kind !== 'view_source' ? CARDINALITY_WORDS[l.cardinality] : 'reads'}${l?.via ? ` · via ${short(l.via)}` : ''}` }),
+    relationEnd('To', to, l?.toColumns, crossDb),
     changeList('links', id),
-    el('div', { class: 'row' }, [link(`Go to ${short(to)}`, () => goToNode(to))]),
   ];
 }
 
@@ -2586,17 +2620,19 @@ function piiSummaryPanel() {
     goToNode(id, column);
     showPiiSummary(scroll);
   };
-  const named = (d) => (DATABASES.length > 1 ? `${dbDisplayName(dbOf(d.cluster))} · ${domainName(d.cluster)}` : domainName(d.cluster));
+  // A tree: domain (folds), its tables, each table's columns one per line.
   piiPanel = [
     panelHeader({ name: 'Personal data (PII)', note: `${PII_COUNTS} in ${plural(PII.domains.length, 'domain')}` }),
     ...PII.domains.map((d) =>
       el('details', { class: 'oe-pii-domain', open: '' }, [
-        el('summary', {}, [el('span', { class: 'name', text: named(d), title: d.cluster }), el('span', { class: 'n', text: String(d.count) })]),
+        el('summary', { title: d.cluster }, [
+          el('span', { class: 'name' }, [DATABASES.length > 1 ? el('span', { class: 'db', text: `${dbDisplayName(dbOf(d.cluster))} · ` }) : null, el('span', { text: domainName(d.cluster) })]),
+          el('span', { class: 'n', text: String(d.count) }),
+        ]),
         ...d.tables.map((t) =>
           el('div', { class: 'oe-pii-table' }, [
-            el('button', { class: 'oe-link', text: short(t.id), title: `Go to ${t.id}`, on: { click: go(t.id) } }),
-            el('span', { class: 'n', text: String(t.columns.length) }),
-            el('div', { class: 'oe-chipbox' }, t.columns.map((c) => el('button', { class: 'oe-chip', title: `Go to ${short(t.id)}.${c}`, text: c, on: { click: go(t.id, c) } }))),
+            el('button', { class: 'oe-pii-tname', title: `Go to ${t.id}`, on: { click: go(t.id) } }, [iconSvg('table', 13), el('span', { class: 'name', text: short(t.id) }), el('span', { class: 'n', text: plural(t.columns.length, 'column') })]),
+            ...t.columns.map((c) => el('button', { class: 'oe-pii-col', title: `Go to ${short(t.id)}.${c}`, text: c, on: { click: go(t.id, c) } })),
           ]),
         ),
       ]),
@@ -3515,24 +3551,30 @@ document.addEventListener(
 // field, opens it for tables and columns only. Escape closes the innermost
 // thing open: the palette, a menu, then the selection.
 const typing = () => document.activeElement instanceof HTMLInputElement || document.activeElement instanceof HTMLTextAreaElement;
-// Keyboard shortcuts, also listed under ⋯ › Keyboard shortcuts.
+// Keyboard shortcuts, also listed under ⋯ › Keyboard shortcuts: groups of
+// [keys (one or several, any of them works), what they do].
 const SHORTCUTS = [
-  [PALETTE_KEY, 'Search tables and columns, or run a command (join path, tour, download, highlights); type a > b for the join path between two tables'],
-  [`${FIND_KEY} or /`, 'Search tables and columns'],
-  [`${MOD_KEY}J`, 'Join path between two tables'],
-  [`${MOD_KEY}A`, 'All tables'],
-  [`${MOD_KEY}C`, 'Copy schema: the selected table as SQL, or as a JSON schema for MongoDB, with its indexes'],
-  ['L', 'Show or hide the legend'],
-  ['?', 'This list of keys'],
-  ['T', 'Tour: each domain in turn (← → step, Space pauses, Esc ends)'],
-  CHANGES ? ['C', 'Changes: fade what the diff did not change, with the list of changes'] : null,
-  PII.total > 0 ? ['P', 'Personal data map: PII columns tinted, the rest faded, with their list'] : null,
-  HEALTH.length > 0 ? ['H', 'Schema health: tables with findings marked, with their list'] : null,
-  CENTRAL_TOTAL > 0 ? ['S', 'Central tables: the starred table of each domain marked, the rest faded, with their list'] : null,
-  ['←', 'Back to the previous table or view'],
-  ['→', 'Forward again'],
-  ['Esc', 'Close search, menu or panel'],
-].filter(Boolean);
+  ['Find and move', [
+    [[PALETTE_KEY], 'Search, or run a command'],
+    [[FIND_KEY, '/'], 'Search tables and columns'],
+    [[`${MOD_KEY}J`], 'Join path between two tables'],
+    [[`${MOD_KEY}A`], 'Show all tables'],
+    [['←', '→'], 'Back, forward'],
+  ]],
+  ['Highlight', [
+    PII.total > 0 ? [['P'], 'Personal data'] : null,
+    HEALTH.length > 0 ? [['H'], 'Schema health'] : null,
+    CENTRAL_TOTAL > 0 ? [['S'], 'Central tables'] : null,
+    CHANGES ? [['C'], 'Changes'] : null,
+    [['L'], 'Legend on or off'],
+  ]],
+  ['Other', [
+    [['T'], 'Tour the domains (← → step, Space pauses)'],
+    [[`${MOD_KEY}C`], 'Copy the selected table’s schema'],
+    [['?'], 'This list'],
+    [['Esc'], 'Close search, menu or panel'],
+  ]],
+].map(([title, rows]) => [title, rows.filter(Boolean)]);
 const selectedTable = () => {
   const id = currentView().querySelector('.table.selected')?.getAttribute('data-id');
   return data.nodes[id]?.kind === 'table' ? id : null;
