@@ -133,7 +133,7 @@ function legendSvg(max) {
 // The tables nothing points at, as names flowing over lines.
 function zeroSvg(tables, top) {
   if (tables.length === 0) return { svg: '', h: 0 };
-  const parts = [`<text class="hm-legend" x="0" y="${top}" dominant-baseline="central">Nothing points at ${plural(tables.length, 'table')}:</text>`];
+  const parts = [`<text class="hm-legend" x="0" y="${top}" dominant-baseline="central">Not referenced by any table (${tables.length}), so no block to draw: they only point at others, or stand alone</text>`];
   const sep = measureText(ZERO_SEP, ZERO_FONT);
   let x = 0;
   let y = top + ZERO_LINE;

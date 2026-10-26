@@ -316,7 +316,8 @@ function readableStart(bounds, focus, maxScale = MAX_FIT_SCALE) {
   if (fit * SMALLEST_TEXT >= READABLE_TEXT) return zoomToRect(bounds, maxScale);
   state.cam = focus
     ? frameFocus(focus, { w, h }, TOOLBAR_HEIGHT, READABLE_TEXT / SMALLEST_TEXT, FOCUS_PAD)
-    : { s: 1, x: FIT_PADDING - bounds.x, y: TOOLBAR_HEIGHT + FIT_PADDING - bounds.y };
+    : // Centred when it is narrower than the screen, from its top.
+      { s: 1, x: Math.max(FIT_PADDING, (w - bounds.w) / 2) - bounds.x, y: TOOLBAR_HEIGHT + FIT_PADDING - bounds.y };
   applyCamera();
 }
 

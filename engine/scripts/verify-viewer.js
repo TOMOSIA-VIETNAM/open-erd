@@ -316,6 +316,8 @@ await mouse('mouseMoved', { x: 5, y: 890 });
 await viewTab('heatmap');
 const hx = `document.querySelector('g.view[data-view="heatmap"]')`;
 await shot('heatmap', `!${pillShown} && ${viewIs('heatmap')} && ${hx}.querySelectorAll('.hm-tile').length === Object.values(${data}.nodes).filter((n) => n.kind === 'table').length && document.querySelector('.oe-view-tabs [data-view="heatmap"]').classList.contains('on')`);
+// It opens centred across the screen when narrower than it.
+await shot('heatmap-centred', `(() => { const r = ${hx}.querySelector('rect').getBoundingClientRect(); return r.width > innerWidth || Math.abs(r.left + r.width / 2 - innerWidth / 2) < 2 || { left: r.left, w: r.width }; })()`);
 const hot = `${hx}.querySelector('.hm-tile:not(.hm-zero)')`;
 const hotId = await evaluate(`${hot}.getAttribute('data-id')`);
 await mouse('mouseMoved', await centre(hot));

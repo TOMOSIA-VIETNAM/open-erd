@@ -197,7 +197,7 @@ test('heatmap: a treemap of the referenced tables, the others as a line of names
   assert.equal((view.match(/<g class="hm-tile hm-zero"/g) ?? []).length, tables.filter((t) => t.in === 0).length);
   assert.match(view, /<g class="hm-tile" data-id="auth.public.users" data-in="11" data-out="0"><title>auth.public.users: 11 relations point at it, 0 from it<\/title>/);
   assert.match(view, />★ users</);
-  assert.match(view, /Nothing points at \d+ tables:/);
+  assert.match(view, /Not referenced by any table \(\d+\), so no block to draw/);
   assert.notEqual(heatFill(11, 11), heatFill(1, 11));
 });
 
