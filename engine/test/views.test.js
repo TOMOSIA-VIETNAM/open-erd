@@ -75,7 +75,7 @@ test('a table whose only relations are cross-domain hub references keeps them as
   assert.deepEqual(diagram.nodes.get(lone.id).box.badges ?? [], []);
 });
 
-test('a polymorphic association is one virtual node and one line; lines to its targets only when few and all in view', async () => {
+test('a polymorphic association is one virtual node and one line; targets are data only', async () => {
   const { scene, svg, model } = await multi();
   const all = scene('all');
   const commentable = polyNodeId(model.polymorphic.find((a) => a.name === 'commentable'));
@@ -84,11 +84,7 @@ test('a polymorphic association is one virtual node and one line; lines to its t
   const attachable = all.nodes.find((n) => n.id === polyNodeId(model.polymorphic.find((a) => a.name === 'attachable')));
   assert.equal(attachable.box.rows.length, POLY_VISIBLE_TARGETS + 1);
   assert.equal(attachable.box.rows.at(-1).name.text, '+1 more');
-  // Three targets, all in the view: their lines are drawn from the start.
-  // Five: embedded for the viewer, their lines hidden until it is selected.
-  const routes = (id) => new RegExp(`<g class="poly-routes([^"]*)" data-poly="${id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"( style="display:none")?>`).exec(svg.slice(svg.indexOf('data-view="all"')));
-  assert.deepEqual([routes(commentable)[1], routes(commentable)[2]], [' shown', undefined]);
-  assert.deepEqual([routes(attachable.id)[1], routes(attachable.id)[2]], ['', ' style="display:none"']);
+  // All five targets are embedded for the viewer, none is drawn.
   assert.match(svg, /data-name="attachable"[^>]*data-targets="\[&quot;shop\._\.comments&quot;,&quot;shop\._\.orders&quot;,&quot;shop\._\.posts&quot;,&quot;shop\._\.products&quot;,&quot;shop\._\.refunds&quot;\]"/);
   // The virtual node sits in its owner's domain.
   const contentFrame = all.groups.find((g) => g.kind === 'cluster' && g.group.key === 'shop/Content').frame;

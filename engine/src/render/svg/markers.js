@@ -72,13 +72,6 @@ export function trustOf(kind, review) {
 // that nobody confirmed. Kind (cross-DB, polymorphic) is told by the label or
 // the node, review state by colour in review mode only.
 export const UNCONFIRMED_DASH = '6 4';
-
-// The lines from a polymorphic node to its targets are drawn from the start
-// when it has few targets and the view holds them all: the targets are then
-// plainly linked, not tables standing alone. More targets, or some outside
-// the view, would tangle it; those lines show when the node is selected.
-export const POLY_LINES_MAX = 3;
-export const polyLinesShown = (inView, total) => inView === total && total <= POLY_LINES_MAX;
 export const isConfirmed = (kind, review) => trustOf(kind, review) !== 'doubtful';
 
 // An overview line stands for every relation between two domains; the more

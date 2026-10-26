@@ -15,7 +15,7 @@ import { FONT_FAMILY, TEXT_STYLE_CSS, fontFaceCss } from '../../text/font.js';
 import { PALETTE } from '../../palette.js';
 import { RANKING_STYLE, rankingSvg, rankingTables } from './ranking.js';
 import { referenceCounts } from '../../model/centrality.js';
-import { ICON_PAINT, UNCONFIRMED_DASH, endMarkers, enumIconSvg, indexIconSvg, isConfirmed, keyIconSvg, linkIconSvg, markerSvg, overviewStrokeWidth, polyLinesShown, starIconSvg, tableIconSvg } from './markers.js';
+import { ICON_PAINT, UNCONFIRMED_DASH, endMarkers, enumIconSvg, indexIconSvg, isConfirmed, keyIconSvg, linkIconSvg, markerSvg, overviewStrokeWidth, starIconSvg, tableIconSvg } from './markers.js';
 import viewerBundle from './viewer-bundle.json' with { type: 'json' };
 
 const CANVAS_MARGIN = 40;
@@ -44,13 +44,13 @@ const VIEWER_STYLE = `.row-hit { fill: transparent; }
 .column.hl-column .row-hit { fill: #fff1b8; }
 /* Personal data map: tables holding pii columns stay, those rows tinted,
    the rest fades; a selection's own fading takes over while it lasts. */
-.pii-mode .view:not(.dimmed) :is(.table, .stub, .poly, .domain, .relation-group, .poly-routes):not(.has-pii) { opacity: 0.2; }
+.pii-mode .view:not(.dimmed) :is(.table, .stub, .poly, .domain, .relation-group):not(.has-pii) { opacity: 0.2; }
 .pii-mode .view:not(.dimmed) .table.has-pii .column:not(.pii) { opacity: 0.45; }
 .pii-mode .view:not(.dimmed) :is(.table, .stub).has-pii:not(.hl) > rect:last-of-type { stroke: #d9603f; stroke-width: 2; }
 .pii-mode .column.pii:not(.hl-column) .row-hit { fill: #ffd9cc; }
 .pii-mode .column.pii .column-name { fill: #a8341a; }
 .pii-mode .domain.has-pii .card-box { stroke: #d9603f; stroke-width: 2; }
-.central-mode .view:not(.dimmed) :is(.table, .stub, .poly, .relation-group, .poly-routes):not(.central) { opacity: 0.2; }
+.central-mode .view:not(.dimmed) :is(.table, .stub, .poly, .relation-group):not(.central) { opacity: 0.2; }
 .central-mode .view:not(.dimmed) .table.central:not(.hl) > rect:last-of-type { stroke: #c99a06; stroke-width: 3; }
 .view.oe-enter { animation: oe-enter 0.5s ease-out; }
 @keyframes oe-enter { from { opacity: 0.15; } }
@@ -63,7 +63,7 @@ const VIEWER_STYLE = `.row-hit { fill: transparent; }
 .health-mode .column.health:not(.hl-column) .row-hit { fill: #fff1d6; }
 .domain, .stub, .table, .poly, .relation-group, .hub-badge { cursor: pointer; }
 .relation-hit { fill: none; stroke: transparent; stroke-width: 12; }
-.view.dimmed :is(.table, .stub, .poly, .domain, .relation-group, .poly-routes):not(.hl) { opacity: 0.16; }
+.view.dimmed :is(.table, .stub, .poly, .domain, .relation-group):not(.hl) { opacity: 0.16; }
 .view.dimmed.center-selected :is(.table, .poly).ring-2:not(.hl) { opacity: 1; }
 .view.dimmed.center-selected .ring-2:not(.hl) > rect:last-of-type { stroke: #d9dee6; }
 .view.dimmed.center-selected .relation-group.ring-2:not(.hl) { opacity: 0.5; }
@@ -409,7 +409,7 @@ const DIFF_STYLE = [
   // what the diff did not change fades like the rest of a selection; tables
   // at the end of a changed line only half, so the line still reads. A
   // selection's own fading takes over while it lasts.
-  `.changes-mode .view:not(.dimmed) :is(.table, .stub, .poly, .domain, .relation-group, .poly-routes):not(${Object.keys(DIFF_COLORS).map((s) => `.diff-${s}`).join(', ')}, .near-change) { opacity: 0.16; }`,
+  `.changes-mode .view:not(.dimmed) :is(.table, .stub, .poly, .domain, .relation-group):not(${Object.keys(DIFF_COLORS).map((s) => `.diff-${s}`).join(', ')}, .near-change) { opacity: 0.16; }`,
   '.changes-mode .view:not(.dimmed) :is(.table, .stub, .poly).near-change { opacity: 0.55; }',
   ...Object.entries(DIFF_COLORS).map(([status, c]) => `.oe-badge.diff-${status} { background: ${c.fill}; color: ${c.stroke}; font-weight: 700; }`),
   '.diff-mode .relation-group:not(.diff-added, .diff-removed, .diff-changed) :is(.relation, .marker) { stroke: #c3cad5; stroke-dasharray: none; }',
@@ -686,7 +686,7 @@ function routePolyTargets(nodes, byId, obstacles, groups) {
         from: { box: nodeRect(n), y: n.y + attachOffset(n.box, null), marker: 'none' },
         to: { box: nodeRect(t), y: t.y + attachOffset(t.box, column), marker: 'none' },
       });
-      ends.push({ poly: n.id, target, total: n.node.association.targets.length, confirmed: isConfirmed('polymorphic', n.node.association.review) });
+      ends.push({ poly: n.id, target, confirmed: isConfirmed('polymorphic', n.node.association.review) });
     }
   }
   return routeEdges(obstacles, groups.map((g) => g.frame), edges).map((r, i) => ({ ...ends[i], points: r.points }));
@@ -1069,9 +1069,8 @@ function relationSvg(r, marks) {
   );
 }
 
-// Lines from a polymorphic node to each of its targets in the view: shown
-// from the start for a node with few targets, all in the view
-// (polyLinesShown), else hidden until the viewer shows them on click.
+// Lines from a polymorphic node to each of its targets in the view, hidden
+// until the viewer shows them on click.
 function polyRoutesSvg(routes) {
   const byPoly = new Map();
   for (const r of routes) {
@@ -1081,9 +1080,7 @@ function polyRoutesSvg(routes) {
   return [...byPoly]
     .map(
       ([poly, list]) =>
-        (polyLinesShown(list.length, list[0].total)
-          ? `<g class="poly-routes shown" data-poly="${escapeXml(poly)}">`
-          : `<g class="poly-routes" data-poly="${escapeXml(poly)}" style="display:none">`) +
+        `<g class="poly-routes" data-poly="${escapeXml(poly)}" style="display:none">` +
         list.map((r) => `<path class="poly-route${r.confirmed ? '' : ' unconfirmed'}" data-target="${escapeXml(r.target)}" d="${pathData(r.points)}"/>`).join('') +
         '</g>',
     )
