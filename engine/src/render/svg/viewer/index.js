@@ -22,7 +22,7 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 const HTML_NS = 'http://www.w3.org/1999/xhtml';
 const OVERVIEW = 'overview';
 const ALL_VIEW = 'all';
-const CONNECTIONS = 'connections';
+const HEATMAP = 'heatmap';
 const DOMAIN_PREFIX = 'domain:';
 const NEIGHBORHOOD = 'neighborhood';
 // View the viewer builds for a join path no drawn view holds.
@@ -54,7 +54,7 @@ const RING_GAP = 40;
 const NEIGHBORHOOD_MARGIN = 60;
 const SEARCH_LIMIT = 40;
 const TIP_OFFSET = 14;
-// Smallest text in table boxes and matrix headers, and the size it should
+// Smallest text in table boxes and heatmap tiles, and the size it should
 // have on screen at least when a large view opens zoomed in.
 const SMALLEST_TEXT = 12;
 const READABLE_TEXT = 11;
@@ -155,7 +155,7 @@ const fullBoxes =
       .flatMap(([, index]) => [...index].filter(([, entry]) => !entry.el.classList.contains('stub'))),
   );
 // The viewer draws its own tooltips; native ones would show on top of them.
-for (const t of svg.querySelectorAll('.nodes title, .relations title, .mx-cells title')) t.remove();
+for (const t of svg.querySelectorAll('.nodes title, .relations title, .hm-tile title')) t.remove();
 
 // Lines are 1.4 px wide; a wide transparent twin makes them clickable.
 function addHitPaths(root) {
@@ -165,8 +165,8 @@ function addHitPaths(root) {
 }
 addHitPaths(svg);
 
-// Personal data (see the PII mode section): the tables, columns, domain
-// cards and matrix headers holding columns marked `pii` get classes the
+// Personal data (see the PII mode section): the tables, heatmap tiles,
+// columns and domain cards holding columns marked `pii` get classes the
 // mode's styles pick out. Marked once here, before the neighborhood and
 // join views copy boxes, so their copies carry the marks too. A sharing
 // profile that drops pii columns leaves nothing to mark.
@@ -174,13 +174,13 @@ const PII = piiSummary(data.nodes);
 {
   const columns = new Map(PII.domains.flatMap((d) => d.tables.map((t) => [t.id, new Set(t.columns)])));
   const domains = new Set(PII.domains.map((d) => d.cluster));
-  for (const g of svg.querySelectorAll('.table[data-id], .stub[data-id]')) {
+  for (const g of svg.querySelectorAll('.table[data-id], .stub[data-id], .hm-tile[data-id]')) {
     const mine = columns.get(g.getAttribute('data-id'));
     if (!mine) continue;
     g.classList.add('has-pii');
     for (const c of g.querySelectorAll('.column')) if (mine.has(c.getAttribute('data-column'))) c.classList.add('pii');
   }
-  for (const g of svg.querySelectorAll('.domain[data-domain], .mx-head[data-domain]')) if (domains.has(g.getAttribute('data-domain'))) g.classList.add('has-pii');
+  for (const g of svg.querySelectorAll('.domain[data-domain]')) if (domains.has(g.getAttribute('data-domain'))) g.classList.add('has-pii');
 }
 
 // What a diff drawing changed (see the Changes mode section); null in a
@@ -239,25 +239,10 @@ function applyCamera() {
   cameraFrame = 0;
   const { x, y, s } = state.cam;
   camera.setAttribute('transform', `translate(${x} ${y}) scale(${s})`);
-  if (state.view === CONNECTIONS) stickHeaders();
   placeBackPill();
   updateMinimap();
 }
 
-// The connections view keeps its header column and header row on screen
-// while the matrix is panned: they slide along with the visible edge but
-// never past where they are drawn.
-function stickHeaders() {
-  const { x, y, s } = state.cam;
-  const dx = Math.max(0, -x / s);
-  const dy = Math.max(0, (TOOLBAR_HEIGHT - y) / s);
-  for (const g of views.get(CONNECTIONS).querySelectorAll('.mx-sticky-x, .mx-sticky-y')) {
-    const sx = g.classList.contains('mx-sticky-x') ? dx : 0;
-    // A header row drawn below the top edge sticks once it reaches it.
-    const sy = g.classList.contains('mx-sticky-y') ? Math.max(0, dy - Number(g.getAttribute('data-top') ?? 0)) : 0;
-    g.setAttribute('transform', `translate(${sx} ${sy})`);
-  }
-}
 // Pan and zoom gestures fire many events per frame: write the transform once
 // per frame, with the latest camera.
 function scheduleCamera() {
@@ -310,7 +295,7 @@ function showView(name) {
   state.view = name;
   // A neighborhood or join view of the same name may hold other tables now.
   map.view = null;
-  if (name === CONNECTIONS) readableStart(viewBounds(name), null, 1);
+  if (name === HEATMAP) readableStart(viewBounds(name), null, 1);
   else zoomToRect(viewBounds(name), MAX_FIT_SCALE);
   renderToolbar();
   // The legend keeps the reader's choice (open or folded to its pill),
@@ -846,10 +831,10 @@ const ICONS = {
   highlight: 'M9.5 2.5L13.5 6.5L7.5 12.5H3.5V8.5ZM2.5 14.5H13.5',
   // Swatches with their lines: the legend.
   legend: 'M2.5 3H4.5V5H2.5ZM2.5 7H4.5V9H2.5ZM2.5 11H4.5V13H2.5ZM7 4H13.5M7 8H13.5M7 12H13.5',
-  // The three ways to see the schema: tables, the domain map, the matrix.
+  // The three ways to see the schema: tables, the domain map, the heatmap.
   table: 'M2.5 3.5H13.5V12.5H2.5ZM2.5 6.5H13.5M2.5 9.5H13.5M6.5 6.5V12.5',
   map: 'M2.5 4L6 2.5L10 4L13.5 2.5V12L10 13.5L6 12L2.5 13.5ZM6 2.5V12M10 4V13.5',
-  matrix: 'M2.5 2.5H13.5V13.5H2.5ZM6.2 2.5V13.5M9.8 2.5V13.5M2.5 6.2H13.5M2.5 9.8H13.5',
+  heatmap: 'M2.5 2.5H13.5V13.5H2.5ZM6.2 2.5V13.5M9.8 2.5V13.5M2.5 6.2H13.5M2.5 9.8H13.5',
   database: 'M3.5 4C3.5 2.6 12.5 2.6 12.5 4V12C12.5 13.4 3.5 13.4 3.5 12ZM3.5 4C3.5 5.4 12.5 5.4 12.5 4M3.5 8C3.5 9.4 12.5 9.4 12.5 8',
   // Tour controls.
   play: 'M5 3.5L12 8L5 12.5Z',
@@ -872,13 +857,13 @@ function relatedButtons(open) {
 const hopButtons = relatedButtons((hops) => openNeighborhood(state.center, hops));
 const hopGroup = el('div', { class: 'oe-related', title: RELATED.title }, [el('span', { text: RELATED.label }), el('div', { class: 'oe-seg' }, hopButtons)]);
 // The three ways to look at the whole schema, always on the toolbar: every
-// table, the domain cards (Map) and the domain matrix (Connections). A
+// table, the domain cards (Map) and the tables shaded by references (Heatmap). A
 // schema too large for the view of all tables has no first one.
 // Narrow windows show the icons only (their tooltips name them).
 const VIEW_TABS = [
   [ALL_VIEW, 'table', 'All tables', `Every table of every domain (${MOD_KEY}A)`, `${MOD_KEY}A`],
   [OVERVIEW, 'map', 'Map', 'Domains as cards: what each holds and what it is related to', null],
-  [CONNECTIONS, 'matrix', 'Connections', 'Domain × domain matrix: how many relations go from each domain to each other', null],
+  [HEATMAP, 'heatmap', 'Heatmap', 'Every table shaded by how many relations point at it', null],
 ].filter(([name]) => views.has(name));
 const viewTabs = VIEW_TABS.map(([name, icon, text, title]) =>
   el('button', { class: 'oe-btn oe-tab-view', title: `${text}: ${title}`, 'aria-label': text, 'data-view': name, on: { click: () => navigate(name) } }, [iconSvg(icon, 14), el('span', { class: 'label', text })]),
@@ -894,10 +879,10 @@ const searchButton = el(
   [iconSvg('search'), el('span', { class: 'label', text: 'Search or jump…' }), el('kbd', { text: PALETTE_KEY })],
 );
 // The tour's steps (see the tour section): one per domain, in the order of
-// the overview's cards, which the connections matrix lists as its rows. A
+// the overview's cards, which the heatmap lists as its domains. A
 // single domain makes no tour: it is not offered.
 const TOUR_STEPS = tourSteps(
-  [...(views.get(CONNECTIONS)?.querySelectorAll('.mx-rows .mx-head') ?? [])].map((g) => g.getAttribute('data-domain')),
+  [...(views.get(HEATMAP)?.querySelectorAll('.hm-head') ?? [])].map((g) => g.getAttribute('data-domain')),
   data.nodes,
   data.domainNotes,
 );
@@ -996,8 +981,8 @@ const highlightMenu = dropdown(
   ]),
   'oe-highlight-menu',
 );
-// Overview cards and the matrix stand for many relations and carry no review colour.
-const reviewable = () => state.view !== OVERVIEW && state.view !== CONNECTIONS;
+// Overview cards and heatmap tiles stand for many relations and carry no review colour.
+const reviewable = () => state.view !== OVERVIEW && state.view !== HEATMAP;
 const REVIEW_TOTAL = data.review.pending + data.review.stale;
 const reviewCounts = () => `${data.review.pending} to confirm · ${data.review.stale} changed in code`;
 const REVIEW_TIP = 'Color lines by review status: amber = not confirmed yet, red = code changed since review';
@@ -1009,7 +994,7 @@ function highlightModes() {
   return [
     CHANGES ? { label: 'Changes', detail: CHANGES.label, tip: CHANGES_TIP, keys: 'C', keywords: ['changes', 'diff', 'added', 'removed'], on: changesOn(), toggle: () => setChangesMode(!changesOn()), off: null } : null,
     REVIEW_TOTAL > 0
-      ? { label: 'Review mode', detail: reviewCounts(), tip: REVIEW_TIP, keys: null, keywords: ['review', 'confirm', 'stale'], on: reviewing(), toggle: () => setReviewMode(!reviewing()), off: reviewable() ? null : 'Lines only: not on the map or the matrix' }
+      ? { label: 'Review mode', detail: reviewCounts(), tip: REVIEW_TIP, keys: null, keywords: ['review', 'confirm', 'stale'], on: reviewing(), toggle: () => setReviewMode(!reviewing()), off: reviewable() ? null : 'Lines only: not on the map or the heatmap' }
       : null,
     PII.total > 0 ? { label: 'Personal data (PII)', detail: PII_COUNTS, tip: PII_TIP, keys: 'P', keywords: ['pii', 'personal', 'privacy', 'gdpr'], on: piiOn(), toggle: () => setPiiMode(!piiOn()), off: null } : null,
     HEALTH.length > 0 ? { label: 'Schema health', detail: HEALTH_COUNTS, tip: HEALTH_TIP, keys: 'H', keywords: ['health', 'findings', 'lint', 'index'], on: healthOn(), toggle: () => setHealthMode(!healthOn()), off: null } : null,
@@ -1087,7 +1072,7 @@ function renderToolbar() {
       ? clusterOf(state.center)
       : null;
   if (state.view === ALL_VIEW) parts.push(crumb(`All tables · ${plural(tableCount(null), 'table')}`));
-  if (state.view === CONNECTIONS) parts.push(crumb('Connections'));
+  if (state.view === HEATMAP) parts.push(crumb('Heatmap'));
   const db = cluster ? cluster.split('/')[0] : null;
   // There is no database-level view: the database crumb shows a frame on the
   // overview. With several databases it lists them all, on every view.
@@ -1117,11 +1102,11 @@ function renderToolbar() {
 
 // In a view reached by navigation, a pill at the top left of the canvas
 // names where Back goes ("← All tables"); the toolbar's Back does the same.
-const NAVIGATED = (name) => name.startsWith(DOMAIN_PREFIX) || [NEIGHBORHOOD, JOIN_VIEW, CONNECTIONS].includes(name);
+const NAVIGATED = (name) => name.startsWith(DOMAIN_PREFIX) || [NEIGHBORHOOD, JOIN_VIEW].includes(name);
 function viewLabel(snap) {
   if (snap.view === OVERVIEW) return 'Overview';
   if (snap.view === ALL_VIEW) return 'All tables';
-  if (snap.view === CONNECTIONS) return 'Connections';
+  if (snap.view === HEATMAP) return 'Heatmap';
   if (snap.view === NEIGHBORHOOD) return `Tables related to ${short(snap.center)}`;
   if (snap.view === JOIN_VIEW) return `Join path ${short(snap.joinPath.nodes[0])} → ${short(snap.joinPath.nodes.at(-1))}`;
   return domainName(snap.view.slice(DOMAIN_PREFIX.length));
@@ -1199,7 +1184,6 @@ function viewAsSvg() {
   for (const e of view.querySelectorAll('.database > [transform]')) e.removeAttribute('transform');
   for (const e of [...view.querySelectorAll('*')].filter(isHidden)) e.remove();
   for (const e of view.querySelectorAll('.relation-hit, .card-links')) e.remove();
-  for (const e of view.querySelectorAll('.mx-sticky-x, .mx-sticky-y')) e.removeAttribute('transform');
   // The pulse on a table just reached is a moment on screen, not drawing.
   for (const e of view.querySelectorAll('.arrive')) e.classList.remove('arrive');
   const root = svgEl('svg', { width: w, height: h, viewBox: `${x} ${y} ${w} ${h}` }, [svg.querySelector('style').cloneNode(true), view]);
@@ -1993,15 +1977,13 @@ function polyPanel(id, poly) {
 }
 
 // Relations between domains `a` and `b` by direction: those whose
-// referencing table is in `a` (pointing at keys in `b`), then the others;
-// one direction only for a domain with itself.
+// referencing table is in `a` (pointing at keys in `b`), then the others.
 function byDirection(a, b) {
   const relations = data.domainLinks[pairId(a, b)] ?? [];
-  const directions = a === b ? [[a, a]] : [[a, b], [b, a]];
-  return directions.map(([from, to]) => ({ from, to, relations: relations.filter((r) => clusterOf(r.from) === from) }));
+  return [[a, b], [b, a]].map(([from, to]) => ({ from, to, relations: relations.filter((r) => clusterOf(r.from) === from) }));
 }
 
-// The relations between two domains (a connector, a matrix cell), grouped
+// The relations between two domains (an overview connector), grouped
 // by direction ("A → B (n)"), each a chip leading to its referencing
 // column in that table's domain view; dashed while not confirmed.
 function domainLinkPanel(a, b) {
@@ -2029,11 +2011,11 @@ function domainLinkPanel(a, b) {
     });
   };
   return [
-    panelHeader({ name: a === b ? 'Inside' : null, tip: crossDb ? `Cross-DB: ${crossing(a, b, '⇄')}` : '', cluster: a === b ? [a] : [a, b], note: a === b ? `${plural(total, 'relation')} inside this domain` : `${plural(total, 'relation')} between these two domains${crossDb ? ` · cross-DB` : ''}` }),
+    panelHeader({ tip: crossDb ? `Cross-DB: ${crossing(a, b, '⇄')}` : '', cluster: [a, b], note: `${plural(total, 'relation')} between these two domains${crossDb ? ` · cross-DB` : ''}` }),
     changeList('links', id),
     ...byDirection(a, b)
       .filter((d) => d.relations.length > 0)
-      .map((d) => el('div', { class: 'oe-chip-group' }, [el('div', { class: 'sub', text: a === b ? `${domainName(a)} (${d.relations.length})` : `${domainName(d.from)} → ${domainName(d.to)} (${d.relations.length})` }), el('div', { class: 'oe-chipbox' }, chips(d.relations))])),
+      .map((d) => el('div', { class: 'oe-chip-group' }, [el('div', { class: 'sub', text: `${domainName(d.from)} → ${domainName(d.to)} (${d.relations.length})` }), el('div', { class: 'oe-chipbox' }, chips(d.relations))])),
   ];
 }
 
@@ -3038,8 +3020,8 @@ function updateMinimap() {
   if (map.view !== state.view) buildMinimap();
   const vp = viewport();
   const seen = visibleRect(state.cam, vp, TOOLBAR_HEIGHT, panelRoom());
-  // The matrix keeps its headers on screen itself; a map of cells says nothing.
-  const show = map.on && !tour.on && state.view !== CONNECTIONS && !fitsInside(map.bounds, seen);
+  // A list of tiles needs no map of itself.
+  const show = map.on && !tour.on && state.view !== HEATMAP && !fitsInside(map.bounds, seen);
   minimap.fo.style.display = show ? '' : 'none';
   if (!show) return;
   for (const [k, v] of Object.entries(seen)) map.seen.setAttribute({ x: 'x', y: 'y', w: 'width', h: 'height' }[k], v);
@@ -3089,16 +3071,15 @@ tip.fo.style.display = 'none';
 tip.fo.style.pointerEvents = 'none';
 
 // An overview connector: one line, the list only in the panel.
-// A matrix cell: one line in the direction of its row and column, the list
-// only in the panel.
-function cellTip(row, col) {
-  const [there, back] = byDirection(row, col);
-  const head = row === col ? `${domainName(row)} · ${plural(there.relations.length, 'relation')} inside` : `${domainName(row)} → ${domainName(col)} · ${plural(there.relations.length, 'relation')}${back.relations.length > 0 ? ` · ${back.relations.length} back` : ''}`;
-  return [el('b', { text: head }), el('div', { class: 'muted', text: 'Click to see the list' })];
+// A heatmap tile: the table, how many relations point at it and from it.
+function heatTip(tile) {
+  const id = tile.getAttribute('data-id');
+  const [into, from] = [Number(tile.getAttribute('data-in')), Number(tile.getAttribute('data-out'))];
+  return [el('b', { text: short(id) }), el('div', { text: `${plural(into, 'relation')} point${into === 1 ? 's' : ''} at it · ${from} from it` }), el('div', { class: 'muted', text: `${domainName(clusterOf(id))} · click to open the table` })];
 }
 
 // Every tooltip about the relations between two domains (a connector, a
-// card's related domain, a matrix cell) is one line, "A → B · N relations
+// card's related domain) is one line, "A → B · N relations
 // · M back", named in the direction the relations point (the stronger one
 // first when they point both ways); the list is only in the panel.
 function connectorTip(a, b, hint = 'Click to see the list') {
@@ -3116,9 +3097,9 @@ function lineTip(g) {
 function tipLines(target) {
   const connector = target.closest('.card-link');
   if (connector) return connectorTip(connector.getAttribute('data-from'), connector.getAttribute('data-to'));
-  const cell = target.closest('.mx-cell');
-  if (cell) return cellTip(cell.getAttribute('data-from'), cell.getAttribute('data-to'));
-  const head = target.closest('.mx-head');
+  const tile = target.closest('.hm-tile');
+  if (tile) return heatTip(tile);
+  const head = target.closest('.hm-head');
   if (head) return [el('b', { text: domainName(head.getAttribute('data-domain')) }), el('div', { class: 'muted', text: `${dbDisplayName(dbOf(head.getAttribute('data-domain')))} · click to open the domain` })];
   const related = target.closest('.card-related');
   if (related) {
@@ -3432,21 +3413,6 @@ svg.addEventListener('focusin', (e) => {
 svg.addEventListener('focusout', (e) => {
   if (e.target.closest?.('.domain')) unfocusSoon();
 });
-// Matrix: hovering a cell marks it and its two headers.
-function markCell(cell) {
-  const view = views.get(CONNECTIONS);
-  for (const e of view.querySelectorAll('.mx-cell.hl, .mx-head.hl, .mx-cell.cross')) e.classList.remove('hl', 'cross');
-  if (!cell) return;
-  cell.classList.add('hl');
-  const ends = [cell.getAttribute('data-from'), cell.getAttribute('data-to')];
-  // Crosshair: the cell's whole row and column.
-  for (const c of view.querySelectorAll('.mx-cell')) if (c !== cell && (c.getAttribute('data-from') === ends[0] || c.getAttribute('data-to') === ends[1])) c.classList.add('cross');
-  for (const h of view.querySelectorAll('.mx-head')) if (ends.includes(h.getAttribute('data-domain'))) h.classList.add('hl');
-}
-svg.addEventListener('pointerover', (e) => {
-  if (state.view === CONNECTIONS && !press) markCell(inUi(e) ? null : e.target.closest('.mx-cell'));
-});
-
 svg.addEventListener('click', (e) => {
   if (inUi(e)) return;
   if (dragged) {
@@ -3457,11 +3423,13 @@ svg.addEventListener('click', (e) => {
   // With the join panel waiting for a table, a click on one picks it.
   const picked = t.closest('.group-row[data-table]')?.getAttribute('data-table') ?? t.closest('.table, .stub')?.getAttribute('data-id');
   if (join.open && (!join.from || !join.to) && data.nodes[picked]?.kind === 'table') return setJoinEnd(join.from ? 'to' : 'from', picked);
-  const related = t.closest('.card-related, .mx-head');
+  const tile = t.closest('.hm-tile');
+  if (tile) return navigate(homeView(tile.getAttribute('data-id')), { focus: tile.getAttribute('data-id') });
+  const related = t.closest('.card-related, .hm-head');
   if (related) return navigate(domainView(related.getAttribute('data-domain')));
   const domain = t.closest('.domain');
   if (domain) return navigate(domainView(domain.getAttribute('data-domain')));
-  const pair = t.closest('.card-link, .mx-cell');
+  const pair = t.closest('.card-link');
   if (pair) return showPanel(domainLinkPanel(pair.getAttribute('data-from'), pair.getAttribute('data-to')));
   const groupRow = t.closest('.group-row[data-table]');
   if (groupRow) return navigate(homeView(groupRow.getAttribute('data-table')), { focus: groupRow.getAttribute('data-table') });

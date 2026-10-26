@@ -1,13 +1,13 @@
 import { compareStrings } from '../model/load.js';
 import { domainPairs } from './diagram.js';
 
-// What the overview cards and the connections matrix say about domains,
-// derived once from the diagram so cards, matrix, draw.io and the viewer
+// What the overview cards and the heatmap say about domains, derived once
+// from the diagram so cards, heatmap, draw.io and the viewer
 // can never disagree on order or strength.
 
 /** Related domains named on a card; the viewer's hover shows them all. */
 export const RELATED_ON_CARD = 3;
-/** Segments of a card's strength bar, and shades of a matrix cell. */
+/** Segments of a card's strength bar, and shades of a heatmap tile. */
 export const STRENGTH_SEGMENTS = 5;
 // Counts at or above this fill every segment even when the schema's
 // strongest pair is weaker, so a schema of thin links shows thin bars.
@@ -35,7 +35,7 @@ const nameOf = (key) => key.slice(key.indexOf('/') + 1);
  *     by key }
  * `order`: cluster keys database by database (model order), each database's
  * domains most connected first, ties by key: the card order of a fresh
- * overview and the row order of the matrix.
+ * overview and the domain order of the heatmap.
  * `max`: the largest relation count between two domains (0 when none).
  */
 export function domainSummary(model, diagram) {
@@ -76,31 +76,4 @@ export function domainSummary(model, diagram) {
       .map((c) => c.key),
   );
   return { cards, order, max };
-}
-
-/**
- * The domain × domain matrix: `keys` in summary order, `counts` maps
- * `<from>\u0000<to>` to the number of relations whose referencing table is
- * in `from` and referenced table in `to` (a polymorphic association once
- * per target), the diagonal being relations inside one domain. `max` is the
- * largest count off the diagonal, `maxWithin` on it; each scale shades its
- * own cells.
- */
-export function connectionMatrix(model, diagram, summary = domainSummary(model, diagram)) {
-  const clusterOf = (id) => diagram.nodes.get(id).cluster;
-  const counts = new Map();
-  for (const p of domainPairs(diagram)) {
-    for (const r of p.relations) {
-      const k = `${clusterOf(r.from.table)}\u0000${clusterOf(r.to)}`;
-      counts.set(k, (counts.get(k) ?? 0) + 1);
-    }
-  }
-  let max = 0;
-  let maxWithin = 0;
-  for (const [k, n] of counts) {
-    const [a, b] = k.split('\u0000');
-    if (a === b) maxWithin = Math.max(maxWithin, n);
-    else max = Math.max(max, n);
-  }
-  return { keys: summary.order, counts, max, maxWithin };
 }

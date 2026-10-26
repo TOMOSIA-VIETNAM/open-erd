@@ -46,7 +46,7 @@ health:                      # schema health findings to stop reporting
   ignore:
     - unindexed_fk:billing.public.audit_logs          # <rule>:<table id>, whole table
     - missing_fk:billing.public.payments.order_id     # <rule>:<table id>.<column>, that column only
-default_view: all            # all (default) | overview | connections | domain:<db>/<domain>; the view the SVG opens on
+default_view: all            # all (default) | overview | heatmap | domain:<db>/<domain>; the view the SVG opens on
 verify: ai-only              # ai-only (default) | full | off; checking before each commit, see rules.md "Verification"
 not_in_model:                # tables the extract facts list that the model leaves out on purpose; `verify` skips them
   - billing.public.schema_migrations   # framework table

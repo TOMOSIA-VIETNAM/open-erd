@@ -2,16 +2,17 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { buildDiagram, domainLinks, domainPairs, polyNodeId } from '../src/layout/diagram.js';
-import { connectionMatrix, domainSummary, strength } from '../src/layout/domains.js';
+import { domainSummary, strength } from '../src/layout/domains.js';
 import { checkLayout, computeLayout } from '../src/layout/index.js';
 import { serializeLayout } from '../src/layout/layout-file.js';
 import { SELF_STUB } from '../src/layout/router.js';
 import { POLY_VISIBLE_TARGETS } from '../src/layout/table-box.js';
 import { ALL_VIEW, ALL_VIEW_MAX_TABLES, STUB_SLOT, viewNames, viewTree } from '../src/layout/views.js';
+import { referenceCounts } from '../src/model/centrality.js';
 import { normalizeModel } from '../src/model/load.js';
 import { PALETTE } from '../src/palette.js';
-import { cellFill, connectionsSvg } from '../src/render/svg/connections.js';
 import { endMarkers } from '../src/render/svg/markers.js';
+import { heatFill, heatmapSections } from '../src/render/svg/heatmap.js';
 import { HUB_ROUTE_LIMIT, buildScene, groupLinkText, renderSvg } from '../src/render/svg/render.js';
 import { assertSceneGeometry, pathLength } from './helpers/geometry.js';
 import { fk, loadMulti, loadWorkspace, table } from './helpers/shop.js';
@@ -172,34 +173,30 @@ test('domain summary: most connected first per database, related by strength, ti
   assert.deepEqual(again.order, summary.order);
 });
 
-test('connections matrix: relation counts by direction, the diagonal inside one domain', async () => {
+test('heatmap: every table as a tile, by domain in card order, most referenced first', async () => {
   const { model, diagram, svg } = await multi();
-  const matrix = connectionMatrix(model, diagram);
-  assert.deepEqual(matrix.keys, domainSummary(model, diagram).order);
-  const count = (a, b) => matrix.counts.get(`${a}\u0000${b}`) ?? 0;
-  // Content's comments and attachments point at orders and refunds; Orders points at none of Content.
-  assert.equal(count('shop/Content', 'shop/Orders'), 3);
-  assert.equal(count('shop/Orders', 'shop/Content'), 0);
-  assert.equal(count('shop/Catalog', 'shop/Catalog'), 4);
-  assert.equal(matrix.max, 3);
-  assert.equal(matrix.maxWithin, 4);
-  // Every directed count adds up to the pairs of domains.
-  const total = [...matrix.counts.values()].reduce((a, b) => a + b, 0);
-  assert.equal(total, domainPairs(diagram).reduce((n, p) => n + p.count, 0));
-  // Drawn as a hidden view with one cell per pair of domains and a legend.
-  const view = svg.slice(svg.indexOf('<g class="view" data-view="connections"'));
-  assert.match(view, /^<g class="view" data-view="connections" data-bounds="[^"]+" style="display:none">/);
-  assert.equal((view.match(/<rect class="mx-cell/g) ?? []).length, matrix.keys.length ** 2);
-  assert.match(view, /<title>Content → Orders: 3 relations, Orders → Content: 0 relations<\/title>/);
-  assert.match(view, /<title>Catalog: 4 relations inside the domain<\/title>/);
-  assert.match(view, /darker = more relations/);
-  const geometry = connectionsSvg(matrix, () => PALETTE[0]).geometry;
-  // Rows and columns in matrix order, databases apart.
-  assert.deepEqual([...geometry.rows.keys()], matrix.keys);
-  assert.ok(matrix.keys.every((k, i) => i === 0 || geometry.cols.get(k) > geometry.cols.get(matrix.keys[i - 1])));
-  assert.equal(geometry.dbs.map((d) => d.database).join(), 'activity,auth,shop');
-  assert.equal(cellFill(0, false, matrix), cellFill(0, true, matrix));
-  assert.notEqual(cellFill(3, false, matrix), cellFill(1, false, matrix));
+  const counts = referenceCounts(model);
+  // users is referenced by 11 relations and references nothing; a self-reference counts in neither direction.
+  assert.deepEqual(counts.get('auth.public.users'), { in: 11, out: 0 });
+  assert.deepEqual(counts.get('shop._.products'), { in: 5, out: 4 });
+  const sections = heatmapSections(domainSummary(model, diagram).order, diagram, counts);
+  assert.deepEqual(sections.map((s) => s.key), domainSummary(model, diagram).order);
+  const catalog = sections.find((s) => s.key === 'shop/Catalog').tables;
+  // Most referenced first, ties by id; the central table carries its star.
+  assert.deepEqual(catalog.map((t) => t.id), ['shop._.products', 'shop._.brands', 'shop._.categories', 'shop._.tags']);
+  assert.equal(catalog[0].central, true);
+  const tables = [...diagram.nodes.values()].filter((n) => n.kind === 'table').length;
+  assert.equal(sections.reduce((n, s) => n + s.tables.length, 0), tables);
+  // Drawn as a hidden view: one tile per table, a head per domain, its legend.
+  const view = svg.slice(svg.indexOf('<g class="view" data-view="heatmap"'));
+  assert.match(view, /^<g class="view" data-view="heatmap" data-bounds="[^"]+" style="display:none">/);
+  assert.equal((view.match(/<g class="hm-tile/g) ?? []).length, tables);
+  assert.equal((view.match(/<g class="hm-head"/g) ?? []).length, sections.length);
+  assert.match(view, /<g class="hm-tile on-dark" data-id="auth.public.users" data-in="11" data-out="0"><title>auth.public.users: 11 relations point at it, 0 from it<\/title>/);
+  assert.match(view, />★ users</);
+  assert.match(view, /Relations pointing at the table:/);
+  assert.equal(heatFill(0, 11), heatFill(0, 1));
+  assert.notEqual(heatFill(11, 11), heatFill(1, 11));
 });
 
 test('references both ways between two domains are one pair listing both directions', async () => {
@@ -324,10 +321,10 @@ test('a self-reference loops out and back on one side, clear of its markers', as
   assert.equal(Math.abs(loop.points[1][0] - edge), SELF_STUB);
 });
 
-test('one SVG holds every view and the connections view; only the view of all tables shows without script', async () => {
+test('one SVG holds every view and the heatmap; only the view of all tables shows without script', async () => {
   const { svg, diagram } = await multi();
   const views = [...svg.matchAll(/<g class="view" data-view="([^"]+)" data-bounds="([^"]+)"( style="display:none")?>/g)];
-  assert.deepEqual(views.map((m) => m[1]), [...viewNames(diagram), 'connections']);
+  assert.deepEqual(views.map((m) => m[1]), [...viewNames(diagram), 'heatmap']);
   for (const [, name, , hidden] of views) assert.equal(Boolean(hidden), name !== 'all', name);
   const allBounds = views.find((m) => m[1] === 'all')[2];
   assert.match(svg, new RegExp(`^<svg [^>]*viewBox="${allBounds}"`));

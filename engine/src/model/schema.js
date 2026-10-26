@@ -38,10 +38,10 @@ export const NOTE_FIELDS = ['note', 'note_source', 'internal_note'];
 export const PROFILE_NAME = /^[A-Za-z0-9_-]+$/;
 // Name of the view of one domain: domain:<db>/<domain>.
 export const DOMAIN_VIEW_PREFIX = 'domain:';
-// The domain × domain matrix of relation counts; drawn from the model
+// Every table shaded by the relations pointing at it; drawn from the model
 // alone (no positions in layout.json).
-export const CONNECTIONS_VIEW = 'connections';
-export const DEFAULT_VIEW_PATTERN = new RegExp(`^(overview|all|${CONNECTIONS_VIEW}|${DOMAIN_VIEW_PREFIX}[^/\\s]+/.+)$`);
+export const HEATMAP_VIEW = 'heatmap';
+export const DEFAULT_VIEW_PATTERN = new RegExp(`^(overview|all|${HEATMAP_VIEW}|${DOMAIN_VIEW_PREFIX}[^/\\s]+/.+)$`);
 
 // Older files must go through a migration before the engine reads them.
 const schemaVersion = { type: 'integer', oneOf: [SCHEMA_VERSION], required: true };
@@ -359,12 +359,12 @@ export const configSchema = {
       },
     },
     // View the file opens on, also the one drawn without script:
-    // all (when left out) | overview | connections | domain:<db>/<domain>.
+    // all (when left out) | overview | heatmap | domain:<db>/<domain>.
     // A configured view the render does not have (the view of all tables of
     // a very large schema, a domain a profile hides) falls back to the
     // overview with a warning; left out, a schema without the view of all
     // tables opens on the overview silently.
-    default_view: { type: 'string', pattern: DEFAULT_VIEW_PATTERN, hint: 'all, overview, connections or domain:<db>/<domain>' },
+    default_view: { type: 'string', pattern: DEFAULT_VIEW_PATTERN, hint: 'all, overview, heatmap or domain:<db>/<domain>' },
     // Checking before a commit, see VERIFY_MODES; VERIFY_DEFAULT when left out.
     verify: { type: 'string', oneOf: VERIFY_MODES },
     // Tables the extract facts list that the model leaves out on purpose

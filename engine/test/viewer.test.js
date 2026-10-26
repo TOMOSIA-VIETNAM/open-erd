@@ -116,12 +116,12 @@ test('viewer data: relations by pair of domains, domain notes, central table, hu
   const { model, diagram, svg } = await multi();
   const data = JSON.parse(dataBlock(svg));
   // Each pair of domains lists the relations it stands for, keyed by its id;
-  // a domain with itself too (the matrix diagonal).
+  // a domain with itself is no pair.
   assert.deepEqual(data.domainLinks['shop/Catalog<->shop/Content'], [
     { from: 'shop._.attachments', column: 'attachable_id', to: 'shop._.products', cardinality: 'n-1', kind: 'polymorphic', review: 'pending', association: 'attachable' },
     { from: 'shop._.comments', column: 'commentable_id', to: 'shop._.products', cardinality: 'n-1', kind: 'polymorphic', review: 'reviewed', association: 'commentable' },
   ]);
-  assert.equal(data.domainLinks['shop/Catalog<->shop/Catalog'].length, 4);
+  assert.equal(data.domainLinks['shop/Catalog<->shop/Catalog'], undefined);
   assert.deepEqual(Object.keys(data.domainLinks).sort(), Object.keys(data.domainLinks));
   assert.equal(data.domainNotes['auth/Identity'], 'People who sign in and the profiles and sessions that belong to them.');
   assert.equal(data.domainNotes['activity/Events'], undefined);
@@ -288,11 +288,11 @@ test('a table a view opens on: scale 1 when it fits, shrunk while readable, else
   assert.deepEqual(frameFocus({ x: 0, y: 100, w: 240, h: 2000 }, viewport, 44, 0.9, 8), { s: 0.9, x: 700 - 108, y: 52 - 90 });
 });
 
-test('tour: one step per domain in the overview order the matrix rows carry, central table, note or name and table count', async () => {
+test('tour: one step per domain in the overview order the heatmap carries, central table, note or name and table count', async () => {
   const { model, diagram, svg } = await multi();
   const data = JSON.parse(dataBlock(svg));
-  // The viewer reads the order from the matrix row heads (the column heads have no hit rect).
-  const order = [...svg.matchAll(/<g class="mx-head" data-domain="([^"]+)"><rect class="mx-head-hit"/g)].map((m) => m[1]);
+  // The viewer reads the order from the heatmap's domain heads.
+  const order = [...svg.matchAll(/<g class="hm-head" data-domain="([^"]+)">/g)].map((m) => m[1]);
   assert.deepEqual(order, domainSummary(model, diagram).order);
   const steps = tourSteps(order, data.nodes, data.domainNotes);
   assert.deepEqual(steps.map((s) => s.cluster), order);

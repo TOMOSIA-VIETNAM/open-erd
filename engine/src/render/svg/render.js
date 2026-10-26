@@ -1,19 +1,20 @@
 import { DB_FACT_FONT, DB_LABEL_FONT, ENGINE_FONT, LABEL_FONT, LABEL_OFFSET, clusterLabel, dbLabel, engineName, labelBox } from '../../layout/clusters.js';
 import { VIEW_SOURCE, buildDiagram, domainPairs, relationId } from '../../layout/diagram.js';
-import { STRENGTH_SEGMENTS, connectionMatrix, domainSummary } from '../../layout/domains.js';
+import { STRENGTH_SEGMENTS, domainSummary } from '../../layout/domains.js';
 import { resolveView } from '../../layout/index.js';
 import { STUB, routeEdges } from '../../layout/router.js';
 import { GRID, GROUP_DB_FONT, BADGE_ARROW_WIDTH, BADGE_FONT, CARD, CARD_DB_FONT, CARD_LABEL_FONT, CARD_TEXT_FONT, CARD_TITLE_FONT, EMBED_INSET, FACT_FONT, HEADER_HEIGHT, ICON_GUTTER, PADDING_X, ROW_HEIGHT, TAG_FONT, attachOffset } from '../../layout/table-box.js';
 import { ALL_VIEW, OVERVIEW, hasAllView, viewNames } from '../../layout/views.js';
 import { columnEntries, enumMeaning } from '../../model/columns.js';
 import { compareStrings } from '../../model/load.js';
-import { CONNECTIONS_VIEW } from '../../model/schema.js';
+import { HEATMAP_VIEW } from '../../model/schema.js';
 import { missingRelations } from '../../model/missing.js';
 import { healthFindings } from '../../model/health.js';
 import { measureText } from '../../text/measure.js';
 import { FONT_FAMILY, TEXT_STYLE_CSS, fontFaceCss } from '../../text/font.js';
 import { PALETTE } from '../../palette.js';
-import { CONNECTIONS_STYLE, connectionsSvg } from './connections.js';
+import { HEATMAP_STYLE, heatmapSections, heatmapSvg } from './heatmap.js';
+import { referenceCounts } from '../../model/centrality.js';
 import { ICON_PAINT, UNCONFIRMED_DASH, endMarkers, enumIconSvg, indexIconSvg, isConfirmed, keyIconSvg, linkIconSvg, markerSvg, overviewStrokeWidth, starIconSvg, tableIconSvg } from './markers.js';
 import viewerBundle from './viewer-bundle.json' with { type: 'json' };
 
@@ -53,7 +54,7 @@ const VIEWER_STYLE = `.row-hit { fill: transparent; }
 .central-mode .view:not(.dimmed) .table.central:not(.hl) > rect:last-of-type { stroke: #c99a06; stroke-width: 3; }
 .view.oe-enter { animation: oe-enter 0.5s ease-out; }
 @keyframes oe-enter { from { opacity: 0.15; } }
-.pii-mode .mx-head:not(.has-pii) { opacity: 0.35; }
+.pii-mode .hm-tile:not(.has-pii) { opacity: 0.25; }
 /* Schema health: a triangle on each table with a finding, its columns in a
    finding tinted, only while the mode is on. */
 .health-mark { display: none; }
@@ -83,9 +84,9 @@ const VIEWER_STYLE = `.row-hit { fill: transparent; }
 .card-link-line { fill: none; stroke: #2563eb; stroke-opacity: 0.6; stroke-linecap: round; }
 .card-link.cross_db .card-link-line { stroke-dasharray: 8 6; stroke-linecap: butt; }
 .card-link:hover .card-link-line { stroke-opacity: 1; }
-.mx-cell { cursor: pointer; }
-.mx-cell.hl { stroke: #1f2a3d; stroke-width: 2; }
-.mx-head.hl .mx-name { font-weight: 700; fill: #1d4ed8; }
+.hm-tile, .hm-head { cursor: pointer; }
+.hm-tile:hover > rect { stroke: #1f2a3d; stroke-width: 2; }
+.hm-head:hover .hm-name { fill: #1d4ed8; text-decoration: underline; }
 .relation-group.flowing .relation { stroke-opacity: 0.35; }
 .flow { fill: none; stroke: #2563eb; stroke-width: 3; stroke-dasharray: 6 10; pointer-events: none; animation: oe-flow 0.8s linear infinite; }
 .poly-route { fill: none; stroke: #6b778a; stroke-width: 1.4; }
@@ -478,7 +479,7 @@ ${ICON_CSS}
 .card-related-hit { fill: transparent; }
 .seg { fill: #e3e7ee; }
 .seg.on { fill: #5d7fb8; }
-${CONNECTIONS_STYLE}
+${HEATMAP_STYLE}
 .relation { fill: none; stroke: #6b778a; stroke-width: 1.4; stroke-linejoin: round; }
 .marker { fill: none; stroke: #6b778a; stroke-width: 1.4; }
 .marker .ring { fill: #ffffff; }
@@ -938,7 +939,7 @@ function stubSvg(n, marks) {
 // Overview card of a domain (see domainCard): an accent bar in the
 // domain's colour, name and table count, the business note, the central
 // table, and the most related domains with a strength bar each (no numbers:
-// the tooltips and the connections view carry them). Each related row
+// the tooltips and the connector panels carry them). Each related row
 // leads to that domain.
 function cardSvg(n, colors, colorOf, marks) {
   const { x, y, w, h, box } = n;
@@ -1234,22 +1235,24 @@ export function viewerData(model, diagram, diff = null, warnings = missingRelati
   // The referencing column too: a hub table's panel names it for each table
   // pointing at it.
   const hubLinks = diagram.hubLinks.map((l) => ({ ...linkData(l), column: l.from.column }));
-  // The relations of each pair of domains (a domain with itself too), for
-  // the overview's connectors and the connections view's cells and panels.
+  // The relations of each pair of domains, for the overview's connectors
+  // and their panels.
   const domains = Object.fromEntries(
-    domainPairs(diagram).map((d) => [
-      d.id,
-      d.relations.map((r) => ({
-        from: r.from.table,
-        column: r.from.column,
-        to: r.to,
-        cardinality: r.cardinality,
-        kind: r.kind,
-        review: r.review,
-        ...(r.association ? { association: r.association } : {}),
-        ...(r.via ? { via: r.via } : {}),
-      })),
-    ]),
+    domainPairs(diagram)
+      .filter((d) => d.from.node !== d.to.node)
+      .map((d) => [
+        d.id,
+        d.relations.map((r) => ({
+          from: r.from.table,
+          column: r.from.column,
+          to: r.to,
+          cardinality: r.cardinality,
+          kind: r.kind,
+          review: r.review,
+          ...(r.association ? { association: r.association } : {}),
+          ...(r.via ? { via: r.via } : {}),
+        })),
+      ]),
   );
   // Database name -> its engine as written in the model (`engine`, for the
   // schema copy) and as printed on its frame (`label`, for cross-DB panels).
@@ -1275,8 +1278,8 @@ export function viewerData(model, diagram, diff = null, warnings = missingRelati
   };
 }
 
-/** Every view a render draws: the laid-out ones, then the connections view. */
-export const renderedViews = (diagram) => [...viewNames(diagram), CONNECTIONS_VIEW];
+/** Every view a render draws: the laid-out ones, then the heatmap. */
+export const renderedViews = (diagram) => [...viewNames(diagram), HEATMAP_VIEW];
 
 /**
  * The view a plain render opens on and draws without script: the
@@ -1334,13 +1337,13 @@ export function renderSvg(model, layout, options = {}) {
   // Indices past the palette cycle, which only happens once every tint is taken.
   const colorOf = (key) => PALETTE[layout.colors[key] % PALETTE.length];
   const columnWarnings = warningsByTable(warnings).columns;
-  const connections = connectionsSvg(connectionMatrix(model, diagram, domainSummary(model, diagram)), colorOf);
-  const { x, y, w, h } = visible === CONNECTIONS_VIEW ? connections.bounds : scenes.find((s) => s.scene.name === visible).scene.bounds;
+  const heatmap = heatmapSvg(heatmapSections(domainSummary(model, diagram).order, diagram, referenceCounts(model)), colorOf);
+  const { x, y, w, h } = visible === HEATMAP_VIEW ? heatmap.bounds : scenes.find((s) => s.scene.name === visible).scene.bounds;
   return [
     `<svg xmlns="http://www.w3.org/2000/svg"${diff ? ` class="diff-mode${changed ? ' changes-mode' : ''}"` : ''} width="${w}" height="${h}" viewBox="${x} ${y} ${w} ${h}">`,
     `<style>${STYLE}</style>`,
     ...scenes.map((s) => viewSvg(s.scene, colorOf, s.scene.name === visible, marks, s.banner, columnWarnings)),
-    viewGroup(CONNECTIONS_VIEW, connections.bounds, visible === CONNECTIONS_VIEW, [connections.svg]),
+    viewGroup(HEATMAP_VIEW, heatmap.bounds, visible === HEATMAP_VIEW, [heatmap.svg]),
     `<script type="application/json" id="open-erd-data">${scriptJson(viewerData(model, diagram, diff, warnings, health))}</script>`,
     `<script><![CDATA[\n${VIEWER_SCRIPT}\n]]></script>`,
     '</svg>',

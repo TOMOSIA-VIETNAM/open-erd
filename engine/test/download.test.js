@@ -48,13 +48,13 @@ test('default_view: all tables unless configured; the overview when the render l
   const { layout } = await computeLayout(model);
   assert.deepEqual(openingView(model), { view: 'all', fallback: false });
   assert.deepEqual(visibleView(renderSvg(model, layout)), ['all']);
-  for (const view of ['overview', 'connections']) assert.deepEqual(visibleView(renderSvg(withView(model, view), layout)), [view]);
+  for (const view of ['overview', 'heatmap']) assert.deepEqual(visibleView(renderSvg(withView(model, view), layout)), [view]);
   const domain = `domain:${[...buildDiagram(model).clusters.keys()][0]}`;
   assert.deepEqual(visibleView(renderSvg(withView(model, domain), layout)), [domain]);
-  // The connections view without script: the matrix sized as the file.
-  const matrix = renderSvg(withView(model, 'connections'), layout);
-  const bounds = /<g class="view" data-view="connections" data-bounds="([^"]+)">/.exec(matrix)[1];
-  assert.match(matrix, new RegExp(`^<svg [^>]*viewBox="${bounds}"`));
+  // The heatmap without script: its tiles sized as the file.
+  const heatmap = renderSvg(withView(model, 'heatmap'), layout);
+  const bounds = /<g class="view" data-view="heatmap" data-bounds="([^"]+)">/.exec(heatmap)[1];
+  assert.match(heatmap, new RegExp(`^<svg [^>]*viewBox="${bounds}"`));
   // A profile hiding every table of that domain: the overview, flagged.
   const tables = model.tables.filter((t) => `domain:${t.id.split('.')[0]}/${t.domain}` === domain).map((t) => t.id);
   const hidden = withView({ ...model, config: { ...model.config, hidden: { tables } } }, domain);
@@ -69,14 +69,15 @@ test('default_view: all tables unless configured; the overview when the render l
   assert.deepEqual(openingView(withView(big, 'all')), { view: 'overview', fallback: true });
 });
 
-test('default_view must be all, overview, connections or the domain of a table', async () => {
+test('default_view must be all, overview, heatmap or the domain of a table', async () => {
   const errorsWith = async (line) => {
     const files = await readWorkspaceFiles(MULTI);
     files['open-erd.yaml'] += `${line}\n`;
     return parseWorkspace(files).errors.map((e) => `${e.path}: ${e.message}`);
   };
   assert.deepEqual(await errorsWith('default_view: all'), []);
-  assert.deepEqual(await errorsWith('default_view: connections'), []);
+  assert.deepEqual(await errorsWith('default_view: heatmap'), []);
+  assert.match((await errorsWith('default_view: connections'))[0], /^default_view: invalid value/);
   assert.deepEqual(await errorsWith('default_view: "domain:shop/Nope"'), ['default_view: no domain "shop/Nope" (expected domain:<db>/<domain> of a table)']);
   assert.match((await errorsWith('default_view: tables'))[0], /^default_view: invalid value/);
 });

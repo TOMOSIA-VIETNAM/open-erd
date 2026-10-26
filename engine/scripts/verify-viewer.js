@@ -126,7 +126,7 @@ async function modKey(letter) {
   await send('Input.dispatchKeyEvent', { type: 'keyUp', key: letter, code, windowsVirtualKeyCode: vk, modifiers: FIND_MODIFIER });
   await pause(200);
 }
-// The toolbar's view tabs: all, overview (Map), connections.
+// The toolbar's view tabs: all, overview (Map), heatmap.
 const viewTab = (name) => click(`document.querySelector('.oe-view-tabs [data-view="${name}"]')`);
 async function findKey() {
   await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'f', code: 'KeyF', windowsVirtualKeyCode: 70, modifiers: FIND_MODIFIER });
@@ -311,35 +311,20 @@ await pause(150);
 await shot('related-row-tooltip', `[...document.querySelectorAll('.oe-tip')].some((t) => t.closest('foreignObject').style.display !== 'none' && t.children.length === 2 && / → .+ · \\d+ relations?( · \\d+ back)?$/.test(t.firstChild.textContent) && /^Click to open /.test(t.lastChild.textContent))`);
 await mouse('mouseMoved', { x: 5, y: 890 });
 
-// Connections: the Map | Connections switch, a cell's tooltip names both
-// directions, a click lists its relations as chips, the header row and
-// column stay on screen while the matrix is panned.
-await viewTab('connections');
-const cx = `document.querySelector('g.view[data-view="connections"]')`;
-await shot('connections', `!${pillShown} && ${viewIs('connections')} && ${cx}.querySelectorAll('.mx-cell').length === ${cx}.querySelectorAll('.mx-rows .mx-head').length ** 2 && document.querySelector('.oe-view-tabs [data-view="connections"]').classList.contains('on')`);
-const cellSel = `${cx}.querySelector('.mx-cell[data-from=${JSON.stringify(pairEnds[0])}][data-to=${JSON.stringify(pairEnds[1])}]')`;
-await mouse('mouseMoved', await centre(cellSel));
+// Heatmap: one tile per table, its tooltip counts the relations both ways,
+// no legend; a click opens the table in its domain, with a Back pill to it.
+await viewTab('heatmap');
+const hx = `document.querySelector('g.view[data-view="heatmap"]')`;
+await shot('heatmap', `!${pillShown} && ${viewIs('heatmap')} && ${hx}.querySelectorAll('.hm-tile').length === Object.values(${data}.nodes).filter((n) => n.kind === 'table').length && document.querySelector('.oe-view-tabs [data-view="heatmap"]').classList.contains('on')`);
+const hot = `${hx}.querySelector('.hm-tile')`;
+const hotId = await evaluate(`${hot}.getAttribute('data-id')`);
+await mouse('mouseMoved', await centre(hot));
 await pause(150);
-await shot(
-  'connections-cell-hover',
-  `${cellSel}.classList.contains('hl') && ${cx}.querySelectorAll('.mx-head.hl').length >= 2 && [...document.querySelectorAll('.oe-tip')].some((t) => /^.+ → .+ · \\d+ relations?( · \\d+ back)?Click to see the list$/.test(t.textContent) && t.children.length === 2)`,
-);
-// The matrix draws nothing the legend explains: no legend, no pill, L does nothing.
+await shot('heatmap-tile-hover', `[...document.querySelectorAll('.oe-tip')].some((t) => t.closest('foreignObject').style.display !== 'none' && /\\d+ relations? points? at it · \\d+ from it/.test(t.textContent))`);
 await key('l', 'KeyL');
-await shot('connections-no-legend', `[...document.querySelectorAll('foreignObject')].every((f) => !f.querySelector('.oe-legend, .oe-legend-pill') || f.style.display === 'none')`);
-await click(cellSel);
-await shot('connections-cell-panel', `document.querySelectorAll('.oe-panel .oe-chip').length === new Set(${data}.domainLinks[${JSON.stringify(pairKey)}].map((r) => r.from + ' ' + r.to)).size`);
-await key('Escape');
-// Pan so the first cell sits just right of and below the screen corner:
-// its own header row and column would then be off screen.
-const firstCell = await evaluate(`(() => { const r = ${cx}.querySelector('.mx-cell').getBoundingClientRect(); return { x: r.x, y: r.y }; })()`);
-await send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: 700, y: 500, deltaX: Math.round(firstCell.x - 30), deltaY: Math.round(firstCell.y - 70) });
-await pause(300);
-const colsTop = `${cx}.querySelector('.mx-cols').getBoundingClientRect()`;
-const rowName = `${cx}.querySelector('.mx-rows .mx-head text').getBoundingClientRect()`;
-const cellNow = `${cx}.querySelector('.mx-cell').getBoundingClientRect()`;
-await shot('connections-sticky-headers', `(() => { const c = ${colsTop}; const r = ${rowName}; const cell = ${cellNow};
-  return (Math.abs(c.y - 44) < 2 && r.x >= 0 && r.x < 40 && cell.x < 40 && cell.y < 80) || { cols: c.y, row: r.x, cell: [cell.x, cell.y] }; })()`);
+await shot('heatmap-no-legend', `[...document.querySelectorAll('foreignObject')].every((f) => !f.querySelector('.oe-legend, .oe-legend-pill') || f.style.display === 'none')`);
+await click(hot);
+await shot('heatmap-tile-opens-table', `${viewIs(`domain:${await evaluate(`${data}.nodes[${JSON.stringify(hotId)}].cluster`)}`)} && ${pillShown} && ${backPill}.textContent === '← Heatmap'`);
 await click(`document.querySelector('.oe-crumbs .oe-link')`);
 
 // The column with the most enum values: its tooltip stays compact (chips,
@@ -1399,7 +1384,7 @@ if (await evaluate(`getComputedStyle(${menuButton('highlight')}.parentNode).disp
   await key('Escape');
 }
 
-// Tour: T walks the domains in the overview's order (the matrix rows),
+// Tour: T walks the domains in the overview's order (the heatmap's domains),
 // each in its view with a caption (its note when it has one; name and table
 // count always) at the bottom, clear of the toolbar and of its central
 // table (unless that table is too tall to fit above it at a readable
@@ -1407,7 +1392,7 @@ if (await evaluate(`getComputedStyle(${menuButton('highlight')}.parentNode).disp
 // wrap round; Space pauses; a download holds none of it; Esc goes back to
 // the view and camera it started from. One domain makes no tour.
 {
-  const order = await evaluate(`[...document.querySelectorAll('g.view[data-view="connections"] .mx-rows .mx-head')].map((g) => g.getAttribute('data-domain'))`);
+  const order = await evaluate(`[...document.querySelectorAll('g.view[data-view="heatmap"] .hm-head')].map((g) => g.getAttribute('data-domain'))`);
   if (order.length < 2) {
     await click(menuButton('more'));
     await shot('tour-hidden', `${menuItem('more', 'Tour')} === undefined`);
@@ -1496,7 +1481,7 @@ await key('Escape');
   };
   const ctrlK = await evaluate(`(() => { const e = new KeyboardEvent('keydown', { key: 'k', ${FIND_MODIFIER === 4 ? 'metaKey' : 'ctrlKey'}: true, bubbles: true, cancelable: true }); document.dispatchEvent(e); const r = e.defaultPrevented; document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); return r; })()`);
   if (ctrlK !== true) failures.push('the palette shortcut does not prevent the browser default');
-  const domains = await evaluate(`document.querySelectorAll('g.view[data-view="connections"] .mx-rows .mx-head').length`);
+  const domains = await evaluate(`document.querySelectorAll('g.view[data-view="heatmap"] .hm-head').length`);
   const dbs = await evaluate(`Object.keys(${data}.databases).length`);
   // It opens on the last text, selected; emptied, it lists the commands.
   await click(`document.querySelector('.oe-search-trigger')`);
@@ -1521,10 +1506,10 @@ await key('Escape');
   await shot('palette-click-runs', `!${spotlightShown} && ${viewIs('overview')}`);
   // Typed: a command by a word of its label (and the table hits first when a name starts with it).
   await modKey('k');
-  await typeInto('connec');
-  await shot('palette-typed', `${row('Connections')} !== undefined && ${groups}.includes('Go to')`);
+  await typeInto('heatm');
+  await shot('palette-typed', `${row('Heatmap')} !== undefined && ${groups}.includes('Go to')`);
   await key('Enter');
-  await shot('palette-enter-runs', `${viewIs('connections')} && !${spotlightShown}`);
+  await shot('palette-enter-runs', `${viewIs('heatmap')} && !${spotlightShown}`);
   // "a > b": the join path between the two tables, run with Enter.
   const pair = await evaluate(`(() => { const d = ${data}; const names = Object.keys(d.nodes).filter((id) => d.nodes[id].kind === 'table').map((id) => id.split('.')[2]);
     const unique = (id) => names.filter((n) => n === id.split('.')[2]).length === 1;

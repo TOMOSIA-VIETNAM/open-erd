@@ -35,6 +35,27 @@ export function centralityScores(model) {
   return scores;
 }
 
+/**
+ * Relations pointing at each table (`in`: a relation whose referenced table
+ * it is, an association targeting it) and from it (`out`: a relation whose
+ * referencing table it is, an association it owns); a self-reference counts
+ * in neither. Map table id -> { in, out }.
+ */
+export function referenceCounts(model) {
+  const counts = new Map(model.tables.map((t) => [t.id, { in: 0, out: 0 }]));
+  const add = (id, dir) => counts.has(id) && counts.get(id)[dir]++;
+  for (const r of model.relations) {
+    if (r.to.table === r.from.table) continue;
+    add(r.to.table, 'in');
+    add(r.from.table, 'out');
+  }
+  for (const a of model.polymorphic) {
+    add(a.table, 'out');
+    for (const t of a.targets) if (t !== a.table) add(t, 'in');
+  }
+  return counts;
+}
+
 function median(values) {
   if (values.length === 0) return 0;
   const sorted = [...values].sort((a, b) => a - b);
