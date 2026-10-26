@@ -184,6 +184,8 @@ if (startView === 'all' && (await evaluate(`JSON.parse(document.getElementById('
       `${changesOn} && ${changesHost}.style.display !== 'none' && document.querySelector('.oe-changes-chip').textContent.includes(${JSON.stringify(`${counts.tables} table`)})
         && ${faded(unchanged)} === true && ${full(changedSel)} === true`,
     );
+    // Sized once the inlined font has loaded, not with the fallback font of the first layout.
+    await shot('changes-chip-fits', `(() => { const c = document.querySelector('.oe-changes-chip'); const w = Number(c.closest('foreignObject').getAttribute('width')); return c.scrollWidth <= w || { chip: c.scrollWidth, room: w }; })()`);
     await click(menuButton('highlight'));
     await shot('changes-menu-entry', `${menuItem('highlight', 'Changes')}?.getAttribute('aria-checked') === 'true'`);
     await closeMenu('highlight');

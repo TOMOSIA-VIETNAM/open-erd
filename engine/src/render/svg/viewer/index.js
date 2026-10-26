@@ -4,7 +4,7 @@
 // here at runtime, so a viewer without script still shows the plain
 // opening view.
 import { dbDisplayName } from '../../../display-name.js';
-import { REVIEW_WORDS, endMarkers, enumIconSvg, indexIconSvg, isConfirmed, keyIconSvg, linkIconSvg, markerSvg, overviewStrokeWidth, reviewIconSvg, starIconSvg } from '../markers.js';
+import { REVIEW_WORDS, endMarkers, enumIconSvg, indexIconSvg, isConfirmed, keyIconSvg, linkIconSvg, markerSvg, overviewStrokeWidth, polyLinesShown, reviewIconSvg, starIconSvg } from '../markers.js';
 import { CANVAS_LIMITS, PIXEL_RATIO, canvasScale, exportBaseName } from './download.js';
 import { findJoinPaths, hopCondition, pathNames, pathThrough, sqlSkeleton } from './join-path.js';
 import { parseHash } from './deep-link.js';
@@ -567,7 +567,7 @@ function clearSelection() {
       e.classList.remove('hl', 'selected', 'flow-target', 'flowing', 'hl-column');
     }
     for (const e of v.querySelectorAll('.flow')) e.remove();
-    for (const e of v.querySelectorAll('.poly-routes, .hub-routes')) e.style.display = 'none';
+    for (const e of v.querySelectorAll('.poly-routes:not(.shown), .hub-routes')) e.style.display = 'none';
   }
   hidePanel();
 }
@@ -590,12 +590,16 @@ function selectNode(id) {
     lit.add(from).add(to);
   }
   const poly = data.nodes[id]?.kind === 'poly' ? data.nodes[id] : null;
-  if (poly) {
-    for (const routes of currentView().querySelectorAll('.poly-routes')) {
-      if (routes.getAttribute('data-poly') !== id) continue;
-      routes.style.display = '';
-      for (const p of routes.querySelectorAll('.poly-route')) lit.add(p.getAttribute('data-target'));
-    }
+  for (const routes of currentView().querySelectorAll('.poly-routes')) {
+    // A polymorphic node lights all its lines; a target, its own line of
+    // each node drawn with its lines from the start.
+    const own = poly && routes.getAttribute('data-poly') === id;
+    const target = !poly && routes.classList.contains('shown') && findAttr(routes, '.poly-route', 'data-target', id);
+    if (!own && !target) continue;
+    routes.style.display = '';
+    routes.classList.add('hl');
+    lit.add(routes.getAttribute('data-poly'));
+    for (const p of routes.querySelectorAll('.poly-route')) if (own) lit.add(p.getAttribute('data-target'));
   }
   // A hub table brings up the lines of the relations pointing at it, which
   // every other selection leaves as badges.
@@ -768,10 +772,11 @@ function buildNeighborhood(center, hops) {
   for (const id of ids.filter((n) => n !== center && data.nodes[n]?.kind === 'poly')) {
     const targets = data.nodes[id].targets.filter((t) => shown.has(t));
     if (targets.length === 0) continue;
+    const always = polyLinesShown(targets.length, data.nodes[id].targets.length);
     relations.append(
       svgEl(
         'g',
-        { class: 'poly-routes', 'data-poly': id, style: 'display:none' },
+        always ? { class: 'poly-routes shown', 'data-poly': id } : { class: 'poly-routes', 'data-poly': id, style: 'display:none' },
         targets.map((t) => svgEl('path', { class: `poly-route${isConfirmed('polymorphic', data.nodes[id].review) ? '' : ' unconfirmed'}`, 'data-target': t, d: linePath(ends(id, t)) })),
       ),
     );
@@ -3715,3 +3720,6 @@ if (changesOn()) setChangesMode(true);
 if (!openDeepLink(location.hash) && start === ALL_VIEW && !data.changes) readableStart(viewBounds(ALL_VIEW), indexes.get(ALL_VIEW).get(data.mostCentral)?.box ?? null);
 // Another link opened in the same tab (a hash change only) goes there too.
 window.addEventListener('hashchange', () => openDeepLink(location.hash));
+// Overlays sized from their text (the mode chips) were measured before the
+// inlined font had loaded; measure them again once it has.
+document.fonts?.ready.then(() => layoutOverlays());

@@ -15,7 +15,7 @@ The short guide is the README. This page lists every output, command and behavio
 
 Readability with 100+ tables: three zoom levels (overview / domain / neighborhood; in a domain view the tables of another domain that has several of them are one box with one bundled line per column),
 shared columns such as `created_by` shown as badges instead of lines (a reference inside the hub table's own domain, and the references of a table with no other relation, stay lines),
-polymorphic associations drawn as one node, relations nobody confirmed yet
+polymorphic associations drawn as one node (with lines to its targets when it has at most three, all in the view; else they show when it is selected), relations nobody confirmed yet
 dashed (their evidence, `repo:path#symbol`, is in the To review sheet).
 Adding tables keeps the existing layout's relative order, so people who know
 the diagram still recognise it.
