@@ -171,7 +171,7 @@ test('neighborhood end markers turn with their straight line', () => {
 });
 
 test('enum meanings that only restate their value are left out', () => {
-  assert.equal(enumMeaning('smartsite_standard_one', 'Smartsite standard one (Template.code)'), '');
+  assert.equal(enumMeaning('gold', 'Gold (Plan.tier)'), '');
   assert.equal(enumMeaning('PAID', 'paid.'), '');
   assert.equal(enumMeaning('in-review', 'In review (Post::STATES)'), '');
   assert.equal(enumMeaning('draft', ''), '');

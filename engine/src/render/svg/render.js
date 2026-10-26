@@ -7,13 +7,13 @@ import { GRID, GROUP_DB_FONT, BADGE_ARROW_WIDTH, BADGE_FONT, CARD, CARD_DB_FONT,
 import { ALL_VIEW, OVERVIEW, hasAllView, viewNames } from '../../layout/views.js';
 import { columnEntries, enumMeaning } from '../../model/columns.js';
 import { compareStrings } from '../../model/load.js';
-import { HEATMAP_VIEW } from '../../model/schema.js';
+import { RANKING_VIEW } from '../../model/schema.js';
 import { missingRelations } from '../../model/missing.js';
 import { healthFindings } from '../../model/health.js';
 import { measureText } from '../../text/measure.js';
 import { FONT_FAMILY, TEXT_STYLE_CSS, fontFaceCss } from '../../text/font.js';
 import { PALETTE } from '../../palette.js';
-import { HEATMAP_STYLE, heatmapSvg, heatmapTables } from './heatmap.js';
+import { RANKING_STYLE, rankingSvg, rankingTables } from './ranking.js';
 import { referenceCounts } from '../../model/centrality.js';
 import { ICON_PAINT, UNCONFIRMED_DASH, endMarkers, enumIconSvg, indexIconSvg, isConfirmed, keyIconSvg, linkIconSvg, markerSvg, overviewStrokeWidth, starIconSvg, tableIconSvg } from './markers.js';
 import viewerBundle from './viewer-bundle.json' with { type: 'json' };
@@ -54,7 +54,7 @@ const VIEWER_STYLE = `.row-hit { fill: transparent; }
 .central-mode .view:not(.dimmed) .table.central:not(.hl) > rect:last-of-type { stroke: #c99a06; stroke-width: 3; }
 .view.oe-enter { animation: oe-enter 0.5s ease-out; }
 @keyframes oe-enter { from { opacity: 0.15; } }
-.pii-mode .hm-tile:not(.has-pii) { opacity: 0.25; }
+.pii-mode .rk-item:not(.has-pii) { opacity: 0.25; }
 /* Schema health: a triangle on each table with a finding, its columns in a
    finding tinted, only while the mode is on. */
 .health-mark { display: none; }
@@ -84,10 +84,10 @@ const VIEWER_STYLE = `.row-hit { fill: transparent; }
 .card-link-line { fill: none; stroke: #2563eb; stroke-opacity: 0.6; stroke-linecap: round; }
 .card-link.cross_db .card-link-line { stroke-dasharray: 8 6; stroke-linecap: butt; }
 .card-link:hover .card-link-line { stroke-opacity: 1; }
-.hm-tile { cursor: pointer; }
-.hm-tile:hover > .hm-hit { fill: #eef2f7; }
-.hm-zero:hover rect { fill: #e3e9f2; }
-.hm-zero:hover text { fill: #1d4ed8; }
+.rk-item { cursor: pointer; }
+.rk-item:hover > .rk-hit { fill: #eef2f7; }
+.rk-zero:hover rect { fill: #e3e9f2; }
+.rk-zero:hover text { fill: #1d4ed8; }
 .relation-group.flowing .relation { stroke-opacity: 0.35; }
 .flow { fill: none; stroke: #2563eb; stroke-width: 3; stroke-dasharray: 6 10; pointer-events: none; animation: oe-flow 0.8s linear infinite; }
 .poly-route { fill: none; stroke: #6b778a; stroke-width: 1.4; }
@@ -481,7 +481,7 @@ ${ICON_CSS}
 .card-related-hit { fill: transparent; }
 .seg { fill: #e3e7ee; }
 .seg.on { fill: #5d7fb8; }
-${HEATMAP_STYLE}
+${RANKING_STYLE}
 .relation { fill: none; stroke: #6b778a; stroke-width: 1.4; stroke-linejoin: round; }
 .marker { fill: none; stroke: #6b778a; stroke-width: 1.4; }
 .marker .ring { fill: #ffffff; }
@@ -865,7 +865,7 @@ function tableSvg(n, colors, marks, warnings) {
   const central = box.central;
   const headerIcon = (central ? starIconSvg : tableIconSvg)(x + PADDING_X + ICON_GUTTER / 2 - 1, y + box.title.centerY);
   return [
-    `<g class="table${kind === 'table' ? '' : ' is-view'}${central ? ' central' : ''}${diffClass(marks, n.id)}" data-id="${escapeXml(n.id)}"><title>${escapeXml(titleText(marks, n.id, central ? `${n.id} (central table: most connected)` : n.id))}</title>`,
+    `<g class="table${kind === 'table' ? '' : ' is-view'}${central ? ' central' : ''}${diffClass(marks, n.id)}" data-id="${escapeXml(n.id)}"><title>${escapeXml(titleText(marks, n.id, central ? `${n.id} (most connected table of its domain)` : n.id))}</title>`,
     copies,
     `<rect class="table-box" x="${x}" y="${y}" width="${w}" height="${h}" rx="${CORNER}"/>`,
     headerPath(x, y, w, central ? colors.central : colors.header),
@@ -1282,8 +1282,8 @@ export function viewerData(model, diagram, diff = null, warnings = missingRelati
   };
 }
 
-/** Every view a render draws: the laid-out ones, then the heatmap. */
-export const renderedViews = (diagram) => [...viewNames(diagram), HEATMAP_VIEW];
+/** Every view a render draws: the laid-out ones, then the ranking. */
+export const renderedViews = (diagram) => [...viewNames(diagram), RANKING_VIEW];
 
 /**
  * The view a plain render opens on and draws without script: the
@@ -1341,13 +1341,13 @@ export function renderSvg(model, layout, options = {}) {
   // Indices past the palette cycle, which only happens once every tint is taken.
   const colorOf = (key) => PALETTE[layout.colors[key] % PALETTE.length];
   const columnWarnings = warningsByTable(warnings).columns;
-  const heatmap = heatmapSvg(heatmapTables(diagram, referenceCounts(model)));
-  const { x, y, w, h } = visible === HEATMAP_VIEW ? heatmap.bounds : scenes.find((s) => s.scene.name === visible).scene.bounds;
+  const ranking = rankingSvg(rankingTables(diagram, referenceCounts(model)));
+  const { x, y, w, h } = visible === RANKING_VIEW ? ranking.bounds : scenes.find((s) => s.scene.name === visible).scene.bounds;
   return [
     `<svg xmlns="http://www.w3.org/2000/svg"${diff ? ` class="diff-mode${changed ? ' changes-mode' : ''}"` : ''} width="${w}" height="${h}" viewBox="${x} ${y} ${w} ${h}">`,
     `<style>${STYLE}</style>`,
     ...scenes.map((s) => viewSvg(s.scene, colorOf, s.scene.name === visible, marks, s.banner, columnWarnings)),
-    viewGroup(HEATMAP_VIEW, heatmap.bounds, visible === HEATMAP_VIEW, [heatmap.svg]),
+    viewGroup(RANKING_VIEW, ranking.bounds, visible === RANKING_VIEW, [ranking.svg]),
     `<script type="application/json" id="open-erd-data">${scriptJson(viewerData(model, diagram, diff, warnings, health))}</script>`,
     `<script><![CDATA[\n${VIEWER_SCRIPT}\n]]></script>`,
     '</svg>',

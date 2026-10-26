@@ -126,7 +126,7 @@ async function modKey(letter) {
   await send('Input.dispatchKeyEvent', { type: 'keyUp', key: letter, code, windowsVirtualKeyCode: vk, modifiers: FIND_MODIFIER });
   await pause(200);
 }
-// The toolbar's view tabs: all, overview (Map), heatmap.
+// The toolbar's view tabs: all, overview (Map), ranking.
 const viewTab = (name) => click(`document.querySelector('.oe-view-tabs [data-view="${name}"]')`);
 async function findKey() {
   await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'f', code: 'KeyF', windowsVirtualKeyCode: 70, modifiers: FIND_MODIFIER });
@@ -311,22 +311,22 @@ await pause(150);
 await shot('related-row-tooltip', `[...document.querySelectorAll('.oe-tip')].some((t) => t.closest('foreignObject').style.display !== 'none' && t.children.length === 2 && / → .+ · \\d+ relations?( · \\d+ back)?$/.test(t.firstChild.textContent) && /^Click to open /.test(t.lastChild.textContent))`);
 await mouse('mouseMoved', { x: 5, y: 890 });
 
-// Heatmap: one tile per table, its tooltip counts the relations both ways,
+// Ranking: one row or name per table, its tooltip counts the relations both ways,
 // no legend; a click opens the table in its domain, with a Back pill to it.
-await viewTab('heatmap');
-const hx = `document.querySelector('g.view[data-view="heatmap"]')`;
-await shot('heatmap', `!${pillShown} && ${viewIs('heatmap')} && ${hx}.querySelectorAll('.hm-tile').length === Object.values(${data}.nodes).filter((n) => n.kind === 'table').length && document.querySelector('.oe-view-tabs [data-view="heatmap"]').classList.contains('on')`);
+await viewTab('ranking');
+const hx = `document.querySelector('g.view[data-view="ranking"]')`;
+await shot('ranking', `!${pillShown} && ${viewIs('ranking')} && ${hx}.querySelectorAll('.rk-item').length === Object.values(${data}.nodes).filter((n) => n.kind === 'table').length && document.querySelector('.oe-view-tabs [data-view="ranking"]').classList.contains('on')`);
 // It opens centred across the screen when narrower than it.
-await shot('heatmap-centred', `(() => { const r = ${hx}.querySelector('rect').getBoundingClientRect(); return r.width > innerWidth || Math.abs(r.left + r.width / 2 - innerWidth / 2) < 2 || { left: r.left, w: r.width }; })()`);
-const hot = `${hx}.querySelector('.hm-tile:not(.hm-zero)')`;
+await shot('ranking-centred', `(() => { const r = ${hx}.querySelector('rect').getBoundingClientRect(); return r.width > innerWidth || Math.abs(r.left + r.width / 2 - innerWidth / 2) < 2 || { left: r.left, w: r.width }; })()`);
+const hot = `${hx}.querySelector('.rk-item:not(.rk-zero)')`;
 const hotId = await evaluate(`${hot}.getAttribute('data-id')`);
 await mouse('mouseMoved', await centre(hot));
 await pause(150);
-await shot('heatmap-tile-hover', `[...document.querySelectorAll('.oe-tip')].some((t) => t.closest('foreignObject').style.display !== 'none' && /\\d+ relations? points? at it · \\d+ from it/.test(t.textContent))`);
+await shot('ranking-row-hover', `[...document.querySelectorAll('.oe-tip')].some((t) => t.closest('foreignObject').style.display !== 'none' && /\\d+ relations? points? at it · \\d+ from it/.test(t.textContent))`);
 await key('l', 'KeyL');
-await shot('heatmap-no-legend', `[...document.querySelectorAll('foreignObject')].every((f) => !f.querySelector('.oe-legend, .oe-legend-pill') || f.style.display === 'none')`);
+await shot('ranking-no-legend', `[...document.querySelectorAll('foreignObject')].every((f) => !f.querySelector('.oe-legend, .oe-legend-pill') || f.style.display === 'none')`);
 await click(hot);
-await shot('heatmap-tile-opens-table', `${viewIs(`domain:${await evaluate(`${data}.nodes[${JSON.stringify(hotId)}].cluster`)}`)} && ${pillShown} && ${backPill}.textContent === '← Heatmap'`);
+await shot('ranking-row-opens-table', `${viewIs(`domain:${await evaluate(`${data}.nodes[${JSON.stringify(hotId)}].cluster`)}`)} && ${pillShown} && ${backPill}.textContent === '← Ranking'`);
 await click(`document.querySelector('.oe-crumbs .oe-link')`);
 
 // The column with the most enum values: its tooltip stays compact (chips,
@@ -1207,8 +1207,9 @@ await shot(
 // Personal data map: ⋯ › Personal data (and P) tints the pii columns of the
 // tables on screen and fades the rest, with a chip and a summary panel whose
 // counts add up to every pii column; a click in the list goes to the column
-// and keeps the list open; the map stays on in other views, Esc only closes
-// the panel, a download keeps it, P or the chip's × turns it off. Without
+// and keeps the list open; the map stays on in other views, Esc clears that
+// selection and closes the panel, a download keeps it, P, Esc with its list
+// open or the chip's × turns it off. Without
 // personal data (a public profile) there is no entry, chip or key.
 {
   const piiHost = `document.querySelector('.oe-pii-chip').closest('foreignObject')`;
@@ -1269,6 +1270,9 @@ await shot(
     const clearOfPanel = `(() => { const s = ${visible}.querySelector(':scope > rect').getBoundingClientRect(); const p = document.querySelector('.oe-panel').getBoundingClientRect();
       return s.right <= p.left + 1 || { sheet: s.right, panel: p.left }; })()`;
     await shot('pii-on-key', `${piiOn} && ${listed} === ${piiTotal} && ${tinted} === true && ${clearOfPanel} === true`);
+    await key('Escape');
+    await shot('pii-off-esc', `!${piiOn} && ${piiHost}.style.display === 'none' && document.querySelector('.oe-panel').closest('foreignObject').style.display === 'none'`);
+    await key('p', 'KeyP');
     await click(`document.querySelector('.oe-pii-chip .oe-chip-close')`);
     await shot('pii-off-chip', `!${piiOn} && ${piiHost}.style.display === 'none' && document.querySelector('.oe-panel').closest('foreignObject').style.display === 'none'`);
   }
@@ -1517,10 +1521,10 @@ await key('Escape');
   await shot('palette-click-runs', `!${spotlightShown} && ${viewIs('overview')}`);
   // Typed: a command by a word of its label (and the table hits first when a name starts with it).
   await modKey('k');
-  await typeInto('heatm');
-  await shot('palette-typed', `${row('Heatmap')} !== undefined && ${groups}.includes('Go to')`);
+  await typeInto('rankin');
+  await shot('palette-typed', `${row('Ranking')} !== undefined && ${groups}.includes('Go to')`);
   await key('Enter');
-  await shot('palette-enter-runs', `${viewIs('heatmap')} && !${spotlightShown}`);
+  await shot('palette-enter-runs', `${viewIs('ranking')} && !${spotlightShown}`);
   // "a > b": the join path between the two tables, run with Enter.
   const pair = await evaluate(`(() => { const d = ${data}; const names = Object.keys(d.nodes).filter((id) => d.nodes[id].kind === 'table').map((id) => id.split('.')[2]);
     const unique = (id) => names.filter((n) => n === id.split('.')[2]).length === 1;

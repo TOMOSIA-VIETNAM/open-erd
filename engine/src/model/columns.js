@@ -7,7 +7,7 @@ const plainWords = (text) => text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ')
 /**
  * The meaning of enum value `value` as outputs show it: empty when it only
  * spells the value out again, ignoring case, separators and a trailing code
- * symbol ("smartsite_standard_one: Smartsite standard one (Template.code)").
+ * symbol ("gold: Gold (Plan.tier)").
  * Such a meaning tells a reader nothing the value does not.
  */
 export function enumMeaning(value, meaning) {

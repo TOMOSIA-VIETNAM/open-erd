@@ -12,7 +12,7 @@ import { referenceCounts } from '../src/model/centrality.js';
 import { normalizeModel } from '../src/model/load.js';
 import { PALETTE } from '../src/palette.js';
 import { endMarkers } from '../src/render/svg/markers.js';
-import { heatFill, heatmapTables } from '../src/render/svg/heatmap.js';
+import { barFill, rankingTables } from '../src/render/svg/ranking.js';
 import { HUB_ROUTE_LIMIT, buildScene, groupLinkText, renderSvg } from '../src/render/svg/render.js';
 import { assertSceneGeometry, pathLength } from './helpers/geometry.js';
 import { fk, loadMulti, loadWorkspace, table } from './helpers/shop.js';
@@ -173,13 +173,13 @@ test('domain summary: most connected first per database, related by strength, ti
   assert.deepEqual(again.order, summary.order);
 });
 
-test('heatmap: ranked bars of the referenced tables per database, the others as a grid of names', async () => {
+test('ranking: ranked bars of the referenced tables per database, the others as a grid of names', async () => {
   const { model, diagram, svg } = await multi();
   const counts = referenceCounts(model);
   // users is referenced by 11 relations and references nothing; a self-reference counts in neither direction.
   assert.deepEqual(counts.get('auth.public.users'), { in: 11, out: 0 });
   assert.deepEqual(counts.get('shop._.products'), { in: 5, out: 4 });
-  const groups = heatmapTables(diagram, counts);
+  const groups = rankingTables(diagram, counts);
   // One group per database, by name; every table once, most referenced first within it, ties by id.
   assert.deepEqual(groups.map((g) => g.database), [...new Set(model.tables.map((t) => t.id.split('.')[0]))].sort());
   const tables = groups.flatMap((g) => g.tables);
@@ -190,18 +190,18 @@ test('heatmap: ranked bars of the referenced tables per database, the others as 
   }
   assert.equal(groups.find((g) => g.database === 'auth').tables[0].id, 'auth.public.users');
   // Drawn as a hidden view: a header per database, one row or name per table.
-  const view = svg.slice(svg.indexOf('<g class="view" data-view="heatmap"'));
-  assert.match(view, /^<g class="view" data-view="heatmap" data-bounds="[^"]+" style="display:none">/);
-  assert.equal((view.match(/<text class="hm-db"/g) ?? []).length, groups.length);
-  assert.equal((view.match(/<g class="hm-tile/g) ?? []).length, tables.length);
-  assert.equal((view.match(/<g class="hm-tile hm-zero"/g) ?? []).length, tables.filter((t) => t.in === 0).length);
-  assert.match(view, /<g class="hm-tile" data-id="auth.public.users" data-in="11" data-out="0"><title>auth.public.users: 11 relations point at it, 0 from it<\/title>/);
+  const view = svg.slice(svg.indexOf('<g class="view" data-view="ranking"'));
+  assert.match(view, /^<g class="view" data-view="ranking" data-bounds="[^"]+" style="display:none">/);
+  assert.equal((view.match(/<text class="rk-db"/g) ?? []).length, groups.length);
+  assert.equal((view.match(/<g class="rk-item/g) ?? []).length, tables.length);
+  assert.equal((view.match(/<g class="rk-item rk-zero"/g) ?? []).length, tables.filter((t) => t.in === 0).length);
+  assert.match(view, /<g class="rk-item" data-id="auth.public.users" data-in="11" data-out="0"><title>auth.public.users: 11 relations point at it, 0 from it<\/title>/);
   // No central-table star: it ranks within a domain, the bars across the database.
   assert.match(view, />users</);
-  assert.doesNotMatch(view, /class="hm-name"[^>]*>★/);
+  assert.doesNotMatch(view, /class="rk-name"[^>]*>★/);
   assert.match(view, /<title>activity._.events: 1 relation points at it, 1 from it<\/title>/);
   assert.match(view, /No other table refers to these \(\d+\)/);
-  assert.notEqual(heatFill(11, 11), heatFill(1, 11));
+  assert.notEqual(barFill(11, 11), barFill(1, 11));
 });
 
 test('references both ways between two domains are one pair listing both directions', async () => {
@@ -326,10 +326,10 @@ test('a self-reference loops out and back on one side, clear of its markers', as
   assert.equal(Math.abs(loop.points[1][0] - edge), SELF_STUB);
 });
 
-test('one SVG holds every view and the heatmap; only the view of all tables shows without script', async () => {
+test('one SVG holds every view and the ranking; only the view of all tables shows without script', async () => {
   const { svg, diagram } = await multi();
   const views = [...svg.matchAll(/<g class="view" data-view="([^"]+)" data-bounds="([^"]+)"( style="display:none")?>/g)];
-  assert.deepEqual(views.map((m) => m[1]), [...viewNames(diagram), 'heatmap']);
+  assert.deepEqual(views.map((m) => m[1]), [...viewNames(diagram), 'ranking']);
   for (const [, name, , hidden] of views) assert.equal(Boolean(hidden), name !== 'all', name);
   const allBounds = views.find((m) => m[1] === 'all')[2];
   assert.match(svg, new RegExp(`^<svg [^>]*viewBox="${allBounds}"`));

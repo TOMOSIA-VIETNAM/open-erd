@@ -22,7 +22,7 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 const HTML_NS = 'http://www.w3.org/1999/xhtml';
 const OVERVIEW = 'overview';
 const ALL_VIEW = 'all';
-const HEATMAP = 'heatmap';
+const RANKING = 'ranking';
 const DOMAIN_PREFIX = 'domain:';
 const NEIGHBORHOOD = 'neighborhood';
 // View the viewer builds for a join path no drawn view holds.
@@ -54,7 +54,7 @@ const RING_GAP = 40;
 const NEIGHBORHOOD_MARGIN = 60;
 const SEARCH_LIMIT = 40;
 const TIP_OFFSET = 14;
-// Smallest text in table boxes and heatmap tiles, and the size it should
+// Smallest text in table boxes and ranking rows, and the size it should
 // have on screen at least when a large view opens zoomed in.
 const SMALLEST_TEXT = 12;
 const READABLE_TEXT = 11;
@@ -155,7 +155,7 @@ const fullBoxes =
       .flatMap(([, index]) => [...index].filter(([, entry]) => !entry.el.classList.contains('stub'))),
   );
 // The viewer draws its own tooltips; native ones would show on top of them.
-for (const t of svg.querySelectorAll('.nodes title, .relations title, .hm-tile title')) t.remove();
+for (const t of svg.querySelectorAll('.nodes title, .relations title, .rk-item title')) t.remove();
 
 // Lines are 1.4 px wide; a wide transparent twin makes them clickable.
 function addHitPaths(root) {
@@ -165,7 +165,7 @@ function addHitPaths(root) {
 }
 addHitPaths(svg);
 
-// Personal data (see the PII mode section): the tables, heatmap tiles,
+// Personal data (see the PII mode section): the tables, ranking rows,
 // columns and domain cards holding columns marked `pii` get classes the
 // mode's styles pick out. Marked once here, before the neighborhood and
 // join views copy boxes, so their copies carry the marks too. A sharing
@@ -174,7 +174,7 @@ const PII = piiSummary(data.nodes);
 {
   const columns = new Map(PII.domains.flatMap((d) => d.tables.map((t) => [t.id, new Set(t.columns)])));
   const domains = new Set(PII.domains.map((d) => d.cluster));
-  for (const g of svg.querySelectorAll('.table[data-id], .stub[data-id], .hm-tile[data-id]')) {
+  for (const g of svg.querySelectorAll('.table[data-id], .stub[data-id], .rk-item[data-id]')) {
     const mine = columns.get(g.getAttribute('data-id'));
     if (!mine) continue;
     g.classList.add('has-pii');
@@ -295,7 +295,7 @@ function showView(name) {
   state.view = name;
   // A neighborhood or join view of the same name may hold other tables now.
   map.view = null;
-  if (name === HEATMAP) readableStart(viewBounds(name), null, 1);
+  if (name === RANKING) readableStart(viewBounds(name), null, 1);
   else zoomToRect(viewBounds(name), MAX_FIT_SCALE);
   renderToolbar();
   // The legend keeps the reader's choice (open or folded to its pill),
@@ -832,10 +832,10 @@ const ICONS = {
   highlight: 'M9.5 2.5L13.5 6.5L7.5 12.5H3.5V8.5ZM2.5 14.5H13.5',
   // Swatches with their lines: the legend.
   legend: 'M2.5 3H4.5V5H2.5ZM2.5 7H4.5V9H2.5ZM2.5 11H4.5V13H2.5ZM7 4H13.5M7 8H13.5M7 12H13.5',
-  // The three ways to see the schema: tables, the domain map, the heatmap.
+  // The three ways to see the schema: tables, the domain map, the ranking.
   table: 'M2.5 3.5H13.5V12.5H2.5ZM2.5 6.5H13.5M2.5 9.5H13.5M6.5 6.5V12.5',
   map: 'M2.5 4L6 2.5L10 4L13.5 2.5V12L10 13.5L6 12L2.5 13.5ZM6 2.5V12M10 4V13.5',
-  heatmap: 'M2.5 2.5H13.5V13.5H2.5ZM6.2 2.5V13.5M9.8 2.5V13.5M2.5 6.2H13.5M2.5 9.8H13.5',
+  ranking: 'M2.5 3.5H13.5V5.5H2.5ZM2.5 7H10V9H2.5ZM2.5 10.5H6.5V12.5H2.5Z',
   database: 'M3.5 4C3.5 2.6 12.5 2.6 12.5 4V12C12.5 13.4 3.5 13.4 3.5 12ZM3.5 4C3.5 5.4 12.5 5.4 12.5 4M3.5 8C3.5 9.4 12.5 9.4 12.5 8',
   // Tour controls.
   play: 'M5 3.5L12 8L5 12.5Z',
@@ -858,13 +858,13 @@ function relatedButtons(open) {
 const hopButtons = relatedButtons((hops) => openNeighborhood(state.center, hops));
 const hopGroup = el('div', { class: 'oe-related', title: RELATED.title }, [el('span', { text: RELATED.label }), el('div', { class: 'oe-seg' }, hopButtons)]);
 // The three ways to look at the whole schema, always on the toolbar: every
-// table, the domain cards (Map) and the tables shaded by references (Heatmap). A
+// table, the domain cards (Map) and the tables ranked by references (Ranking). A
 // schema too large for the view of all tables has no first one.
 // Narrow windows show the icons only (their tooltips name them).
 const VIEW_TABS = [
   [ALL_VIEW, 'table', 'All tables', `Every table of every domain (${MOD_KEY}A)`, `${MOD_KEY}A`],
   [OVERVIEW, 'map', 'Map', 'Domains as cards: what each holds and what it is related to', null],
-  [HEATMAP, 'heatmap', 'Heatmap', 'Every table shaded by how many relations point at it', null],
+  [RANKING, 'ranking', 'Ranking', 'Tables ranked by how many relations point at them', null],
 ].filter(([name]) => views.has(name));
 const viewTabs = VIEW_TABS.map(([name, icon, text, title]) =>
   el('button', { class: 'oe-btn oe-tab-view', title: `${text}: ${title}`, 'aria-label': text, 'data-view': name, on: { click: () => navigate(name) } }, [iconSvg(icon, 14), el('span', { class: 'label', text })]),
@@ -981,8 +981,8 @@ const highlightMenu = dropdown(
   ]),
   'oe-highlight-menu',
 );
-// Overview cards and heatmap tiles stand for many relations and carry no review colour.
-const reviewable = () => state.view !== OVERVIEW && state.view !== HEATMAP;
+// Overview cards and ranking rows stand for many relations and carry no review colour.
+const reviewable = () => state.view !== OVERVIEW && state.view !== RANKING;
 const REVIEW_TOTAL = data.review.pending + data.review.stale;
 const reviewCounts = () => `${data.review.pending} to confirm · ${data.review.stale} changed in code`;
 const REVIEW_TIP = 'Color lines by review status: amber = not confirmed yet, red = code changed since review';
@@ -992,13 +992,13 @@ if (REVIEW_TOTAL === 0 && PII.total === 0 && HEALTH.length === 0 && CENTRAL_TOTA
 // findings: the entry would switch on a mode that changes nothing).
 function highlightModes() {
   return [
-    CHANGES ? { label: 'Changes', detail: CHANGES.label, tip: CHANGES_TIP, keys: 'C', keywords: ['changes', 'diff', 'added', 'removed'], on: changesOn(), toggle: () => setChangesMode(!changesOn()), off: null } : null,
+    CHANGES ? { label: 'Changes', detail: CHANGES.label, tip: CHANGES_TIP, keys: 'C', keywords: ['changes', 'diff', 'added', 'removed'], on: changesOn(), toggle: () => setChangesMode(!changesOn()), off: null, listed: () => changesListShown() } : null,
     REVIEW_TOTAL > 0
-      ? { label: 'Review mode', detail: reviewCounts(), tip: REVIEW_TIP, keys: null, keywords: ['review', 'confirm', 'stale'], on: reviewing(), toggle: () => setReviewMode(!reviewing()), off: reviewable() ? null : 'Lines only: not on the map or the heatmap' }
+      ? { label: 'Review mode', detail: reviewCounts(), tip: REVIEW_TIP, keys: null, keywords: ['review', 'confirm', 'stale'], on: reviewing(), toggle: () => setReviewMode(!reviewing()), off: reviewable() ? null : 'Lines only: not on the map or the ranking', listed: () => false }
       : null,
-    PII.total > 0 ? { label: 'Personal data (PII)', detail: PII_COUNTS, tip: PII_TIP, keys: 'P', keywords: ['pii', 'personal', 'privacy', 'gdpr'], on: piiOn(), toggle: () => setPiiMode(!piiOn()), off: null } : null,
-    HEALTH.length > 0 ? { label: 'Schema health', detail: HEALTH_COUNTS, tip: HEALTH_TIP, keys: 'H', keywords: ['health', 'findings', 'lint', 'index'], on: healthOn(), toggle: () => setHealthMode(!healthOn()), off: null } : null,
-    CENTRAL_TOTAL > 0 ? { label: 'Central tables', detail: CENTRAL_COUNTS, tip: CENTRAL_TIP, keys: 'S', keywords: ['central', 'star', 'core', 'main', 'hub'], on: centralOn(), toggle: () => setCentralMode(!centralOn()), off: null } : null,
+    PII.total > 0 ? { label: 'Personal data (PII)', detail: PII_COUNTS, tip: PII_TIP, keys: 'P', keywords: ['pii', 'personal', 'privacy', 'gdpr'], on: piiOn(), toggle: () => setPiiMode(!piiOn()), off: null, listed: () => piiSummaryShown() } : null,
+    HEALTH.length > 0 ? { label: 'Schema health', detail: HEALTH_COUNTS, tip: HEALTH_TIP, keys: 'H', keywords: ['health', 'findings', 'lint', 'index'], on: healthOn(), toggle: () => setHealthMode(!healthOn()), off: null, listed: () => healthListShown() } : null,
+    CENTRAL_TOTAL > 0 ? { label: 'Central tables', detail: CENTRAL_COUNTS, tip: CENTRAL_TIP, keys: 'S', keywords: ['central', 'star', 'core', 'main', 'hub'], on: centralOn(), toggle: () => setCentralMode(!centralOn()), off: null, listed: () => centralListShown() } : null,
   ].filter(Boolean);
 }
 highlightMenu.onOpen = () =>
@@ -1072,7 +1072,7 @@ function renderToolbar() {
       ? clusterOf(state.center)
       : null;
   if (state.view === ALL_VIEW) parts.push(crumb(`All tables · ${plural(tableCount(null), 'table')}`));
-  if (state.view === HEATMAP) parts.push(crumb('Heatmap'));
+  if (state.view === RANKING) parts.push(crumb('Ranking'));
   const db = cluster ? cluster.split('/')[0] : null;
   // There is no database-level view: the database crumb shows a frame on the
   // overview. With several databases it lists them all, on every view.
@@ -1106,7 +1106,7 @@ const NAVIGATED = (name) => name.startsWith(DOMAIN_PREFIX) || [NEIGHBORHOOD, JOI
 function viewLabel(snap) {
   if (snap.view === OVERVIEW) return 'Overview';
   if (snap.view === ALL_VIEW) return 'All tables';
-  if (snap.view === HEATMAP) return 'Heatmap';
+  if (snap.view === RANKING) return 'Ranking';
   if (snap.view === NEIGHBORHOOD) return `Tables related to ${short(snap.center)}`;
   if (snap.view === JOIN_VIEW) return `Join path ${short(snap.joinPath.nodes[0])} → ${short(snap.joinPath.nodes.at(-1))}`;
   return domainName(snap.view.slice(DOMAIN_PREFIX.length));
@@ -1864,7 +1864,7 @@ function columnRow(n, c, open) {
   const indexed = (n.indexes ?? []).some((i) => i.columns.includes(c.name));
   return el('div', { class: `oe-col${c.name === open ? ' open' : ''}`, 'data-column': c.name }, [
     el('div', { class: 'l1' }, [
-      el('span', { class: 'gutter', title: key === 'pk' ? 'Primary key' : key === 'fk' ? 'References another table' : '' }, [keyIcon(key)]),
+      el('span', { class: 'gutter', title: key === 'pk' ? 'Primary key' : key === 'fk' ? 'Foreign key' : '' }, [keyIcon(key)]),
       el('span', { class: `name${c.pk ? ' pk' : ''}`, text: c.name }),
       // The marks the table box draws after a name: listed values, an index.
       values.length > 0 ? hintIcon(enumIconSvg, 'Column with listed values') : null,
@@ -2491,13 +2491,13 @@ const LEGEND = [
     ['zeroOrMany', 'Zero or more'],
   ].map(([kind, text]) => [() => endSample(kind), text, (v) => endKinds(v).has(kind)])],
   ['In boxes', [
-    [() => sample([svgEl('rect', { class: 'legend-central', x: 1, y: 2, width: 62, height: 14, rx: 3 }), ...parsed(starIconSvg(9, 9))]), 'Central table (most connected)', (v) => has(v, '.table.central')],
+    [() => sample([svgEl('rect', { class: 'legend-central', x: 1, y: 2, width: 62, height: 14, rx: 3 }), ...parsed(starIconSvg(9, 9))]), 'Most connected table of its domain', (v) => has(v, '.table.central')],
     [() => iconSample(keyIconSvg(10, 9)), 'Primary key', (v) => has(v, '.icon-pk')],
-    [() => iconSample(linkIconSvg(9, 9)), 'References another table', (v) => has(v, '.icon-fk')],
+    [() => iconSample(linkIconSvg(9, 9)), 'Foreign key', (v) => has(v, '.icon-fk')],
     [() => iconSample(indexIconSvg(8, 9)), 'Column in an index', (v) => has(v, '.icon-index')],
     [() => iconSample(enumIconSvg(8, 9)), 'Column with listed values', (v) => has(v, '.hint-enum')],
     [() => sample([svgEl('path', { class: 'col-warn', d: 'M4 13L8 5L12 13Z' })]), 'Possible missing relation', (v) => has(v, '.col-warn')],
-    [() => sample([svgEl('rect', { class: 'stub-box', x: 1, y: 1, width: 62, height: 16, rx: 4 }), svgEl('text', { class: 'stub-title', x: 6, y: 9, 'dominant-baseline': 'central', text: 'orders' })]), 'Linked table in another domain: click to open', (v) => has(v, '.stub')],
+    [() => sample([svgEl('rect', { class: 'stub-box', x: 1, y: 1, width: 62, height: 16, rx: 4 }), svgEl('text', { class: 'stub-title', x: 6, y: 9, 'dominant-baseline': 'central', text: 'tables' })]), 'Linked table in another domain: click to open', (v) => has(v, '.stub')],
     [() => sample([svgEl('rect', { class: 'poly-box', x: 1, y: 1, width: 62, height: 16, rx: 4 }), svgEl('text', { class: 'poly-title', x: 6, y: 9, 'dominant-baseline': 'central', text: '«able»' })]), 'Polymorphic: one column pair points at several tables', (v) => has(v, '.poly')],
   ]],
 ];
@@ -2580,7 +2580,7 @@ function setReviewMode(on) {
 // chip under the toolbar says the mode is on: List reopens the summary, ×
 // turns it off. The summary panel counts the columns per domain, then per
 // table, most first; a click goes to the table or column and keeps the
-// list open. Esc closes the panel as usual and leaves the mode on. The
+// list open. Esc turns the mode off (see the Escape handler). The
 // mode is a class on the root, so a download keeps it, like review mode.
 const piiOn = () => svg.classList.contains('pii-mode');
 const PII_COUNTS = `${plural(PII.total, 'column')} in ${plural(PII.tables, 'table')}`;
@@ -3023,8 +3023,8 @@ function updateMinimap() {
   if (map.view !== state.view) buildMinimap();
   const vp = viewport();
   const seen = visibleRect(state.cam, vp, TOOLBAR_HEIGHT, panelRoom());
-  // A list of tiles needs no map of itself.
-  const show = map.on && !tour.on && state.view !== HEATMAP && !fitsInside(map.bounds, seen);
+  // A ranked list needs no map of itself.
+  const show = map.on && !tour.on && state.view !== RANKING && !fitsInside(map.bounds, seen);
   minimap.fo.style.display = show ? '' : 'none';
   if (!show) return;
   for (const [k, v] of Object.entries(seen)) map.seen.setAttribute({ x: 'x', y: 'y', w: 'width', h: 'height' }[k], v);
@@ -3074,8 +3074,8 @@ tip.fo.style.display = 'none';
 tip.fo.style.pointerEvents = 'none';
 
 // An overview connector: one line, the list only in the panel.
-// A heatmap tile: the table, how many relations point at it and from it.
-function heatTip(tile) {
+// A ranking row: the table, how many relations point at it and from it.
+function rankTip(tile) {
   const id = tile.getAttribute('data-id');
   const [into, from] = [Number(tile.getAttribute('data-in')), Number(tile.getAttribute('data-out'))];
   return [el('b', { text: short(id) }), el('div', { text: `${plural(into, 'relation')} point${into === 1 ? 's' : ''} at it · ${from} from it` }), el('div', { class: 'muted', text: `${domainName(clusterOf(id))} · click to open the table` })];
@@ -3100,8 +3100,8 @@ function lineTip(g) {
 function tipLines(target) {
   const connector = target.closest('.card-link');
   if (connector) return connectorTip(connector.getAttribute('data-from'), connector.getAttribute('data-to'));
-  const tile = target.closest('.hm-tile');
-  if (tile) return heatTip(tile);
+  const tile = target.closest('.rk-item');
+  if (tile) return rankTip(tile);
   const related = target.closest('.card-related');
   if (related) {
     const [a, b] = [target.closest('.domain').getAttribute('data-domain'), related.getAttribute('data-domain')];
@@ -3424,7 +3424,7 @@ svg.addEventListener('click', (e) => {
   // With the join panel waiting for a table, a click on one picks it.
   const picked = t.closest('.group-row[data-table]')?.getAttribute('data-table') ?? t.closest('.table, .stub')?.getAttribute('data-id');
   if (join.open && (!join.from || !join.to) && data.nodes[picked]?.kind === 'table') return setJoinEnd(join.from ? 'to' : 'from', picked);
-  const tile = t.closest('.hm-tile');
+  const tile = t.closest('.rk-item');
   if (tile) return navigate(homeView(tile.getAttribute('data-id')), { focus: tile.getAttribute('data-id') });
   const related = t.closest('.card-related');
   if (related) return navigate(domainView(related.getAttribute('data-domain')));
@@ -3518,7 +3518,9 @@ document.addEventListener(
 
 // Cmd+K / Ctrl+K opens the palette; Cmd+F / Ctrl+F, or "/" outside a text
 // field, opens it for tables and columns only. Escape closes the innermost
-// thing open: the palette, a menu, then the selection.
+// thing open: the palette, a menu, the tour, the selection, a highlight
+// mode's own list (turning that mode off), the panel, then the highlight
+// modes still on.
 const typing = () => document.activeElement instanceof HTMLInputElement || document.activeElement instanceof HTMLTextAreaElement;
 // Keyboard shortcuts, also listed under ⋯ › Keyboard shortcuts: groups of
 // [keys (one or several, any of them works), what they do].
@@ -3541,7 +3543,7 @@ const SHORTCUTS = [
     [['T'], 'Tour the domains (← → step, Space pauses)'],
     [[`${MOD_KEY}C`], 'Copy the selected table’s schema'],
     [['?'], 'This list'],
-    [['Esc'], 'Close search, menu or panel'],
+    [['Esc'], 'Close search, menu or panel, then turn highlights off'],
   ]],
 ].map(([title, rows]) => [title, rows.filter(Boolean)]);
 const selectedTable = () => {
@@ -3685,7 +3687,12 @@ document.addEventListener('keydown', (e) => {
   if (joinSpotOpen()) return closeJoinSpot();
   if (openMenu()) return closeMenus();
   if (tour.on) return endTour(true);
-  clearSelection();
+  const modes = highlightModes().filter((m) => m.on);
+  if (modes.length === 0 || svg.querySelector('g.view.dimmed, .selected, .hl')) return clearSelection();
+  const listed = modes.find((m) => m.listed());
+  if (listed) return listed.toggle();
+  if (panel.fo.style.display !== 'none') return hidePanel();
+  for (const m of modes) m.toggle();
 });
 
 window.addEventListener('resize', () => {
