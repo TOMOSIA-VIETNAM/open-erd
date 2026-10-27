@@ -77,6 +77,7 @@ table are left out (a link with none opens as usual).
 | `column=<table id>.<column>` | The same, with that column unfolded in the panel. |
 | `line=<relation id>` | That relation line, selected as a click on it does, with its panel (in a domain view, also a line standing for several tables of another domain). |
 | `between=<db>/<domain>,<db>/<domain>` | The panel listing the relations between those two domains, as a click on their connector in the overview opens it. A comma in a domain name is written `%2C`. |
+| `at=<x>,<y>,<scale>` | Where the camera rests after a pan or zoom: the drawing point at the middle of the screen, and the scale, so it opens alike on another screen. Written once the camera stops; dropped when the viewer frames the view again (a view change, a jump to a table, a window resize). |
 | `highlight=<mode>,<mode>` | Those highlight modes on and the others off: `changes`, `review`, `pii`, `health`, `central`. A diff's address always has it, empty when every mode is off. |
 
 For example `#view=domain:shop/Orders&table=shop.public.orders`, or

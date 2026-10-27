@@ -235,19 +235,42 @@ let nav = emptyHistory();
 const viewport = () => ({ w: window.innerWidth, h: window.innerHeight });
 
 let cameraFrame = 0;
-function applyCamera() {
+// Whether the reader moved the camera (a pan or a zoom) since the viewer
+// last framed the view itself: only then does the link say where it is.
+let cameraMoved = false;
+let cameraLinkTimer = 0;
+// How long the camera rests before the address says where it is.
+const CAMERA_LINK_MS = 400;
+function applyCamera(byReader = false) {
   if (cameraFrame) cancelAnimationFrame(cameraFrame);
   cameraFrame = 0;
   const { x, y, s } = state.cam;
   camera.setAttribute('transform', `translate(${x} ${y}) scale(${s})`);
   placeBackPill();
   updateMinimap();
+  if (!byReader && !cameraMoved) return;
+  cameraMoved = byReader;
+  clearTimeout(cameraLinkTimer);
+  cameraLinkTimer = setTimeout(syncHash, CAMERA_LINK_MS);
 }
 
 // Pan and zoom gestures fire many events per frame: write the transform once
 // per frame, with the latest camera.
 function scheduleCamera() {
-  if (!cameraFrame) cameraFrame = requestAnimationFrame(applyCamera);
+  if (!cameraFrame) cameraFrame = requestAnimationFrame(() => applyCamera(true));
+}
+// The camera as the link writes it: the drawing point at the middle of the
+// screen below the toolbar, and the scale, so it opens alike on any screen.
+function cameraCentre() {
+  const { w, h } = viewport();
+  const { x, y, s } = state.cam;
+  return [Math.round((w / 2 - x) / s), Math.round(((h + TOOLBAR_HEIGHT) / 2 - y) / s), Number(s.toPrecision(4))];
+}
+function centreCamera([cx, cy, s]) {
+  const { w, h } = viewport();
+  const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, s));
+  state.cam = { s: scale, x: w / 2 - cx * scale, y: (h + TOOLBAR_HEIGHT) / 2 - cy * scale };
+  applyCamera(true);
 }
 
 // The panel covers the right edge of the screen; fitting leaves that strip free.
@@ -1609,6 +1632,7 @@ function linkPairs() {
     else if (line) pairs.push(['line', line]);
     else if (domainLinkShown()) pairs.push(['between', domainLink.pair]);
   }
+  if (cameraMoved) pairs.push(['at', cameraCentre().join(',')]);
   // A diff opens with Changes on: say so even when no mode is on.
   const modes = highlightModes().filter((m) => m.on).map((m) => m.id);
   if (modes.length > 0 || CHANGES) pairs.push(['highlight', modes.join(',')]);
@@ -1643,6 +1667,9 @@ function openDeepLink(hash) {
   if (p.highlight) setHighlights(p.highlight.ids);
   const opened = openLinkTarget(p);
   if (p.folded && state.view === p.view?.value) foldLinked(p.folded.ids);
+  // Last: opening the rest framed the view; the link's camera replaces that.
+  const at = (p.at?.value ?? '').split(',').map(Number);
+  if (at.length === 3 && at.every(Number.isFinite) && at[2] > 0) centreCamera(at);
   return opened || Boolean(p.highlight);
 }
 // Folds the domains a link names in the view on screen, except those

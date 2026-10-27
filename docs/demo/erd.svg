@@ -1388,16 +1388,34 @@ Central: spree_stores</title><rect class="card-box" x="1090" y="570" width="300"
   var nav = emptyHistory();
   var viewport = () => ({ w: window.innerWidth, h: window.innerHeight });
   var cameraFrame = 0;
-  function applyCamera() {
+  var cameraMoved = false;
+  var cameraLinkTimer = 0;
+  var CAMERA_LINK_MS = 400;
+  function applyCamera(byReader = false) {
     if (cameraFrame) cancelAnimationFrame(cameraFrame);
     cameraFrame = 0;
     const { x, y, s } = state.cam;
     camera.setAttribute("transform", `translate(${x} ${y}) scale(${s})`);
     placeBackPill();
     updateMinimap();
+    if (!byReader && !cameraMoved) return;
+    cameraMoved = byReader;
+    clearTimeout(cameraLinkTimer);
+    cameraLinkTimer = setTimeout(syncHash, CAMERA_LINK_MS);
   }
   function scheduleCamera() {
-    if (!cameraFrame) cameraFrame = requestAnimationFrame(applyCamera);
+    if (!cameraFrame) cameraFrame = requestAnimationFrame(() => applyCamera(true));
+  }
+  function cameraCentre() {
+    const { w, h } = viewport();
+    const { x, y, s } = state.cam;
+    return [Math.round((w / 2 - x) / s), Math.round(((h + TOOLBAR_HEIGHT) / 2 - y) / s), Number(s.toPrecision(4))];
+  }
+  function centreCamera([cx, cy, s]) {
+    const { w, h } = viewport();
+    const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, s));
+    state.cam = { s: scale, x: w / 2 - cx * scale, y: (h + TOOLBAR_HEIGHT) / 2 - cy * scale };
+    applyCamera(true);
   }
   function zoomToRect(r, maxScale) {
     const { w, h } = viewport();
@@ -2471,6 +2489,7 @@ ${new XMLSerializer().serializeToString(root)}
       else if (line) pairs.push(["line", line]);
       else if (domainLinkShown()) pairs.push(["between", domainLink.pair]);
     }
+    if (cameraMoved) pairs.push(["at", cameraCentre().join(",")]);
     const modes = highlightModes().filter((m) => m.on).map((m) => m.id);
     if (modes.length > 0 || CHANGES) pairs.push(["highlight", modes.join(",")]);
     return pairs;
@@ -2501,6 +2520,8 @@ ${new XMLSerializer().serializeToString(root)}
     if (p.highlight) setHighlights(p.highlight.ids);
     const opened = openLinkTarget(p);
     if (p.folded && state.view === p.view?.value) foldLinked(p.folded.ids);
+    const at = (p.at?.value ?? "").split(",").map(Number);
+    if (at.length === 3 && at.every(Number.isFinite) && at[2] > 0) centreCamera(at);
     return opened || Boolean(p.highlight);
   }
   function foldLinked(keys) {

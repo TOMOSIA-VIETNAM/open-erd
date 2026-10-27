@@ -276,6 +276,8 @@ const open = async (hash) => {
 // A diff opens with Changes on, which its links say (highlight=changes).
 const isDiff = await evaluate(`${data}.changes !== undefined`);
 const linkOf = (pairs) => formatHash(isDiff ? [...pairs, ['highlight', 'changes']] : pairs);
+// The address without the camera (`at=`), which a pan before a click adds.
+const linkHash = `location.hash.replace(/&at=[^&]*/, '')`;
 const hubCard = `${ov}.querySelector('.domain[data-domain=${JSON.stringify(busiest)}]')`;
 await mouse('mouseMoved', await centre(`${hubCard}.querySelector('.card-box')`, 'top'));
 await pause(150);
@@ -1610,13 +1612,13 @@ await key('Escape');
   const home = await evaluate(`document.querySelector('g.view[data-view="all"]') ? 'all' : 'domain:' + ${data}.nodes[${JSON.stringify(linked[0])}].cluster`);
   await shot('deep-link-table', `${viewIs(home)} && ${inView(`.table.selected[data-id="${linked[0]}"]`)} !== null && document.querySelector('.oe-panel .oe-ph-name')?.textContent === ${JSON.stringify(linked[0].split('.')[2])}`);
   await open(`#column=${encodeURIComponent(`${linked[0]}.${linked[1]}`)}`);
-  await shot('deep-link-column', `document.querySelector('.oe-panel .oe-col.open')?.getAttribute('data-column') === ${JSON.stringify(linked[1])} && location.hash === ${JSON.stringify(linkOf([['view', home], ['column', `${linked[0]}.${linked[1]}`]]))}`);
+  await shot('deep-link-column', `document.querySelector('.oe-panel .oe-col.open')?.getAttribute('data-column') === ${JSON.stringify(linked[1])} && ${linkHash} === ${JSON.stringify(linkOf([['view', home], ['column', `${linked[0]}.${linked[1]}`]]))}`);
   // The view goes with the table: a link copied in a domain view opens that
   // domain view, with the table selected; an older address with = encoded
   // still opens the table.
   const domainOf = `domain:${model.nodes[linked[0]].cluster}`;
   await open(formatHash([['view', domainOf], ['table', linked[0]]]));
-  await shot('deep-link-view-and-table', `${viewIs(domainOf)} && ${inView(`.table.selected[data-id="${linked[0]}"]`)} !== null && location.hash === ${JSON.stringify(linkOf([['view', domainOf], ['table', linked[0]]]))}`);
+  await shot('deep-link-view-and-table', `${viewIs(domainOf)} && ${inView(`.table.selected[data-id="${linked[0]}"]`)} !== null && ${linkHash} === ${JSON.stringify(linkOf([['view', domainOf], ['table', linked[0]]]))}`);
   await open(`#table%3D${linked[0]}`);
   await shot('deep-link-encoded-equals', `${viewIs(home)} && ${inView(`.table.selected[data-id="${linked[0]}"]`)} !== null`);
   // #tables=: tables of different domains lit together, the rest dimmed,
@@ -1648,7 +1650,7 @@ await key('Escape');
     const through = [from, best.nodes[1], to];
     const { path } = pathThrough(model, through);
     await open(`#path=${through.map(encodeURIComponent).join(',')}`);
-    await shot('deep-link-path-through', `document.querySelectorAll('.oe-panel .oe-paths .oe-btn').length === 1 && document.querySelectorAll('.oe-panel .oe-hops li').length === ${path.hops.length} && location.hash === ${JSON.stringify(linkOf([['path', through.join(',')]]))}`);
+    await shot('deep-link-path-through', `document.querySelectorAll('.oe-panel .oe-paths .oe-btn').length === 1 && document.querySelectorAll('.oe-panel .oe-hops li').length === ${path.hops.length} && ${linkHash} === ${JSON.stringify(linkOf([['path', through.join(',')]]))}`);
   }
   // Two tables no relations join are lit instead, with a note, as tables
   // selected together (their panel, their link).
@@ -1669,7 +1671,7 @@ await key('Escape');
   await bringIntoView(inView(`.table[data-id="${other}"]`));
   const before = await evaluate('history.length');
   await click(inView(`.table[data-id="${other}"] .table-title`));
-  await shot('selection-updates-hash', `location.hash === ${JSON.stringify(linkOf([['view', startView], ['table', other]]))} && history.length === ${before}`);
+  await shot('selection-updates-hash', `${linkHash} === ${JSON.stringify(linkOf([['view', startView], ['table', other]]))} && history.length === ${before}`);
   // Shift-click adds a table to the selection: both lit, a panel listing
   // them, the address naming both; again takes it out. The address opens
   // the same two tables.
@@ -1678,9 +1680,9 @@ await key('Escape');
   const twoLit = `${inView(`.table.hl[data-id="${other}"]`)} !== null && ${inView(`.table.hl[data-id="${third}"]`)} !== null && document.querySelector('.oe-panel .oe-ph-name')?.textContent === '2 tables selected' && document.querySelectorAll('.oe-panel .oe-picked-row').length === 2`;
   await bringIntoView(inView(`.table[data-id="${third}"]`));
   await click(inView(`.table[data-id="${third}"] .table-title`), { modifiers: 8 });
-  await shot('shift-click-adds', `${twoLit} && location.hash === ${JSON.stringify(both)}`);
+  await shot('shift-click-adds', `${twoLit} && ${linkHash} === ${JSON.stringify(both)}`);
   await click(inView(`.table[data-id="${third}"] .table-title`), { modifiers: 8 });
-  await shot('shift-click-removes', `${inView(`.table.selected[data-id="${other}"]`)} !== null && location.hash === ${JSON.stringify(linkOf([['view', startView], ['table', other]]))}`);
+  await shot('shift-click-removes', `${inView(`.table.selected[data-id="${other}"]`)} !== null && ${linkHash} === ${JSON.stringify(linkOf([['view', startView], ['table', other]]))}`);
   await open(both);
   await shot('deep-link-picked-tables', `${viewIs(startView)} && ${twoLit}`);
 
@@ -1695,7 +1697,7 @@ await key('Escape');
   // A view reached by its tab, nothing selected.
   await open(formatHash([['view', startView]]));
   await click(`document.querySelector('.oe-view-tabs [data-view="overview"]')`);
-  await shot('link-view-tab', `location.hash === ${JSON.stringify(linkOf([['view', 'overview']]))}`);
+  await shot('link-view-tab', `${linkHash} === ${JSON.stringify(linkOf([['view', 'overview']]))}`);
   // Double-click: the tables related to one; then another selected in it.
   await open(formatHash([['view', startView]]));
   // A table drawn here with a relation to another table, so the view has more than its centre.
@@ -1703,11 +1705,11 @@ await key('Escape');
     return d.links.map((l) => l.from).find((id) => here.has(id) && d.links.some((l) => l.from === id && l.to !== id && d.nodes[l.to]?.kind === 'table')); })()`);
   await bringIntoView(inView(`.table[data-id="${hub}"]`));
   await click(inView(`.table[data-id="${hub}"]`), { where: 'top', count: 2 });
-  await shot('link-related', `${viewIs('neighborhood')} && location.hash === ${JSON.stringify(linkOf([['related', hub], ['hops', '1']]))}`);
+  await shot('link-related', `${viewIs('neighborhood')} && ${linkHash} === ${JSON.stringify(linkOf([['related', hub], ['hops', '1']]))}`);
   await reopen('link-related-reopens', `${viewIs('neighborhood')} && ${inView(`.table.selected[data-id="${hub}"]`)} !== null`);
   const ring = await evaluate(`[...${visible}.querySelectorAll('.table')].map((g) => g.getAttribute('data-id')).find((id) => id !== ${JSON.stringify(hub)})`);
   await click(inView(`.table[data-id="${ring}"]`), { where: 'top' });
-  await shot('link-related-table', `location.hash === ${JSON.stringify(linkOf([['related', hub], ['hops', '1'], ['table', ring]]))}`);
+  await shot('link-related-table', `${linkHash} === ${JSON.stringify(linkOf([['related', hub], ['hops', '1'], ['table', ring]]))}`);
   await reopen('link-related-table-reopens', `${viewIs('neighborhood')} && ${inView(`.table.selected[data-id="${ring}"]`)} !== null`);
   // A line clicked in it, at a spot on screen where nothing covers it.
   const { lineId, onLine } = await evaluate(`(() => { for (const g of ${visible}.querySelectorAll('.relation-group')) { const p = g.querySelector('path.relation');
@@ -1716,16 +1718,16 @@ await key('Escape');
   await mouse('mousePressed', onLine);
   await mouse('mouseReleased', onLine);
   await pause(150);
-  await shot('link-line', `location.hash === ${JSON.stringify(linkOf([['related', hub], ['hops', '1'], ['line', lineId]]))}`);
+  await shot('link-line', `${linkHash} === ${JSON.stringify(linkOf([['related', hub], ['hops', '1'], ['line', lineId]]))}`);
   await reopen('link-line-reopens', `${viewIs('neighborhood')} && ${inView(`.relation-group.flowing[data-id="${lineId}"]`)} !== null`);
   // Two levels of related tables.
   await click(`[...document.querySelectorAll('.oe-related .oe-btn')].find((b) => b.textContent === '+1 level')`);
-  await shot('link-related-hops', `location.hash === ${JSON.stringify(linkOf([['related', hub], ['hops', '2']]))}`);
+  await shot('link-related-hops', `${linkHash} === ${JSON.stringify(linkOf([['related', hub], ['hops', '2']]))}`);
   await reopen('link-related-hops-reopens', `${viewIs('neighborhood')} && [...document.querySelectorAll('.oe-related .oe-btn')].find((b) => b.textContent === '+1 level').classList.contains('on')`);
   // A column clicked in a table box.
   await open(formatHash([['view', startView], ['table', linked[0]]]));
   await click(inView(`.table[data-id="${linked[0]}"] .column[data-column="${linked[1]}"]`));
-  await shot('link-column-click', `location.hash === ${JSON.stringify(linkOf([['view', startView], ['column', `${linked[0]}.${linked[1]}`]]))}`);
+  await shot('link-column-click', `${linkHash} === ${JSON.stringify(linkOf([['view', startView], ['column', `${linked[0]}.${linked[1]}`]]))}`);
   await reopen('link-column-reopens', `document.querySelector('.oe-panel .oe-col.open')?.getAttribute('data-column') === ${JSON.stringify(linked[1])}`);
   // The second of the join paths between two tables.
   const twoPaths = (() => {
@@ -1736,7 +1738,7 @@ await key('Escape');
   if (twoPaths) {
     await open(formatHash([['path', twoPaths.join(',')]]));
     await click(`[...document.querySelectorAll('.oe-paths .oe-btn')][1]`);
-    await shot('link-path-option', `location.hash === ${JSON.stringify(linkOf([['path', twoPaths.join(',')], ['option', '2']]))}`);
+    await shot('link-path-option', `${linkHash} === ${JSON.stringify(linkOf([['path', twoPaths.join(',')], ['option', '2']]))}`);
     await reopen('link-path-option-reopens', `[...document.querySelectorAll('.oe-paths .oe-btn')][1]?.classList.contains('on')`);
   }
   // A highlight mode on.
@@ -1755,7 +1757,7 @@ await key('Escape');
     await open(formatHash([['view', polyView]]));
     await bringIntoView(inView(`.poly[data-id="${poly}"]`));
     await click(inView(`.poly[data-id="${poly}"]`), { where: 'top' });
-    await shot('link-poly', `location.hash === ${JSON.stringify(linkOf([['view', polyView], ['table', poly]]))}`);
+    await shot('link-poly', `${linkHash} === ${JSON.stringify(linkOf([['view', polyView], ['table', poly]]))}`);
     await reopen('link-poly-reopens', `${inView(`.poly.selected[data-id="${poly}"]`)} !== null`);
   }
   // A line of a domain view standing for several tables of another domain.
@@ -1765,9 +1767,30 @@ await key('Escape');
     await open(formatHash([['view', groupView]]));
     await bringIntoView(inView(`.relation-group[data-id="${groupLine}"]`));
     await click(`${inView(`.relation-group[data-id="${groupLine}"]`)}.querySelector('path.relation')`);
-    await shot('link-group-line', `location.hash === ${JSON.stringify(linkOf([['view', groupView], ['line', groupLine]]))}`);
+    await shot('link-group-line', `${linkHash} === ${JSON.stringify(linkOf([['view', groupView], ['line', groupLine]]))}`);
     await reopen('link-group-line-reopens', `${viewIs(groupView)} && ${inView(`.relation-group.flowing[data-id="${groupLine}"]`)} !== null`);
   }
+}
+
+// A pan and a zoom by the reader: the address says where the camera rests,
+// and the link opens there on the same screen.
+{
+  await open(formatHash([['view', startView]]));
+  await send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: 600, y: 400, deltaX: 120, deltaY: 90 });
+  await send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: 600, y: 400, deltaX: 0, deltaY: -200, modifiers: 2 });
+  await pause(800);
+  // The camera's numbers: translate x, y and scale.
+  const cam = `document.querySelector('.camera').getAttribute('transform').match(/-?[\\d.]+/g).map(Number)`;
+  await shot('link-camera', `/&at=-?\\d+,-?\\d+,[\\d.]+/.test(location.hash) && ${linkHash} === ${JSON.stringify(linkOf([['view', startView]]))}`);
+  const [camHash, camBefore] = await evaluate(`[location.hash, ${cam}]`);
+  await open(camHash);
+  // The same within the rounding of the link (a whole drawing unit, four
+  // digits of scale): a pixel or two.
+  await shot('link-camera-reopens', `location.hash === ${JSON.stringify(camHash)} && ${cam}.every((v, i) => Math.abs(v - ${JSON.stringify(camBefore)}[i]) <= (i < 2 ? 2 : 0.001))`);
+  // Fitting the view again (a view tab) drops it.
+  await click(`document.querySelector('.oe-view-tabs [data-view="overview"]')`);
+  await pause(600);
+  await shot('link-camera-dropped', `!location.hash.includes('&at=')`);
 }
 
 // Without script the file must still show the static overview.
