@@ -293,6 +293,7 @@ function showView(name) {
   hideTip();
   focusDomain(null);
   for (const [n, v] of views) v.style.display = n === name ? '' : 'none';
+  const moved = state.view !== name;
   state.view = name;
   // A neighborhood or join view of the same name may hold other tables now.
   map.view = null;
@@ -304,6 +305,7 @@ function showView(name) {
   // follows the view.
   legendFolded = LEGEND_FOLDED_VIEWS.includes(name);
   showLegend();
+  if (moved) setTimeout(showHint, TIP_OPEN_MS);
 }
 
 // A large view opens where its text can be read: the whole view when it
@@ -3305,6 +3307,7 @@ function layoutOverlays() {
     help.fo.setAttribute('width', Math.ceil(r.width) + 1 + 2 * LEGEND_ROOM);
     help.fo.setAttribute('height', Math.ceil(r.height) + 1 + 2 * LEGEND_ROOM);
   }
+  if (hintShown()) placeHint(w);
   if (tour.on) {
     // Centred at the bottom of the canvas left of the panel.
     const cardW = Math.min(TOUR_WIDTH, w - panelRoom() - 2 * PANEL_MARGIN);
@@ -3643,17 +3646,19 @@ const hasTextSelection = () => (window.getSelection()?.toString() ?? '') !== '';
 
 // ---------------------------------------------------------------- tips
 
-// A tip about a feature (tips.js), in a small pill at the bottom, once the
-// reader has not clicked, pressed a key or scrolled for TIP_IDLE_MS (a
-// moving pointer does not count, so it comes while the reader looks the
-// diagram over): unseen tips first, then round the list. It goes after
-// TIP_SHOW_MS, or at the next click, key or scroll. Not during the tour, the
-// palette, the join box or an open menu. × turns tips off (⋯ › Tips turns
-// them on again). Which tips were seen, the last one shown and whether tips
-// are off are kept in this browser's storage, so a visit goes on round the
-// list where the last one stopped; without storage tips still work.
-const TIP_IDLE_MS = 15000;
-const TIP_SHOW_MS = 8000;
+// A tip about a feature (tips.js), in a small pill beside the "?" at the
+// bottom left, where help already is, so it reads as an aside rather than
+// news. One comes TIP_OPEN_MS after the file opens and when the reader
+// moves to another view, at most one every TIP_GAP_MS, and goes after
+// TIP_SHOW_MS: unseen tips first, then round the list. None during the
+// tour, the palette, the join box or an open menu. × turns tips off
+// (⋯ › Tips turns them on again). Which tips were seen, the last one shown
+// and whether tips are off are kept in this browser's storage, so a visit
+// goes on round the list where the last one stopped; without storage tips
+// still work.
+const TIP_OPEN_MS = 1500;
+const TIP_GAP_MS = 60000;
+const TIP_SHOW_MS = 10000;
 const TIPS_KEY = 'open-erd:tips';
 const TIP_FEATURES = { tour: TOUR_STEPS.length >= 2, pii: PII.total > 0, health: HEALTH.length > 0, central: CENTRAL_TOTAL > 0 };
 const TIPS = tipList(MOD_KEY).filter((t) => t.needs === null || TIP_FEATURES[t.needs]);
@@ -3664,7 +3669,7 @@ const tipsSaved = (() => {
     return {};
   }
 })();
-const tips = { off: tipsSaved.off === true, seen: Array.isArray(tipsSaved.seen) ? tipsSaved.seen : [], last: typeof tipsSaved.last === 'string' ? tipsSaved.last : null, idle: 0, hide: 0 };
+const tips = { off: tipsSaved.off === true, seen: Array.isArray(tipsSaved.seen) ? tipsSaved.seen : [], last: typeof tipsSaved.last === 'string' ? tipsSaved.last : null, shownAt: -Infinity, hide: 0 };
 function saveTips() {
   try {
     localStorage.setItem(TIPS_KEY, JSON.stringify({ off: tips.off, seen: tips.seen, last: tips.last }));
@@ -3676,9 +3681,11 @@ const hint = overlay('oe-hint-host');
 hint.fo.style.display = 'none';
 const hintShown = () => hint.fo.style.display !== 'none';
 function showHint() {
-  if (tips.off || tour.on || spotlightOpen() || joinSpotOpen() || openMenu() || document.hidden) return armHint();
+  if (tips.off || tour.on || spotlightOpen() || joinSpotOpen() || openMenu() || document.hidden) return;
+  if (performance.now() - tips.shownAt < TIP_GAP_MS) return;
   const t = nextTip(TIPS, tips.seen, tips.last);
   if (!t) return;
+  tips.shownAt = performance.now();
   tips.last = t.id;
   if (!tips.seen.includes(t.id)) tips.seen.push(t.id);
   saveTips();
@@ -3690,14 +3697,7 @@ function showHint() {
     ]),
   );
   hint.fo.style.display = '';
-  const vp = viewport();
-  hint.fo.setAttribute('width', vp.w);
-  hint.fo.setAttribute('height', 60);
-  const r = hint.div.firstChild.getBoundingClientRect();
-  hint.fo.setAttribute('x', Math.round((vp.w - r.width) / 2));
-  hint.fo.setAttribute('y', vp.h - r.height - 16);
-  hint.fo.setAttribute('width', Math.ceil(r.width) + 2);
-  hint.fo.setAttribute('height', Math.ceil(r.height) + 2);
+  layoutOverlays();
   clearTimeout(tips.hide);
   tips.hide = setTimeout(hideHint, TIP_SHOW_MS);
 }
@@ -3705,29 +3705,24 @@ function hideHint() {
   clearTimeout(tips.hide);
   hint.fo.style.display = 'none';
 }
-function armHint() {
-  clearTimeout(tips.idle);
-  if (!tips.off) tips.idle = setTimeout(showHint, TIP_IDLE_MS);
-}
 function setTipsOff(off) {
   tips.off = off;
   saveTips();
   hideHint();
-  armHint();
   if (off) showToast('Tips are off: ⋯ › Tips turns them on again');
 }
-for (const type of ['pointerdown', 'keydown', 'wheel']) {
-  window.addEventListener(
-    type,
-    (e) => {
-      if (hint.div.contains(e.target)) return;
-      if (hintShown()) hideHint();
-      armHint();
-    },
-    { capture: true, passive: true },
-  );
+// Beside the "?", vertically centred on it (see layoutOverlays).
+function placeHint(w) {
+  hint.fo.setAttribute('width', w);
+  hint.fo.setAttribute('height', 60);
+  const r = hint.div.firstChild.getBoundingClientRect();
+  const button = help.div.firstChild.getBoundingClientRect();
+  hint.fo.setAttribute('x', Math.round(button.right + 8));
+  hint.fo.setAttribute('y', Math.round(button.top + button.height / 2 - r.height / 2));
+  hint.fo.setAttribute('width', Math.ceil(r.width) + 2);
+  hint.fo.setAttribute('height', Math.ceil(r.height) + 2);
 }
-armHint();
+setTimeout(showHint, TIP_OPEN_MS);
 
 document.addEventListener('keydown', (e) => {
   const find = (e.key === 'f' || e.key === 'F') && (IS_MAC ? e.metaKey : e.ctrlKey) && !e.altKey && !e.shiftKey;

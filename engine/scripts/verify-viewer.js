@@ -104,6 +104,16 @@ const visible = `[...document.querySelectorAll('g.view')].find((v) => v.style.di
 const inView = (sel) => `${visible}.querySelector(${JSON.stringify(sel)})`;
 const viewIs = (name) => `${visible}.getAttribute('data-view') === ${JSON.stringify(name)}`;
 
+// Tips: a tip (unseen first: the search one) shows beside the "?" soon
+// after the file opens, vertically centred on it.
+{
+  await pause(2200);
+  await shot('tip-on-open', `(() => { const t = document.querySelector('.oe-hint'); const q = document.querySelector('.oe-help');
+    if (!t || t.closest('foreignObject').style.display === 'none') return 'no tip';
+    const a = t.getBoundingClientRect(); const b = q.getBoundingClientRect();
+    return (t.querySelector('kbd')?.textContent.endsWith('K') && a.left >= b.right && Math.abs(a.top + a.height / 2 - (b.top + b.height / 2)) < 2) || { tip: [a.left, a.top, a.height], help: [b.right, b.top, b.height] }; })()`);
+}
+
 // Toolbar menus: the button of a dropdown and an item of its menu by the
 // start of its label (`db` for the breadcrumb's database switcher,
 // `highlight`, `more`).
@@ -1655,21 +1665,6 @@ await key('Escape');
   await shot('shift-click-removes', `${inView(`.table.selected[data-id="${other}"]`)} !== null && location.hash === ${JSON.stringify(formatHash([['view', startView], ['table', other]]))}`);
   await open(both);
   await shot('deep-link-picked-tables', `${viewIs(startView)} && ${twoLit}`);
-}
-
-// Tips: left idle, a tip shows in a pill at the bottom (unseen first: the
-// search one); a key press hides it. Nothing else may be open meanwhile.
-{
-  const hintHost = `document.querySelector('.oe-hint-host')?.closest('foreignObject')`;
-  await key('Escape');
-  // Moving the pointer over the diagram does not hold the tip back.
-  for (let i = 0; i < 8; i++) {
-    await mouse('mouseMoved', { x: 400 + i * 20, y: 400 });
-    await pause(2000);
-  }
-  await shot('tip-after-idle', `${hintHost}?.style.display === '' && document.querySelector('.oe-hint kbd')?.textContent.endsWith('K') && document.querySelector('.oe-hint-label').textContent === 'Tip'`);
-  await key('Shift', 'ShiftLeft');
-  await shot('tip-hides-on-key', `${hintHost}.style.display === 'none'`);
 }
 
 // Without script the file must still show the static overview.
