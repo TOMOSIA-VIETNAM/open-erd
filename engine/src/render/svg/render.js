@@ -421,8 +421,10 @@ const DIFF_STYLE = [
   `.changes-mode .view:not(.dimmed) :is(.table, .stub, .poly, .domain, .relation-group):not(${Object.keys(DIFF_COLORS).map((s) => `.diff-${s}`).join(', ')}, .near-change) { opacity: 0.16; }`,
   '.changes-mode .view:not(.dimmed) :is(.table, .stub, .poly).near-change { opacity: 0.55; }',
   ...Object.entries(DIFF_COLORS).map(([status, c]) => `.oe-badge.diff-${status} { background: ${c.fill}; color: ${c.stroke}; font-weight: 700; }`),
-  '.diff-mode .relation-group:not(.diff-added, .diff-removed, .diff-changed) :is(.relation, .marker) { stroke: #c3cad5; stroke-dasharray: none; }',
-  '.diff-mode .relation-group:not(.diff-added, .diff-removed, .diff-changed) .edge-label text { fill: #9aa4b5; }',
+  // Lines the diff did not change go grey, except in Review mode, which
+  // colours every line by its review state.
+  '.diff-mode:not(.review-mode) .relation-group:not(.diff-added, .diff-removed, .diff-changed) :is(.relation, .marker) { stroke: #c3cad5; stroke-dasharray: none; }',
+  '.diff-mode:not(.review-mode) .relation-group:not(.diff-added, .diff-removed, .diff-changed) .edge-label text { fill: #9aa4b5; }',
   '.banner-box { fill: #ffffff; stroke: #94a0b2; stroke-width: 1.2; }',
   `.banner-title { font-size: ${BANNER_TITLE_FONT.size}px; font-weight: ${BANNER_TITLE_FONT.weight}; fill: #172033; }`,
   `.banner-summary { font-size: ${BANNER_SUMMARY_FONT.size}px; font-weight: ${BANNER_SUMMARY_FONT.weight}; fill: #2a3546; }`,

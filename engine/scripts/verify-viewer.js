@@ -802,7 +802,7 @@ if (await evaluate(`document.querySelector('g.view[data-view="all"]') !== null`)
     );
     await click(`document.querySelector('.oe-review-chip .oe-chip-close')`);
     await shot('review-mode-off', `!document.documentElement.classList.contains('review-mode') && document.querySelector('.oe-review-chip').closest('foreignObject').style.display === 'none' && ${legendHost}.querySelector('.oe-legend .review-icon') === null`);
-    if (pending) failures.push(...(await evaluate(`getComputedStyle(${inView('.relation-group.review-pending:not(.kind-view_source) path.relation')}).stroke === 'rgb(107, 119, 138)'`) ? [] : ['review mode off: pending line is not neutral']));
+    if (pending) failures.push(...(await evaluate(`getComputedStyle(${inView('.relation-group.review-pending:not(.kind-view_source) path.relation')}).stroke === '${isDiff ? 'rgb(195, 202, 213)' : 'rgb(107, 119, 138)'}'`) ? [] : ['review mode off: pending line is not neutral']));
   }
   // A cross-DB line names both databases; its panel names both with their engines.
   const cross = await evaluate(`${inView('.relation-group.kind-cross_db')}?.getAttribute('data-id') ?? null`);
@@ -978,6 +978,11 @@ if (grouped) {
       return c.querySelector('.cluster-label').textContent.endsWith('(collapsed)') && tables.every((g) => getComputedStyle(g).display === 'none') && /\\d+ links? hidden/.test(c.querySelector('.fold-badge')?.textContent ?? '') && ${others} === ${JSON.stringify(before)}
         && /V/.test(c.querySelector('.fold-toggle .fold-sign').getAttribute('d')) && c.querySelector('.fold-hit title').textContent === 'Expand group' && getComputedStyle(c.querySelector('.fold-hit')).cursor === 'pointer'; })()`,
   );
+  // The address names the folded domain; opened again, it is folded.
+  const foldedHash = await evaluate('location.hash');
+  await shot('link-folded', `new URLSearchParams(location.hash.slice(1)).get('folded') === ${JSON.stringify(fold)}`);
+  await open(foldedHash);
+  await shot('link-folded-reopens', `location.hash === ${JSON.stringify(foldedHash)} && ${inView(`.cluster[data-cluster="${fold}"]`)}.classList.contains('folded')`);
   await choose('more', 'Expand all');
   await shot('domains-expanded', `${visible}.querySelectorAll('.oe-hidden').length === 0 && ${visible}.querySelector('.fold-badge') === null && [...${visible}.querySelectorAll('.fold-sign')].every((p) => !/V/.test(p.getAttribute('d')))`);
   await choose('more', 'Collapse all');

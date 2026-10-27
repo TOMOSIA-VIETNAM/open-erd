@@ -2,6 +2,7 @@
 // viewer writes it from what is on screen and opens it back. Keys, in the
 // order the viewer writes them:
 //   view       a view: all, overview, ranking, domain:<db>/<domain>
+//   folded     the domains folded in that view: <db>/<domain>,...
 //   related    the table (or polymorphic node) a view of related tables is
 //              built around, with `hops` (1 or 2)
 //   path       a join path through the tables listed, with `option` (the

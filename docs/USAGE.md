@@ -69,6 +69,7 @@ table are left out (a link with none opens as usual).
 | Pair | Opens |
 |---|---|
 | `view=<view>` | A view: `all`, `overview`, `ranking`, `domain:<db>/<domain>`. With a selection after it, the selection is shown in that view when the view draws it, else in its usual view. |
+| `folded=<db>/<domain>,...` | After `view=`: those domain frames folded in that view, as their +/− toggle or ⋯ › Collapse all leaves them. A domain holding what the link selects stays open. |
 | `related=<id>&hops=<1\|2>` | The tables related to that table (or polymorphic node), as a double-click or Related › Direct / +1 level shows them. |
 | `path=<id>,<id>,...&option=<n>` | A join path, as the Join path panel shows it. Two tables: the cheapest paths between them, `option` picking the n-th (from 1). More: the cheapest path between each table and the next, end to end (a direct relation, when there is one, is always the cheapest). When no relations join two neighbours, the tables are lit as with `tables=`. |
 | `tables=<id>,<id>,...` | Those tables lit and the rest faded, zoomed to fit them, with a panel listing them (Shift-click writes it): in all tables, else the smallest domain view holding them all, else the first table's domain with a note on how many are elsewhere. Esc or a click on empty space clears it. |

@@ -121,8 +121,8 @@ text { font-family: 'Inter', sans-serif; font-kerning: none; font-variant-ligatu
 .oe-badge.diff-removed { background: #fff5f5; color: #e03131; font-weight: 700; }
 .oe-badge.diff-changed { background: #fff4e6; color: #f08c00; font-weight: 700; }
 .oe-badge.diff-renamed { background: #e7f5ff; color: #1c7ed6; font-weight: 700; }
-.diff-mode .relation-group:not(.diff-added, .diff-removed, .diff-changed) :is(.relation, .marker) { stroke: #c3cad5; stroke-dasharray: none; }
-.diff-mode .relation-group:not(.diff-added, .diff-removed, .diff-changed) .edge-label text { fill: #9aa4b5; }
+.diff-mode:not(.review-mode) .relation-group:not(.diff-added, .diff-removed, .diff-changed) :is(.relation, .marker) { stroke: #c3cad5; stroke-dasharray: none; }
+.diff-mode:not(.review-mode) .relation-group:not(.diff-added, .diff-removed, .diff-changed) .edge-label text { fill: #9aa4b5; }
 .banner-box { fill: #ffffff; stroke: #94a0b2; stroke-width: 1.2; }
 .banner-title { font-size: 15px; font-weight: 700; fill: #172033; }
 .banner-summary { font-size: 13px; font-weight: 400; fill: #2a3546; }
@@ -1575,6 +1575,7 @@ Central: spree_stores</title><rect class="card-box" x="1090" y="570" width="300"
     }
     collapsed.set(name, shut);
     applyCollapse(name);
+    syncHash();
   }
   function unfoldFor(id) {
     if (collapsedIn(state.view).has(clusterOf(id))) setCollapsed(state.view, [clusterOf(id)], false);
@@ -2457,7 +2458,10 @@ ${new XMLSerializer().serializeToString(root)}
       if (join.index > 0) pairs.push(["option", String(join.index + 1)]);
     } else {
       if (state.view === NEIGHBORHOOD) pairs.push(["related", state.center], ["hops", String(state.hops)]);
-      else if (linkableView(state.view)) pairs.push(["view", state.view]);
+      else if (linkableView(state.view)) {
+        pairs.push(["view", state.view]);
+        if (collapsedIn(state.view).size > 0) pairs.push(["folded", [...collapsedIn(state.view)].sort()]);
+      }
       const view = currentView();
       const node = view.querySelector(".selected[data-id]")?.getAttribute("data-id");
       const line = view.querySelector(".relation-group.flowing, .hub-route.flowing")?.getAttribute("data-id");
@@ -2495,7 +2499,19 @@ ${new XMLSerializer().serializeToString(root)}
     if (!parsed2) return false;
     const p = parsed2.params;
     if (p.highlight) setHighlights(p.highlight.ids);
-    return openLinkTarget(p) || Boolean(p.highlight);
+    const opened = openLinkTarget(p);
+    if (p.folded && state.view === p.view?.value) foldLinked(p.folded.ids);
+    return opened || Boolean(p.highlight);
+  }
+  function foldLinked(keys) {
+    const view = currentView();
+    const open = new Set([...view.querySelectorAll(".selected[data-id], .table.hl[data-id]")].map((g) => clusterOf(g.getAttribute("data-id"))));
+    const known = new Set(clusterGroups(view).map(keyOf));
+    const shut = keys.filter((k) => known.has(k) && !open.has(k));
+    if (shut.length === 0) return;
+    collapsed.set(state.view, new Set(shut));
+    applyCollapse(state.view);
+    syncHash();
   }
   function linkedNode(p) {
     if (p.column) {

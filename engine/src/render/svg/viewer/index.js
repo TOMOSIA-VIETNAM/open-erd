@@ -478,6 +478,7 @@ function setCollapsed(name, keys, fold) {
   }
   collapsed.set(name, shut);
   applyCollapse(name);
+  syncHash();
 }
 
 /** Opens the folded domain holding `id` in the current view, if any. */
@@ -1575,7 +1576,8 @@ for (const slot of ['from', 'to']) {
 // ---------------------------------------------------------------- deep links
 
 // The address is a link to what is on screen (keys in deep-link.js): the
-// view, or the view of related tables or the join path, then the selection
+// view (with the domains folded in it), or the view of related tables or the
+// join path, then the selection
 // in it (several tables, a table, a column, a line, the relations between
 // two domains) and the highlight modes on. Every change on screen writes it again (replaceState: Back does not
 // walk through selections), so the address bar can be copied as it is;
@@ -1593,7 +1595,10 @@ function linkPairs() {
     if (join.index > 0) pairs.push(['option', String(join.index + 1)]);
   } else {
     if (state.view === NEIGHBORHOOD) pairs.push(['related', state.center], ['hops', String(state.hops)]);
-    else if (linkableView(state.view)) pairs.push(['view', state.view]);
+    else if (linkableView(state.view)) {
+      pairs.push(['view', state.view]);
+      if (collapsedIn(state.view).size > 0) pairs.push(['folded', [...collapsedIn(state.view)].sort()]);
+    }
     const view = currentView();
     const node = view.querySelector('.selected[data-id]')?.getAttribute('data-id');
     const line = view.querySelector('.relation-group.flowing, .hub-route.flowing')?.getAttribute('data-id');
@@ -1636,7 +1641,21 @@ function openDeepLink(hash) {
   if (!parsed) return false;
   const p = parsed.params;
   if (p.highlight) setHighlights(p.highlight.ids);
-  return openLinkTarget(p) || Boolean(p.highlight);
+  const opened = openLinkTarget(p);
+  if (p.folded && state.view === p.view?.value) foldLinked(p.folded.ids);
+  return opened || Boolean(p.highlight);
+}
+// Folds the domains a link names in the view on screen, except those
+// holding what the link selects, which stays in sight.
+function foldLinked(keys) {
+  const view = currentView();
+  const open = new Set([...view.querySelectorAll('.selected[data-id], .table.hl[data-id]')].map((g) => clusterOf(g.getAttribute('data-id'))));
+  const known = new Set(clusterGroups(view).map(keyOf));
+  const shut = keys.filter((k) => known.has(k) && !open.has(k));
+  if (shut.length === 0) return;
+  collapsed.set(state.view, new Set(shut));
+  applyCollapse(state.view);
+  syncHash();
 }
 // The table (or polymorphic node) a link selects, and its open column.
 function linkedNode(p) {
