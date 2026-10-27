@@ -1793,6 +1793,30 @@ await key('Escape');
   await shot('link-camera-dropped', `!location.hash.includes('&at=')`);
 }
 
+// What the link leaves out on purpose leaves the address as it was: the
+// legend folded and back, the shortcut list, the search. The tour moves
+// through domain views, each step in the address; Esc puts both back.
+{
+  await open(formatHash([['view', startView]]));
+  const still = await evaluate('location.hash');
+  await key('l', 'KeyL');
+  await key('l', 'KeyL');
+  await key('?', 'Slash');
+  await key('Escape');
+  await findKey();
+  await key('Escape');
+  await pause(600);
+  await shot('link-transient-unchanged', `location.hash === ${JSON.stringify(still)}`);
+  await key('t', 'KeyT');
+  await pause(600);
+  if (await evaluate(`document.querySelector('.oe-tour')?.closest('foreignObject').style.display !== 'none'`)) {
+    await shot('link-tour-step', `decodeURIComponent(location.hash.split('&')[0].slice('#view='.length)) === ${visible}.getAttribute('data-view') && ${visible}.getAttribute('data-view').startsWith('domain:')`);
+    await key('Escape');
+    await pause(600);
+    await shot('link-tour-ended', `location.hash === ${JSON.stringify(still)}`);
+  }
+}
+
 // Without script the file must still show the static overview.
 await send('Emulation.setScriptExecutionDisabled', { value: true });
 const reloaded = once('Page.loadEventFired');
