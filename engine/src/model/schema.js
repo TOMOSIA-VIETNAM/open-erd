@@ -288,6 +288,14 @@ const profileFields = {
 // constraint); `full` also has that agent re-read the facts scripts
 // extracted.
 export const VERIFY_MODES = ['full', 'ai-only', 'off'];
+// Switches of the whole-schema views (`views` in open-erd.yaml): the view of
+// all tables is `auto` (drawn up to ALL_VIEW_MAX_TABLES tables, see
+// layout/views.js), `on` (always, however long its lines take to route) or
+// `off`; the ranking is `on` or `off`. The overview is always drawn: it is
+// the way into the domain views.
+export const ALL_VIEW_SWITCHES = ['auto', 'on', 'off'];
+export const VIEW_SWITCHES = ['on', 'off'];
+export const VIEWS_DEFAULTS = { all: 'auto', ranking: 'on' };
 export const VERIFY_DEFAULT = 'ai-only';
 
 // Schema health checks (see model/health.js), each with the severity its
@@ -365,6 +373,15 @@ export const configSchema = {
     // overview with a warning; left out, a schema without the view of all
     // tables opens on the overview silently.
     default_view: { type: 'string', pattern: DEFAULT_VIEW_PATTERN, hint: 'all, overview, ranking or domain:<db>/<domain>' },
+    // Which whole-schema views a render draws, see ALL_VIEW_SWITCHES;
+    // VIEWS_DEFAULTS for what is left out.
+    views: {
+      type: 'object',
+      fields: {
+        all: { type: 'string', oneOf: ALL_VIEW_SWITCHES },
+        ranking: { type: 'string', oneOf: VIEW_SWITCHES },
+      },
+    },
     // Checking before a commit, see VERIFY_MODES; VERIFY_DEFAULT when left out.
     verify: { type: 'string', oneOf: VERIFY_MODES },
     // Tables the extract facts list that the model leaves out on purpose

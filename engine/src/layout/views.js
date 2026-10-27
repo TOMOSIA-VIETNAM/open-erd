@@ -42,11 +42,12 @@ const CARD_GAP = 50;
 // 150 tables, about 15 s at 300, 90 s at 500 and five minutes at 1000), and
 // at that size it is a canvas nobody reads as a whole: the overview, the
 // domain views and the neighborhood view (built from the domain views)
-// remain.
+// remain. `views.all` in open-erd.yaml forces it on or off.
 export const ALL_VIEW_MAX_TABLES = 300;
 
-/** Whether the diagram is small enough to get the view of all tables. */
+/** Whether the diagram gets the view of all tables: as configured, else when small enough. */
 export function hasAllView(diagram) {
+  if (diagram.views.all !== 'auto') return diagram.views.all === 'on';
   let tables = 0;
   for (const n of diagram.nodes.values()) if (n.kind === 'table') tables += 1;
   return tables <= ALL_VIEW_MAX_TABLES;

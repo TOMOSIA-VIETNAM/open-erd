@@ -21,7 +21,7 @@ export function tipList(mod) {
     { id: 'pii', parts: ['Press ', { key: 'P' }, ' to see where personal data lives'], needs: 'pii' },
     { id: 'health', parts: ['Press ', { key: 'H' }, ' for schema health: missing keys and indexes'], needs: 'health' },
     { id: 'central', parts: ['Press ', { key: 'S' }, ' to mark the most connected table of each domain'], needs: 'central' },
-    { id: 'ranking', parts: ['Ranking lists the tables the rest of the schema leans on most'], needs: null },
+    { id: 'ranking', parts: ['Ranking lists the tables the rest of the schema leans on most'], needs: 'ranking' },
     { id: 'link', parts: ['The address follows your selection: copy it to share what you see'], needs: null },
     { id: 'keys', parts: ['Press ', { key: '?' }, ' for every keyboard shortcut'], needs: null },
   ];

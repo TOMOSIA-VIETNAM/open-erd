@@ -1299,8 +1299,8 @@ export function viewerData(model, diagram, diff = null, warnings = missingRelati
   };
 }
 
-/** Every view a render draws: the laid-out ones, then the ranking. */
-export const renderedViews = (diagram) => [...viewNames(diagram), RANKING_VIEW];
+/** Every view a render draws: the laid-out ones, then the ranking unless switched off. */
+export const renderedViews = (diagram) => [...viewNames(diagram), ...(diagram.views.ranking === 'on' ? [RANKING_VIEW] : [])];
 
 /**
  * The view a plain render opens on and draws without script: the
@@ -1358,13 +1358,13 @@ export function renderSvg(model, layout, options = {}) {
   // Indices past the palette cycle, which only happens once every tint is taken.
   const colorOf = (key) => PALETTE[layout.colors[key] % PALETTE.length];
   const columnWarnings = warningsByTable(warnings).columns;
-  const ranking = rankingSvg(rankingTables(diagram, referenceCounts(model)));
+  const ranking = renderedViews(diagram).includes(RANKING_VIEW) ? rankingSvg(rankingTables(diagram, referenceCounts(model))) : null;
   const { x, y, w, h } = visible === RANKING_VIEW ? ranking.bounds : scenes.find((s) => s.scene.name === visible).scene.bounds;
   return [
     `<svg xmlns="http://www.w3.org/2000/svg"${diff ? ` class="diff-mode${changed ? ' changes-mode' : ''}"` : ''} width="${w}" height="${h}" viewBox="${x} ${y} ${w} ${h}">`,
     `<style>${STYLE}</style>`,
     ...scenes.map((s) => viewSvg(s.scene, colorOf, s.scene.name === visible, marks, s.banner, columnWarnings)),
-    viewGroup(RANKING_VIEW, ranking.bounds, visible === RANKING_VIEW, [ranking.svg]),
+    ranking ? viewGroup(RANKING_VIEW, ranking.bounds, visible === RANKING_VIEW, [ranking.svg]) : '',
     `<script type="application/json" id="open-erd-data">${scriptJson(viewerData(model, diagram, diff, warnings, health))}</script>`,
     `<script><![CDATA[\n${VIEWER_SCRIPT}\n]]></script>`,
     '</svg>',

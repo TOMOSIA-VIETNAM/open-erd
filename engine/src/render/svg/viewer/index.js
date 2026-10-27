@@ -892,7 +892,8 @@ const hopButtons = relatedButtons((hops) => openNeighborhood(state.center, hops)
 const hopGroup = el('div', { class: 'oe-related', title: RELATED.title }, [el('span', { text: RELATED.label }), el('div', { class: 'oe-seg' }, hopButtons)]);
 // The three ways to look at the whole schema, always on the toolbar: every
 // table, the domain cards (Map) and the tables ranked by references (Ranking). A
-// schema too large for the view of all tables has no first one.
+// schema too large for the view of all tables has no first one, and `views`
+// in open-erd.yaml can switch the first and the last off.
 // Narrow windows show the icons only (their tooltips name them).
 const VIEW_TABS = [
   [ALL_VIEW, 'table', 'All tables', `Every table of every domain (${MOD_KEY}A)`, `${MOD_KEY}A`],
@@ -3926,7 +3927,7 @@ const TIP_OPEN_MS = 1500;
 const TIP_GAP_MS = 60000;
 const TIP_SHOW_MS = 10000;
 const TIPS_KEY = 'open-erd:tips';
-const TIP_FEATURES = { tour: TOUR_STEPS.length >= 2, pii: PII.total > 0, health: HEALTH.length > 0, central: CENTRAL_TOTAL > 0 };
+const TIP_FEATURES = { tour: TOUR_STEPS.length >= 2, pii: PII.total > 0, health: HEALTH.length > 0, central: CENTRAL_TOTAL > 0, ranking: views.has(RANKING) };
 const TIPS = tipList(MOD_KEY).filter((t) => t.needs === null || TIP_FEATURES[t.needs]);
 const tipsSaved = (() => {
   try {

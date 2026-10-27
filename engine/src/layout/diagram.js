@@ -1,6 +1,7 @@
 import { centralTables } from '../model/centrality.js';
 import { TIMESTAMP_TYPE } from '../model/columns.js';
 import { compareStrings } from '../model/load.js';
+import { VIEWS_DEFAULTS } from '../model/schema.js';
 import { clusterKey } from './clusters.js';
 import { polyBox, tableBox } from './table-box.js';
 
@@ -216,6 +217,8 @@ function polyLink(a) {
  * mostCentral: id of the drawn table with the highest centrality score (ties
  *   by id), where the viewer opens the view of all tables; null when no
  *   table has a link
+ * views: the whole-schema view switches, `views` of open-erd.yaml over
+ *   VIEWS_DEFAULTS
  */
 export function buildDiagram(model) {
   const hubRelations = badgeRelations(model);
@@ -268,7 +271,8 @@ export function buildDiagram(model) {
     .map((t) => t.id)
     .filter((id) => centrality.scores.get(id) > 0)
     .sort((a, b) => centrality.scores.get(b) - centrality.scores.get(a) || compareStrings(a, b));
-  return { nodes, links, hubLinks, clusters: new Map([...clusters].sort(([a], [b]) => compareStrings(a, b))), centralOf, mostCentral };
+  const views = { ...VIEWS_DEFAULTS, ...model.config.views };
+  return { nodes, links, hubLinks, clusters: new Map([...clusters].sort(([a], [b]) => compareStrings(a, b))), centralOf, mostCentral, views };
 }
 
 /** Id of the pair of domains `a` and `b`, whatever their order (`a<->a` for a domain with itself). */

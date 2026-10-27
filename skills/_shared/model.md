@@ -47,6 +47,9 @@ health:                      # schema health findings to stop reporting
     - unindexed_fk:billing.public.audit_logs          # <rule>:<table id>, whole table
     - missing_fk:billing.public.payments.order_id     # <rule>:<table id>.<column>, that column only
 default_view: all            # all (default) | overview | ranking | domain:<db>/<domain>; the view the SVG opens on
+views:                       # whole-schema views drawn besides the overview (always drawn)
+  all: auto                  # auto (default): only up to 300 tables | on | off
+  ranking: on                # on (default) | off
 verify: ai-only              # ai-only (default) | full | off; checking before each commit, see rules.md "Verification"
 not_in_model:                # tables the extract facts list that the model leaves out on purpose; `verify` skips them
   - billing.public.schema_migrations   # framework table
@@ -91,6 +94,10 @@ Left out, `default_view` is `all`; a schema over 300 tables has no view of
 all tables and opens on the overview. A configured `default_view` the render
 has no such view for (the view of all tables above 300 tables; a domain a
 profile hides) falls back to the overview, with a warning from `render`.
+`views.all: on` draws the view of all tables at any size: routing its lines
+takes much longer above 300 tables (about 80 s at 350 tables instead of
+under 20 s without it) and the view is too dense to read unzoomed. Set it
+only when the user asks for it.
 
 A hub is only for references that cut across every domain: audit columns
 (`created_by`, `updated_by`), tenant or company scoping (`tenant_id`,

@@ -405,6 +405,17 @@ test('the view of all tables exists up to ALL_VIEW_MAX_TABLES tables', async () 
   assert.deepEqual(viewNames(sized(ALL_VIEW_MAX_TABLES + 1)), ['overview', 'domain:shop/Bulk']);
 });
 
+test('views in open-erd.yaml switch the view of all tables and the ranking', async () => {
+  const base = await loadMulti();
+  const sized = (n, views) =>
+    buildDiagram(normalizeModel({ ...base, config: { ...base.config, views }, relations: [], polymorphic: [], tables: Array.from({ length: n }, (_, i) => table(`shop._.t${i}`, 'Bulk', [])) }));
+  assert.ok(viewNames(sized(ALL_VIEW_MAX_TABLES + 1, { all: 'on' })).includes(ALL_VIEW));
+  assert.deepEqual(viewNames(sized(3, { all: 'off' })), ['overview', 'domain:shop/Bulk']);
+  assert.match((await multi()).svg, /<g class="view[^"]*" data-view="ranking"/);
+  const { svg } = await multi(withConfig({ views: { ranking: 'off' } }));
+  assert.doesNotMatch(svg, /data-view="ranking"/);
+});
+
 // One domain (Core) referenced by many tables of another (Sales) and by
 // one table of a third (Ops).
 function crowded(extra = []) {
