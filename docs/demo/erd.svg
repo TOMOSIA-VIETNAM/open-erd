@@ -928,8 +928,9 @@ Central: spree_stores</title><rect class="card-box" x="1090" y="570" width="300"
 
   // src/render/svg/viewer/deep-link.js
   var encodeValue = (value) => value.replace(/[^A-Za-z0-9_./:,-]/g, encodeURIComponent);
+  var encodeItem = (item) => item.replace(/[^A-Za-z0-9_./:-]/g, encodeURIComponent);
   function formatHash(pairs) {
-    return `#${pairs.map(([key, value]) => `${key}=${encodeValue(value)}`).join("&")}`;
+    return `#${pairs.map(([key, value]) => `${key}=${Array.isArray(value) ? value.map(encodeItem).join(",") : encodeValue(value)}`).join("&")}`;
   }
   var listOf = (raw) => [...new Set(raw.split(",").map((s) => decodeURIComponent(s).trim()).filter(Boolean))];
   function parseHash(hash) {
@@ -2464,6 +2465,7 @@ ${new XMLSerializer().serializeToString(root)}
       else if (node && linkColumn) pairs.push(["column", `${node}.${linkColumn}`]);
       else if (node && !(state.view === NEIGHBORHOOD && node === state.center)) pairs.push(["table", node]);
       else if (line) pairs.push(["line", line]);
+      else if (domainLinkShown()) pairs.push(["between", domainLink.pair]);
     }
     const modes = highlightModes().filter((m) => m.on).map((m) => m.id);
     if (modes.length > 0 || CHANGES) pairs.push(["highlight", modes.join(",")]);
@@ -2550,9 +2552,15 @@ ${new XMLSerializer().serializeToString(root)}
     }
     if (p.line) {
       const link2 = data.links.find((l) => l.id === p.line.value) ?? data.hubLinks.find((l) => l.id === p.line.value);
-      if (!link2) return false;
+      if (!link2 && !view) return false;
       navigate(view ?? (views.has(ALL_VIEW) ? ALL_VIEW : homeView(link2.from)));
       return selectLinked(p);
+    }
+    const [a, b] = p.between?.ids ?? [];
+    if (data.domainLinks[pairId(a, b)]) {
+      navigate(view ?? OVERVIEW);
+      showDomainLink(a, b);
+      return true;
     }
     if (view) {
       navigate(view);
@@ -2912,6 +2920,14 @@ ${new XMLSerializer().serializeToString(root)}
       ...byDirection(a, b).filter((d) => d.relations.length > 0).map((d) => el("div", { class: "oe-chip-group" }, [el("div", { class: "sub", text: `${domainName(d.from)} → ${domainName(d.to)} (${d.relations.length})` }), el("div", { class: "oe-chipbox" }, chips(d.relations))]))
     ];
   }
+  var domainLink = null;
+  function showDomainLink(a, b) {
+    const children = domainLinkPanel(a, b);
+    domainLink = { pair: [a, b], first: children[0] };
+    showPanel(children);
+    syncHash();
+  }
+  var domainLinkShown = () => domainLink !== null && panel.fo.style.display !== "none" && panel.div.contains(domainLink.first);
   function groupLinePanel(g) {
     const key = g.getAttribute("data-group");
     const tables = JSON.parse(g.getAttribute("data-tables"));
@@ -4047,7 +4063,7 @@ ${new XMLSerializer().serializeToString(root)}
     const domain = t.closest(".domain");
     if (domain) return navigate(domainView(domain.getAttribute("data-domain")));
     const pair = t.closest(".card-link");
-    if (pair) return showPanel(domainLinkPanel(pair.getAttribute("data-from"), pair.getAttribute("data-to")));
+    if (pair) return showDomainLink(pair.getAttribute("data-from"), pair.getAttribute("data-to"));
     const groupRow = t.closest(".group-row[data-table]");
     if (groupRow) return navigate(homeView(groupRow.getAttribute("data-table")), { focus: groupRow.getAttribute("data-table") });
     const group = t.closest(".group-stub");

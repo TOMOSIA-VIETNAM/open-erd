@@ -74,7 +74,8 @@ table are left out (a link with none opens as usual).
 | `tables=<id>,<id>,...` | Those tables lit and the rest faded, zoomed to fit them, with a panel listing them (Shift-click writes it): in all tables, else the smallest domain view holding them all, else the first table's domain with a note on how many are elsewhere. Esc or a click on empty space clears it. |
 | `table=<id>` | That table (or polymorphic node), selected, with its panel. |
 | `column=<table id>.<column>` | The same, with that column unfolded in the panel. |
-| `line=<relation id>` | That relation line, selected as a click on it does, with its panel. |
+| `line=<relation id>` | That relation line, selected as a click on it does, with its panel (in a domain view, also a line standing for several tables of another domain). |
+| `between=<db>/<domain>,<db>/<domain>` | The panel listing the relations between those two domains, as a click on their connector in the overview opens it. A comma in a domain name is written `%2C`. |
 | `highlight=<mode>,<mode>` | Those highlight modes on and the others off: `changes`, `review`, `pii`, `health`, `central`. A diff's address always has it, empty when every mode is off. |
 
 For example `#view=domain:shop/Orders&table=shop.public.orders`, or

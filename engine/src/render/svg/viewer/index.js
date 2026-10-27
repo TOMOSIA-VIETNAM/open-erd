@@ -1576,8 +1576,8 @@ for (const slot of ['from', 'to']) {
 
 // The address is a link to what is on screen (keys in deep-link.js): the
 // view, or the view of related tables or the join path, then the selection
-// in it (several tables, a table, a column, a line) and the highlight modes
-// on. Every change on screen writes it again (replaceState: Back does not
+// in it (several tables, a table, a column, a line, the relations between
+// two domains) and the highlight modes on. Every change on screen writes it again (replaceState: Back does not
 // walk through selections), so the address bar can be copied as it is;
 // opening a link builds the same screen back.
 let lastHash = null;
@@ -1602,6 +1602,7 @@ function linkPairs() {
     // A neighborhood opens with its centre selected: no need to say it.
     else if (node && !(state.view === NEIGHBORHOOD && node === state.center)) pairs.push(['table', node]);
     else if (line) pairs.push(['line', line]);
+    else if (domainLinkShown()) pairs.push(['between', domainLink.pair]);
   }
   // A diff opens with Changes on: say so even when no mode is on.
   const modes = highlightModes().filter((m) => m.on).map((m) => m.id);
@@ -1695,10 +1696,17 @@ function openLinkTarget(p) {
     return selectLinked(p);
   }
   if (p.line) {
+    // A line standing for several tables is drawn in its domain view only.
     const link = data.links.find((l) => l.id === p.line.value) ?? data.hubLinks.find((l) => l.id === p.line.value);
-    if (!link) return false;
+    if (!link && !view) return false;
     navigate(view ?? (views.has(ALL_VIEW) ? ALL_VIEW : homeView(link.from)));
     return selectLinked(p);
+  }
+  const [a, b] = p.between?.ids ?? [];
+  if (data.domainLinks[pairId(a, b)]) {
+    navigate(view ?? OVERVIEW);
+    showDomainLink(a, b);
+    return true;
   }
   if (view) {
     navigate(view);
@@ -2160,6 +2168,17 @@ function domainLinkPanel(a, b) {
       .map((d) => el('div', { class: 'oe-chip-group' }, [el('div', { class: 'sub', text: `${domainName(d.from)} → ${domainName(d.to)} (${d.relations.length})` }), el('div', { class: 'oe-chipbox' }, chips(d.relations))])),
   ];
 }
+
+// The domain link panel on screen, for the link: its two domains and its
+// first element, to tell it from the panel that replaced it.
+let domainLink = null;
+function showDomainLink(a, b) {
+  const children = domainLinkPanel(a, b);
+  domainLink = { pair: [a, b], first: children[0] };
+  showPanel(children);
+  syncHash();
+}
+const domainLinkShown = () => domainLink !== null && panel.fo.style.display !== 'none' && panel.div.contains(domainLink.first);
 
 // A line of a domain view standing for several tables of another domain:
 // what it says, and those tables as chips.
@@ -3578,7 +3597,7 @@ svg.addEventListener('click', (e) => {
   const domain = t.closest('.domain');
   if (domain) return navigate(domainView(domain.getAttribute('data-domain')));
   const pair = t.closest('.card-link');
-  if (pair) return showPanel(domainLinkPanel(pair.getAttribute('data-from'), pair.getAttribute('data-to')));
+  if (pair) return showDomainLink(pair.getAttribute('data-from'), pair.getAttribute('data-to'));
   const groupRow = t.closest('.group-row[data-table]');
   if (groupRow) return navigate(homeView(groupRow.getAttribute('data-table')), { focus: groupRow.getAttribute('data-table') });
   const group = t.closest('.group-stub');

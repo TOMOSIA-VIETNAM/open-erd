@@ -35,6 +35,10 @@ test('deep link: every pair of a link, as the viewer writes it', () => {
   // A diff's link with no mode on still says so; a key written twice keeps its first value.
   assert.deepEqual(parseHash('#view=all&highlight=').params.highlight, { value: '', ids: [] });
   assert.equal(parseHash('#path=a.b.c,d.e.f&option=2&option=3').params.option.value, '2');
+  // A list value: a comma inside an item stays inside it.
+  const between = formatHash([['view', 'overview'], ['between', ['shop/Orders, Returns', 'shop/Users']]]);
+  assert.equal(between, '#view=overview&between=shop/Orders%2C%20Returns,shop/Users');
+  assert.deepEqual(parseHash(between).params.between.ids, ['shop/Orders, Returns', 'shop/Users']);
 });
 
 test('deep link: no key, no hash or broken encoding is no link', () => {

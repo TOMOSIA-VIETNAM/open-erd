@@ -262,6 +262,20 @@ await shot(
 await shot('overview-legend-folded', `document.querySelector('.oe-legend') === null && document.querySelector('.oe-legend-pill') !== null`);
 const busiest = await evaluate(`(() => { const d = ${data}; const n = (id) => Object.keys(d.domainLinks).filter((k) => { const [a, b] = k.split('<->'); return a !== b && (a === id || b === id); }).length;
   return [...${ov}.querySelectorAll('.domain')].map((c) => c.getAttribute('data-domain')).sort((a, b) => n(b) - n(a))[0]; })()`);
+// Opens the file afresh at `hash`, as a link pasted into a new tab.
+const base = pathToFileURL(resolve(input)).href;
+const open = async (hash) => {
+  const blank = once('Page.loadEventFired');
+  await send('Page.navigate', { url: 'about:blank' });
+  await blank;
+  const page = once('Page.loadEventFired');
+  await send('Page.navigate', { url: `${base}${hash}` });
+  await page;
+  await pause(500);
+};
+// A diff opens with Changes on, which its links say (highlight=changes).
+const isDiff = await evaluate(`${data}.changes !== undefined`);
+const linkOf = (pairs) => formatHash(isDiff ? [...pairs, ['highlight', 'changes']] : pairs);
 const hubCard = `${ov}.querySelector('.domain[data-domain=${JSON.stringify(busiest)}]')`;
 await mouse('mouseMoved', await centre(`${hubCard}.querySelector('.card-box')`, 'top'));
 await pause(150);
@@ -286,6 +300,13 @@ await mouse('mousePressed', onConnector);
 await mouse('mouseReleased', onConnector);
 await pause(150);
 await shot('overview-connector-panel', `document.querySelectorAll('.oe-panel .oe-chip').length === new Set(${data}.domainLinks[${JSON.stringify(pairKey)}].map((r) => r.from + ' ' + r.to)).size && document.querySelector('.oe-panel .oe-ph-sep')?.textContent === '⇄' && document.querySelectorAll('.oe-panel .oe-domain-chip').length === 2`);
+// The address names the two domains (then the modes on, which earlier
+// steps may have changed); opened again, the same panel.
+const between = formatHash([['view', 'overview'], ['between', pairEnds]]);
+await shot('link-between', `location.hash === ${JSON.stringify(between)} || location.hash.startsWith(${JSON.stringify(`${between}&highlight=`)})`);
+const betweenHash = await evaluate('location.hash');
+await open(betweenHash);
+await shot('link-between-reopens', `location.hash === ${JSON.stringify(betweenHash)} && ${viewIs('overview')} && document.querySelectorAll('.oe-panel .oe-chip').length === new Set(${data}.domainLinks[${JSON.stringify(pairKey)}].map((r) => r.from + ' ' + r.to)).size`);
 await key('Escape');
 const relatedKey = await evaluate(`${hubCard}.querySelector('.card-related').getAttribute('data-domain')`);
 // Its tooltip says what a click does.
@@ -1578,21 +1599,8 @@ await key('Escape');
 // its link into the address without adding history entries.
 {
   const linked = await evaluate(`(() => { const d = ${data}; const [id, n] = Object.entries(d.nodes).find(([, n]) => n.kind === 'table' && n.columns.length > 2); return [id, n.columns[2].name]; })()`);
-  const base = pathToFileURL(resolve(input)).href;
   // The model the viewer embeds, to pick the tables the links name.
   const model = JSON.parse(/<script type="application\/json" id="open-erd-data">([^<]*)<\/script>/.exec(await readFile(input, 'utf8'))[1]);
-  const open = async (hash) => {
-    const blank = once('Page.loadEventFired');
-    await send('Page.navigate', { url: 'about:blank' });
-    await blank;
-    const page = once('Page.loadEventFired');
-    await send('Page.navigate', { url: `${base}${hash}` });
-    await page;
-    await pause(500);
-  };
-  // A diff opens with Changes on, which its links say (highlight=changes).
-  const isDiff = await evaluate(`${data}.changes !== undefined`);
-  const linkOf = (pairs) => formatHash(isDiff ? [...pairs, ['highlight', 'changes']] : pairs);
   await open(`#table=${encodeURIComponent(linked[0])}`);
   const home = await evaluate(`document.querySelector('g.view[data-view="all"]') ? 'all' : 'domain:' + ${data}.nodes[${JSON.stringify(linked[0])}].cluster`);
   await shot('deep-link-table', `${viewIs(home)} && ${inView(`.table.selected[data-id="${linked[0]}"]`)} !== null && document.querySelector('.oe-panel .oe-ph-name')?.textContent === ${JSON.stringify(linked[0].split('.')[2])}`);
@@ -1637,14 +1645,16 @@ await key('Escape');
     await open(`#path=${through.map(encodeURIComponent).join(',')}`);
     await shot('deep-link-path-through', `document.querySelectorAll('.oe-panel .oe-paths .oe-btn').length === 1 && document.querySelectorAll('.oe-panel .oe-hops li').length === ${path.hops.length} && location.hash === ${JSON.stringify(linkOf([['path', through.join(',')]]))}`);
   }
-  // Two tables no relations join are lit instead, with a note.
+  // Two tables no relations join are lit instead, with a note, as tables
+  // selected together (their panel, their link).
   const lone = tables.find((id) => id !== tables[0] && findJoinPaths(model, tables[0], id, 1).length === 0);
   if (lone) {
     await open(`#path=${encodeURIComponent(tables[0])},${encodeURIComponent(lone)}`);
     await shot(
       'deep-link-path-gap',
       `${JSON.stringify([tables[0], lone])}.every((id) => ${visible}.querySelector('.table.hl[data-id="' + CSS.escape(id) + '"]') !== null) && ${visible}.classList.contains('dimmed')
-        && document.querySelector('.oe-panel').closest('foreignObject').style.display === 'none' && document.querySelector('.oe-toast')?.textContent.startsWith('No join path')`,
+        && document.querySelector('.oe-panel .oe-ph')?.textContent.startsWith('2 tables selected') && location.hash.includes(${JSON.stringify(`tables=${tables[0]},${lone}`)})
+        && document.querySelector('.oe-toast')?.textContent.startsWith('No join path')`,
     );
   }
   // No known table: the usual start.
@@ -1683,7 +1693,9 @@ await key('Escape');
   await shot('link-view-tab', `location.hash === ${JSON.stringify(linkOf([['view', 'overview']]))}`);
   // Double-click: the tables related to one; then another selected in it.
   await open(formatHash([['view', startView]]));
-  const hub = linked[0];
+  // A table drawn here with a relation to another table, so the view has more than its centre.
+  const hub = await evaluate(`(() => { const d = ${data}; const here = new Set([...${visible}.querySelectorAll('.table')].map((g) => g.getAttribute('data-id')));
+    return d.links.map((l) => l.from).find((id) => here.has(id) && d.links.some((l) => l.from === id && l.to !== id && d.nodes[l.to]?.kind === 'table')); })()`);
   await bringIntoView(inView(`.table[data-id="${hub}"]`));
   await click(inView(`.table[data-id="${hub}"]`), { where: 'top', count: 2 });
   await shot('link-related', `${viewIs('neighborhood')} && location.hash === ${JSON.stringify(linkOf([['related', hub], ['hops', '1']]))}`);
@@ -1692,9 +1704,13 @@ await key('Escape');
   await click(inView(`.table[data-id="${ring}"]`), { where: 'top' });
   await shot('link-related-table', `location.hash === ${JSON.stringify(linkOf([['related', hub], ['hops', '1'], ['table', ring]]))}`);
   await reopen('link-related-table-reopens', `${viewIs('neighborhood')} && ${inView(`.table.selected[data-id="${ring}"]`)} !== null`);
-  // A line clicked in it.
-  const lineId = await evaluate(`${inView('.relation-group')}.getAttribute('data-id')`);
-  await click(`${inView(`.relation-group[data-id="${lineId}"]`)}.querySelector('path.relation')`);
+  // A line clicked in it, at a spot on screen where nothing covers it.
+  const { lineId, onLine } = await evaluate(`(() => { for (const g of ${visible}.querySelectorAll('.relation-group')) { const p = g.querySelector('path.relation');
+    for (const t of [0.5, 0.4, 0.6, 0.3, 0.7]) { const m = p.getPointAtLength(p.getTotalLength() * t).matrixTransform(p.getScreenCTM());
+      if (m.x > 0 && m.y > 50 && m.x < innerWidth && m.y < innerHeight && g.contains(document.elementFromPoint(m.x, m.y))) return { lineId: g.getAttribute('data-id'), onLine: { x: m.x, y: m.y } }; } } return {}; })()`);
+  await mouse('mousePressed', onLine);
+  await mouse('mouseReleased', onLine);
+  await pause(150);
   await shot('link-line', `location.hash === ${JSON.stringify(linkOf([['related', hub], ['hops', '1'], ['line', lineId]]))}`);
   await reopen('link-line-reopens', `${viewIs('neighborhood')} && ${inView(`.relation-group.flowing[data-id="${lineId}"]`)} !== null`);
   // Two levels of related tables.
@@ -1729,11 +1745,23 @@ await key('Escape');
   // A polymorphic node selected.
   const poly = Object.keys(model.nodes).find((id) => model.nodes[id].kind === 'poly' && model.nodes[id].cluster);
   if (poly) {
-    await open(formatHash([['view', startView]]));
+    // In its domain view, where it is large enough to click.
+    const polyView = `domain:${model.nodes[poly].cluster}`;
+    await open(formatHash([['view', polyView]]));
     await bringIntoView(inView(`.poly[data-id="${poly}"]`));
     await click(inView(`.poly[data-id="${poly}"]`), { where: 'top' });
-    await shot('link-poly', `location.hash === ${JSON.stringify(linkOf([['view', startView], ['table', poly]]))}`);
+    await shot('link-poly', `location.hash === ${JSON.stringify(linkOf([['view', polyView], ['table', poly]]))}`);
     await reopen('link-poly-reopens', `${inView(`.poly.selected[data-id="${poly}"]`)} !== null`);
+  }
+  // A line of a domain view standing for several tables of another domain.
+  const grouped = await evaluate(`(() => { for (const v of document.querySelectorAll('g.view[data-view^="domain:"]')) { const g = v.querySelector('.relation-group[data-group]'); if (g) return [v.getAttribute('data-view'), g.getAttribute('data-id')]; } return null; })()`);
+  if (grouped) {
+    const [groupView, groupLine] = grouped;
+    await open(formatHash([['view', groupView]]));
+    await bringIntoView(inView(`.relation-group[data-id="${groupLine}"]`));
+    await click(`${inView(`.relation-group[data-id="${groupLine}"]`)}.querySelector('path.relation')`);
+    await shot('link-group-line', `location.hash === ${JSON.stringify(linkOf([['view', groupView], ['line', groupLine]]))}`);
+    await reopen('link-group-line-reopens', `${viewIs(groupView)} && ${inView(`.relation-group.flowing[data-id="${groupLine}"]`)} !== null`);
   }
 }
 

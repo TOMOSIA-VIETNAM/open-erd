@@ -10,6 +10,8 @@
 //   table      the selected table (or polymorphic node)
 //   column     the selected table and its open column: <table id>.<column>
 //   line       the selected relation line, by its id
+//   between    the two domains whose relations the panel lists (an overview
+//              connector clicked): <db>/<domain>,<db>/<domain>
 //   highlight  the highlight modes on: changes, review, pii, health, central
 // Pure and DOM-free: the viewer acts on the result, node:test checks the
 // parsing.
@@ -18,10 +20,15 @@
 // percent-encoded, so `&` and `=` inside a value (a domain named
 // "Billing & Tax") never read as separators.
 const encodeValue = (value) => value.replace(/[^A-Za-z0-9_./:,-]/g, encodeURIComponent);
+// An item of a list value: its own commas encoded too.
+const encodeItem = (item) => item.replace(/[^A-Za-z0-9_./:-]/g, encodeURIComponent);
 
-/** The hash for `pairs` ([key, value], in order), e.g. `#view=all&table=a.b.c`. */
+/**
+ * The hash for `pairs` ([key, value], in order), e.g. `#view=all&table=a.b.c`.
+ * A value given as an array is written as a list, each item encoded.
+ */
 export function formatHash(pairs) {
-  return `#${pairs.map(([key, value]) => `${key}=${encodeValue(value)}`).join('&')}`;
+  return `#${pairs.map(([key, value]) => `${key}=${Array.isArray(value) ? value.map(encodeItem).join(',') : encodeValue(value)}`).join('&')}`;
 }
 
 // A comma-separated value as a list: each item decoded on its own (so an
