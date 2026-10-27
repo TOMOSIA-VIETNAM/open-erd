@@ -1602,7 +1602,8 @@ for (const slot of ['from', 'to']) {
 // view (with the domains folded in it), or the view of related tables or the
 // join path, then the selection
 // in it (several tables, a table, a column, a line, the relations between
-// two domains) and the highlight modes on. Every change on screen writes it again (replaceState: Back does not
+// two domains, the severity the health list shows) and the highlight modes
+// on. Every change on screen writes it again (replaceState: Back does not
 // walk through selections), so the address bar can be copied as it is;
 // opening a link builds the same screen back.
 let lastHash = null;
@@ -1631,6 +1632,7 @@ function linkPairs() {
     else if (node && !(state.view === NEIGHBORHOOD && node === state.center)) pairs.push(['table', node]);
     else if (line) pairs.push(['line', line]);
     else if (domainLinkShown()) pairs.push(['between', domainLink.pair]);
+    else if (healthSeverity && healthListShown()) pairs.push(['severity', healthSeverity]);
   }
   if (cameraMoved) pairs.push(['at', cameraCentre().join(',')]);
   // A diff opens with Changes on: say so even when no mode is on.
@@ -1667,6 +1669,7 @@ function openDeepLink(hash) {
   if (p.highlight) setHighlights(p.highlight.ids);
   const opened = openLinkTarget(p);
   if (p.folded && state.view === p.view?.value) foldLinked(p.folded.ids);
+  if (SEVERITIES.includes(p.severity?.value) && severityCount(p.severity.value) > 0 && healthListShown()) filterHealth(p.severity.value);
   // Last: opening the rest framed the view; the link's camera replaces that.
   const at = (p.at?.value ?? '').split(',').map(Number);
   if (at.length === 3 && at.every(Number.isFinite) && at[2] > 0) centreCamera(at);
@@ -2313,10 +2316,14 @@ const JOIN_PICKS = 8;
 // Below this scale a path drawn across a large view is too small to read.
 const JOIN_MIN_SCALE = 0.45;
 let flowTimers = [];
+// Counts the paths shown, so a frame callback of a path replaced since
+// does nothing.
+let flowRun = 0;
 
 function stopFlows() {
   for (const t of flowTimers) clearTimeout(t);
   flowTimers = [];
+  flowRun += 1;
 }
 
 function openJoin(from = null) {
@@ -2496,15 +2503,17 @@ function showJoinPath(i) {
     seg.g.classList.add('hl', 'flowing');
     if (seg.show) seg.show.style.display = '';
   }
-  // Each step's dashes start once the previous step's have set off.
-  segments.forEach((list, k) => {
-    flowTimers.push(
-      setTimeout(() => {
-        for (const seg of list) seg.g.append(svgEl('path', { class: 'flow', d: seg.reverse ? reversed(seg.d) : seg.d }));
-        if (k === segments.length - 1) index.get(join.to)?.el.classList.add('flow-target');
-      }, k * JOIN_STEP_MS),
-    );
-  });
+  // Each step's dashes start once the previous step's have set off. The
+  // first waits for the view to be drawn, and each step from the one
+  // before: a large view still drawing past a step's time would otherwise
+  // start every step at once.
+  const flowStep = (k) => {
+    for (const seg of segments[k]) seg.g.append(svgEl('path', { class: 'flow', d: seg.reverse ? reversed(seg.d) : seg.d }));
+    if (k === segments.length - 1) index.get(join.to)?.el.classList.add('flow-target');
+    else flowTimers.push(setTimeout(() => flowStep(k + 1), JOIN_STEP_MS));
+  };
+  const run = flowRun;
+  if (segments.length > 0) requestAnimationFrame(() => run === flowRun && flowTimers.push(setTimeout(() => flowStep(0), 0)));
   showJoin();
   // The legend sits bottom left, where the fitted path would run under it.
   setLegend(false);
@@ -2965,6 +2974,10 @@ const modeChips = () => [changesChip, reviewChip, piiChip, healthChip, centralCh
 
 // Built once and reused, so the severity filter stays as the reader set it.
 let healthPanel = null;
+// The severity the list is filtered to (null: all), for the link, and the
+// list's filter, for a link to set.
+let healthSeverity = null;
+let filterHealth = null;
 function healthListPanel() {
   if (healthPanel) return healthPanel;
   const go = (id, column) => () => {
@@ -2993,7 +3006,10 @@ function healthListPanel() {
   function filter(severity) {
     for (const b of filters) b.classList.toggle('on', b.getAttribute('data-severity') === (severity ?? 'all'));
     for (const item of items) item.style.display = severity === null || item.getAttribute('data-severity') === severity ? '' : 'none';
+    healthSeverity = severity;
+    syncHash();
   }
+  filterHealth = filter;
   healthPanel = [
     panelHeader({ name: 'Schema health', note: `${HEALTH_COUNTS}. No score: each finding is something to look at, with SQL to review before use.` }),
     // One severity only: nothing to filter.

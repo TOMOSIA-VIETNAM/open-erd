@@ -620,7 +620,9 @@ if (offsets[0] === offsets[1]) failures.push(`flow does not move: ${offsets}`);
   if (!(full ? !status.includes('downscaled') : status.includes('downscaled'))) failures.push(`download png ${pw}x${ph} for ${bounds}: ${status}`);
   await pick('As JPEG');
   const jpg = await saved(`${base}.jpg`);
-  await shot('download-saved', `${jpg[0] === 0xff && jpg[1] === 0xd8} && document.querySelector('.oe-status').textContent.startsWith('Saved ${base}.jpg')`);
+  // The file lands before the status line says so: wait for it a moment.
+  const savedSays = `new Promise((done) => { const t0 = performance.now(); const tick = () => { const ok = document.querySelector('.oe-status').textContent.startsWith('Saved ${base}.jpg'); if (ok || performance.now() - t0 > 3000) done(ok); else setTimeout(tick, 50); }; tick(); })`;
+  await shot('download-saved', `${savedSays}.then((ok) => ${jpg[0] === 0xff && jpg[1] === 0xd8} && ok)`);
   await key('Escape');
   await shot('download-menu-closed', `!${menuOpen('more')}`);
 }
@@ -1053,17 +1055,23 @@ if (joinPair) {
   await pickJoin('from', joinPair[0]);
   await shot('join-spotlight-to', `document.activeElement === ${joinSpot}.querySelector('.oe-join-to input') && ${joinSpot}.querySelector('.oe-join-from input').value === ${JSON.stringify(joinPair[0].split('.')[2])}
     && [...document.querySelectorAll('.oe-join-spot .oe-result .name')].every((n) => n.scrollWidth <= n.clientWidth + 1 || getComputedStyle(n).textOverflow === 'ellipsis') && [...document.querySelectorAll('.oe-join-spot .oe-result')].every((r) => r.getBoundingClientRect().height < 30)`);
+  // When each hop's dashes start, read from the page's own clock, so a
+  // slow machine cannot see every hop at once.
+  await evaluate(`(() => { window.__flowTimes = []; new MutationObserver((ms) => { for (const m of ms) for (const n of m.addedNodes) if (n.classList?.contains('flow')) window.__flowTimes.push(performance.now()); }).observe(document.querySelector('.camera'), { childList: true, subtree: true }); })()`);
   await pickJoin('to', joinPair[1]);
-  const flowsAt = (ms) => evaluate(`new Promise((done) => setTimeout(() => done(${visible}.querySelectorAll('.flow').length), ${ms}))`);
-  const early = await flowsAt(0);
-  const late = await flowsAt(1500);
+  await pause(1500);
+  const times = await evaluate('window.__flowTimes');
+  // The hops start one after another, a step apart (JOIN_STEP_MS in the
+  // viewer, 450 ms); the lines of one hop start together.
+  const starts = times.filter((t, i) => i === 0 || t - times[i - 1] > 100);
+  const stepped = starts.length >= 2 && starts.slice(1).every((t, i) => t - starts[i] >= 300);
   await shot(
     'join-path',
     `(() => { const hops = document.querySelectorAll('.oe-panel .oe-hops li'); const lit = ${visible}.querySelectorAll('.relation-group.hl, .hub-route.hl').length;
       const words = [...document.querySelectorAll('.oe-panel .oe-hops .chip')].some((c) => /pending review|^stale$/.test(c.textContent));
       const icons = [...document.querySelectorAll('.oe-panel .oe-hops .oe-review')].every((i) => ['Not confirmed yet', 'Code changed since confirmed'].includes(i.title));
-      return hops.length >= 2 && !words && icons && [...hops].every((li) => / = /.test(li.querySelector('code').textContent)) && lit >= 1 && ${early} < ${late} && ${visible}.querySelectorAll(':is(.table, .stub).selected').length === 2
-        || { hops: hops.length, lit, early: ${early}, late: ${late} }; })()`,
+      return hops.length >= 2 && !words && icons && [...hops].every((li) => / = /.test(li.querySelector('code').textContent)) && lit >= 1 && ${stepped} && ${visible}.querySelectorAll(':is(.table, .stub).selected').length === 2
+        || { hops: hops.length, lit, flowTimes: ${JSON.stringify(times)} }; })()`,
   );
   // One copy button: the SQL, for a path within one database; disabled with
   // its reason for a path across databases. No "Copy conditions".
@@ -1355,6 +1363,11 @@ await shot(
       await click(`document.querySelector('.oe-panel .oe-health-filter[data-severity="${severity}"]')`);
       const want = await evaluate(`${data}.health.filter((f) => f.severity === '${severity}').length`);
       await shot(`health-filter-${severity}`, `${shown}.length === ${want} && ${shown}.every((e) => e.getAttribute('data-severity') === '${severity}')`);
+      // The address names it; opened again, the list is filtered the same.
+      await shot(`link-severity-${severity}`, `new URLSearchParams(location.hash.slice(1)).get('severity') === '${severity}'`);
+      const severityHash = await evaluate('location.hash');
+      await open(severityHash);
+      await shot(`link-severity-${severity}-reopens`, `location.hash === ${JSON.stringify(severityHash)} && ${shown}.length === ${want} && document.querySelector('.oe-panel .oe-health-filter.on')?.getAttribute('data-severity') === '${severity}'`);
     }
     // One severity only: the list has no filter.
     if (severities.length > 0) await click(`document.querySelector('.oe-panel .oe-health-filter[data-severity="all"]')`);

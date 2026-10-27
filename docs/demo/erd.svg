@@ -2488,6 +2488,7 @@ ${new XMLSerializer().serializeToString(root)}
       else if (node && !(state.view === NEIGHBORHOOD && node === state.center)) pairs.push(["table", node]);
       else if (line) pairs.push(["line", line]);
       else if (domainLinkShown()) pairs.push(["between", domainLink.pair]);
+      else if (healthSeverity && healthListShown()) pairs.push(["severity", healthSeverity]);
     }
     if (cameraMoved) pairs.push(["at", cameraCentre().join(",")]);
     const modes = highlightModes().filter((m) => m.on).map((m) => m.id);
@@ -2520,6 +2521,7 @@ ${new XMLSerializer().serializeToString(root)}
     if (p.highlight) setHighlights(p.highlight.ids);
     const opened = openLinkTarget(p);
     if (p.folded && state.view === p.view?.value) foldLinked(p.folded.ids);
+    if (SEVERITIES.includes(p.severity?.value) && severityCount(p.severity.value) > 0 && healthListShown()) filterHealth(p.severity.value);
     const at = (p.at?.value ?? "").split(",").map(Number);
     if (at.length === 3 && at.every(Number.isFinite) && at[2] > 0) centreCamera(at);
     return opened || Boolean(p.highlight);
@@ -3032,9 +3034,11 @@ ${new XMLSerializer().serializeToString(root)}
   var JOIN_PICKS = 8;
   var JOIN_MIN_SCALE = 0.45;
   var flowTimers = [];
+  var flowRun = 0;
   function stopFlows() {
     for (const t of flowTimers) clearTimeout(t);
     flowTimers = [];
+    flowRun += 1;
   }
   function openJoin(from = null) {
     join.from = data.nodes[from]?.kind === "table" ? from : null;
@@ -3176,14 +3180,13 @@ ${new XMLSerializer().serializeToString(root)}
       seg.g.classList.add("hl", "flowing");
       if (seg.show) seg.show.style.display = "";
     }
-    segments.forEach((list, k) => {
-      flowTimers.push(
-        setTimeout(() => {
-          for (const seg of list) seg.g.append(svgEl("path", { class: "flow", d: seg.reverse ? reversed(seg.d) : seg.d }));
-          if (k === segments.length - 1) index.get(join.to)?.el.classList.add("flow-target");
-        }, k * JOIN_STEP_MS)
-      );
-    });
+    const flowStep = (k) => {
+      for (const seg of segments[k]) seg.g.append(svgEl("path", { class: "flow", d: seg.reverse ? reversed(seg.d) : seg.d }));
+      if (k === segments.length - 1) index.get(join.to)?.el.classList.add("flow-target");
+      else flowTimers.push(setTimeout(() => flowStep(k + 1), JOIN_STEP_MS));
+    };
+    const run = flowRun;
+    if (segments.length > 0) requestAnimationFrame(() => run === flowRun && flowTimers.push(setTimeout(() => flowStep(0), 0)));
     showJoin();
     setLegend(false);
     zoomToRect(joinBounds(index, steps), FOCUS_MAX_SCALE);
@@ -3540,6 +3543,8 @@ ${new XMLSerializer().serializeToString(root)}
   );
   var modeChips = () => [changesChip, reviewChip, piiChip, healthChip, centralChip];
   var healthPanel = null;
+  var healthSeverity = null;
+  var filterHealth = null;
   function healthListPanel() {
     if (healthPanel) return healthPanel;
     const go = (id, column) => () => {
@@ -3568,7 +3573,10 @@ ${new XMLSerializer().serializeToString(root)}
     function filter(severity) {
       for (const b of filters) b.classList.toggle("on", b.getAttribute("data-severity") === (severity ?? "all"));
       for (const item of items) item.style.display = severity === null || item.getAttribute("data-severity") === severity ? "" : "none";
+      healthSeverity = severity;
+      syncHash();
     }
+    filterHealth = filter;
     healthPanel = [
       panelHeader({ name: "Schema health", note: `${HEALTH_COUNTS}. No score: each finding is something to look at, with SQL to review before use.` }),
       // One severity only: nothing to filter.
