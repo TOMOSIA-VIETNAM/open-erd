@@ -281,6 +281,9 @@ const VIEWER_STYLE = `.row-hit { fill: transparent; }
 .oe-ph-facts { margin-top: 4px; font-size: 12px; color: #56627a; }
 .oe-actions { display: flex; align-items: center; gap: 6px; margin: 0 0 10px; flex-wrap: wrap; }
 .oe-hint-row { font-size: 11.5px; margin: -4px 0 10px; }
+.oe-review-domain { display: flex; align-items: center; gap: 6px; margin: 4px 0; }
+.oe-review-item { display: flex; align-items: center; gap: 6px; width: 100%; padding: 4px 6px; border: 0; border-radius: 4px; background: none; font: inherit; color: #1f2a3d; text-align: left; cursor: pointer; overflow-wrap: anywhere; }
+.oe-review-item:hover { background: #f3f6fa; }
 .oe-picked-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px solid #eef1f5; }
 .oe-picked-row .oe-chip-close { margin-left: auto; color: #8a94a6; }
 .oe-actions .oe-tool { height: 28px; width: 28px; }
@@ -509,6 +512,8 @@ ${RANKING_STYLE}
 .review-mode .review-pending .edge-label text { fill: #9a6208; }
 .review-mode .review-stale :is(.relation, .marker) { stroke: #c53030; }
 .review-mode .review-stale .edge-label text { fill: #a61f1f; }
+.review-mode .view[data-view="overview"] .domain.has-review .card-box { stroke: #c27c0e; stroke-width: 2; }
+.review-mode .view[data-view="overview"] .domain:not(.has-review) { opacity: 0.35; }
 .kind-view_source .relation { stroke: #a9b2c0; stroke-dasharray: 5 4; }
 .table-tag { font-size: ${TAG_FONT.size}px; font-weight: ${TAG_FONT.weight}; fill: #5f6b7e; letter-spacing: 0.02em; }
 .table.is-view > rect:last-of-type { stroke-dasharray: 5 3; }

@@ -810,6 +810,17 @@ if (await evaluate(`document.querySelector('g.view[data-view="all"]') !== null`)
         && document.querySelector('.oe-review-chip').textContent.startsWith('Review mode: ${counts.pending} to confirm, ${counts.stale} changed')
         && (!${pending} || (getComputedStyle(${inView('.relation-group.review-pending:not(.kind-view_source) path.relation')}).stroke === 'rgb(194, 124, 14)' && ${legendHost}.querySelector('.oe-legend .review-icon-pending') !== null))`,
     );
+    // The list of what waits, by domain, opens with the mode; a click opens
+    // the line (or polymorphic node) and keeps the list open.
+    const waiting = await evaluate(`(() => { const d = ${data}; const s = ['pending', 'stale']; return [...d.links, ...d.hubLinks].filter((l) => s.includes(l.review)).length + Object.values(d.nodes).filter((n) => n.kind === 'poly' && s.includes(n.review)).length; })()`);
+    await shot('review-list', `document.querySelector('.oe-panel .oe-ph-name')?.textContent === 'To review' && document.querySelectorAll('.oe-panel .oe-review-item').length === ${waiting}`);
+    if (waiting > 0) {
+      const before = await evaluate('location.hash');
+      await click(`document.querySelector('.oe-panel .oe-review-item')`);
+      await pause(400);
+      await shot('review-list-jumps', `document.querySelector('.oe-panel .oe-ph-name')?.textContent === 'To review' && /[#&](line|table|column)=/.test(location.hash) && [...document.querySelectorAll('g.view')].find((v) => v.style.display !== 'none').querySelector('.flowing, .selected') !== null`);
+      await open(before);
+    }
     await click(`document.querySelector('.oe-review-chip .oe-chip-close')`);
     await shot('review-mode-off', `!document.documentElement.classList.contains('review-mode') && document.querySelector('.oe-review-chip').closest('foreignObject').style.display === 'none' && ${legendHost}.querySelector('.oe-legend .review-icon') === null`);
     if (pending) failures.push(...(await evaluate(`getComputedStyle(${inView('.relation-group.review-pending:not(.kind-view_source) path.relation')}).stroke === '${isDiff ? 'rgb(195, 202, 213)' : 'rgb(107, 119, 138)'}'`) ? [] : ['review mode off: pending line is not neutral']));

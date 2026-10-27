@@ -1016,7 +1016,6 @@ const highlightMenu = dropdown(
   'oe-highlight-menu',
 );
 // Overview cards and ranking rows stand for many relations and carry no review colour.
-const reviewable = () => state.view !== OVERVIEW && state.view !== RANKING;
 const REVIEW_TOTAL = data.review.pending + data.review.stale;
 const reviewCounts = () => `${data.review.pending} to confirm · ${data.review.stale} changed in code`;
 const REVIEW_TIP = 'Color lines by review status: amber = not confirmed yet, red = code changed since review';
@@ -1028,7 +1027,7 @@ function highlightModes() {
   return [
     CHANGES ? { id: 'changes', label: 'Changes', detail: CHANGES.label, tip: CHANGES_TIP, keys: 'C', keywords: ['changes', 'diff', 'added', 'removed'], on: changesOn(), toggle: () => setChangesMode(!changesOn()), off: null, listed: () => changesListShown() } : null,
     REVIEW_TOTAL > 0
-      ? { id: 'review', label: 'Review mode', detail: reviewCounts(), tip: REVIEW_TIP, keys: null, keywords: ['review', 'confirm', 'stale'], on: reviewing(), toggle: () => setReviewMode(!reviewing()), off: reviewable() ? null : 'Lines only: not on the map or the ranking', listed: () => false }
+      ? { id: 'review', label: 'Review mode', detail: reviewCounts(), tip: REVIEW_TIP, keys: null, keywords: ['review', 'confirm', 'stale'], on: reviewing(), toggle: () => setReviewMode(!reviewing()), off: null, listed: () => reviewListShown() }
       : null,
     PII.total > 0 ? { id: 'pii', label: 'Personal data (PII)', detail: PII_COUNTS, tip: PII_TIP, keys: 'P', keywords: ['pii', 'personal', 'privacy', 'gdpr'], on: piiOn(), toggle: () => setPiiMode(!piiOn()), off: null, listed: () => piiSummaryShown() } : null,
     HEALTH.length > 0 ? { id: 'health', label: 'Schema health', detail: HEALTH_COUNTS, tip: HEALTH_TIP, keys: 'H', keywords: ['health', 'findings', 'lint', 'index'], on: healthOn(), toggle: () => setHealthMode(!healthOn()), off: null, listed: () => healthListShown() } : null,
@@ -2724,8 +2723,8 @@ const LEGEND = [
     [() => sample([svgEl('rect', { class: 'stub-box', x: 1, y: 6, width: 54, height: 11, rx: 3 }), svgEl('path', { class: 'col-warn', d: 'M49 12L55 1L61 12Z' })]), 'Table with a health finding', (v) => healthOn() && has(v, '.has-health')],
   ]],
   ['Lines', [
-    [() => lineSample('kind-db_fk'), 'Confirmed relation', (v) => has(v, '.relation-group:not(.unconfirmed, .kind-view_source)')],
-    [() => lineSample('kind-declared unconfirmed'), 'Found in code, not confirmed yet', (v) => has(v, '.relation-group.unconfirmed, .poly-route.unconfirmed')],
+    [() => lineSample('kind-db_fk'), 'Confirmed relation', (v) => !reviewing() && has(v, '.relation-group:not(.unconfirmed, .kind-view_source)')],
+    [() => lineSample('kind-declared unconfirmed'), 'Found in code, not confirmed yet', (v) => !reviewing() && has(v, '.relation-group.unconfirmed, .poly-route.unconfirmed')],
     [() => lineSample('kind-view_source'), 'Read by a database view', (v) => has(v, '.kind-view_source')],
   ]],
   ['Line ends', [
@@ -2799,19 +2798,75 @@ function showLegend() {
 }
 
 // While review mode is on, a chip under the toolbar says so and how much
-// waits for review; its × turns the mode off.
+// waits for review: List reopens the list of what waits, × turns the mode off.
 const reviewChip = overlay('oe-review-chip-host');
 reviewChip.fo.style.display = 'none';
 reviewChip.div.append(
   el('div', { class: 'oe-review-chip', title: 'Lines are coloured by review status: amber = not confirmed yet, red = code changed since review' }, [
     el('span', { text: `Review mode: ${data.review.pending} to confirm, ${data.review.stale} changed` }),
+    el('button', { class: 'oe-link', text: 'List', title: 'List what waits for review, by domain', on: { click: () => showReviewList() } }),
     el('button', { class: 'oe-chip-close', text: '×', title: 'Turn review mode off', 'aria-label': 'Turn review mode off', on: { click: () => setReviewMode(false) } }),
   ]),
 );
 
+// What waits for review in every view at once: the lines and polymorphic
+// associations not confirmed yet (pending) or changed in code since
+// (stale), grouped by the domain of their referencing table in the
+// overview's card order, stale first. A click opens the line (or the
+// polymorphic node) in its domain view and keeps the list open. On the
+// overview, the cards of those domains carry an amber border and the
+// others fade.
+const REVIEW_STATES = ['stale', 'pending'];
+const REVIEW_ITEMS = [
+  ...[...data.links, ...data.hubLinks].filter((l) => REVIEW_STATES.includes(l.review)).map((l) => ({ id: l.id, from: l.from, to: l.to, columns: l.fromColumns ?? [], review: l.review, cluster: clusterOf(l.from) })),
+  ...Object.entries(data.nodes)
+    .filter(([, n]) => n.kind === 'poly' && REVIEW_STATES.includes(n.review))
+    .map(([id, n]) => ({ id, poly: n, from: n.table, columns: [n.typeColumn, n.idColumn], review: n.review, cluster: n.cluster })),
+].sort((a, b) => data.domainOrder.indexOf(a.cluster) - data.domainOrder.indexOf(b.cluster) || REVIEW_STATES.indexOf(a.review) - REVIEW_STATES.indexOf(b.review) || byId(a.from, b.from) || byId(a.id, b.id));
+const reviewedDomains = new Set(REVIEW_ITEMS.map((i) => i.cluster));
+for (const [key, { el: card }] of indexes.get(OVERVIEW)) if (reviewedDomains.has(key)) card.classList.add('has-review');
+
+let reviewPanel = null;
+function reviewListPanel() {
+  if (reviewPanel) return reviewPanel;
+  const go = (item) => () => {
+    const scroll = panel.div.scrollTop;
+    if (item.poly) goToNode(item.id);
+    else {
+      if (!findAttr(currentView(), '.relation-group, .hub-route', 'data-id', item.id)) navigate(homeView(item.from));
+      if (!selectLinked({ line: { value: item.id } })) goToNode(item.from, item.columns[0]);
+    }
+    showReviewList(scroll);
+  };
+  const groups = new Map();
+  for (const item of REVIEW_ITEMS) groups.set(item.cluster, [...(groups.get(item.cluster) ?? []), item]);
+  reviewPanel = [
+    panelHeader({ name: 'To review', note: `${reviewCounts()}. A click opens the line in its domain; /open-erd:review goes through them with the evidence from the code.` }),
+    ...[...groups].map(([cluster, items]) =>
+      el('div', { class: 'oe-chip-group' }, [
+        el('div', { class: 'oe-review-domain' }, [domainChip(cluster), el('span', { class: 'muted', text: String(items.length) })]),
+        ...items.map((item) =>
+          el('button', { class: 'oe-review-item', title: `${REVIEW_WORDS[item.review]}: go to ${item.id}`, on: { click: go(item) } }, [
+            reviewIcon(item.review),
+            el('span', { text: item.poly ? `${short(item.from)} «${item.poly.name}» (${item.columns.join(', ')})` : `${short(item.from)}.${item.columns.join(', ')} → ${short(item.to)}` }),
+          ]),
+        ),
+      ]),
+    ),
+  ];
+  return reviewPanel;
+}
+function showReviewList(scroll = 0) {
+  showPanel(reviewListPanel());
+  panel.div.scrollTop = scroll;
+}
+const reviewListShown = () => reviewPanel !== null && panel.fo.style.display !== 'none' && panel.div.contains(reviewPanel[0]);
+
 function setReviewMode(on) {
   svg.classList.toggle('review-mode', on);
   reviewChip.fo.style.display = on ? '' : 'none';
+  if (on) showReviewList();
+  else if (reviewListShown()) hidePanel();
   updateHighlightButton();
   showLegend();
   layoutOverlays();
