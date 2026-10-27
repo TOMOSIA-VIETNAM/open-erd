@@ -214,14 +214,22 @@ test('references both ways between two domains are one pair listing both directi
   );
 });
 
-test('overview cards of a fresh layout: a grid in summary order, the same on every run', async () => {
+test('overview cards of a fresh layout: related domains side by side, the same on every run', async () => {
   const { model, diagram, layout } = await multi();
   const order = domainSummary(model, diagram).order;
   const cards = layout.views.overview.clusters;
+  const pairs = domainLinks(diagram).map((l) => [...l.id.split('<->'), l.count]);
   for (const db of ['activity', 'auth', 'shop']) {
-    const placed = Object.entries(cards[db]).sort(([, a], [, b]) => a.y - b.y || a.x - b.x).map(([k]) => k);
-    assert.deepEqual(placed, order.filter((k) => k.startsWith(`${db}/`)), db);
-    for (const b of Object.values(cards[db])) assert.ok(b.x % 10 === 0 && b.y % 10 === 0);
+    const mine = cards[db];
+    const xs = [...new Set(Object.values(mine).map((b) => b.x))].sort((a, b) => a - b);
+    const ys = [...new Set(Object.values(mine).map((b) => b.y))].sort((a, b) => a - b);
+    const cell = Object.fromEntries(Object.entries(mine).map(([k, b]) => [k, [xs.indexOf(b.x), ys.indexOf(b.y)]]));
+    // The same cells filled in reading order, most connected first.
+    const cells = Object.values(cell).sort(([c1, r1], [c2, r2]) => r1 - r2 || c1 - c2);
+    const reading = Object.fromEntries(order.filter((k) => k.startsWith(`${db}/`)).map((k, i) => [k, cells[i]]));
+    const length = (at) => pairs.filter(([a, b]) => at[a] && at[b]).reduce((t, [a, b, n]) => t + n * (Math.abs(at[a][0] - at[b][0]) + Math.abs(at[a][1] - at[b][1])), 0);
+    assert.ok(length(cell) <= length(reading), db);
+    for (const b of Object.values(mine)) assert.ok(b.x % 10 === 0 && b.y % 10 === 0);
   }
   assert.deepEqual((await computeLayout(model)).layout.views.overview, layout.views.overview);
 });

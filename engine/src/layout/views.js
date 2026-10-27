@@ -28,7 +28,8 @@ export const STUB_SLOT = 'related';
 const CLUSTER_ASPECT = 1.3;
 const PAGE_ASPECT = 16 / 9;
 // The domain cards of one database sit on a grid somewhat wider than tall,
-// in reading order from the most connected domain (see domainSummary).
+// the most connected domain in the middle and related domains side by side
+// (see cardGrid in index.js).
 //
 // Only a fresh layout is placed this way: cards already in layout.json
 // keep their positions (stability rules), and a new domain goes next to the

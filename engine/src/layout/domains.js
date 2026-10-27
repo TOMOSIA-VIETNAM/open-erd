@@ -34,8 +34,9 @@ const nameOf = (key) => key.slice(key.indexOf('/') + 1);
  *     inside it), related: [{ key, count, crossDb }] strongest first, ties
  *     by key }
  * `order`: cluster keys database by database (model order), each database's
- * domains most connected first, ties by key: the card order of a fresh
- * overview and the domain order of the tour.
+ * domains most connected first, ties by key: the order a fresh overview
+ * places its cards in (the first in the middle, see cardGrid in
+ * layout/index.js) and the domain order of the tour.
  * `max`: the largest relation count between two domains (0 when none).
  */
 export function domainSummary(model, diagram) {

@@ -913,8 +913,8 @@ const searchButton = el(
   { class: 'oe-btn oe-tool oe-search-trigger', title: `Search tables and columns, or run a command (${PALETTE_KEY})`, 'aria-label': 'Search tables and columns, or run a command', on: { click: () => openSpotlight() } },
   [iconSvg('search'), el('span', { class: 'label', text: 'Search or jump…' }), el('kbd', { text: PALETTE_KEY })],
 );
-// The tour's steps (see the tour section): one per domain, in the order of
-// the overview's cards. A single domain makes no tour: it is not offered.
+// The tour's steps (see the tour section): one per domain, most connected
+// first. A single domain makes no tour: it is not offered.
 const TOUR_STEPS = tourSteps(
   data.domainOrder,
   data.nodes,
@@ -2811,8 +2811,8 @@ reviewChip.div.append(
 
 // What waits for review in every view at once: the lines and polymorphic
 // associations not confirmed yet (pending) or changed in code since
-// (stale), grouped by the domain of their referencing table in the
-// overview's card order, stale first. A click opens the line (or the
+// (stale), grouped by the domain of their referencing table, most
+// connected domain first, stale first. A click opens the line (or the
 // polymorphic node) in its domain view and keeps the list open. On the
 // overview, the cards of those domains carry an amber border and the
 // others fade.

@@ -174858,18 +174858,53 @@ function stackAround(list2, gap) {
   }
   return blocks;
 }
-function cardGrid(children, group) {
+function cardGrid(children, group, pairs) {
   const { w, h } = children[0];
   const n = children.length;
   const off = (cols2) => Math.abs(Math.log(cols2 * (w + group.gap) / (Math.ceil(n / cols2) * (h + group.gap)) / group.aspect));
   let cols = 1;
   for (let c = 2; c <= n; c++) if (off(c) < off(cols) - 1e-9) cols = c;
-  return new Map(children.map((c, i) => [c.id, { x: i % cols * (w + group.gap), y: Math.floor(i / cols) * (h + group.gap) }]));
+  const cells = children.map((_2, i) => ({ col: i % cols, row: Math.floor(i / cols) }));
+  const middle = { col: (cols - 1) / 2, row: (Math.ceil(n / cols) - 1) / 2 };
+  const dist = (a, b) => Math.abs(a.col - b.col) + Math.abs(a.row - b.row);
+  const ids = children.map((c) => c.id);
+  const weight = new Map(ids.map((id) => [id, /* @__PURE__ */ new Map()]));
+  for (const p of pairs) {
+    if (p.from === p.to) continue;
+    for (const [a, b] of [[p.from, p.to], [p.to, p.from]]) weight.get(a).set(b, (weight.get(a).get(b) ?? 0) + p.weight);
+  }
+  const cellOf = /* @__PURE__ */ new Map();
+  const free = cells.map((_2, i) => i);
+  const toPlaced = (id) => [...cellOf.keys()].reduce((t, p) => t + (weight.get(id).get(p) ?? 0), 0);
+  while (cellOf.size < n) {
+    let pick = null;
+    for (const id of ids) if (!cellOf.has(id) && (pick === null || toPlaced(id) > toPlaced(pick))) pick = id;
+    const links = [...cellOf].filter(([p]) => weight.get(pick).has(p));
+    const cost = (i) => cellOf.size === 0 ? dist(cells[i], middle) : links.length === 0 ? -dist(cells[i], middle) : links.reduce((t, [p, c]) => t + weight.get(pick).get(p) * dist(cells[i], cells[c]), 0);
+    const at = free.reduce((best, i) => cost(i) < cost(best) - 1e-9 ? i : best);
+    cellOf.set(pick, at);
+    free.splice(free.indexOf(at), 1);
+  }
+  const moveCost = (id, from, to, other) => [...weight.get(id)].reduce((t, [x, wt]) => x === other ? t : t + wt * (dist(cells[to], cells[cellOf.get(x)]) - dist(cells[from], cells[cellOf.get(x)])), 0);
+  for (let improved = true; improved; ) {
+    improved = false;
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        const [a, b] = [ids[i], ids[j]];
+        const [ca, cb] = [cellOf.get(a), cellOf.get(b)];
+        if (moveCost(a, ca, cb, b) + moveCost(b, cb, ca, a) < -1e-9) {
+          cellOf.set(a, cb).set(b, ca);
+          improved = true;
+        }
+      }
+    }
+  }
+  return new Map(ids.map((id) => [id, { x: cells[cellOf.get(id)].col * (w + group.gap), y: cells[cellOf.get(id)].row * (h + group.gap) }]));
 }
 var FRESH = {
   layered: (children, pairs, group) => layoutTables(children, pairs, new Set(group.children.filter((c) => c.node?.central).map((c) => c.id))),
   pack: (children, pairs, group) => layoutGroups(children, pairs, group.gap, group.aspect),
-  cards: (children, pairs, group) => cardGrid(children, group),
+  cards: (children, pairs, group) => cardGrid(children, group, pairs),
   around: (children, pairs, group, links, boxes) => placeAround(children, links, group, boxes)
 };
 async function arrange(node, old, links, boxes) {

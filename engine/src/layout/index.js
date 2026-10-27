@@ -168,22 +168,67 @@ function stackAround(list, gap) {
   return blocks;
 }
 
-// Overview cards from scratch: equal boxes in reading order (the order of
-// the group's children), as many per row as brings the grid closest to the
-// group's aspect.
-function cardGrid(children, group) {
+// Overview cards from scratch: equal boxes on a grid as many per row as
+// brings it closest to the group's aspect, related domains side by side so
+// the connectors between them stay short. The most connected card (the
+// first child) takes the middle; then, one at a time, the card with the
+// most relations to those placed takes the free cell nearest them
+// (relations times grid distance), and cards with none of them the free
+// cell farthest from the middle. Swapping two cards while that shortens the
+// connectors in all finishes it. Ties go by the children's order, so the
+// grid is the same on every run.
+function cardGrid(children, group, pairs) {
   const { w, h } = children[0];
   const n = children.length;
   const off = (cols) => Math.abs(Math.log((cols * (w + group.gap)) / (Math.ceil(n / cols) * (h + group.gap)) / group.aspect));
   let cols = 1;
   for (let c = 2; c <= n; c++) if (off(c) < off(cols) - 1e-9) cols = c;
-  return new Map(children.map((c, i) => [c.id, { x: (i % cols) * (w + group.gap), y: Math.floor(i / cols) * (h + group.gap) }]));
+  const cells = children.map((_, i) => ({ col: i % cols, row: Math.floor(i / cols) }));
+  const middle = { col: (cols - 1) / 2, row: (Math.ceil(n / cols) - 1) / 2 };
+  const dist = (a, b) => Math.abs(a.col - b.col) + Math.abs(a.row - b.row);
+  const ids = children.map((c) => c.id);
+  const weight = new Map(ids.map((id) => [id, new Map()]));
+  for (const p of pairs) {
+    if (p.from === p.to) continue;
+    for (const [a, b] of [[p.from, p.to], [p.to, p.from]]) weight.get(a).set(b, (weight.get(a).get(b) ?? 0) + p.weight);
+  }
+  const cellOf = new Map();
+  const free = cells.map((_, i) => i);
+  const toPlaced = (id) => [...cellOf.keys()].reduce((t, p) => t + (weight.get(id).get(p) ?? 0), 0);
+  while (cellOf.size < n) {
+    let pick = null;
+    for (const id of ids) if (!cellOf.has(id) && (pick === null || toPlaced(id) > toPlaced(pick))) pick = id;
+    const links = [...cellOf].filter(([p]) => weight.get(pick).has(p));
+    const cost = (i) =>
+      cellOf.size === 0 ? dist(cells[i], middle) : links.length === 0 ? -dist(cells[i], middle) : links.reduce((t, [p, c]) => t + weight.get(pick).get(p) * dist(cells[i], cells[c]), 0);
+    const at = free.reduce((best, i) => (cost(i) < cost(best) - 1e-9 ? i : best));
+    cellOf.set(pick, at);
+    free.splice(free.indexOf(at), 1);
+  }
+  // How much the connectors of `id` lengthen when it moves from cell `from`
+  // to cell `to`, leaving `other` aside.
+  const moveCost = (id, from, to, other) =>
+    [...weight.get(id)].reduce((t, [x, wt]) => (x === other ? t : t + wt * (dist(cells[to], cells[cellOf.get(x)]) - dist(cells[from], cells[cellOf.get(x)]))), 0);
+  for (let improved = true; improved; ) {
+    improved = false;
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        const [a, b] = [ids[i], ids[j]];
+        const [ca, cb] = [cellOf.get(a), cellOf.get(b)];
+        if (moveCost(a, ca, cb, b) + moveCost(b, cb, ca, a) < -1e-9) {
+          cellOf.set(a, cb).set(b, ca);
+          improved = true;
+        }
+      }
+    }
+  }
+  return new Map(ids.map((id) => [id, { x: cells[cellOf.get(id)].col * (w + group.gap), y: cells[cellOf.get(id)].row * (h + group.gap) }]));
 }
 
 const FRESH = {
   layered: (children, pairs, group) => layoutTables(children, pairs, new Set(group.children.filter((c) => c.node?.central).map((c) => c.id))),
   pack: (children, pairs, group) => layoutGroups(children, pairs, group.gap, group.aspect),
-  cards: (children, pairs, group) => cardGrid(children, group),
+  cards: (children, pairs, group) => cardGrid(children, group, pairs),
   around: (children, pairs, group, links, boxes) => placeAround(children, links, group, boxes),
 };
 

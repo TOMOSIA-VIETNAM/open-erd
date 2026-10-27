@@ -1290,7 +1290,7 @@ export function viewerData(model, diagram, diff = null, warnings = missingRelati
   const project = model.databases.length === 1 ? model.databases[0].database : sources.length === 1 ? sources[0].name : 'erd';
   // Business note of each domain, for its card's tooltip.
   const domainNotes = Object.fromEntries(model.databases.flatMap((db) => Object.entries(db.domains ?? {}).filter(([, d]) => d.note).map(([name, d]) => [`${db.database}/${name}`, d.note])));
-  // Domains in the overview's card order, for the tour.
+  // Domains most connected first (see domainSummary), for the tour.
   const domainOrder = domainSummary(model, diagram).order;
   const base = { project, nodes, links, hubLinks, domainLinks: domains, domainNotes, domainOrder, databases, review, mostCentral: diagram.mostCentral };
   // Schema health findings for the Health list; left out when there are none.
