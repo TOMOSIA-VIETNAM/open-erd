@@ -59,23 +59,28 @@ and the table reached pulses briefly.
 
 ### Links
 
-A link to `erd.svg` with one of these after `#` opens the viewer there.
-Table ids are `<db>.<schema>.<table>`; a list is separated by commas. Ids
-that name no table are left out (a link with none opens as usual).
+The address of `erd.svg` follows what is on screen, so the address bar can be
+copied and shared as is: whoever opens it gets the same view, the same
+selection and the same highlight modes. It is a list of `key=value` pairs
+after `#`, joined by `&`, and can also be written by hand. Table ids are
+`<db>.<schema>.<table>`; a list is separated by commas. Ids that name no
+table are left out (a link with none opens as usual).
 
-| After `#` | Opens |
+| Pair | Opens |
 |---|---|
-| `table=<table id>` | That table, selected, with its panel. |
+| `view=<view>` | A view: `all`, `overview`, `ranking`, `domain:<db>/<domain>`. With a selection after it, the selection is shown in that view when the view draws it, else in its usual view. |
+| `related=<id>&hops=<1\|2>` | The tables related to that table (or polymorphic node), as a double-click or Related › Direct / +1 level shows them. |
+| `path=<id>,<id>,...&option=<n>` | A join path, as the Join path panel shows it. Two tables: the cheapest paths between them, `option` picking the n-th (from 1). More: the cheapest path between each table and the next, end to end (a direct relation, when there is one, is always the cheapest). When no relations join two neighbours, the tables are lit as with `tables=`. |
+| `tables=<id>,<id>,...` | Those tables lit and the rest faded, zoomed to fit them, with a panel listing them (Shift-click writes it): in all tables, else the smallest domain view holding them all, else the first table's domain with a note on how many are elsewhere. Esc or a click on empty space clears it. |
+| `table=<id>` | That table (or polymorphic node), selected, with its panel. |
 | `column=<table id>.<column>` | The same, with that column unfolded in the panel. |
-| `view=<view>` | A view: `all`, `overview`, `ranking`, `domain:<db>/<domain>`. |
-| `tables=<id>,<id>,...` | All tables (in a schema too large for it, the smallest domain view holding them all, else the first table's domain with a note on how many are elsewhere), those tables lit and the rest faded, zoomed to fit them, with a panel listing them. With `view=<view>&` before it, that view when it draws them all. Shift-click writes this link. Esc or a click on empty space clears it. |
-| `path=<id>,<id>,...` | A join path, as the Join path panel shows it. Two tables: the cheapest paths between them. More: the cheapest path between each table and the next, end to end (a direct relation, when there is one, is always the cheapest). When no relations join two neighbours, the tables are lit as with `tables=`. |
+| `line=<relation id>` | That relation line, selected as a click on it does, with its panel. |
+| `highlight=<mode>,<mode>` | Those highlight modes on and the others off: `changes`, `review`, `pii`, `health`, `central`. A diff's address always has it, empty when every mode is off. |
 
-Put `view=<view>&` before `table=` or `column=` to open the table in that
-view, for example `#view=domain:shop/Orders&table=shop.public.orders`
-(when the view does not draw the table, its usual view). The address follows
-the selected table and the view it is seen in, so it can be copied and
-shared as is. `/open-erd:ask` answers with a `tables=` or `path=` link.
+For example `#view=domain:shop/Orders&table=shop.public.orders`, or
+`#related=shop.public.orders&hops=2&table=shop.public.payments&highlight=pii`.
+An address from an older viewer, its `=` written as `%3D`, still opens.
+`/open-erd:ask` answers with a `tables=` or `path=` link.
 
 ## Schema health
 

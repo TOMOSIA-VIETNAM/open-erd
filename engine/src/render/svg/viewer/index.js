@@ -306,6 +306,7 @@ function showView(name) {
   legendFolded = LEGEND_FOLDED_VIEWS.includes(name);
   showLegend();
   if (moved) setTimeout(showHint, TIP_OPEN_MS);
+  syncHash();
 }
 
 // A large view opens where its text can be read: the whole view when it
@@ -564,6 +565,7 @@ function headerClick(e) {
 
 function clearSelection() {
   picked = [];
+  linkColumn = null;
   stopFlows();
   for (const v of views.values()) {
     v.classList.remove('dimmed', 'center-selected');
@@ -574,6 +576,7 @@ function clearSelection() {
     for (const e of v.querySelectorAll('.poly-routes, .hub-routes')) e.style.display = 'none';
   }
   hidePanel();
+  syncHash();
 }
 
 function relationGroups() {
@@ -615,7 +618,7 @@ function selectNode(id) {
   // it is what the reader asked to see.
   currentView().classList.toggle('center-selected', state.view === NEIGHBORHOOD && id === state.center);
   showPanel(poly ? polyPanel(id, poly) : nodePanel(id));
-  if (!poly) shareHash([['table', id]]);
+  syncHash();
 }
 
 function focusNode(id, column) {
@@ -625,6 +628,7 @@ function focusNode(id, column) {
   selectNode(id);
   if (column) {
     for (const c of entry.el.querySelectorAll('.column')) if (c.getAttribute('data-column') === column) c.classList.add('hl-column');
+    linkColumn = column;
   }
   const b = entry.box;
   zoomToRect({ x: b.x - FOCUS_MARGIN, y: b.y - FOCUS_MARGIN, w: b.w + 2 * FOCUS_MARGIN, h: b.h + 2 * FOCUS_MARGIN }, FOCUS_MAX_SCALE);
@@ -645,6 +649,7 @@ function flowRelation(g) {
   g.append(svgEl('path', { class: 'flow', d: g.querySelector('path.relation').getAttribute('d') }));
   currentView().classList.add('dimmed');
   showPanel(relationPanel(g));
+  syncHash();
 }
 
 // ---------------------------------------------------------------- neighborhood
@@ -996,13 +1001,13 @@ if (REVIEW_TOTAL === 0 && PII.total === 0 && HEALTH.length === 0 && CENTRAL_TOTA
 // findings: the entry would switch on a mode that changes nothing).
 function highlightModes() {
   return [
-    CHANGES ? { label: 'Changes', detail: CHANGES.label, tip: CHANGES_TIP, keys: 'C', keywords: ['changes', 'diff', 'added', 'removed'], on: changesOn(), toggle: () => setChangesMode(!changesOn()), off: null, listed: () => changesListShown() } : null,
+    CHANGES ? { id: 'changes', label: 'Changes', detail: CHANGES.label, tip: CHANGES_TIP, keys: 'C', keywords: ['changes', 'diff', 'added', 'removed'], on: changesOn(), toggle: () => setChangesMode(!changesOn()), off: null, listed: () => changesListShown() } : null,
     REVIEW_TOTAL > 0
-      ? { label: 'Review mode', detail: reviewCounts(), tip: REVIEW_TIP, keys: null, keywords: ['review', 'confirm', 'stale'], on: reviewing(), toggle: () => setReviewMode(!reviewing()), off: reviewable() ? null : 'Lines only: not on the map or the ranking', listed: () => false }
+      ? { id: 'review', label: 'Review mode', detail: reviewCounts(), tip: REVIEW_TIP, keys: null, keywords: ['review', 'confirm', 'stale'], on: reviewing(), toggle: () => setReviewMode(!reviewing()), off: reviewable() ? null : 'Lines only: not on the map or the ranking', listed: () => false }
       : null,
-    PII.total > 0 ? { label: 'Personal data (PII)', detail: PII_COUNTS, tip: PII_TIP, keys: 'P', keywords: ['pii', 'personal', 'privacy', 'gdpr'], on: piiOn(), toggle: () => setPiiMode(!piiOn()), off: null, listed: () => piiSummaryShown() } : null,
-    HEALTH.length > 0 ? { label: 'Schema health', detail: HEALTH_COUNTS, tip: HEALTH_TIP, keys: 'H', keywords: ['health', 'findings', 'lint', 'index'], on: healthOn(), toggle: () => setHealthMode(!healthOn()), off: null, listed: () => healthListShown() } : null,
-    CENTRAL_TOTAL > 0 ? { label: 'Central tables', detail: CENTRAL_COUNTS, tip: CENTRAL_TIP, keys: 'S', keywords: ['central', 'star', 'core', 'main', 'hub'], on: centralOn(), toggle: () => setCentralMode(!centralOn()), off: null, listed: () => centralListShown() } : null,
+    PII.total > 0 ? { id: 'pii', label: 'Personal data (PII)', detail: PII_COUNTS, tip: PII_TIP, keys: 'P', keywords: ['pii', 'personal', 'privacy', 'gdpr'], on: piiOn(), toggle: () => setPiiMode(!piiOn()), off: null, listed: () => piiSummaryShown() } : null,
+    HEALTH.length > 0 ? { id: 'health', label: 'Schema health', detail: HEALTH_COUNTS, tip: HEALTH_TIP, keys: 'H', keywords: ['health', 'findings', 'lint', 'index'], on: healthOn(), toggle: () => setHealthMode(!healthOn()), off: null, listed: () => healthListShown() } : null,
+    CENTRAL_TOTAL > 0 ? { id: 'central', label: 'Central tables', detail: CENTRAL_COUNTS, tip: CENTRAL_TIP, keys: 'S', keywords: ['central', 'star', 'core', 'main', 'hub'], on: centralOn(), toggle: () => setCentralMode(!centralOn()), off: null, listed: () => centralListShown() } : null,
   ].filter(Boolean);
 }
 highlightMenu.onOpen = () =>
@@ -1023,6 +1028,8 @@ function updateHighlightButton() {
   const on = highlightModes().filter((m) => m.on).length;
   highlightMenu.button.classList.toggle('active', on > 0);
   highlightMenu.button.title = on > 0 ? `Highlight: ${plural(on, 'mode')} on` : 'Highlight: review status, personal data, schema health, central tables';
+  // Every mode switch ends here: the link names the modes on.
+  syncHash();
 }
 
 // The ⋯ menu: occasional actions and display settings, rebuilt on every
@@ -1567,60 +1574,137 @@ for (const slot of ['from', 'to']) {
 
 // ---------------------------------------------------------------- deep links
 
-// erd.svg#table=<table id>, #column=<table id>.<column> or #view=<view>
-// opens there: a table in the view of all tables (its domain view in a
-// schema without one), selected, with its panel; a column also unfolds in
-// the panel. #tables=<id>,<id>,... lights a set of tables and
-// #path=<id>,<id>,... a join path through them (see openTableSet and
-// openPathThrough); ids no table has are left out. Selecting a table writes
-// its link back into the address (replaceState: Back does not walk through
-// selections), so the address bar is always a link to what is on screen.
+// The address is a link to what is on screen (keys in deep-link.js): the
+// view, or the view of related tables or the join path, then the selection
+// in it (several tables, a table, a column, a line) and the highlight modes
+// on. Every change on screen writes it again (replaceState: Back does not
+// walk through selections), so the address bar can be copied as it is;
+// opening a link builds the same screen back.
 let lastHash = null;
-// Views a link can open: not a neighborhood or a join path, which are built
-// on demand from a table.
+// The column open in the selected table's panel, for the link.
+let linkColumn = null;
+// Views a link names by name: not a neighborhood or a join path, which are
+// built from a table (`related=`, `path=`).
 const linkableView = (name) => views.has(name) && name !== NEIGHBORHOOD && name !== JOIN_VIEW;
-// The address names the selection and the view it is seen in, so a copied
-// link opens the same view with the same table selected.
-function shareHash(pairs) {
-  const hash = formatHash(linkableView(state.view) ? [['view', state.view], ...pairs] : pairs);
-  if (hash === location.hash) return;
-  lastHash = hash;
-  try {
-    history.replaceState(null, '', hash);
-  } catch {
-    // A page that may not change its address (some file viewers) keeps it.
+function linkPairs() {
+  const pairs = [];
+  if (join.paths.length > 0 && join.from && join.to && (join.open || state.view === JOIN_VIEW)) {
+    pairs.push(['path', (join.through ?? [join.from, join.to]).join(',')]);
+    if (join.index > 0) pairs.push(['option', String(join.index + 1)]);
+  } else {
+    if (state.view === NEIGHBORHOOD) pairs.push(['related', state.center], ['hops', String(state.hops)]);
+    else if (linkableView(state.view)) pairs.push(['view', state.view]);
+    const view = currentView();
+    const node = view.querySelector('.selected[data-id]')?.getAttribute('data-id');
+    const line = view.querySelector('.relation-group.flowing, .hub-route.flowing')?.getAttribute('data-id');
+    if (picked.length > 1) pairs.push(['tables', picked.join(',')]);
+    else if (node && linkColumn) pairs.push(['column', `${node}.${linkColumn}`]);
+    // A neighborhood opens with its centre selected: no need to say it.
+    else if (node && !(state.view === NEIGHBORHOOD && node === state.center)) pairs.push(['table', node]);
+    else if (line) pairs.push(['line', line]);
   }
+  // A diff opens with Changes on: say so even when no mode is on.
+  const modes = highlightModes().filter((m) => m.on).map((m) => m.id);
+  if (modes.length > 0 || CHANGES) pairs.push(['highlight', modes.join(',')]);
+  return pairs;
+}
+// Called after anything that changes the screen; several calls in one go
+// write the address once, from the screen they end on.
+let linkQueued = false;
+function syncHash() {
+  if (linkQueued) return;
+  linkQueued = true;
+  queueMicrotask(() => {
+    linkQueued = false;
+    const hash = formatHash(linkPairs());
+    if (hash === location.hash) return;
+    lastHash = hash;
+    try {
+      history.replaceState(null, '', hash);
+    } catch {
+      // A page that may not change its address (some file viewers) keeps it.
+    }
+  });
+}
+function setHighlights(ids) {
+  for (const m of highlightModes()) if (m.on !== ids.includes(m.id) && !(m.off && !m.on)) m.toggle();
 }
 function openDeepLink(hash) {
   if (!hash || hash === lastHash) return false;
   const parsed = parseHash(hash);
   if (!parsed) return false;
-  const { key, value } = parsed;
-  if (key === 'tables' || key === 'path') {
-    const ids = parsed.ids.filter((id) => data.nodes[id]?.kind === 'table');
-    if (ids.length === 0) return false;
-    if (key === 'path' && ids.length > 1) openPathThrough(ids);
-    else openTableSet(ids, parsed.view);
+  const p = parsed.params;
+  if (p.highlight) setHighlights(p.highlight.ids);
+  return openLinkTarget(p) || Boolean(p.highlight);
+}
+// The table (or polymorphic node) a link selects, and its open column.
+function linkedNode(p) {
+  if (p.column) {
+    const parts = p.column.value.split('.');
+    const id = parts.slice(0, 3).join('.');
+    const column = parts.slice(3).join('.');
+    if (data.nodes[id]?.columns?.some((c) => c.name === column)) return { id, column };
+  }
+  const id = p.table?.value;
+  return data.nodes[id] ? { id, column: null } : null;
+}
+// Selects the linked node, column or line in the view on screen; false when
+// the view does not draw it.
+function selectLinked(p) {
+  const node = linkedNode(p);
+  if (node && currentIndex().has(node.id)) {
+    focusNode(node.id, node.column);
+    if (node.column) {
+      showPanel(nodePanel(node.id, node.column));
+      panel.div.querySelector('.oe-col.open')?.scrollIntoView({ block: 'nearest' });
+    }
     return true;
   }
-  if (key === 'view' && linkableView(value)) {
-    navigate(value);
+  const line = p.line && findAttr(currentView(), '.relation-group, .hub-route', 'data-id', p.line.value);
+  if (line) {
+    flowRelation(line);
     return true;
   }
-  if (key !== 'table' && key !== 'column') return false;
-  const parts = value.split('.');
-  const id = parts.slice(0, 3).join('.');
-  const column = key === 'column' ? parts.slice(3).join('.') : null;
-  if (data.nodes[id]?.kind !== 'table') return false;
-  // The view the link names when that view draws the table, else its home.
-  const home = linkableView(parsed.view) && indexes.get(parsed.view)?.has(id) ? parsed.view : views.has(ALL_VIEW) ? ALL_VIEW : homeView(id);
-  navigate(home, { focus: id, column });
-  if (column && data.nodes[id].columns.some((c) => c.name === column)) {
-    showPanel(nodePanel(id, column));
-    panel.div.querySelector('.oe-col.open')?.scrollIntoView({ block: 'nearest' });
-    shareHash([['column', `${id}.${column}`]]);
+  return false;
+}
+function openLinkTarget(p) {
+  const tables = (key) => (p[key]?.ids ?? []).filter((id) => data.nodes[id]?.kind === 'table');
+  const view = linkableView(p.view?.value) ? p.view.value : null;
+  if (tables('path').length > 1) {
+    const ids = tables('path');
+    openPathThrough(ids);
+    const option = Number(p.option?.value) - 1;
+    if (ids.length === 2 && option > 0 && option < join.paths.length) showJoinPath(option);
+    return true;
   }
-  return true;
+  if (fullBoxes.has(p.related?.value)) {
+    openNeighborhood(p.related.value, p.hops?.value === '2' ? 2 : 1);
+    selectLinked(p);
+    return true;
+  }
+  if (tables('tables').length > 0) {
+    openTableSet(tables('tables'), view);
+    return true;
+  }
+  const node = linkedNode(p);
+  if (node) {
+    // The view the link names when that view draws the node, else its home.
+    const home = view && indexes.get(view).has(node.id) ? view : views.has(ALL_VIEW) && indexes.get(ALL_VIEW).has(node.id) ? ALL_VIEW : homeView(node.id);
+    if (!home) return false;
+    navigate(home);
+    return selectLinked(p);
+  }
+  if (p.line) {
+    const link = data.links.find((l) => l.id === p.line.value) ?? data.hubLinks.find((l) => l.id === p.line.value);
+    if (!link) return false;
+    navigate(view ?? (views.has(ALL_VIEW) ? ALL_VIEW : homeView(link.from)));
+    return selectLinked(p);
+  }
+  if (view) {
+    navigate(view);
+    return true;
+  }
+  return false;
 }
 
 // #tables=: the view of all tables (in a schema without one, the smallest
@@ -1660,10 +1744,8 @@ function showPicked(ids) {
   for (const id of shown) index.get(id).el.classList.add('hl');
   currentView().classList.add('dimmed');
   picked = shown;
-  if (shown.length > 0) {
-    showPanel(pickedPanel(shown));
-    shareHash([['tables', shown.join(',')]]);
-  }
+  if (shown.length > 0) showPanel(pickedPanel(shown));
+  syncHash();
   return shown;
 }
 function togglePicked(id) {
@@ -1708,7 +1790,7 @@ function openPathThrough(ids) {
   } else {
     const { path } = pathThrough(data, ids);
     if (path) {
-      Object.assign(join, { from: ids[0], to: ids.at(-1), paths: [path], index: 0 });
+      Object.assign(join, { from: ids[0], to: ids.at(-1), paths: [path], index: 0, through: ids });
       showJoinPath(0);
       return;
     }
@@ -1741,6 +1823,7 @@ function hidePanel() {
   const was = panel.fo.style.display !== 'none';
   panel.fo.style.display = 'none';
   join.open = false;
+  syncHash();
   // The minimap and the Back pill keep clear of the panel: with it gone
   // they move back to the right edge now, not at the next pan.
   if (was) {
@@ -2158,7 +2241,8 @@ function changeList(kind, id) {
 // (`a.x_id = b.id`), what to watch out for, and the path lit up on the
 // diagram, hop after hop. The conditions copy as text, or as a SQL skeleton
 // (see sqlSkeleton) for a path within one database.
-const join = { open: false, from: null, to: null, paths: [], index: 0 };
+// `through`: the tables a path from a link runs through, in order, when more than two.
+const join = { open: false, from: null, to: null, paths: [], index: 0, through: null };
 const JOIN_STEP_MS = 450;
 const JOIN_PICKS = 8;
 // Below this scale a path drawn across a large view is too small to read.
@@ -2174,6 +2258,7 @@ function openJoin(from = null) {
   join.from = data.nodes[from]?.kind === 'table' ? from : null;
   join.to = null;
   join.paths = [];
+  join.through = null;
   showJoin();
 }
 
@@ -2187,6 +2272,7 @@ function setJoinEnd(slot, id) {
   // Changing an end drops the old path's highlight.
   if (id === null) clearSelection();
   join[slot] = id;
+  join.through = null;
   join.paths = join.from && join.to ? findJoinPaths(data, join.from, join.to) : [];
   join.index = 0;
   if (join.paths.length > 0) showJoinPath(0);
@@ -2358,6 +2444,7 @@ function showJoinPath(i) {
   // The legend sits bottom left, where the fitted path would run under it.
   setLegend(false);
   zoomToRect(joinBounds(index, steps), FOCUS_MAX_SCALE);
+  syncHash();
 }
 
 // A table field of the join panel: the chosen table, or a search box over
@@ -3505,7 +3592,9 @@ svg.addEventListener('click', (e) => {
     const id = node.getAttribute('data-id');
     selectNode(id);
     column.classList.add('hl-column');
-    showPanel(nodePanel(id, column.getAttribute('data-column')));
+    linkColumn = column.getAttribute('data-column');
+    showPanel(nodePanel(id, linkColumn));
+    syncHash();
     panel.div.querySelector('.oe-col.open')?.scrollIntoView({ block: 'nearest' });
     return;
   }
