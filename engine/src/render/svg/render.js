@@ -72,6 +72,8 @@ const VIEWER_STYLE = `.row-hit { fill: transparent; }
 :is(.arrive:not(.cluster) > rect:last-of-type, .cluster.arrive > rect:first-of-type) { stroke: #e8590c; stroke-width: 3; animation: oe-arrive 0.4s ease-in-out 4 alternate; }
 @keyframes oe-arrive { to { stroke-width: 8; } }
 .flow-target > rect:last-of-type { stroke: #e8590c; stroke-width: 3; animation: oe-pulse 0.9s ease-in-out infinite alternate; }
+.reached > rect:last-of-type { animation: oe-reach 0.5s ease-out; }
+@keyframes oe-reach { from { stroke: #e8590c; stroke-width: 7; } }
 .relation-group.hl .relation, .relation-group.hl .marker { stroke: #2563eb; stroke-width: 2; }
 .view.domain-focus .domain:not(.focus-node) { opacity: 0.3; }
 .domain.focus-node .card-box { stroke: #5b8def; stroke-width: 1.5; }
@@ -83,7 +85,7 @@ const VIEWER_STYLE = `.row-hit { fill: transparent; }
 .card-link-hit { fill: none; stroke: transparent; stroke-width: 14; }
 .card-link-line { fill: none; stroke: #2563eb; stroke-opacity: 0.6; stroke-linecap: round; }
 .card-link.cross_db .card-link-line { stroke-dasharray: 8 6; stroke-linecap: butt; }
-.card-link:hover .card-link-line { stroke-opacity: 1; }
+.card-link:is(:hover, .selected) .card-link-line { stroke-opacity: 1; }
 .rk-item { cursor: pointer; }
 .rk-item:hover > .rk-hit { fill: #eef2f7; }
 .rk-zero:hover rect { fill: #e3e9f2; }
@@ -227,6 +229,10 @@ const VIEWER_STYLE = `.row-hit { fill: transparent; }
 .oe-health-filters { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; }
 .oe-health-filter { font-size: 12px; padding: 2px 10px; }
 .oe-health-item { border-top: 1px solid #f0f2f6; padding: 8px 0; }
+.oe-health-item.ticked { background: #fff7e6; box-shadow: -8px 0 #fff7e6, 8px 0 #fff7e6; }
+.oe-health-tick { margin: 0; align-self: center; cursor: pointer; accent-color: #b8740a; }
+.oe-health-ticked { margin: 8px 0 4px; }
+.oe-health-count { font-weight: 600; color: #172033; }
 .oe-health-head { display: flex; align-items: baseline; gap: 6px; }
 .oe-health-head .rule { font-weight: 600; color: #172033; }
 .oe-health-where { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 6px; margin-top: 4px; }

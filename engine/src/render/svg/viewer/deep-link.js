@@ -14,6 +14,8 @@
 //   between    the two domains whose relations the panel lists (an overview
 //              connector clicked): <db>/<domain>,<db>/<domain>
 //   severity   the severity the schema health list is filtered to
+//   findings   the schema health findings ticked in the list, each
+//              rule:<table id>, then .<column> (columns joined by +)
 //   at         where the reader panned or zoomed to: x,y of the drawing at
 //              the middle of the screen, then the scale
 //   highlight  the highlight modes on: changes, review, pii, health, central

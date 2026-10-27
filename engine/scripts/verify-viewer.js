@@ -308,8 +308,12 @@ const between = formatHash([['view', 'overview'], ['between', pairEnds]]);
 await shot('link-between', `location.hash === ${JSON.stringify(between)} || location.hash.startsWith(${JSON.stringify(`${between}&highlight=`)})`);
 const betweenHash = await evaluate('location.hash');
 await open(betweenHash);
-await shot('link-between-reopens', `location.hash === ${JSON.stringify(betweenHash)} && ${viewIs('overview')} && document.querySelectorAll('.oe-panel .oe-chip').length === new Set(${data}.domainLinks[${JSON.stringify(pairKey)}].map((r) => r.from + ' ' + r.to)).size`);
+// The pair stays lit as on the click: its two cards and the connector
+// between them, the other cards faded; closing the panel lets them go.
+const pairLit = `[...document.querySelectorAll('g.view.domain-focus .domain.focus-node')].map((c) => c.getAttribute('data-domain')).sort().join(',') === ${JSON.stringify([...pairEnds].sort().join(','))} && document.querySelectorAll('.card-link.selected').length === 1 && document.querySelectorAll('.card-link').length === 1`;
+await shot('link-between-reopens', `location.hash === ${JSON.stringify(betweenHash)} && ${viewIs('overview')} && document.querySelectorAll('.oe-panel .oe-chip').length === new Set(${data}.domainLinks[${JSON.stringify(pairKey)}].map((r) => r.from + ' ' + r.to)).size && ${pairLit}`);
 await key('Escape');
+await shot('link-between-closed', `document.querySelectorAll('.domain.focus-node, .card-link').length === 0 && !document.querySelector('g.view.domain-focus')`);
 const relatedKey = await evaluate(`${hubCard}.querySelector('.card-related').getAttribute('data-domain')`);
 // Its tooltip says what a click does.
 await mouse('mouseMoved', await centre(`${hubCard}.querySelector('.card-related .card-related-name')`));
@@ -740,7 +744,8 @@ if (await evaluate(`document.querySelector('g.view[data-view="all"]') !== null`)
   await shot('all-tables', `${viewIs('all')} && document.querySelector('.oe-crumbs .here').textContent === 'All tables · ' + Object.values(${data}.nodes).filter((x) => x.kind === 'table').length + ' tables'`);
   // The legend is open here, drawn with the diagram's own line and marker
   // classes, listing only what this view draws: no review colours outside
-  // review mode, an end-marker entry per kind drawn.
+  // review mode, an end-marker entry per kind drawn, the dashed line and
+  // the hub badge while the view draws them.
   await evaluate(`document.querySelector('.oe-legend-pill')?.click()`);
   const legendHost = `[...document.querySelectorAll('foreignObject')].find((x) => x.querySelector('.oe-legend'))`;
   const drawnEnds = `new Set([...${visible}.querySelectorAll('.marker[data-ends]')].flatMap((g) => g.getAttribute('data-ends').split(' ')).filter((k) => k !== 'none')).size`;
@@ -750,7 +755,8 @@ if (await evaluate(`document.querySelector('g.view[data-view="all"]') !== null`)
       const same = (sel) => (f.querySelector('.oe-legend ' + sel) !== null) === (${visible}.querySelector(sel) !== null);
       const subs = [...f.querySelectorAll('.oe-legend .sub')].map((x) => x.textContent);
       return f.style.display !== 'none' && ends === ${drawnEnds} && ['.hint-enum', '.icon-pk', '.icon-fk', '.icon-index', '.icon-central'].every(same) && f.querySelector('.oe-legend .review-icon') === null
-        && !subs.includes('Lines') && f.querySelector('.oe-legend .badge-arrow') === null && r.bottom <= innerHeight && r.left >= 0 || { ends, drawn: ${drawnEnds}, subs }; })()`,
+        && (f.querySelector('.oe-legend .relation-group.unconfirmed') !== null) === (${visible}.querySelector('.relation-group.unconfirmed, .poly-route.unconfirmed') !== null)
+        && (f.querySelector('.oe-legend .badge-arrow') !== null) === (${visible}.querySelector('.hub-badge') !== null) && r.bottom <= innerHeight && r.left >= 0 || { ends, drawn: ${drawnEnds}, subs }; })()`,
   );
   // Hide folds the legend to a small pill in the same corner, not in any
   // menu; the pill opens it again.
@@ -1057,21 +1063,27 @@ if (joinPair) {
     && [...document.querySelectorAll('.oe-join-spot .oe-result .name')].every((n) => n.scrollWidth <= n.clientWidth + 1 || getComputedStyle(n).textOverflow === 'ellipsis') && [...document.querySelectorAll('.oe-join-spot .oe-result')].every((r) => r.getBoundingClientRect().height < 30)`);
   // When each hop's dashes start, read from the page's own clock, so a
   // slow machine cannot see every hop at once.
-  await evaluate(`(() => { window.__flowTimes = []; new MutationObserver((ms) => { for (const m of ms) for (const n of m.addedNodes) if (n.classList?.contains('flow')) window.__flowTimes.push(performance.now()); }).observe(document.querySelector('.camera'), { childList: true, subtree: true }); })()`);
+  // The tables a hop reaches flash as it gets there, the last one after
+  // the others.
+  await evaluate(`(() => { window.__flowTimes = []; window.__reached = []; new MutationObserver((ms) => { for (const m of ms) {
+    for (const n of m.addedNodes) if (n.classList?.contains('flow')) window.__flowTimes.push(performance.now());
+    if (m.type === 'attributes' && m.target.classList.contains('table') && /\\b(reached|flow-target)\\b/.test(m.target.getAttribute('class')) && !/\\b(reached|flow-target)\\b/.test(m.oldValue ?? '')) window.__reached.push(m.target.classList.contains('flow-target') ? 'end' : 'hop');
+  } }).observe(document.querySelector('.camera'), { childList: true, subtree: true, attributes: true, attributeFilter: ['class'], attributeOldValue: true }); })()`);
   await pickJoin('to', joinPair[1]);
-  await pause(1500);
+  await pause(2000);
   const times = await evaluate('window.__flowTimes');
+  const reached = await evaluate('window.__reached');
   // The hops start one after another, a step apart (JOIN_STEP_MS in the
-  // viewer, 450 ms); the lines of one hop start together.
+  // viewer, 600 ms); the lines of one hop start together.
   const starts = times.filter((t, i) => i === 0 || t - times[i - 1] > 100);
-  const stepped = starts.length >= 2 && starts.slice(1).every((t, i) => t - starts[i] >= 300);
+  const stepped = starts.length >= 2 && starts.slice(1).every((t, i) => t - starts[i] >= 400) && reached.length === starts.length && reached.at(-1) === 'end' && reached.slice(0, -1).every((r) => r === 'hop');
   await shot(
     'join-path',
     `(() => { const hops = document.querySelectorAll('.oe-panel .oe-hops li'); const lit = ${visible}.querySelectorAll('.relation-group.hl, .hub-route.hl').length;
       const words = [...document.querySelectorAll('.oe-panel .oe-hops .chip')].some((c) => /pending review|^stale$/.test(c.textContent));
       const icons = [...document.querySelectorAll('.oe-panel .oe-hops .oe-review')].every((i) => ['Not confirmed yet', 'Code changed since confirmed'].includes(i.title));
       return hops.length >= 2 && !words && icons && [...hops].every((li) => / = /.test(li.querySelector('code').textContent)) && lit >= 1 && ${stepped} && ${visible}.querySelectorAll(':is(.table, .stub).selected').length === 2
-        || { hops: hops.length, lit, flowTimes: ${JSON.stringify(times)} }; })()`,
+        || { hops: hops.length, lit, flowTimes: ${JSON.stringify(times)}, reached: ${JSON.stringify(reached)} }; })()`,
   );
   // One copy button: the SQL, for a path within one database; disabled with
   // its reason for a path across databases. No "Copy conditions".
@@ -1372,6 +1384,26 @@ await shot(
     // One severity only: the list has no filter.
     if (severities.length > 0) await click(`document.querySelector('.oe-panel .oe-health-filter[data-severity="all"]')`);
     else await shot('health-no-filter', `document.querySelector('.oe-panel .oe-health-filters') === null`);
+    // Ticked findings (two whose tables the view draws): their tables and
+    // columns lit, the rest faded, the list still open and the address
+    // naming them; opened again, the same; Clear lets them go.
+    const tickable = `${items}.filter((e) => { const d = ${data}; const f = d.health.find((x) => e.getAttribute('data-finding').startsWith(x.rule + ':' + x.table)); return f && ${visible}.querySelector('.table[data-id="' + CSS.escape(f.table) + '"]'); })`;
+    const toTick = await evaluate(`${tickable}.slice(0, 2).map((e) => e.getAttribute('data-finding'))`);
+    if (toTick.length > 0) {
+      for (const k of toTick) await click(`document.querySelector('.oe-panel .oe-health-item[data-finding="${k}"] .oe-health-tick')`);
+      const tickedLit = `(() => { const d = ${data}; const v = ${visible}; const keys = ${JSON.stringify(toTick)};
+        const findings = d.health.filter((f) => keys.includes(f.rule + ':' + f.table + (f.columns?.length ? '.' + f.columns.join('+') : '')));
+        const lit = findings.every((f) => { const g = v.querySelector('.table.hl[data-id="' + CSS.escape(f.table) + '"]'); return g && (f.columns ?? []).every((c) => g.querySelector('.column.hl-column[data-column="' + CSS.escape(c) + '"]')); });
+        return (findings.length === keys.length && lit && v.classList.contains('dimmed') && document.querySelector('.oe-panel .oe-ph-name')?.textContent === 'Schema health'
+          && document.querySelectorAll('.oe-panel .oe-health-item.ticked').length === keys.length && document.querySelector('.oe-health-count').textContent === keys.length + (keys.length === 1 ? ' finding' : ' findings') + ' ticked'
+          && new URLSearchParams(location.hash.slice(1)).get('findings') === keys.join(',')) || { findings: findings.length, lit, hash: location.hash }; })()`;
+      await shot('link-findings', tickedLit);
+      const findingsHash = await evaluate('location.hash');
+      await open(findingsHash);
+      await shot('link-findings-reopens', `location.hash.startsWith(${JSON.stringify(findingsHash.replace(/&at=.*$/, ''))}) && ${tickedLit} === true`);
+      await click(`[...document.querySelectorAll('.oe-panel .oe-health-ticked .oe-btn')].find((b) => b.textContent === 'Clear')`);
+      await shot('link-findings-cleared', `!${visible}.classList.contains('dimmed') && !location.hash.includes('findings=') && document.querySelectorAll('.oe-panel .oe-health-item.ticked').length === 0 && document.querySelector('.oe-health-ticked').style.display === 'none'`);
+    }
     const target = await evaluate(`(() => { const e = ${shown}.find((x) => x.querySelector('.oe-chip')); return e ? [e.querySelector('.oe-link').title.slice('Go to '.length), e.querySelector('.oe-chip').textContent] : null; })()`);
     if (target) {
       await click(`${shown}.find((x) => x.querySelector('.oe-chip')).querySelector('.oe-chip')`);
@@ -1659,6 +1691,8 @@ await key('Escape');
     const [from, to] = pair;
     const [best] = findJoinPaths(model, from, to);
     await open(`#path=${encodeURIComponent(from)},${encodeURIComponent(to)}`);
+    // The path is walked a hop every 600 ms (JOIN_STEP_MS in the viewer).
+    await pause(best.hops.length * 600 + 500);
     await shot('deep-link-path', `document.querySelectorAll('.oe-panel .oe-hops li').length === ${best.hops.length} && ${visible}.classList.contains('dimmed') && ${JSON.stringify(best.nodes)}.every((id) => ${visible}.querySelector('.table.hl[data-id="' + CSS.escape(id) + '"]') !== null)`);
     const through = [from, best.nodes[1], to];
     const { path } = pathThrough(model, through);

@@ -593,8 +593,8 @@ function clearSelection() {
   stopFlows();
   for (const v of views.values()) {
     v.classList.remove('dimmed', 'center-selected');
-    for (const e of v.querySelectorAll('.hl, .selected, .flow-target, .flowing, .hl-column')) {
-      e.classList.remove('hl', 'selected', 'flow-target', 'flowing', 'hl-column');
+    for (const e of v.querySelectorAll('.hl, .selected, .flow-target, .reached, .flowing, .hl-column')) {
+      e.classList.remove('hl', 'selected', 'flow-target', 'reached', 'flowing', 'hl-column');
     }
     for (const e of v.querySelectorAll('.flow')) e.remove();
     for (const e of v.querySelectorAll('.poly-routes, .hub-routes')) e.style.display = 'none';
@@ -779,7 +779,7 @@ function buildNeighborhood(center, hops) {
     offsets.set(id, { dx, dy });
     boxes.set(id, { x: pos[id].x, y: pos[id].y, w: box.w, h: box.h });
     const copy = g.cloneNode(true);
-    copy.classList.remove('hl', 'selected', 'flow-target', 'oe-hidden', 'arrive');
+    copy.classList.remove('hl', 'selected', 'flow-target', 'reached', 'oe-hidden', 'arrive');
     if (outer.has(id)) copy.classList.add('ring-2');
     nodes.append(svgEl('g', { transform: `translate(${dx} ${dy})` }, [copy]));
   }
@@ -1632,7 +1632,10 @@ function linkPairs() {
     else if (node && !(state.view === NEIGHBORHOOD && node === state.center)) pairs.push(['table', node]);
     else if (line) pairs.push(['line', line]);
     else if (domainLinkShown()) pairs.push(['between', domainLink.pair]);
-    else if (healthSeverity && healthListShown()) pairs.push(['severity', healthSeverity]);
+    else if (healthListShown()) {
+      if (healthSeverity) pairs.push(['severity', healthSeverity]);
+      if (healthTicked.size > 0) pairs.push(['findings', HEALTH.map(findingKey).filter((k) => healthTicked.has(k))]);
+    }
   }
   if (cameraMoved) pairs.push(['at', cameraCentre().join(',')]);
   // A diff opens with Changes on: say so even when no mode is on.
@@ -1670,6 +1673,12 @@ function openDeepLink(hash) {
   const opened = openLinkTarget(p);
   if (p.folded && state.view === p.view?.value) foldLinked(p.folded.ids);
   if (SEVERITIES.includes(p.severity?.value) && severityCount(p.severity.value) > 0 && healthListShown()) filterHealth(p.severity.value);
+  if (p.findings && healthListShown()) {
+    const known = new Set(HEALTH.map(findingKey));
+    tickFindings(p.findings.ids.filter((k) => known.has(k)));
+    const lit = showHealthList();
+    if (lit.length > 0) zoomToRect(boundsOf(currentIndex(), lit), FOCUS_MAX_SCALE);
+  }
   // Last: opening the rest framed the view; the link's camera replaces that.
   const at = (p.at?.value ?? '').split(',').map(Number);
   if (at.length === 3 && at.every(Number.isFinite) && at[2] > 0) centreCamera(at);
@@ -1886,6 +1895,7 @@ function hidePanel() {
   if (was) {
     updateMinimap();
     placeBackPill();
+    if (focused === null) focusDomain(null);
   }
 }
 
@@ -1893,6 +1903,8 @@ function showPanel(children) {
   panel.div.replaceChildren(...children.filter(Boolean));
   panel.fo.style.display = '';
   layoutOverlays();
+  // A domain pair stays lit while its panel is open, and only then.
+  if (focused === null) focusDomain(null);
 }
 
 const link = (text, onClick) => el('button', { class: 'oe-link', text, on: { click: onClick } });
@@ -2311,7 +2323,7 @@ function changeList(kind, id) {
 // (see sqlSkeleton) for a path within one database.
 // `through`: the tables a path from a link runs through, in order, when more than two.
 const join = { open: false, from: null, to: null, paths: [], index: 0, through: null };
-const JOIN_STEP_MS = 450;
+const JOIN_STEP_MS = 600;
 const JOIN_PICKS = 8;
 // Below this scale a path drawn across a large view is too small to read.
 const JOIN_MIN_SCALE = 0.45;
@@ -2441,7 +2453,7 @@ function buildJoinView(path) {
     boxes.set(id, { x, y: 0, w: box.w, h: box.h });
     offsets.set(id, { dx: x - box.x, dy: -box.y });
     const copy = g.cloneNode(true);
-    copy.classList.remove('hl', 'selected', 'flow-target', 'oe-hidden', 'arrive');
+    copy.classList.remove('hl', 'selected', 'flow-target', 'reached', 'oe-hidden', 'arrive');
     nodes.append(svgEl('g', { transform: `translate(${x - box.x} ${-box.y})` }, [copy]));
     x += box.w + 2 * RING_GAP + 40;
   }
@@ -2496,21 +2508,27 @@ function showJoinPath(i) {
   const index = currentIndex();
   const view = currentView();
   view.classList.add('dimmed');
-  for (const id of stepNodes(steps)) index.get(id)?.el.classList.add('hl');
-  for (const id of [join.from, join.to]) index.get(id)?.el.classList.add('selected');
+  index.get(join.from)?.el.classList.add('hl', 'selected');
   const segments = steps.map((s, k) => stepSegments(name, s, k));
-  for (const seg of segments.flat()) {
-    seg.g.classList.add('hl', 'flowing');
-    if (seg.show) seg.show.style.display = '';
-  }
-  // Each step's dashes start once the previous step's have set off. The
-  // first waits for the view to be drawn, and each step from the one
-  // before: a large view still drawing past a step's time would otherwise
-  // start every step at once.
+  // The path is walked hop after hop from the first table, the rest faded:
+  // each step lights its line (and the polymorphic node it runs through),
+  // sets its dashes off and flashes the table it reaches; the last table
+  // keeps pulsing. The first step waits for the view to be drawn, and each
+  // step is timed from the one before: a large view still drawing past a
+  // step's time would otherwise start every step at once.
   const flowStep = (k) => {
-    for (const seg of segments[k]) seg.g.append(svgEl('path', { class: 'flow', d: seg.reverse ? reversed(seg.d) : seg.d }));
-    if (k === segments.length - 1) index.get(join.to)?.el.classList.add('flow-target');
-    else flowTimers.push(setTimeout(() => flowStep(k + 1), JOIN_STEP_MS));
+    for (const seg of segments[k]) {
+      seg.g.classList.add('hl', 'flowing');
+      if (seg.show) seg.show.style.display = '';
+      seg.g.append(svgEl('path', { class: 'flow', d: seg.reverse ? reversed(seg.d) : seg.d }));
+    }
+    if (steps[k].line.type === 'poly') index.get(steps[k].line.poly)?.el.classList.add('hl');
+    const reached = index.get(steps[k].to)?.el;
+    if (k === segments.length - 1) reached?.classList.add('hl', 'selected', 'flow-target');
+    else {
+      reached?.classList.add('hl', 'reached');
+      flowTimers.push(setTimeout(() => flowStep(k + 1), JOIN_STEP_MS));
+    }
   };
   const run = flowRun;
   if (segments.length > 0) requestAnimationFrame(() => run === flowRun && flowTimers.push(setTimeout(() => flowStep(0), 0)));
@@ -2665,10 +2683,10 @@ const has = (view, selector) => view.querySelector(selector) !== null;
 // End marker kinds the view draws, as its marker groups list them.
 const endKinds = (view) => new Set([...view.querySelectorAll('.marker[data-ends]')].flatMap((g) => g.getAttribute('data-ends').split(' ')));
 const reviewing = () => svg.classList.contains('review-mode');
-// What lines and boxes mean. Solid and dashed lines explain themselves;
-// the legend covers what a reader cannot guess: card strength bars and
-// connectors, line ends, the icons in boxes, and, in review mode only, the
-// review colours and icons.
+// What lines and boxes mean: card strength bars and connectors, solid and
+// dashed lines, line ends, the icons and marks in boxes, and, in review
+// mode only, the review colours and icons. Each entry is listed only while
+// the view on screen draws it.
 const strengthSample = () => sample([0, 1, 2, 3, 4].map((i) => svgEl('rect', { class: `seg${i < 3 ? ' on' : ''}`, x: 2 + i * 11, y: 6, width: 9, height: 6, rx: 1 })));
 const connectorSample = (count, crossDb) => sample([connectorEl('M2 14C20 14 26 4 44 4', count, crossDb)]);
 // A table box as the Changes mode fades it (opacities from render.js).
@@ -2704,6 +2722,11 @@ const LEGEND = [
   ['Schema health', [
     [() => sample([svgEl('rect', { class: 'stub-box', x: 1, y: 6, width: 54, height: 11, rx: 3 }), svgEl('path', { class: 'col-warn', d: 'M49 12L55 1L61 12Z' })]), 'Table with a health finding', (v) => healthOn() && has(v, '.has-health')],
   ]],
+  ['Lines', [
+    [() => lineSample('kind-db_fk'), 'Confirmed relation', (v) => has(v, '.relation-group:not(.unconfirmed, .kind-view_source)')],
+    [() => lineSample('kind-declared unconfirmed'), 'Found in code, not confirmed yet', (v) => has(v, '.relation-group.unconfirmed, .poly-route.unconfirmed')],
+    [() => lineSample('kind-view_source'), 'Read by a database view', (v) => has(v, '.kind-view_source')],
+  ]],
   ['Line ends', [
     ['one', 'Exactly one'],
     ['zeroOrOne', 'Zero or one'],
@@ -2717,6 +2740,8 @@ const LEGEND = [
     [() => iconSample(indexIconSvg(8, 9)), 'Column in an index', (v) => has(v, '.icon-index')],
     [() => iconSample(enumIconSvg(8, 9)), 'Column with listed values', (v) => has(v, '.hint-enum')],
     [() => sample([svgEl('path', { class: 'col-warn', d: 'M4 13L8 5L12 13Z' })]), 'Possible missing relation', (v) => has(v, '.col-warn')],
+    [() => sample([svgEl('path', { class: 'badge-arrow', d: 'M2 9H14M10 6L14 9L10 12' }), svgEl('text', { class: 'badge-text', x: 18, y: 9, 'dominant-baseline': 'central', text: 'users' })]), 'Reference to a hub table, no line drawn', (v) => has(v, '.hub-badge')],
+    [() => sample([svgEl('rect', { class: 'table-box', x: 1, y: 1, width: 62, height: 16, rx: 3, style: 'stroke-dasharray:5 3' }), svgEl('text', { class: 'table-title', x: 6, y: 9, 'dominant-baseline': 'central', text: 'report' })]), 'Database view', (v) => has(v, '.table.is-view')],
     [() => sample([svgEl('rect', { class: 'stub-box', x: 1, y: 1, width: 62, height: 16, rx: 4 }), svgEl('text', { class: 'stub-title', x: 6, y: 9, 'dominant-baseline': 'central', text: 'tables' })]), 'Linked table in another domain: click to open', (v) => has(v, '.stub')],
     [() => sample([svgEl('rect', { class: 'poly-box', x: 1, y: 1, width: 62, height: 16, rx: 4 }), svgEl('text', { class: 'poly-title', x: 6, y: 9, 'dominant-baseline': 'central', text: '«able»' })]), 'Polymorphic: one column pair points at several tables', (v) => has(v, '.poly')],
   ]],
@@ -2945,8 +2970,10 @@ function setChangesMode(on) {
 // turned off. A chip under the toolbar says the mode is on: List reopens
 // the findings, × turns it off. The list shows every finding in the
 // engine's order (medium first), filterable by severity; a click on the
-// table or a column goes there and keeps the list open. The mode is a class
-// on the root, so a download keeps the marks.
+// table or a column goes there and keeps the list open. Ticked findings
+// light their tables and columns, the rest faded, and the address names
+// them, to point a colleague at the same problems. The mode is a class on
+// the root, so a download keeps the marks.
 const healthOn = () => svg.classList.contains('health-mode');
 const SEVERITIES = ['medium', 'low'];
 const severityCount = (s) => HEALTH.filter((f) => f.severity === s).length;
@@ -2978,6 +3005,12 @@ let healthPanel = null;
 // list's filter, for a link to set.
 let healthSeverity = null;
 let filterHealth = null;
+// A finding in the link: its rule, table and columns, as health.ignore
+// names it (`rule:table.column`, columns joined by +).
+const findingKey = (f) => `${f.rule}:${f.table}${f.columns?.length ? `.${f.columns.join('+')}` : ''}`;
+// The ticked findings, by key, and the list's way to tick them from a link.
+let healthTicked = new Set();
+let tickFindings = null;
 function healthListPanel() {
   if (healthPanel) return healthPanel;
   const go = (id, column) => () => {
@@ -2985,9 +3018,21 @@ function healthListPanel() {
     goToNode(id, column);
     showHealthList(scroll);
   };
-  const items = HEALTH.map((f) =>
-    el('div', { class: 'oe-health-item', 'data-severity': f.severity }, [
+  const status = el('span', { class: 'oe-status-inline muted' });
+  const count = el('span', { class: 'oe-health-count' });
+  const ticked = el('div', { class: 'oe-actions oe-health-ticked' }, [
+    count,
+    el('button', { class: 'oe-btn', text: 'Copy link', title: 'Copy the address of these findings', on: { click: () => copyText(location.href, status, 'the link') } }),
+    el('button', { class: 'oe-btn', text: 'Clear', title: 'Untick every finding', on: { click: () => tick([]) } }),
+    status,
+  ]);
+  const boxes = HEALTH.map((f) =>
+    el('input', { type: 'checkbox', class: 'oe-health-tick', title: 'Tick to light this finding on the diagram and name it in the address', 'aria-label': `Select: ${RULE_WORDS[f.rule] ?? f.rule} at ${short(f.table)}`, on: { change: () => tick(HEALTH.filter((g, i) => boxes[i].checked).map(findingKey)) } }),
+  );
+  const items = HEALTH.map((f, i) =>
+    el('div', { class: 'oe-health-item', 'data-severity': f.severity, 'data-finding': findingKey(f) }, [
       el('div', { class: 'oe-health-head' }, [
+        boxes[i],
         el('span', { class: `oe-badge sev-${f.severity}`, text: f.severity }),
         el('span', { class: 'rule', text: RULE_WORDS[f.rule] ?? f.rule, title: `Rule ${f.rule}` }),
       ]),
@@ -3010,17 +3055,53 @@ function healthListPanel() {
     syncHash();
   }
   filterHealth = filter;
+  function tick(keys) {
+    healthTicked = new Set(keys);
+    HEALTH.forEach((f, i) => {
+      boxes[i].checked = healthTicked.has(findingKey(f));
+      items[i].classList.toggle('ticked', boxes[i].checked);
+    });
+    ticked.style.display = healthTicked.size > 0 ? '' : 'none';
+    count.textContent = `${plural(healthTicked.size, 'finding')} ticked`;
+    status.textContent = '';
+    // The findings unticked go dark with the rest of what was lit.
+    const scroll = panel.div.scrollTop;
+    clearSelection();
+    showHealthList(scroll);
+  }
+  tickFindings = tick;
+  ticked.style.display = 'none';
   healthPanel = [
-    panelHeader({ name: 'Schema health', note: `${HEALTH_COUNTS}. No score: each finding is something to look at, with SQL to review before use.` }),
+    panelHeader({ name: 'Schema health', note: `${HEALTH_COUNTS}. No score: each finding is something to look at, with SQL to review before use. Tick findings to light them and share them by the address.` }),
     // One severity only: nothing to filter.
     filters.length > 2 ? el('div', { class: 'oe-health-filters', role: 'group', 'aria-label': 'Filter by severity' }, filters) : null,
+    ticked,
     ...items,
   ];
   return healthPanel;
 }
+// The list, with the ticked findings lit in the view on screen: their
+// tables and columns, the rest faded (none ticked: the view as it was).
+// Returns the tables lit.
 function showHealthList(scroll = 0) {
+  const findings = HEALTH.filter((f) => healthTicked.has(findingKey(f)));
+  const index = currentIndex();
+  const tables = [...new Set(findings.map((f) => f.table))].filter((id) => index.has(id));
+  if (findings.length > 0) {
+    clearSelection();
+    for (const id of tables) unfoldFor(id);
+    for (const f of findings) {
+      const g = index.get(f.table)?.el;
+      if (!g) continue;
+      g.classList.add('hl');
+      for (const c of g.querySelectorAll('.column')) if (f.columns?.includes(c.getAttribute('data-column'))) c.classList.add('hl-column');
+    }
+    currentView().classList.add('dimmed');
+  }
   showPanel(healthListPanel());
   panel.div.scrollTop = scroll;
+  syncHash();
+  return tables;
 }
 const healthListShown = () => healthPanel !== null && panel.fo.style.display !== 'none' && panel.div.contains(healthPanel[0]);
 
@@ -3598,14 +3679,28 @@ function connectorEl(d, count, crossDb, attrs = {}) {
   ]);
 }
 
+// With no card hovered, the overview shows the domain pair whose panel is
+// open, as a selection stays lit: its two cards and the connector between
+// them, the other cards faded.
 function focusDomain(id) {
   clearTimeout(unfocusTimer);
-  if (focused === id) return;
+  if (focused === id && id !== null) return;
   focused = id;
   const view = views.get(OVERVIEW);
   for (const e of view.querySelectorAll('.focus-node')) e.classList.remove('focus-node');
   for (const e of view.querySelectorAll('.card-links')) e.remove();
-  view.classList.toggle('domain-focus', id !== null);
+  const pair = id === null && domainLinkShown() ? domainLink.pair : null;
+  view.classList.toggle('domain-focus', id !== null || pair !== null);
+  if (pair) {
+    const [a, b] = pair;
+    const links = connectors(a);
+    for (const p of [...links.children]) {
+      if (p.getAttribute('data-to') === b) p.classList.add('selected');
+      else p.remove();
+    }
+    for (const d of pair) indexes.get(OVERVIEW).get(d)?.el.classList.add('focus-node');
+    view.querySelector('.relations').append(links);
+  }
   if (id === null) return;
   const card = indexes.get(OVERVIEW).get(id)?.el;
   if (!card) return;
@@ -3752,7 +3847,8 @@ document.addEventListener(
 // thing open: the palette, a menu, the tour, the selection, a highlight
 // mode's own list (turning that mode off), the panel, then the highlight
 // modes still on.
-const typing = () => document.activeElement instanceof HTMLInputElement || document.activeElement instanceof HTMLTextAreaElement;
+// A ticked checkbox keeps the focus but takes no letters.
+const typing = () => (document.activeElement instanceof HTMLInputElement && document.activeElement.type !== 'checkbox') || document.activeElement instanceof HTMLTextAreaElement;
 // Keyboard shortcuts, also listed under ⋯ › Keyboard shortcuts: groups of
 // [keys (one or several, any of them works), what they do].
 const SHORTCUTS = [
