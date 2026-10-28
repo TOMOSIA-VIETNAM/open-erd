@@ -116,6 +116,44 @@ test('a chain through the rows ranks above a detour up to a shared parent and ba
   assert.equal(paths[1].cost, 2 * 10 + SHARED_PARENT_COST);
 });
 
+test('a detour found from a parent the previous path came up to costs its shared parent too', async () => {
+  const multi = await loadMulti();
+  // x -> p -> t is cheapest. Leaving p another way, p -> r -> s -> t (three
+  // hops up) beats p <- c -> t (two hops, but down from the parent x came up to).
+  const id = (n) => `shop._.${n}`;
+  const model = {
+    ...multi,
+    tables: [
+      ...multi.tables,
+      table(id('x'), 'Catalog', [['p_id', 'bigint']]),
+      table(id('p'), 'Catalog', [['t_id', 'bigint'], ['r_id', 'bigint']]),
+      table(id('c'), 'Catalog', [['p_id', 'bigint'], ['t_id', 'bigint']]),
+      table(id('r'), 'Catalog', [['s_id', 'bigint']]),
+      table(id('s'), 'Catalog', [['t_id', 'bigint']]),
+      table(id('t'), 'Catalog', []),
+    ],
+    relations: [
+      ...multi.relations,
+      fk(id('x'), 'p_id', id('p')),
+      fk(id('p'), 't_id', id('t')),
+      fk(id('p'), 'r_id', id('r')),
+      fk(id('c'), 'p_id', id('p')),
+      fk(id('c'), 't_id', id('t')),
+      fk(id('r'), 's_id', id('s')),
+      fk(id('s'), 't_id', id('t')),
+    ],
+  };
+  const paths = findJoinPaths(dataOf(model), id('x'), id('t'));
+  assert.deepEqual(
+    paths.map((p) => [route(p), p.cost]),
+    [
+      ['shop._.x > shop._.p > shop._.t', 20],
+      ['shop._.x > shop._.p > shop._.r > shop._.s > shop._.t', 40],
+      ['shop._.x > shop._.p > shop._.c > shop._.t', 30 + SHARED_PARENT_COST],
+    ],
+  );
+});
+
 test('composite keys keep their column order; tables of the same name print their full ids', async () => {
   const multi = await loadMulti();
   const lines = { id: 'shop._.order_lines', domain: 'Orders', columns: [{ name: 'id', type: 'bigint', pk: true }, { name: 'org_id', type: 'bigint' }, { name: 'order_no', type: 'bigint' }] };
