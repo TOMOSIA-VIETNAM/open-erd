@@ -3,8 +3,8 @@ import { test } from 'node:test';
 import { buildDiagram } from '../src/layout/diagram.js';
 import { applyProfile } from '../src/model/profile.js';
 import { viewerData } from '../src/render/svg/render.js';
-import { HUB_COST, describeHop, findJoinPaths, hopCondition, pathNames, pathThrough, sqlNames, sqlSkeleton } from '../src/render/svg/viewer/join-path.js';
-import { fk, loadMulti } from './helpers/shop.js';
+import { HUB_COST, SHARED_PARENT_COST, describeHop, findJoinPaths, hopCondition, pathNames, pathThrough, sqlNames, sqlSkeleton } from '../src/render/svg/viewer/join-path.js';
+import { fk, loadMulti, table } from './helpers/shop.js';
 
 // The conditions of a path, one hop per line, as the panel lists them.
 const conditionsText = (path) => {
@@ -82,6 +82,38 @@ test('trust ranks paths of equal length; a hub table costs several hops', async 
   const found = findJoinPaths(dataOf(model), 'shop._.categories', 'shop._.brands').map(route);
   const [sure, guessed] = ['aa_link', 'zz_guess'].map((t) => found.indexOf(`shop._.categories > shop._.${t} > shop._.brands`));
   assert.ok(sure === 0 && (guessed === -1 || guessed > sure), JSON.stringify(found));
+});
+
+test('a chain through the rows ranks above a detour up to a shared parent and back down', async () => {
+  const multi = await loadMulti();
+  // notices and rules both point at a company (two hops through it), but a
+  // notice's rule is reached through its targets and their setting: three hops.
+  const id = (n) => `shop._.${n}`;
+  const model = {
+    ...multi,
+    tables: [
+      ...multi.tables,
+      table(id('companies'), 'Catalog', []),
+      table(id('notices'), 'Catalog', [['company_id', 'bigint']]),
+      table(id('notice_targets'), 'Catalog', [['notice_id', 'bigint'], ['setting_id', 'bigint']]),
+      table(id('settings'), 'Catalog', [['rule_id', 'bigint']]),
+      table(id('rules'), 'Catalog', [['company_id', 'bigint']]),
+    ],
+    relations: [
+      ...multi.relations,
+      fk(id('notices'), 'company_id', id('companies')),
+      fk(id('rules'), 'company_id', id('companies')),
+      fk(id('notice_targets'), 'notice_id', id('notices')),
+      fk(id('notice_targets'), 'setting_id', id('settings')),
+      fk(id('settings'), 'rule_id', id('rules')),
+    ],
+  };
+  const paths = findJoinPaths(dataOf(model), id('notices'), id('rules'));
+  assert.deepEqual(paths.slice(0, 2).map(route), ['shop._.notices > shop._.notice_targets > shop._.settings > shop._.rules', 'shop._.notices > shop._.companies > shop._.rules']);
+  assert.ok(paths[0].hops.every((h) => !flagTypes(h).includes('shared_parent')));
+  const [up, down] = paths[1].hops;
+  assert.deepEqual([flagTypes(up), flagTypes(down)], [[], ['multiplies', 'shared_parent']]);
+  assert.equal(paths[1].cost, 2 * 10 + SHARED_PARENT_COST);
 });
 
 test('composite keys keep their column order; tables of the same name print their full ids', async () => {

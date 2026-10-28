@@ -395,6 +395,7 @@ const VIEWER_STYLE = `.row-hit { fill: transparent; }
 .oe-chips .chip.flag-cross_db { background: #e7f0ff; color: #1d4ed8; }
 .oe-chips .chip.flag-polymorphic { background: #f6efdf; color: #6b5428; }
 .oe-chips .chip.flag-multiplies { background: #fde8e8; color: #a61f1f; }
+.oe-chips .chip.flag-shared_parent { background: #fff4e0; color: #9a5b00; }
 .oe-warn { color: #9a6208; font-size: 12px; margin: 4px 0; }
 .oe-tip .oe-warn { color: #ffd27a; }
 .oe-tip b { color: #ffffff; }

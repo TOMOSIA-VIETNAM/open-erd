@@ -2569,6 +2569,7 @@ const FLAG_TEXT = {
   cross_db: () => 'cross-DB',
   polymorphic: (f) => `filter by ${f.column}`,
   multiplies: () => 'repeats rows (1 → many)',
+  shared_parent: (f) => `via shared ${short(f.table)}`,
 };
 
 function joinPanel() {
@@ -2584,7 +2585,7 @@ function joinPanel() {
   if (!path) return parts;
   const name = pathNames(path.nodes);
   parts.push(
-    el('div', { class: 'muted', text: 'Shortest first; unconfirmed relations and hub tables count as longer.' }),
+    el('div', { class: 'muted', text: 'Shortest first; unconfirmed relations, hub tables and detours through a shared parent count as longer.' }),
     el('div', { class: 'oe-seg oe-paths' }, join.paths.map((p, i) => el('button', { class: `oe-btn${i === join.index ? ' on' : ''}`, text: `Path ${i + 1} · ${plural(p.hops.length, 'hop')}`, on: { click: () => showJoinPath(i) } }))),
     el(
       'ol',
@@ -2605,6 +2606,7 @@ function joinPanel() {
     dbs.length > 1 ? `Spans ${dbs.length} databases (${dbs.join(', ')}): this cannot be one query; join the results in the application.` : null,
     path.hops.some((h) => h.flags.some((f) => f.type === 'trust')) ? 'Some hops are not confirmed yet (inferred or pending review): check them in the code first.' : null,
     path.hops.some((h) => h.flags.some((f) => f.type === 'multiplies')) ? 'A hop going from one row to many repeats the rows before it: count or deduplicate with care.' : null,
+    path.hops.some((h) => h.flags.some((f) => f.type === 'shared_parent')) ? 'Goes up to a parent table and back down: it joins rows only because they share that parent row. Check that this is the link you mean.' : null,
     hubs.length > 0 ? `Passes through ${hubs.join(', ')}, a table shared by everything: rows meet only because they share it.` : null,
   ].filter(Boolean);
   const status = el('span', { class: 'muted' });
