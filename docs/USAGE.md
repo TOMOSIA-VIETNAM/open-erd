@@ -124,6 +124,8 @@ health:
 | `/open-erd:init` | Asks where to put the ERD workspace (outside your code repo, its own git repo), writes a read-only extract script per source repo and runs it after you approve, proposes domains, draws the first ERD. |
 | `/open-erd:sync` | Re-reads the code, updates the model, asks you to confirm renames, marks facts that no longer match as `stale` instead of deleting them, commits, and when something changed writes `out/diff.svg` / `out/diff.xlsx` showing what this sync changed. |
 
+Run `init` and `sync` on code whose features are finished (the main or a release branch): the ERD describes whatever the code says, half-built features included. Before running an extract script they name each source's branch and uncommitted changes, and ask before going on from a feature branch or with uncommitted changes. Notes describe what a table or column means, never how far the code has got ("currently always null"); when the code does not show a meaning, the note stays empty.
+
 After building the model, `init` and `sync` have a second agent, with a fresh context, re-read the code for relations the model missed, starting from the warnings of `validate` (a `*_id` column nothing uses, a table nothing connects to). What it finds is added as `pending` for you to review; columns that are not references go into `ignore_missing` in `open-erd.yaml`.
 | `/open-erd:review` | Walks through inferred and stale relations one by one; you confirm or correct in plain words. Reviewed facts are locked. |
 | `/open-erd:diff` | Compares two versions of the workspace: a tag, any commit, `HEAD`, or the uncommitted working copy. |

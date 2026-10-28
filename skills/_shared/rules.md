@@ -140,7 +140,7 @@ Never guess a default location, and never create a workspace outside
 - Never write, create, delete or `git` anything in a source repository (one
   exception: the workflow file `/open-erd:ci-setup` writes after the user
   agreed). Allowed there: reading files and read-only git (`rev-parse`, `status --porcelain`,
-  `log`, `show`).
+  `branch --show-current`, `log`, `show`).
 - Never boot a source app (`rails runner`, `artisan`, `manage.py`, `node app`,
   `npm install`, …). Extract scripts read static files only.
 - Never write credentials, tokens, connection strings or hostnames of a
@@ -168,6 +168,13 @@ and that it writes nothing, and ask permission before running it. Before
 asking, check it imports nothing but `node:fs` and `node:path` and contains no
 `child_process`, `http`, `https`, `net`, `fetch(`, `writeFile`, `appendFile`,
 `mkdir`, `rm(`, `rmSync`, `unlink` or `rename(`.
+
+Before running, show each source's branch and whether it has uncommitted
+changes (`git -C <source path> branch --show-current`, `git -C <source path>
+status --porcelain`). The model should come from code whose features are
+finished (the main or a release branch). On a feature branch or with
+uncommitted changes, say that unfinished code would become facts of the ERD
+and ask whether to go on or switch first; never switch branches yourself.
 
 Run: `node <ws>/extract/<source>.mjs <source path> > <ws>/extract/facts/<source>.json`.
 Source paths come from `<ws>/open-erd.local.yaml`.

@@ -32,6 +32,11 @@ evidence.
   technically, as the code that sets or reads it shows. No note is right when
   no code tells; a placeholder that describes nothing (`Unclear from code.`,
   `Unknown.`) is `wrong`, with the fix "remove the note".
+- **Current state** (table and column notes): never propose a note that
+  says how far the code has got ("currently always null", "not read yet",
+  "stored only, not used"). Such a note in the model is `wrong`, with the
+  fix "move it to `internal_note`" and, when the code shows a meaning, a
+  proposed note of that meaning; otherwise "remove the note".
 - **Domain note**: what the domain's tables cover together.
 - **Enum meaning**: the code gives that meaning to that stored value (a
   branch, a label, a comment). An empty meaning is right when no code does.
