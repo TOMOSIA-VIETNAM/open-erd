@@ -345,6 +345,12 @@ polymorphic entry may also carry `note` and `internal_note`.
 - **internal_note** vs **note**: `note` is what a customer may read;
   anything only the team should see (code pointers, doubts) goes in
   `internal_note`.
+- **Meaning, not current state**: a `note` never says how far the code has
+  got ("currently always null", "not read yet", "stored only, not used"):
+  that goes stale as soon as the code changes, and `sync` does not compare
+  notes. Such an observation goes in `internal_note`, or nowhere. When the
+  code shows no meaning beyond that (nothing sets or reads the value yet),
+  leave `note` out, as for any note the code does not show.
 - **Precision**: a column ending in `_id` that holds an external provider id
   (`stripe_customer_id`, `paypal_payer_id`) is not a relation. Framework
   tables (`schema_migrations`, `django_content_type`, `ar_internal_metadata`,
