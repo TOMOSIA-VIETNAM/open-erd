@@ -175,6 +175,9 @@ status --porcelain`). The model should come from code whose features are
 finished (the main or a release branch). On a feature branch or with
 uncommitted changes, say that unfinished code would become facts of the ERD
 and ask whether to go on or switch first; never switch branches yourself.
+No branch name (a detached HEAD, e.g. a tag or commit checked out) → show
+`git -C <source path> rev-parse --short HEAD` instead and ask the same way.
+Not a git repository → say so and ask.
 
 Run: `node <ws>/extract/<source>.mjs <source path> > <ws>/extract/facts/<source>.json`.
 Source paths come from `<ws>/open-erd.local.yaml`.

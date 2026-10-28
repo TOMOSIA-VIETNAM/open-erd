@@ -89,6 +89,9 @@ const sides = (e, at) => {
 // Walking from many rows to the one they point at, or back down.
 const goesUp = (e, at) => sides(e, at).join('-') === 'n-1';
 const goesDown = (e, at) => sides(e, at).join('-') === '1-n';
+// The path came up to `at` over `prev` (walked from `prevAt`) and goes back
+// down over `e`.
+const viaSharedParent = (prev, prevAt, e, at) => goesUp(prev, prevAt) && goesDown(e, at);
 
 /**
  * Cost of a path: its hops, plus HUB_COST for each hub table it passes
@@ -96,7 +99,7 @@ const goesDown = (e, at) => sides(e, at).join('-') === '1-n';
  */
 function pathCost(graph, nodes, edges) {
   let cost = edges.reduce((n, e) => n + edgeCost(e), 0) + nodes.slice(1, -1).filter((n) => graph.hubs.has(n)).length * HUB_COST;
-  for (let i = 1; i < edges.length; i++) if (goesUp(edges[i - 1], nodes[i - 1]) && goesDown(edges[i], nodes[i])) cost += SHARED_PARENT_COST;
+  for (let i = 1; i < edges.length; i++) if (viaSharedParent(edges[i - 1], nodes[i - 1], edges[i], nodes[i])) cost += SHARED_PARENT_COST;
   return cost;
 }
 
@@ -150,14 +153,14 @@ function cheapest(graph, adj, source, target, bannedNodes, bannedEdges, entered 
     if (at === target) return label;
     done.add(current.key);
     const last = label.edges.at(-1) ?? entered;
-    const cameUp = last ? goesUp(last, label.edges.length > 0 ? label.nodes.at(-2) : enteredFrom) : false;
+    const lastFrom = label.edges.length > 0 ? label.nodes.at(-2) : enteredFrom;
     for (const { e, other } of adj.get(at) ?? []) {
       if (bannedNodes.has(other) || bannedEdges.has(e.id) || label.nodes.includes(other)) continue;
       if (polyLine(e) && polyLine(e) === polyLine(last)) continue;
       const key = stateKey(other, e, goesUp(e, at));
       if (done.has(key)) continue;
       const hub = other !== target && graph.hubs.has(other) ? HUB_COST : 0;
-      const parent = cameUp && goesDown(e, at) ? SHARED_PARENT_COST : 0;
+      const parent = last && viaSharedParent(last, lastFrom, e, at) ? SHARED_PARENT_COST : 0;
       const next = { nodes: [...label.nodes, other], edges: [...label.edges, e], cost: label.cost + edgeCost(e) + hub + parent };
       if (!best.has(key) || comparePaths(next, best.get(key)) < 0) best.set(key, next);
     }
@@ -258,7 +261,7 @@ export function describeHop(edge, at, graph) {
 function describeHops(nodes, edges, graph) {
   return edges.map((e, i) => {
     const hop = describeHop(e, nodes[i], graph);
-    if (i > 0 && goesUp(edges[i - 1], nodes[i - 1]) && goesDown(e, nodes[i])) hop.flags.push({ type: 'shared_parent', table: nodes[i] });
+    if (i > 0 && viaSharedParent(edges[i - 1], nodes[i - 1], e, nodes[i])) hop.flags.push({ type: 'shared_parent', table: nodes[i] });
     return hop;
   });
 }
