@@ -20,6 +20,12 @@ export const TRUST_PENALTY = { trusted: 0, declared: 3, doubtful: 6 };
 // everywhere) joins rows that share an audit user or a tenant, rarely what
 // a reader means. Allowed, but as costly as several hops.
 export const HUB_COST = 40;
+// Going up to a table both sides point at and back down (orders.company_id
+// -> companies <- invoices.company_id) joins every row that shares the
+// parent row: right for a join table (product_tags -> products <-
+// order_items), often too wide for an owner. Counts as two hops, so a chain
+// one hop longer through the rows themselves ranks first, whatever its trust.
+export const SHARED_PARENT_COST = 20;
 export const MAX_PATHS = 3;
 
 const VIEW_SOURCE = 'view_source';
@@ -74,9 +80,24 @@ export function joinGraph(data) {
 
 const edgeCost = (e) => HOP_COST + TRUST_PENALTY[trustOf(e.kind, e.review)];
 
-/** Cost of a path: its hops, plus HUB_COST for each hub table it passes through. */
+// Sides of edge `e` walked from table `at`, as [from side, to side] of its
+// cardinality ("<a side>-<b side>").
+const sides = (e, at) => {
+  const [aSide, bSide] = (e.cardinality ?? '1-1').split('-');
+  return e.a === at ? [aSide, bSide] : [bSide, aSide];
+};
+// Walking from many rows to the one they point at, or back down.
+const goesUp = (e, at) => sides(e, at).join('-') === 'n-1';
+const goesDown = (e, at) => sides(e, at).join('-') === '1-n';
+
+/**
+ * Cost of a path: its hops, plus HUB_COST for each hub table it passes
+ * through and SHARED_PARENT_COST for each table it goes up to and back down.
+ */
 function pathCost(graph, nodes, edges) {
-  return edges.reduce((n, e) => n + edgeCost(e), 0) + nodes.slice(1, -1).filter((n) => graph.hubs.has(n)).length * HUB_COST;
+  let cost = edges.reduce((n, e) => n + edgeCost(e), 0) + nodes.slice(1, -1).filter((n) => graph.hubs.has(n)).length * HUB_COST;
+  for (let i = 1; i < edges.length; i++) if (goesUp(edges[i - 1], nodes[i - 1]) && goesDown(edges[i], nodes[i])) cost += SHARED_PARENT_COST;
+  return cost;
 }
 
 // Equal costs are ordered by the tables, then the edges, along the path.
@@ -106,16 +127,17 @@ function adjacency(graph) {
 // A polymorphic owner row points at one target: walking in from one target
 // and out to another over the same association would join rows that never
 // meet. Search states are therefore (table, polymorphic line it was entered
-// by), so such a pair of hops is never taken.
+// by, whether it was entered going up), so such a pair of hops is never
+// taken and the cost of going back down is known.
 const polyLine = (e) => (e?.line.type === 'poly' ? e.line.id : '');
-const stateKey = (node, e) => `${node}\u0000${polyLine(e)}`;
+const stateKey = (node, e, up) => `${node}\u0000${polyLine(e)}\u0000${up ? 1 : 0}`;
 
 // Cheapest path from `source` to `target` avoiding the banned nodes and
 // edges; among equal costs the smallest by comparePaths. Labels hold whole
 // paths: two paths reaching the same state compare by their prefix, which
 // appending the same hop never reorders.
-function cheapest(graph, adj, source, target, bannedNodes, bannedEdges, entered = null) {
-  const best = new Map([[stateKey(source, entered), { nodes: [source], edges: [], cost: 0 }]]);
+function cheapest(graph, adj, source, target, bannedNodes, bannedEdges, entered = null, enteredFrom = null) {
+  const best = new Map([[stateKey(source, entered, entered && goesUp(entered, enteredFrom)), { nodes: [source], edges: [], cost: 0 }]]);
   const done = new Set();
   // ponytail: linear scan for the next label, O(n^2) per search; a heap if a
   // schema of thousands of tables makes path finding feel slow.
@@ -128,13 +150,15 @@ function cheapest(graph, adj, source, target, bannedNodes, bannedEdges, entered 
     if (at === target) return label;
     done.add(current.key);
     const last = label.edges.at(-1) ?? entered;
+    const cameUp = last ? goesUp(last, label.edges.length > 0 ? label.nodes.at(-2) : enteredFrom) : false;
     for (const { e, other } of adj.get(at) ?? []) {
       if (bannedNodes.has(other) || bannedEdges.has(e.id) || label.nodes.includes(other)) continue;
       if (polyLine(e) && polyLine(e) === polyLine(last)) continue;
-      const key = stateKey(other, e);
+      const key = stateKey(other, e, goesUp(e, at));
       if (done.has(key)) continue;
       const hub = other !== target && graph.hubs.has(other) ? HUB_COST : 0;
-      const next = { nodes: [...label.nodes, other], edges: [...label.edges, e], cost: label.cost + edgeCost(e) + hub };
+      const parent = cameUp && goesDown(e, at) ? SHARED_PARENT_COST : 0;
+      const next = { nodes: [...label.nodes, other], edges: [...label.edges, e], cost: label.cost + edgeCost(e) + hub + parent };
       if (!best.has(key) || comparePaths(next, best.get(key)) < 0) best.set(key, next);
     }
   }
@@ -163,7 +187,7 @@ export function findJoinPaths(data, from, to, limit = MAX_PATHS) {
       const rootNodes = previous.nodes.slice(0, i + 1);
       const rootEdges = previous.edges.slice(0, i);
       const bannedEdges = new Set(found.filter((p) => sameStart(p, rootNodes, rootEdges)).map((p) => p.edges[i].id));
-      const spur = cheapest(graph, adj, rootNodes[i], to, new Set(rootNodes.slice(0, -1)), bannedEdges, rootEdges.at(-1));
+      const spur = cheapest(graph, adj, rootNodes[i], to, new Set(rootNodes.slice(0, -1)), bannedEdges, rootEdges.at(-1), rootNodes.at(-2));
       if (!spur) continue;
       const nodes = [...rootNodes.slice(0, -1), ...spur.nodes];
       const edges = [...rootEdges, ...spur.edges];
@@ -174,7 +198,7 @@ export function findJoinPaths(data, from, to, limit = MAX_PATHS) {
     candidates.sort(comparePaths);
     found.push(candidates.shift());
   }
-  return found.map((p) => ({ cost: p.cost, nodes: p.nodes, hops: p.edges.map((e, i) => describeHop(e, p.nodes[i], graph)) }));
+  return found.map((p) => ({ cost: p.cost, nodes: p.nodes, hops: describeHops(p.nodes, p.edges, graph) }));
 }
 
 /**
@@ -209,6 +233,9 @@ const dbOf = (id) => id.split('.')[0];
  *   { type: 'multiplies' }  one row on the `from` side meets many on the
  *     `to` side, so the join repeats `from` rows
  *   { type: 'hub', table }  `to` is a hub table the path passes through
+ *   { type: 'shared_parent', table }  set by describeHops: the path came up
+ *     to `table` (= `from`) and goes back down, so it joins the rows that
+ *     share one `table` row
  */
 export function describeHop(edge, at, graph) {
   const forward = edge.a === at;
@@ -225,6 +252,15 @@ export function describeHop(edge, at, graph) {
   const [aSide, bSide] = (edge.cardinality ?? '1-1').split('-');
   if ((forward ? bSide : aSide) === 'n') flags.push({ type: 'multiplies' });
   return { from, to, pairs: fromColumns.map((c, i) => [c, toColumns[i]]), edge, flags, hub: graph?.hubs.has(to) ?? false };
+}
+
+// The hops of a path, each described from the table it leaves.
+function describeHops(nodes, edges, graph) {
+  return edges.map((e, i) => {
+    const hop = describeHop(e, nodes[i], graph);
+    if (i > 0 && goesUp(edges[i - 1], nodes[i - 1]) && goesDown(e, nodes[i])) hop.flags.push({ type: 'shared_parent', table: nodes[i] });
+    return hop;
+  });
 }
 
 /**
