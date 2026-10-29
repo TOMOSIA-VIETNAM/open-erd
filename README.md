@@ -19,11 +19,6 @@
   <a href="#what-you-get"><img alt="Output" src="https://img.shields.io/badge/output-SVG_·_Excel_·_draw.io-141B2D?style=flat-square"></a>
 </p>
 
-<p align="center">
-  <a href="https://tomosia-vietnam.github.io/open-erd/intro.mp4"><img src="./docs/images/intro-poster.jpg" width="760" alt="Intro video: the ERD overview of the Solidus demo, one card per domain"></a><br>
-  <sub><a href="https://tomosia-vietnam.github.io/open-erd/intro.mp4">▶ Watch the 74-second intro</a></sub>
-</p>
-
 - **Finds the relations the database never declared**: reads models,
   migrations and associations, polymorphic ones included.
 - **Checks every fact against the code** with a second agent before it is
@@ -32,7 +27,8 @@
 - **Stays current**: `/open-erd:sync` after code changes.
 
 <p align="center">
-  <img src="./docs/images/demo/overview-to-domain.gif" width="760" alt="The overview of an e-commerce schema: one card per domain; a click opens the Orders domain">
+  <a href="https://tomosia-vietnam.github.io/open-erd/intro.mp4"><img src="./docs/images/intro-poster.jpg" width="760" alt="Intro video: the ERD overview of the Solidus demo, one card per domain"></a><br>
+  <sub><a href="https://tomosia-vietnam.github.io/open-erd/intro.mp4">▶ Watch the 74-second intro</a></sub>
 </p>
 
 <sub>Demo data: the open-source <a href="https://github.com/solidusio/solidus">Solidus</a> e-commerce app, 105 tables in 14 domains. <a href="https://tomosia-vietnam.github.io/open-erd/">Open it yourself</a> · <a href="./docs/demo/erd.xlsx">erd.xlsx</a> · <a href="./docs/demo/erd.drawio">erd.drawio</a></sub>
