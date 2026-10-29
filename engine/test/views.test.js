@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { buildDiagram, domainLinks, domainPairs, polyNodeId } from '../src/layout/diagram.js';
+import { POLY_FACT_LIMIT, buildDiagram, domainLinks, domainPairs, polyNodeId } from '../src/layout/diagram.js';
 import { domainSummary, strength } from '../src/layout/domains.js';
 import { checkLayout, computeLayout } from '../src/layout/index.js';
 import { serializeLayout } from '../src/layout/layout-file.js';
@@ -505,4 +505,19 @@ test('domain view stubs: group positions are kept; a second table turns a stub i
   // --relayout gives the same view as a layout from nothing.
   const { layout: fresh } = await computeLayout(ops, next, { relayout: ['domain:shop/Core'] });
   assert.deepEqual(fresh.views['domain:shop/Core'], (await computeLayout(ops)).layout.views['domain:shop/Core']);
+});
+
+test('a polymorphic target names the id columns that may point at it, since no line is drawn to it', async () => {
+  const multi = await loadMulti();
+  const facts = (model, id) => buildDiagram(model).nodes.get(id).box.facts.map((f) => f.text.text);
+  // One line per association, by owner table.
+  assert.deepEqual(facts(multi, 'shop._.posts'), ['polymorphic from attachments.attachable_id', 'polymorphic from comments.commentable_id']);
+  // comments owns commentable and is itself a target of attachable.
+  assert.deepEqual(facts(multi, 'shop._.comments'), ['polymorphic from attachments.attachable_id']);
+  assert.ok(!facts(multi, 'shop._.payments').some((f) => f.startsWith('polymorphic')));
+  // Past POLY_FACT_LIMIT, the first ones and a count.
+  const owners = ['a', 'b', 'c', 'd'].map((n) => ({ ...multi.polymorphic[0], name: `${n}able`, table: `shop._.${n}_owners`, type_column: 'commentable_type', id_column: 'commentable_id', targets: ['shop._.posts'] }));
+  const crowded = { ...multi, tables: [...multi.tables, ...owners.map((o) => table(o.table, 'Content', [['commentable_type', 'string'], ['commentable_id', 'bigint']]))], polymorphic: owners };
+  assert.equal(POLY_FACT_LIMIT, 3);
+  assert.deepEqual(facts(crowded, 'shop._.posts'), ['polymorphic from a_owners.commentable_id', 'polymorphic from b_owners.commentable_id', 'and 2 more polymorphic']);
 });
