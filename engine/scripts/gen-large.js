@@ -15,8 +15,8 @@
 // Usage: node scripts/gen-large.js <150|1000|tenant> <out dir>
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
 import { stringify } from 'yaml';
+import { isMain } from '../is-main.js';
 
 export const PRESETS = {
   150: { databases: [{ name: 'app', engine: 'postgresql', schema: 'public', domains: 10, tables: 150 }] },
@@ -192,7 +192,7 @@ export async function generateWorkspace(name, dir) {
   for (const [path, text] of Object.entries(generateFiles(name))) await writeFile(join(dir, path), text);
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isMain(import.meta.url)) {
   const [name, dir] = process.argv.slice(2);
   if (!name || !dir) {
     console.error('Usage: node scripts/gen-large.js <150|1000|tenant> <out dir>');

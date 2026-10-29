@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, symlink } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
@@ -42,6 +44,24 @@ test('--version prints the engine version from package.json', async () => {
     assert.equal(code, 0);
     assert.equal(stdout, `${version}\n`);
   }
+});
+
+test('the bundle runs when reached through a symlinked directory', async (t) => {
+  // A plugin directory linked into place: node resolves the bundle's own URL
+  // to the real path but keeps the linked path in argv, and the entry check
+  // must still treat it as the started script.
+  const dir = await mkdtemp(join(tmpdir(), 'open-erd-link-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const link = join(dir, 'dist');
+  try {
+    await symlink(fileURLToPath(new URL('../../dist', import.meta.url)), link, 'dir');
+  } catch (e) {
+    if (e.code === 'EPERM' || e.code === 'EACCES') return t.skip('symlinks not permitted here');
+    throw e;
+  }
+  const { version } = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+  const { stdout } = await promisify(execFile)(process.execPath, [join(link, 'open-erd.mjs'), '--version']);
+  assert.equal(stdout, `${version}\n`);
 });
 
 test('layout --relayout rejects an unknown view before writing anything', async () => {

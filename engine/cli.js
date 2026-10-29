@@ -2,9 +2,9 @@
 import { execFile } from 'node:child_process';
 import { mkdir, readFile, readdir, realpath, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
 import { parseArgs, promisify } from 'node:util';
 import pkg from './package.json' with { type: 'json' };
+import { isMain } from './is-main.js';
 import { CONFIG_FILE, LOCKED_FILE, OUTPUT_DEFAULTS, VERIFICATION_FILE, VERIFY_DEFAULT } from './src/model/schema.js';
 import { compareStrings, formatError, parseWorkspace } from './src/model/load.js';
 import { checkLocked, lockFacts, parseLocked, serializeLocked } from './src/model/lock.js';
@@ -607,6 +607,6 @@ export async function main(argv) {
   }
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isMain(import.meta.url)) {
   process.exitCode = await main(process.argv.slice(2));
 }
