@@ -6,7 +6,7 @@
 import { dbDisplayName } from '../../../display-name.js';
 import { REVIEW_WORDS, endMarkers, enumIconSvg, indexIconSvg, isConfirmed, keyIconSvg, linkIconSvg, markerSvg, overviewStrokeWidth, reviewIconSvg, starIconSvg } from '../markers.js';
 import { CANVAS_LIMITS, PIXEL_RATIO, canvasScale, exportBaseName } from './download.js';
-import { findJoinPaths, hopCondition, pathNames, pathThrough, sqlSkeleton } from './join-path.js';
+import { findJoinPaths, hopCondition, pathNames, pathThrough, rowsRepeat, sqlSkeleton } from './join-path.js';
 import { formatHash, parseHash } from './deep-link.js';
 import { collectionDocument, createTableSql, isDocumentStore, markdownTable } from './schema-copy.js';
 import { centreOn, fitsInside, frameFocus, minimapSize, visibleRect } from './minimap.js';
@@ -312,6 +312,8 @@ const currentIndex = () => indexes.get(state.view);
 
 function showView(name) {
   clearSelection();
+  // The join panel belongs to the view showing its path.
+  if (name !== state.view && join.open) hidePanel();
   // The tooltip described whatever was under the pointer in the old view.
   hideTip();
   focusDomain(null);
@@ -600,7 +602,7 @@ function clearSelection() {
     for (const e of v.querySelectorAll('.poly-routes, .hub-routes')) e.style.display = 'none';
     for (const e of v.querySelectorAll('.poly-route')) e.style.display = '';
   }
-  hidePanel();
+  if (!panelPinned()) hidePanel();
   syncHash();
 }
 
@@ -995,6 +997,8 @@ function menuItem(label, title, onClick, { checked = null, detail = null, disabl
     keys ? el('kbd', { text: keys }) : null,
   ]);
 }
+// The List button of a mode's chip: shows the mode's list again.
+const listButton = (title, onClick) => el('button', { class: 'oe-chip-list', text: 'List', title, on: { click: onClick } });
 // A small heading inside a menu.
 const menuHeading = (text) => el('div', { class: 'oe-menu-sub', text });
 // replaceChildren would print a null as text: optional entries are filtered.
@@ -1056,13 +1060,12 @@ highlightMenu.onOpen = () =>
   fillMenu(
     highlightMenu.menu,
     highlightModes().map((m) =>
-      menuItem(m.label, m.keys ? `${m.tip} (${m.keys})` : m.tip, () => {
-        const focused = document.activeElement?.closest?.('.oe-item') !== null;
-        const at = menuItems(highlightMenu.menu).indexOf(document.activeElement);
+      // A pick closes the menu, so it never covers the list the mode opens;
+      // from the keyboard the focus goes back to the button.
+      menuItem(m.label, m.keys ? `${m.tip} (${m.keys})` : m.tip, (e) => {
+        closeMenus();
         m.toggle();
-        highlightMenu.onOpen();
-        if (focused && at >= 0) menuItems(highlightMenu.menu)[at]?.focus();
-        layoutOverlays();
+        if (e.detail === 0) highlightMenu.button.focus();
       }, { checked: m.on, detail: m.off && !m.on ? m.off : m.detail, disabled: Boolean(m.off) && !m.on, keys: m.keys }),
     ),
   );
@@ -1143,7 +1146,8 @@ function renderToolbar() {
     );
   }
   if (state.view === NEIGHBORHOOD) parts.push(crumb(`Tables related to ${short(state.center)}`));
-  if (state.view === JOIN_VIEW) parts.push(crumb(`Join path: ${short(state.joinPath.nodes[0])} → ${short(state.joinPath.nodes.at(-1))}`));
+  // A click shows the join panel again.
+  if (state.view === JOIN_VIEW) parts.push(crumb(`Join path: ${short(state.joinPath.nodes[0])} → ${short(state.joinPath.nodes.at(-1))}`, reopenJoin));
   crumbs.replaceChildren(...parts.flatMap((p, i) => (i === 0 ? [p] : [el('span', { class: 'sep', text: '›' }), p])));
   backButton.disabled = nav.back.length === 0;
   updateBackPill();
@@ -1408,7 +1412,7 @@ function paletteCommands() {
     ...(DATABASES.length > 1
       ? DATABASES.map((db) => ({ group: 'Go to', icon: 'database', label: `${dbDisplayName(db)} database`, detail: data.databases[db].label, run: () => showDatabase(db) }))
       : []),
-    { group: 'Actions', icon: 'join', label: 'Join path…', detail: 'How to join two tables, or type a > b', keys: `${MOD_KEY}J`, keywords: ['route', 'between'], run: () => openJoinSpot(selected) },
+    { group: 'Actions', icon: 'join', label: 'Join path…', detail: 'How to join two tables, or type a > b', keys: `${MOD_KEY}J`, keywords: ['route', 'between'], run: () => joinCommand(selected) },
     TOUR_STEPS.length >= 2 ? { group: 'Actions', icon: 'play', label: tour.on ? 'Stop the tour' : 'Tour', detail: 'Each domain in turn', keys: 'T', keywords: ['domains', 'present'], run: toggleTour } : null,
     // A mode with nothing to change in this view (review on the map) is left out.
     ...highlightModes()
@@ -1902,6 +1906,13 @@ function showShortcuts() {
   ]);
 }
 panel.fo.style.display = 'none';
+// Panels opened on purpose (the join panel, the list of a highlight mode)
+// stay open until closed (their ×, Esc) or until what they belong to goes
+// (another view for the join panel, the mode turned off for a list): a click
+// on empty space, or any selection cleared, leaves them open.
+const panelPinned = () => join.open || highlightModes().some((m) => m.on && m.listed());
+// The × is drawn by CSS, so the panel's text stays its content.
+const panelClose = el('button', { class: 'oe-panel-close', title: 'Close this panel', 'aria-label': 'Close this panel', on: { click: () => hidePanel() } });
 
 function hidePanel() {
   const was = panel.fo.style.display !== 'none';
@@ -1918,7 +1929,10 @@ function hidePanel() {
 }
 
 function showPanel(children) {
-  panel.div.replaceChildren(...children.filter(Boolean));
+  // Only showJoin shows the join panel, and sets this again after.
+  join.open = false;
+  panel.div.replaceChildren(panelClose, ...children.filter(Boolean));
+  panelClose.style.display = panelPinned() ? '' : 'none';
   panel.fo.style.display = '';
   layoutOverlays();
   // A domain pair stays lit while its panel is open, and only then.
@@ -2373,8 +2387,19 @@ function openJoin(from = null) {
 function showJoin() {
   showPanel(joinPanel());
   join.open = true;
+  panelClose.style.display = '';
   panel.div.querySelector('.oe-join-field input')?.focus();
 }
+
+// The Join path command in the join view, with its panel closed, and the
+// view's crumb bring the panel back: the same paths, the option on screen.
+// A path left from an earlier search (reached by Back) comes back alone.
+function reopenJoin() {
+  const i = join.paths.indexOf(state.joinPath);
+  if (i < 0) Object.assign(join, { from: state.joinPath.nodes[0], to: state.joinPath.nodes.at(-1), paths: [state.joinPath], through: null });
+  showJoinPath(Math.max(i, 0));
+}
+const joinCommand = (from) => (state.view === JOIN_VIEW && !join.open ? reopenJoin() : openJoinSpot(from));
 
 function setJoinEnd(slot, id) {
   // Changing an end drops the old path's highlight.
@@ -2622,7 +2647,7 @@ function joinPanel() {
   const name = pathNames(path.nodes);
   parts.push(
     el('div', { class: 'muted', text: 'Shortest first; unconfirmed relations, hub tables and detours through a shared parent count as longer.' }),
-    el('div', { class: 'oe-seg oe-paths' }, join.paths.map((p, i) => el('button', { class: `oe-btn${i === join.index ? ' on' : ''}`, text: `Path ${i + 1} · ${plural(p.hops.length, 'hop')}`, on: { click: () => showJoinPath(i) } }))),
+    el('div', { class: 'oe-paths' }, join.paths.map((p, i) => el('button', { class: `oe-btn${i === join.index ? ' on' : ''}`, text: `Path ${i + 1} · ${plural(p.hops.length, 'hop')}`, on: { click: () => showJoinPath(i) } }))),
     ...tiedPaths(join.paths).map(([a, b]) => el('div', { class: 'muted oe-ties', text: `Paths ${a}–${b} rank the same.` })),
     el(
       'ol',
@@ -2631,7 +2656,7 @@ function joinPanel() {
         el('li', {}, [
           el('code', { text: hopCondition(h, name) }),
           h.flags.length > 0
-            ? el('div', { class: 'oe-chips' }, h.flags.map((f) => (f.review ? reviewIcon(f.review) : el('span', { class: `chip flag-${f.type}`, text: FLAG_TEXT[f.type](f) }))))
+            ? el('div', { class: 'oe-chips' }, h.flags.map((f) => (f.review ? reviewIcon(f.review) : el('span', { class: `chip flag-${f.type}`, text: FLAG_TEXT[f.type](f), ...(f.type === 'multiplies' ? { title: `Rows repeat: ${rowsRepeat(name, h)}, so each row before this hop comes back once per match` } : {}) }))))
             : null,
           // Other relations between the same two tables: the referencing
           // columns here, with their table (either end of the hop), the full
@@ -2648,7 +2673,6 @@ function joinPanel() {
   const warnings = [
     dbs.length > 1 ? `Spans ${dbs.length} databases (${dbs.join(', ')}): this cannot be one query; join the results in the application.` : null,
     path.hops.some((h) => h.flags.some((f) => f.type === 'trust')) ? 'Some hops are not confirmed yet (inferred or pending review): check them in the code first.' : null,
-    path.hops.some((h) => h.flags.some((f) => f.type === 'multiplies')) ? 'A hop going from one row to many repeats the rows before it: count or deduplicate with care.' : null,
     path.hops.some((h) => h.flags.some((f) => f.type === 'shared_parent')) ? 'Goes up to a parent table and back down: it joins rows only because they share that parent row. Check that this is the link you mean.' : null,
     hubs.length > 0 ? `Passes through ${hubs.join(', ')}, a table shared by everything: rows meet only because they share it.` : null,
   ].filter(Boolean);
@@ -2849,7 +2873,7 @@ reviewChip.fo.style.display = 'none';
 reviewChip.div.append(
   el('div', { class: 'oe-review-chip', title: 'Lines are coloured by review status: amber = not confirmed yet, red = code changed since review' }, [
     el('span', { text: `Review mode: ${data.review.pending} to confirm, ${data.review.stale} changed` }),
-    el('button', { class: 'oe-link', text: 'List', title: 'List what waits for review, by domain', on: { click: () => showReviewList() } }),
+    listButton('List what waits for review, by domain', () => showReviewList()),
     el('button', { class: 'oe-chip-close', text: '×', title: 'Turn review mode off', 'aria-label': 'Turn review mode off', on: { click: () => setReviewMode(false) } }),
   ]),
 );
@@ -2936,7 +2960,7 @@ piiChip.fo.style.display = 'none';
 piiChip.div.append(
   el('div', { class: 'oe-review-chip oe-pii-chip', title: 'Columns marked as personal data are tinted; everything else fades' }, [
     el('span', { text: `PII: ${PII_COUNTS}` }),
-    el('button', { class: 'oe-link', text: 'List', title: 'Show the personal data columns by domain and table', on: { click: () => showPiiSummary() } }),
+    listButton('Show the personal data columns by domain and table', () => showPiiSummary()),
     el('button', { class: 'oe-chip-close', text: '×', title: 'Turn the personal data map off (P)', 'aria-label': 'Turn the personal data map off', on: { click: () => setPiiMode(false) } }),
   ]),
 );
@@ -3015,7 +3039,7 @@ if (CHANGES) {
   changesChip.div.append(
     el('div', { class: 'oe-review-chip oe-changes-chip', title: 'What did not change is faded' }, [
       el('span', { text: `Changes: ${CHANGES.label}` }),
-      el('button', { class: 'oe-link', text: 'List', title: 'Show the changed tables and what changed in each', on: { click: () => showChangesList() } }),
+      listButton('Show the changed tables and what changed in each', () => showChangesList()),
       el('button', { class: 'oe-chip-close', text: '×', title: 'Show everything at full strength (C)', 'aria-label': 'Turn the changes highlight off', on: { click: () => setChangesMode(false) } }),
     ]),
   );
@@ -3093,7 +3117,7 @@ healthChip.fo.style.display = 'none';
 healthChip.div.append(
   el('div', { class: 'oe-review-chip oe-health-chip', title: 'Tables with schema health findings carry an amber triangle' }, [
     el('span', { text: `Health: ${HEALTH_COUNTS}` }),
-    el('button', { class: 'oe-link', text: 'List', title: 'Show the schema health findings', on: { click: () => showHealthList() } }),
+    listButton('Show the schema health findings', () => showHealthList()),
     el('button', { class: 'oe-chip-close', text: '×', title: 'Turn the health marks off (H)', 'aria-label': 'Turn the health marks off', on: { click: () => setHealthMode(false) } }),
   ]),
 );
@@ -3240,7 +3264,7 @@ centralChip.fo.style.display = 'none';
 centralChip.div.append(
   el('div', { class: 'oe-review-chip oe-central-chip', title: 'The starred tables keep a gold border; everything else fades' }, [
     el('span', { text: `Central: ${CENTRAL_COUNTS}` }),
-    el('button', { class: 'oe-link', text: 'List', title: 'Show the central table of each domain', on: { click: () => showCentralList() } }),
+    listButton('Show the central table of each domain', () => showCentralList()),
     el('button', { class: 'oe-chip-close', text: '×', title: 'Turn the central tables highlight off (S)', 'aria-label': 'Turn the central tables highlight off', on: { click: () => setCentralMode(false) } }),
   ]),
 );
@@ -3881,6 +3905,8 @@ svg.addEventListener('click', (e) => {
   if (header) return header();
   if (relation) return flowRelation(relation);
   clearSelection();
+  // The health list stays open (see panelPinned), its ticked findings lit.
+  if (healthListShown()) showHealthList(panel.div.scrollTop);
 });
 
 svg.addEventListener('dblclick', (e) => {
@@ -3929,16 +3955,35 @@ svg.addEventListener('gesturechange', (e) => {
   gestureScale = e.scale;
 });
 
-// A press anywhere outside a dropdown closes the toolbar's open menu.
+// A press anywhere outside a dropdown closes the toolbar's open menu and
+// does nothing else: no pan, no click on what lies under it (a click on
+// empty space would clear the selection). The flag is reset by the next
+// press, so a press that ends without a click swallows nothing later.
+let swallowClick = false;
 document.addEventListener(
   'pointerdown',
   (e) => {
+    swallowClick = false;
     const drop = openMenu();
-    if (drop && !e.composedPath().includes(drop.wrap)) closeMenus();
+    if (drop && !e.composedPath().includes(drop.wrap)) {
+      closeMenus();
+      swallowClick = true;
+      e.stopPropagation();
+    }
     // A popover in the panel closes on any press outside its own dropdown.
     for (const pop of panel.div.querySelectorAll('.oe-popover')) {
       if (pop.style.display !== 'none' && !e.composedPath().includes(pop.parentNode)) pop.style.display = 'none';
     }
+  },
+  true,
+);
+document.addEventListener(
+  'click',
+  (e) => {
+    if (!swallowClick) return;
+    swallowClick = false;
+    e.stopPropagation();
+    e.preventDefault();
   },
   true,
 );
@@ -4112,7 +4157,7 @@ document.addEventListener('keydown', (e) => {
   if (mod && letter === 'j') {
     e.preventDefault();
     if (joinSpotOpen()) closeJoinSpot();
-    else openJoinSpot(selectedTable());
+    else joinCommand(selectedTable());
     return;
   }
   // Cmd+A / Ctrl+A: all tables, except in a text field where it selects.
@@ -4196,6 +4241,10 @@ document.addEventListener('keydown', (e) => {
   if (joinSpotOpen()) return closeJoinSpot();
   if (openMenu()) return closeMenus();
   if (tour.on) return endTour(true);
+  if (join.open) {
+    clearSelection();
+    return hidePanel();
+  }
   const modes = highlightModes().filter((m) => m.on);
   if (modes.length === 0 || svg.querySelector('g.view.dimmed, .selected, .hl')) return clearSelection();
   const listed = modes.find((m) => m.listed());
