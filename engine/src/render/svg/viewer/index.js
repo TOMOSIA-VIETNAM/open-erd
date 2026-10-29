@@ -764,7 +764,8 @@ function buildNeighborhood(center, hops) {
   const rings = neighbourRings(center, hops, (id) => drawn(ADJACENCY.get(id) ?? []), drawn(centreExtras(center)));
   const ringIds = rings.map((r) => r.map((n) => n.id));
   const ids = [center, ...ringIds.flat()];
-  const ringOf = new Map(ids.map((id) => [id, ringIds.findIndex((r) => r.includes(id)) + 1]));
+  // Ring of every shown node: 0 for the centre, k for the k-th ring out.
+  const ringOf = new Map([[center, 0], ...ringIds.flatMap((r, k) => r.map((id) => [id, k + 1]))]);
   const outer = new Set(ringIds[1] ?? []);
   const size = (id) => ({ id, w: source.get(id).box.w, h: source.get(id).box.h });
   const { positions: pos, channels } = radialLayout(size(center), rings.map((r) => r.map((n) => ({ ...size(n.id), parent: n.parent }))), RING_GAP);
