@@ -1671,7 +1671,12 @@ function linkPairs() {
     else if (node && linkColumn) pairs.push(['column', `${node}.${linkColumn}`]);
     // A neighborhood opens with its centre selected: no need to say it.
     else if (node && !(state.view === NEIGHBORHOOD && node === state.center)) pairs.push(['table', node]);
-    else if (line) pairs.push(['line', line]);
+    else if (line) {
+      pairs.push(['line', line]);
+      // A polymorphic line run on to one target (a click on its route).
+      const target = view.querySelector('.poly-route.hl')?.getAttribute('data-target');
+      if (target) pairs.push(['target', target]);
+    }
     else if (domainLinkShown()) pairs.push(['between', domainLink.pair]);
     else if (healthListShown()) {
       if (healthSeverity) pairs.push(['severity', healthSeverity]);
@@ -1762,7 +1767,10 @@ function selectLinked(p) {
   }
   const line = p.line && findAttr(currentView(), '.relation-group, .hub-route', 'data-id', p.line.value);
   if (line) {
-    flowRelation(line);
+    const routes = p.target && findAttr(currentView(), '.poly-routes', 'data-poly', line.getAttribute('data-to'));
+    const route = routes && findAttr(routes, '.poly-route', 'data-target', p.target.value);
+    if (route) flowPolyRoute(route);
+    else flowRelation(line);
     return true;
   }
   return false;

@@ -1921,6 +1921,18 @@ await key('Escape');
     await click(inView(`.poly[data-id="${poly}"]`), { where: 'top' });
     await shot('link-poly', `${linkHash} === ${JSON.stringify(linkOf([['view', polyView], ['table', poly]]))}`);
     await reopen('link-poly-reopens', `${inView(`.poly.selected[data-id="${poly}"]`)} !== null`);
+    // Its line run on to one target, as a click on that target's route leaves it.
+    const polyLink = await evaluate(`${data}.links.find((l) => l.to === ${JSON.stringify(poly)})?.id ?? null`);
+    const polyTarget = await evaluate(`${inView(`.poly-routes[data-poly="${poly}"] .poly-route`)}?.getAttribute('data-target') ?? null`);
+    if (polyLink && polyTarget) {
+      const routeHash = linkOf([['view', polyView], ['line', polyLink], ['target', polyTarget]]);
+      await open(routeHash);
+      await shot(
+        'link-poly-route',
+        `${linkHash} === ${JSON.stringify(routeHash)} && ${inView(`.poly-route.hl[data-target="${polyTarget}"]`)} !== null && ${inView(`.table.flow-target[data-id="${polyTarget}"]`)} !== null
+          && document.querySelector('.oe-panel .oe-rel-sentence')?.textContent.includes('one of') === true`,
+      );
+    }
   }
   // A line of a domain view standing for several tables of another domain.
   const grouped = await evaluate(`(() => { for (const v of document.querySelectorAll('g.view[data-view^="domain:"]')) { const g = v.querySelector('.relation-group[data-group]'); if (g) return [v.getAttribute('data-view'), g.getAttribute('data-id')]; } return null; })()`);

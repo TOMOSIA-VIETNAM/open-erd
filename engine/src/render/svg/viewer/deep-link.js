@@ -11,6 +11,8 @@
 //   table      the selected table (or polymorphic node)
 //   column     the selected table and its open column: <table id>.<column>
 //   line       the selected relation line, by its id
+//   target     with `line` to a polymorphic node: the target table its
+//              route was clicked for, the line run on to that table
 //   between    the two domains whose relations the panel lists (an overview
 //              connector clicked): <db>/<domain>,<db>/<domain>
 //   severity   the severity the schema health list is filtered to

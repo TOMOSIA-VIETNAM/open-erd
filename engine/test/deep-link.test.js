@@ -45,3 +45,12 @@ test('deep link: no key, no hash or broken encoding is no link', () => {
   for (const hash of ['', '#', '#tables', '#=a.b.c', '#tables=%E0%A4%A', null, undefined]) assert.equal(parseHash(hash), null, String(hash));
   assert.deepEqual(parseHash('#tables=').ids, []);
 });
+
+test('deep link: a polymorphic line run on to one target', () => {
+  const hash = formatHash([['view', 'domain:shop/Content'], ['line', 'shop._.attachments(attachable_id)->«attachable»'], ['target', 'shop._.comments']]);
+  assert.equal(hash, '#view=domain:shop/Content&line=shop._.attachments(attachable_id)-%3E%C2%ABattachable%C2%BB&target=shop._.comments');
+  const { key, value, params } = parseHash(hash);
+  assert.deepEqual([key, value, params.target.value], ['line', 'shop._.attachments(attachable_id)->«attachable»', 'shop._.comments']);
+  // A line link from before has no target.
+  assert.equal(parseHash('#line=a.b.c(x_id)->«x»').params.target, undefined);
+});

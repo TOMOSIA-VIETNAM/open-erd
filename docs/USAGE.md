@@ -76,6 +76,7 @@ table are left out (a link with none opens as usual).
 | `table=<id>` | That table (or polymorphic node), selected, with its panel. |
 | `column=<table id>.<column>` | The same, with that column unfolded in the panel. |
 | `line=<relation id>` | That relation line, selected as a click on it does, with its panel (in a domain view, also a line standing for several tables of another domain). |
+| `line=<relation id>&target=<table id>` | A polymorphic relation line run on to one of its target tables, as a click on the line to that table leaves it: the line, that route and the table lit, with the line's panel. |
 | `between=<db>/<domain>,<db>/<domain>` | The panel listing the relations between those two domains, as a click on their connector in the overview opens it: the two cards and their connector stay lit, the other cards faded, while the panel is open. A comma in a domain name is written `%2C`. |
 | `severity=<medium\|low>` | With `highlight=health`: the schema health list filtered to that severity, as its filter buttons leave it. |
 | `findings=<rule>:<table id>.<column>,...` | With `highlight=health`: those findings ticked in the list, their tables and columns lit in the view and the rest faded, zoomed to fit them. A finding without columns is `<rule>:<table id>`; several columns are joined by `+`. Ticks in the list write it. |
