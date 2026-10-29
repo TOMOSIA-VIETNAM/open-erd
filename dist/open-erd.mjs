@@ -173467,8 +173467,8 @@ function viewSourceLinks(t) {
 }
 var plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 var prose = (text2) => ({ text: text2, code: false });
-var POLY_FACT_LIMIT = 3;
 var code = (text2) => ({ text: text2, code: true });
+var POLY_FACT_LIMIT = 3;
 var factText = (parts) => parts.map((p) => p.text).join("");
 function tableFacts(t, tenancy, pointedBy = []) {
   const facts = [];

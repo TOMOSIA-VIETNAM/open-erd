@@ -135,9 +135,9 @@ export const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 // Prose and code parts of a fact line: identifiers and values from the
 // schema are `code`, so outputs can set them apart from the words around.
 const prose = (text) => ({ text, code: false });
+const code = (text) => ({ text, code: true });
 // Lines a table box gives to the polymorphic associations pointing at it.
 export const POLY_FACT_LIMIT = 3;
-const code = (text) => ({ text, code: true });
 
 /** The plain text of a fact given as parts (see tableFacts). */
 export const factText = (parts) => parts.map((p) => p.text).join('');
