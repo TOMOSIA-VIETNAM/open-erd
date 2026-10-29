@@ -2610,9 +2610,10 @@ function joinPanel() {
             ? el('div', { class: 'oe-chips' }, h.flags.map((f) => (f.review ? reviewIcon(f.review) : el('span', { class: `chip flag-${f.type}`, text: FLAG_TEXT[f.type](f) }))))
             : null,
           // Other relations between the same two tables: the referencing
-          // columns here, the full conditions in the tooltip.
+          // columns here, with their table (either end of the hop), the full
+          // conditions in the tooltip.
           h.alternatives?.length > 0
-            ? el('div', { class: 'muted oe-alt', title: h.alternatives.map((a) => hopCondition(a, name)).join('\n'), text: `also joins on ${h.alternatives.map((a) => a.edge.aColumns.join(' + ')).join(', ')}` })
+            ? el('div', { class: 'muted oe-alt', title: h.alternatives.map((a) => hopCondition(a, name)).join('\n'), text: `also joins on ${h.alternatives.map((a) => a.edge.aColumns.map((c) => `${name(a.edge.a)}.${c}`).join(' + ')).join(', ')}` })
             : null,
         ]),
       ),

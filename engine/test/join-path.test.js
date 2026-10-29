@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { buildDiagram } from '../src/layout/diagram.js';
 import { applyProfile } from '../src/model/profile.js';
 import { viewerData } from '../src/render/svg/render.js';
-import { HUB_COST, MAX_PATHS, MAX_TIED_PATHS, SHARED_PARENT_COST,describeHop, findJoinPaths, hopCondition, pathNames, pathThrough, sqlNames, sqlSkeleton } from '../src/render/svg/viewer/join-path.js';
+import { HUB_COST, MAX_PATHS, MAX_TIED_PATHS, SHARED_PARENT_COST, describeHop, findJoinPaths, hopCondition, pathNames, pathThrough, sqlNames, sqlSkeleton } from '../src/render/svg/viewer/join-path.js';
 import { fk, loadMulti, table } from './helpers/shop.js';
 
 // The conditions of a path, one hop per line, as the panel lists them.
