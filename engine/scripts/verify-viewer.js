@@ -698,6 +698,18 @@ if (polyView) {
   );
   await click(`[...document.querySelectorAll('.oe-panel .oe-chip-group')].find((g) => g.querySelector('.sub').textContent.startsWith('Targets')).querySelector('.oe-chip')`);
   await shot('polymorphic-target-jump', `${inView('.table.selected')} !== null`);
+  // A target's selection brings up the route to it alone, the virtual node
+  // and its owner; its Relations tab lists the owner.
+  const target = await evaluate(`${inView('.table.selected')}.getAttribute('data-id')`);
+  await tab('relations');
+  await shot(
+    'polymorphic-target-trail',
+    `(() => { const routes = [...${visible}.querySelectorAll('.poly-routes')].filter((g) => g.style.display !== 'none');
+      const shown = routes.flatMap((g) => [...g.querySelectorAll('.poly-route')].filter((p) => p.style.display !== 'none'));
+      const group = [...document.querySelectorAll('.oe-panel .oe-chip-group')].find((g) => g.querySelector('.sub').textContent.startsWith('Referenced by (polymorphic)'));
+      return routes.length > 0 && shown.every((p) => p.getAttribute('data-target') === ${JSON.stringify(target)}) && routes.every((g) => ${visible}.querySelector('.poly.hl[data-id="' + g.getAttribute('data-poly') + '"]') !== null)
+        && group !== undefined || { routes: routes.length, shown: shown.length, group: group !== undefined }; })()`,
+  );
 }
 
 // Search: Cmd+F (Ctrl+F) opens a spotlight box instead of the browser's
@@ -1022,7 +1034,7 @@ if (badgeOnly) {
   await shot(
     'badge-only-table',
     `(() => { const titles = [...document.querySelectorAll('.oe-panel .oe-chip-group .sub')].map((x) => x.textContent);
-      return titles.some((t) => /^Shared references \\(\\d+\\)$/.test(t)) && !titles.some((t) => /^(References|Referenced by) /.test(t)) || titles; })()`,
+      return titles.some((t) => /^Shared references \\(\\d+\\)$/.test(t)) && !titles.some((t) => /^(References|Referenced by) \\(\\d+\\)$/.test(t)) || titles; })()`,
   );
   await key('Escape');
 }
