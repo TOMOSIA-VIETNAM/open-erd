@@ -598,6 +598,7 @@ function clearSelection() {
     }
     for (const e of v.querySelectorAll('.flow')) e.remove();
     for (const e of v.querySelectorAll('.poly-routes, .hub-routes')) e.style.display = 'none';
+    for (const e of v.querySelectorAll('.poly-route')) e.style.display = '';
   }
   hidePanel();
   syncHash();
@@ -626,6 +627,23 @@ function selectNode(id) {
       if (routes.getAttribute('data-poly') !== id) continue;
       routes.style.display = '';
       for (const p of routes.querySelectorAll('.poly-route')) lit.add(p.getAttribute('data-target'));
+    }
+  } else {
+    // A target of a polymorphic association has no line of its own: bring up
+    // the route to it, its virtual node and the owner's line into that node,
+    // so the trail goes on from the target.
+    for (const routes of currentView().querySelectorAll('.poly-routes')) {
+      const routesTo = [...routes.querySelectorAll('.poly-route')];
+      if (!routesTo.some((p) => p.getAttribute('data-target') === id)) continue;
+      routes.style.display = '';
+      for (const p of routesTo) if (p.getAttribute('data-target') !== id) p.style.display = 'none';
+      const polyId = routes.getAttribute('data-poly');
+      lit.add(polyId);
+      for (const g of relationGroups()) {
+        if (g.getAttribute('data-to') !== polyId) continue;
+        g.classList.add('hl');
+        lit.add(g.getAttribute('data-from'));
+      }
     }
   }
   // A hub table brings up the lines of the relations pointing at it, which
@@ -2139,16 +2157,22 @@ function nodePanel(id, column = null) {
   const self = data.links.filter((l) => l.from === id && l.to === id);
   const sharedOut = data.hubLinks.filter((l) => l.from === id && l.to !== id);
   const sharedIn = data.hubLinks.filter((l) => l.to === id && l.from !== id);
+  // Polymorphic associations that may point at this table, by owner table.
+  const polyIn = Object.values(data.nodes)
+    .filter((p) => p.kind === 'poly' && p.targets.includes(id))
+    .map((p) => ({ id: p.table, confirmed: isConfirmed('polymorphic', p.review), db: dbOf(p.table) !== dbOf(id) ? dbOf(p.table) : null, tip: `${p.table}.${p.idColumn}, when ${p.typeColumn} names ${short(id)} («${p.name}»)` }))
+    .sort((a, b) => byId(short(a.id), short(b.id)) || byId(a.id, b.id));
   const drawnHub = [...currentView().querySelectorAll('.hub-routes')].some((g) => g.getAttribute('data-hub') === id);
   const relations = () => [
     chipGroup('References', chipEntries(id, out, (l) => l.to)),
     chipGroup('Referenced by', chipEntries(id, into, (l) => l.from)),
+    chipGroup('Referenced by (polymorphic)', polyIn),
     self.length > 0 ? el('div', { class: 'muted', text: `Also references itself (${self.map((l) => l.fromColumns?.join(', ') ?? '').filter(Boolean).join('; ') || 'self'})` }) : null,
     // Hub relations are badges on the diagram, listed here in full.
     chipGroup('Shared references', chipEntries(id, sharedOut, (l) => l.to)),
     sharedIn.length > 0 ? chipGroup(`Referenced as a shared table${drawnHub ? ', lines shown while selected' : ''}`, chipEntries(id, sharedIn, (l) => l.from), 'shared-in') : null,
   ];
-  const count = out.length + into.length + self.length + sharedOut.length + sharedIn.length;
+  const count = out.length + into.length + self.length + sharedOut.length + sharedIn.length + polyIn.length;
   const bodies = { columns: () => n.columns.map((c) => columnRow(n, c, column)), relations, indexes: () => indexList(n) };
   return [
     tableTrailRow(id),
