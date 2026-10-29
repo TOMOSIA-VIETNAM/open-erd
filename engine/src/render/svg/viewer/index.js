@@ -2599,7 +2599,7 @@ function joinPanel() {
   parts.push(
     el('div', { class: 'muted', text: 'Shortest first; unconfirmed relations, hub tables and detours through a shared parent count as longer.' }),
     el('div', { class: 'oe-seg oe-paths' }, join.paths.map((p, i) => el('button', { class: `oe-btn${i === join.index ? ' on' : ''}`, text: `Path ${i + 1} · ${plural(p.hops.length, 'hop')}`, on: { click: () => showJoinPath(i) } }))),
-    ...tiedPaths(join.paths).map(([a, b]) => el('div', { class: 'muted oe-ties', text: `Paths ${a}–${b} are equally short.` })),
+    ...tiedPaths(join.paths).map(([a, b]) => el('div', { class: 'muted oe-ties', text: `Paths ${a}–${b} rank the same.` })),
     el(
       'ol',
       { class: 'oe-hops' },

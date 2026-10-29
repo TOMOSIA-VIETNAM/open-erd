@@ -31,7 +31,7 @@ test('a join table collapsed into one line is walked as two hops, with its key c
   assert.deepEqual(flagTypes(best.hops[1]), []);
 });
 
-test('at most three paths, cheapest first, the same list on every call', async () => {
+test('three paths for this pair, cheapest first, the same list on every call', async () => {
   const data = dataOf(await loadMulti());
   const a = findJoinPaths(data, 'shop._.refunds', 'auth.public.users');
   assert.equal(a.length, 3);

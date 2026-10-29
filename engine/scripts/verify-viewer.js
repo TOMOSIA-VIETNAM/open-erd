@@ -1705,12 +1705,12 @@ await key('Escape');
     await open(`#path=${encodeURIComponent(from)},${encodeURIComponent(to)}`);
     // The path is walked a hop every 600 ms (JOIN_STEP_MS in the viewer).
     await pause(best.hops.length * 600 + 500);
-    // One button per path, a line naming equally short paths when some tie,
+    // One button per path, a line naming the paths that rank the same,
     // one "also joins on" line per hop joined by other relations too.
     const tied = all.some((p, i) => i > 0 && p.cost === all[i - 1].cost);
     const alternatives = best.hops.filter((h) => h.alternatives.length > 0).length;
     await shot('deep-link-path', `document.querySelectorAll('.oe-panel .oe-hops li').length === ${best.hops.length} && ${visible}.classList.contains('dimmed') && ${JSON.stringify(best.nodes)}.every((id) => ${visible}.querySelector('.table.hl[data-id="' + CSS.escape(id) + '"]') !== null)
-      && document.querySelectorAll('.oe-panel .oe-paths .oe-btn').length === ${all.length} && (document.querySelector('.oe-panel .oe-ties') !== null) === ${tied}
+      && document.querySelectorAll('.oe-panel .oe-paths .oe-btn').length === ${all.length} && (/^Paths \\d+–\\d+ rank the same\\.$/.test(document.querySelector('.oe-panel .oe-ties')?.textContent ?? '')) === ${tied}
       && [...document.querySelectorAll('.oe-panel .oe-alt')].filter((a) => a.textContent.startsWith('also joins on ')).length === ${alternatives}`);
     const through = [from, best.nodes[1], to];
     const { path } = pathThrough(model, through);
