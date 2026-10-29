@@ -1932,6 +1932,25 @@ await key('Escape');
         `${linkHash} === ${JSON.stringify(routeHash)} && ${inView(`.poly-route.hl[data-target="${polyTarget}"]`)} !== null && ${inView(`.table.flow-target[data-id="${polyTarget}"]`)} !== null
           && document.querySelector('.oe-panel .oe-rel-sentence')?.textContent.includes('one of') === true`,
       );
+      // The same in a view of related tables: in the one around a
+      // polymorphic node, a second polymorphic node met there has its routes
+      // too; a target's selection brings them up, the legend explains them,
+      // a click on one opens that node's polymorphic line panel.
+      for (const centre of Object.keys(model.nodes).filter((id) => model.nodes[id].kind === 'poly')) {
+        await open(linkOf([['related', centre], ['hops', '2']]));
+        const found = await evaluate(`(() => { const g = ${visible}.querySelector('.poly-routes .poly-route'); return g && [g.parentNode.getAttribute('data-poly'), g.getAttribute('data-target')]; })()`);
+        if (!found) continue;
+        const [nbPoly, nbTarget] = found;
+        await open(linkOf([['related', centre], ['hops', '2'], ['table', nbTarget]]));
+        const nbRoute = `${inView(`.poly-routes[data-poly="${nbPoly}"] .poly-route[data-target="${nbTarget}"]`)}?.querySelector('path.relation-hit')`;
+        await evaluate(`document.querySelector('.oe-legend-pill')?.click()`);
+        await pause(150);
+        await shot('related-poly-route', `${nbRoute}?.closest('.poly-routes').style.display === '' && document.querySelector('.oe-legend .poly-route') !== null`);
+        await bringIntoView(nbRoute);
+        await click(nbRoute);
+        await shot('related-poly-route-panel', `${inView(`.poly-route.hl[data-target="${nbTarget}"]`)} !== null && document.querySelector('.oe-panel .oe-rel-sentence')?.textContent.includes('one of') === true`);
+        break;
+      }
     }
   }
   // A line of a domain view standing for several tables of another domain.

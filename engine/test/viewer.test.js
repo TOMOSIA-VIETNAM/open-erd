@@ -11,7 +11,8 @@ const { enumMeaning } = columnsModule;
 import { buildScene, renderSvg, viewerData } from '../src/render/svg/render.js';
 import { applyProfile } from '../src/model/profile.js';
 import { centreOn, fitsInside, frameFocus, minimapSize, visibleRect } from '../src/render/svg/viewer/minimap.js';
-import { endTransforms, radialLayout, straightLink } from '../src/render/svg/viewer/radial.js';
+import { endTransforms, neighbourRings, radialLayout, routeLink, straightLink } from '../src/render/svg/viewer/radial.js';
+import { hits, segments } from './helpers/geometry.js';
 import { tourIndex, tourSteps } from '../src/render/svg/viewer/tour.js';
 import { piiSummary } from '../src/render/svg/viewer/pii.js';
 import { domainSummary } from '../src/layout/domains.js';
@@ -229,11 +230,14 @@ test('radial layout is deterministic and never overlaps boxes (up to 40 neighbou
   for (let n = 1; n <= 40; n++) {
     for (const split of [n, Math.ceil(n / 3)]) {
       const all = boxes(n, n * 7 + split);
-      const rings = [all.slice(0, split), all.slice(split)];
+      // The second ring hangs off the first in a seeded, uneven way.
+      const first = all.slice(0, split).map((b) => ({ ...b, parent: center.id }));
+      const second = all.slice(split).map((b, i) => ({ ...b, parent: first[(i * i + n) % first.length].id }));
+      const rings = [first, second];
       const a = radialLayout(center, rings, 40);
       assert.deepEqual(a, radialLayout(center, rings, 40));
-      const placed = [center, ...all].map((b) => ({ ...b, ...a[b.id] }));
-      assert.equal(Object.keys(a).length, placed.length);
+      const placed = [center, ...all].map((b) => ({ ...b, ...a.positions[b.id] }));
+      assert.equal(Object.keys(a.positions).length, placed.length);
       for (let i = 0; i < placed.length; i++) {
         for (let j = i + 1; j < placed.length; j++) {
           assert.ok(!overlap(placed[i], placed[j]), `n=${n} split=${split}: ${placed[i].id} overlaps ${placed[j].id}`);
@@ -241,10 +245,78 @@ test('radial layout is deterministic and never overlaps boxes (up to 40 neighbou
       }
     }
   }
-  // The first node of a ring sits straight above the centre.
-  const one = radialLayout({ id: 'c', w: 100, h: 100 }, [[{ id: 'a', w: 100, h: 100 }]], 40);
-  assert.equal(one.a.x, one.c.x);
-  assert.ok(one.a.y < one.c.y);
+  // The first node of a ring sits left of the centre, a second one right of it.
+  const two = radialLayout({ id: 'c', w: 100, h: 100 }, [[{ id: 'a', w: 100, h: 100, parent: 'c' }, { id: 'b', w: 100, h: 100, parent: 'c' }]], 40).positions;
+  assert.equal(two.a.y, two.c.y);
+  assert.equal(two.b.y, two.c.y);
+  assert.ok(two.a.x < two.c.x && two.c.x < two.b.x);
+});
+
+test('neighbour rings keep the node each one was reached from', () => {
+  const links = { c: ['b', 'e'], b: ['a', 'c', 'd'], e: ['c', 'd'], a: ['b'], d: ['b', 'e'] };
+  assert.deepEqual(neighbourRings('c', 2, (id) => links[id]), [
+    [{ id: 'b', parent: 'c' }, { id: 'e', parent: 'c' }],
+    [{ id: 'a', parent: 'b' }, { id: 'd', parent: 'b' }],
+  ]);
+  assert.deepEqual(neighbourRings('a', 1, (id) => links[id], ['x']), [[{ id: 'b', parent: 'a' }, { id: 'x', parent: 'a' }]]);
+});
+
+// Lays out the neighborhood of `center` over undirected `edges` ([a, b]) as
+// the viewer does, and returns its boxes and the points of every line.
+function neighbourhood(center, hops, edges, size) {
+  const links = new Map();
+  for (const [a, b] of edges) {
+    links.set(a, [...(links.get(a) ?? []), b]);
+    links.set(b, [...(links.get(b) ?? []), a]);
+  }
+  const rings = neighbourRings(center, hops, (id) => links.get(id) ?? []);
+  const { positions, channels } = radialLayout(size(center), rings.map((r) => r.map((n) => ({ ...size(n.id), parent: n.parent }))), 40);
+  const ringOf = new Map([[center, 0], ...rings.flatMap((r, k) => r.map((n) => [n.id, k + 1]))]);
+  const placed = new Map([...ringOf.keys()].map((id) => [id, { ...size(id), ...positions[id], ring: ringOf.get(id) }]));
+  const lines = edges
+    .filter(([a, b]) => placed.has(a) && placed.has(b))
+    .map(([a, b]) => ({ a, b, points: routeLink(placed.get(a), placed.get(b), [...placed].filter(([id]) => id !== a && id !== b).map(([, box]) => box), channels, 10) }));
+  return { placed, lines };
+}
+
+function assertLinesClearOfBoxes({ placed, lines }, label) {
+  for (const { a, b, points } of lines) {
+    for (const [id, box] of placed) {
+      if (id === a || id === b) continue;
+      for (const s of segments(points)) assert.ok(!hits(s, box), `${label}: ${a}-${b} runs through ${id}: ${JSON.stringify(s)}`);
+    }
+  }
+}
+
+test('neighborhood: a branch grows on its side and no line runs behind a box it does not connect', () => {
+  const tall = (id) => ({ id, w: 200, h: id === 'c' ? 180 : 320 });
+  // Centre c with two neighbours; b has two neighbours of its own.
+  const tree = neighbourhood('c', 2, [['c', 'b'], ['c', 'e'], ['b', 'a'], ['b', 'd']], tall);
+  assertLinesClearOfBoxes(tree, 'tree');
+  const x = (id) => tree.placed.get(id).x;
+  assert.ok(x('a') < x('c') && x('b') < x('c') && x('d') < x('c'), 'b and its neighbours on one side');
+  assert.ok(x('e') > x('c'), 'e on the other side');
+  // A chain a-b-c-d with d linked back to b: around c, b and d face each
+  // other across the centre, so their line takes the band round it.
+  const chain = neighbourhood('c', 2, [['a', 'b'], ['b', 'c'], ['c', 'd'], ['d', 'b']], tall);
+  assertLinesClearOfBoxes(chain, 'chain');
+  const detour = chain.lines.find((l) => l.a === 'd').points;
+  assert.ok(detour.length > 2, 'the line between b and d is not straight');
+  assert.deepEqual(neighbourhood('c', 2, [['a', 'b'], ['b', 'c'], ['c', 'd'], ['d', 'b']], tall), chain);
+  // Random graphs with many cross links, boxes of real sizes.
+  for (let seed = 1; seed <= 60; seed++) {
+    const sizes = boxes(14, seed * 13);
+    const ids = sizes.map((b) => b.id);
+    let s = seed;
+    const next = (n) => {
+      s = (s * 1103515245 + 12345) % 2147483648;
+      return s % n;
+    };
+    const edges = ids.slice(1).map((id, i) => [ids[next(i + 1)], id]);
+    for (let k = 0; k < 8; k++) edges.push([ids[next(14)], ids[next(14)]]);
+    const graph = neighbourhood(ids[next(14)], 2, edges.filter(([a, b]) => a !== b), (id) => sizes.find((b) => b.id === id));
+    assertLinesClearOfBoxes(graph, `seed ${seed}`);
+  }
 });
 
 test('straight links run between box borders', () => {
