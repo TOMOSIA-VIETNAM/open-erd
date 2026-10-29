@@ -128,6 +128,20 @@ async function choose(menu, label) {
 const tab = (id) => click(`document.querySelector('.oe-panel .oe-tab[data-tab="${id}"]')`);
 const closeMenu = (menu) => evaluate(`${menuOpen(menu)} && ${menuButton(menu)}.click()`);
 const backButton = `document.querySelector('.oe-left > button')`;
+const panelShown = `document.querySelector('.oe-panel').closest('foreignObject').style.display !== 'none'`;
+// A press and release on empty canvas, left of the side panel and under the
+// toolbar: no table, line, frame or overlay under the pointer.
+async function clickBlank() {
+  const p = await evaluate(`(() => { for (let y = 120; y < innerHeight - 40; y += 23) for (let x = 40; x < innerWidth - 480; x += 29) {
+    const e = document.elementFromPoint(x, y);
+    if (e && !e.closest('foreignObject, .table, .stub, .poly, .relation-group, .hub-route, .cluster, .database, .domain, .card-link, .rk-item, .group-stub, .poly-routes')) return { x, y }; }
+    return null; })()`);
+  if (!p) throw new Error('no empty spot on the canvas');
+  await mouse('mouseMoved', p);
+  await mouse('mousePressed', p);
+  await mouse('mouseReleased', p);
+  await pause(150);
+}
 // Cmd+F on macOS (CDP modifier 4 = Meta), Ctrl+F elsewhere (2).
 const FIND_MODIFIER = process.platform === 'darwin' ? 4 : 2;
 // Cmd+<letter> on macOS, Ctrl+<letter> elsewhere.
@@ -201,7 +215,7 @@ if (startView === 'all' && (await evaluate(`JSON.parse(document.getElementById('
     await click(menuButton('highlight'));
     await shot('changes-menu-entry', `${menuItem('highlight', 'Changes')}?.getAttribute('aria-checked') === 'true'`);
     await closeMenu('highlight');
-    await click(`document.querySelector('.oe-changes-chip .oe-link')`);
+    await click(`document.querySelector('.oe-changes-chip .oe-chip-list')`);
     await shot('changes-list', `document.querySelectorAll('.oe-panel .oe-change-table').length === ${listed} && document.querySelectorAll('.oe-panel .oe-change-table li').length > 0`);
     const target = await evaluate(`document.querySelector('.oe-panel .oe-change-table .oe-link').title.replace(/^Go to /, '')`);
     await click(`document.querySelector('.oe-panel .oe-change-table .oe-link')`);
@@ -813,9 +827,8 @@ if (await evaluate(`document.querySelector('g.view[data-view="all"]') !== null`)
         && !/null|undefined/.test(document.querySelector('.oe-highlight-menu').textContent) && !${menuButton('highlight')}.classList.contains('active')`,
     );
     await click(menuItem('highlight', 'Review mode'));
-    // The menu stays open with the mode checked; the button reads as on.
-    await shot('review-mode-checked', `${menuOpen('highlight')} && ${menuItem('highlight', 'Review mode')}.getAttribute('aria-checked') === 'true' && ${menuButton('highlight')}.classList.contains('active')`);
-    await closeMenu('highlight');
+    // A pick closes the menu, so it does not cover the list; the button reads as on.
+    await shot('review-mode-checked', `!${menuOpen('highlight')} && ${menuButton('highlight')}.classList.contains('active')`);
     await shot(
       'review-mode',
       `document.documentElement.classList.contains('review-mode') && document.querySelector('.oe-review-chip').closest('foreignObject').style.display !== 'none'
@@ -1120,6 +1133,39 @@ if (joinPair) {
   } else {
     await shot('join-path-sql-disabled', `/^No SQL: The path spans \\d+ databases/.test([...document.querySelectorAll('.oe-panel p.muted')].map((p) => p.textContent).join())`);
   }
+  // A click on empty canvas clears the lit path; the panel stays, with its
+  // paths and the option picked. Its × closes it.
+  const pathButtons = await evaluate(`document.querySelectorAll('.oe-panel .oe-paths .oe-btn').length`);
+  await clickBlank();
+  await shot('join-path-canvas-click-keeps-panel', `${panelShown} && document.querySelectorAll('.oe-panel .oe-paths .oe-btn').length === ${pathButtons} && document.querySelector('.oe-panel .oe-paths .oe-btn.on') !== null && !${visible}.classList.contains('dimmed')`);
+  await click(`document.querySelector('.oe-panel .oe-panel-close')`);
+  await shot('join-path-close-button', `!${panelShown}`);
+  // The paths are separate buttons with a gap between them, none overlapping.
+  await evaluate(`location.hash = '#path=' + ${JSON.stringify(joinPair.map(encodeURIComponent).join(','))}`);
+  await pause(1500);
+  await shot('join-path-buttons-apart', `(() => { const r = [...document.querySelectorAll('.oe-panel .oe-paths .oe-btn')].map((b) => b.getBoundingClientRect());
+    return r.every((a, i) => r.every((b, j) => i === j || a.right + 4 <= b.left || b.right + 4 <= a.left || a.bottom + 4 <= b.top || b.bottom + 4 <= a.top)) || r.map((b) => [b.x, b.y, b.width, b.height]); })()`);
+  // The view of a path no drawn view holds (forced here by a narrow window):
+  // its crumb and the Join path command bring a closed panel back with the
+  // same paths and the option picked.
+  await send('Emulation.setDeviceMetricsOverride', { width: 640, height: VIEWPORT.height, deviceScaleFactor: 1, mobile: false });
+  await key('Escape');
+  await evaluate(`location.hash = '#path=' + ${JSON.stringify(joinPair.map(encodeURIComponent).join(','))}`);
+  await pause(1500);
+  if (await evaluate(viewIs('join-path'))) {
+    const last = await evaluate(`document.querySelectorAll('.oe-panel .oe-paths .oe-btn').length - 1`);
+    if (last > 0) await click(`document.querySelectorAll('.oe-panel .oe-paths .oe-btn')[${last}]`);
+    const picked = `document.querySelectorAll('.oe-panel .oe-paths .oe-btn').length === ${last + 1} && document.querySelectorAll('.oe-panel .oe-paths .oe-btn')[${last}].classList.contains('on')`;
+    await click(`document.querySelector('.oe-panel .oe-panel-close')`);
+    await shot('join-view-panel-closed', `!${panelShown} && ${viewIs('join-path')}`);
+    await click(`[...document.querySelectorAll('.oe-crumbs .oe-link')].find((b) => b.textContent.startsWith('Join path: '))`);
+    await shot('join-crumb-reopens', `${panelShown} && ${viewIs('join-path')} && ${picked}`);
+    await click(`document.querySelector('.oe-panel .oe-panel-close')`);
+    await modKey('j');
+    await shot('join-command-reopens', `${panelShown} && ${viewIs('join-path')} && ${picked} && document.querySelector('.oe-join-spot').closest('foreignObject').style.display === 'none'`);
+  } else failures.push('join-view: a narrow window did not give the join path a view of its own');
+  await send('Emulation.setDeviceMetricsOverride', { ...VIEWPORT, deviceScaleFactor: 1, mobile: false });
+  await pause(300);
   await key('Escape');
   await click(`document.querySelector('.oe-crumbs .oe-link')`);
   await searchFor(joinPair[0].split('.')[2]);
@@ -1327,7 +1373,8 @@ await shot(
     await key('Escape');
     await viewTab('overview');
     const domains = await evaluate(`document.querySelectorAll('.oe-panel .oe-pii-domain').length || new Set(Object.values(${data}.nodes).filter((n) => (n.columns ?? []).some((c) => c.pii)).map((n) => n.cluster)).size`);
-    await shot('pii-overview', `${piiOn} && document.querySelector('.oe-panel').closest('foreignObject').style.display === 'none' && ${inView('.domain.has-pii')} !== null
+    // The list stays open in another view while the mode is on.
+    await shot('pii-overview', `${piiOn} && document.querySelector('.oe-panel .oe-ph-name')?.textContent === 'Personal data (PII)' && ${inView('.domain.has-pii')} !== null
       && ${visible}.querySelectorAll('.domain.has-pii').length === ${domains} && [...${visible}.querySelectorAll('.domain:not(.has-pii)')].every((g) => getComputedStyle(g).opacity === '0.2')`);
     const piiDomain = await evaluate(`${inView('.domain.has-pii')}.getAttribute('data-domain')`);
     await click(`document.querySelector('.domain[data-domain=${JSON.stringify(piiDomain)}] .card-box')`, { where: 'top' });
@@ -1383,7 +1430,18 @@ await shot(
     await shot('health-key-does-nothing', `!${healthOn} && ${healthHost}.style.display === 'none'`);
   } else {
     await click(menuItem('highlight', 'Schema health'));
-    await closeMenu('highlight');
+    // The pick closes the menu; the list opens.
+    await shot('health-pick-closes-menu', `!${menuOpen('highlight')} && document.querySelector('.oe-panel .oe-ph-name')?.textContent === 'Schema health'`);
+    // A click outside an open menu only closes the menu, and a click on
+    // empty canvas keeps the list; its × hides it, the chip's List brings it back.
+    await click(menuButton('highlight'));
+    await clickBlank();
+    await shot('menu-outside-click-keeps-list', `!${menuOpen('highlight')} && ${panelShown} && document.querySelector('.oe-panel .oe-ph-name')?.textContent === 'Schema health'`);
+    await clickBlank();
+    await shot('health-canvas-click-keeps-list', `${healthOn} && ${panelShown} && document.querySelector('.oe-panel .oe-ph-name')?.textContent === 'Schema health'`);
+    await click(`document.querySelector('.oe-panel .oe-panel-close')`);
+    await shot('health-list-closed', `${healthOn} && !${panelShown} && getComputedStyle(document.querySelector('.oe-health-chip .oe-chip-list')).borderStyle === 'solid'`);
+    await click(`document.querySelector('.oe-health-chip .oe-chip-list')`);
     // Every table on screen with a finding shows its triangle, and only those.
     const marked = `(() => { const d = ${data}; const v = ${visible}; const tables = new Set(d.health.map((f) => f.table));
       const want = [...v.querySelectorAll('.table')].filter((g) => tables.has(g.getAttribute('data-id'))).length;
@@ -1483,8 +1541,9 @@ await shot(
 }
 
 // Highlight from the keyboard: Enter on the button opens the menu with the
-// focus on its first mode, Enter toggles it (the menu stays, checked, and
-// the mode's chip shows), Esc closes it and gives the focus back.
+// focus on its first mode, Enter toggles it (the menu closes, the focus goes
+// back to the button and the mode's chip shows), Esc closes the menu and
+// gives the focus back.
 if (await evaluate(`getComputedStyle(${menuButton('highlight')}.parentNode).display !== 'none'`)) {
   const enter = async () => {
     await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r' });
@@ -1498,13 +1557,14 @@ if (await evaluate(`getComputedStyle(${menuButton('highlight')}.parentNode).disp
   await enter();
   await shot('highlight-keyboard-open', `${menuOpen('highlight')} && document.activeElement === ${first} && ${first}.getAttribute('aria-checked') === 'false'`);
   await enter();
-  await shot('highlight-keyboard-toggle', `${menuOpen('highlight')} && ${first}.getAttribute('aria-checked') === 'true' && document.activeElement === ${first} && ${chipShown} && ${menuButton('highlight')}.classList.contains('active')`);
+  await shot('highlight-keyboard-toggle', `!${menuOpen('highlight')} && document.activeElement === ${menuButton('highlight')} && ${chipShown} && ${menuButton('highlight')}.classList.contains('active')`);
+  await enter();
+  await shot('highlight-keyboard-checked', `${menuOpen('highlight')} && ${first}.getAttribute('aria-checked') === 'true' && document.activeElement === ${first}`);
+  await enter();
+  await shot('highlight-keyboard-off', `!${menuOpen('highlight')} && !${chipShown} && !${menuButton('highlight')}.classList.contains('active')`);
+  await enter();
   await key('Escape');
   await shot('highlight-keyboard-close', `!${menuOpen('highlight')} && document.activeElement === ${menuButton('highlight')}`);
-  await enter();
-  await enter();
-  await key('Escape');
-  await shot('highlight-keyboard-off', `!${chipShown} && !${menuButton('highlight')}.classList.contains('active')`);
   await evaluate('document.activeElement?.blur()');
   await key('Escape');
 }

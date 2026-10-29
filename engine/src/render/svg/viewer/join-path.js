@@ -329,11 +329,15 @@ export function sqlNames(nodes) {
   };
 }
 
+// What a hop from one row to many does: the SQL comment and the join
+// panel's tooltip both say it.
+export const rowsRepeat = (name, hop) => `one ${name(hop.from)} row matches many ${name(hop.to)} rows`;
+
 // Comment lines above a JOIN, one per thing to check before running it.
 const SQL_NOTES = {
   trust: (f) => `verify: ${f.text}`,
   polymorphic: (f, name) => `add filter on ${name(f.table)}.${f.column}`,
-  multiplies: (f, name, hop) => `rows repeat: one ${name(hop.from)} row matches many ${name(hop.to)} rows`,
+  multiplies: (f, name, hop) => `rows repeat: ${rowsRepeat(name, hop)}`,
 };
 
 /**
