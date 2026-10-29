@@ -19,6 +19,11 @@
   <a href="#what-you-get"><img alt="Output" src="https://img.shields.io/badge/output-SVG_·_Excel_·_draw.io-141B2D?style=flat-square"></a>
 </p>
 
+<p align="center">
+  <a href="https://tomosia-vietnam.github.io/open-erd/intro.mp4"><img src="./docs/images/intro-poster.jpg" width="760" alt="Intro video: the ERD overview of the Solidus demo, one card per domain"></a><br>
+  <sub><a href="https://tomosia-vietnam.github.io/open-erd/intro.mp4">▶ Watch the 74-second intro</a></sub>
+</p>
+
 - **Finds the relations the database never declared**: reads models,
   migrations and associations, polymorphic ones included.
 - **Checks every fact against the code** with a second agent before it is
