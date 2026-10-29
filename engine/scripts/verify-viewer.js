@@ -724,6 +724,24 @@ if (polyView) {
       return routes.length > 0 && shown.every((p) => p.getAttribute('data-target') === ${JSON.stringify(target)}) && routes.every((g) => ${visible}.querySelector('.poly.hl[data-id="' + g.getAttribute('data-poly') + '"]') !== null)
         && group !== undefined || { routes: routes.length, shown: shown.length, group: group !== undefined }; })()`,
   );
+  // The route to the target is clickable: it opens the polymorphic line's
+  // panel and lights the route and the target.
+  const route = `[...${visible}.querySelectorAll('.poly-routes .poly-route')].filter((g) => g.style.display !== 'none' && g.parentNode.style.display !== 'none').map((g) => g.querySelector('path.relation-hit'))
+    .find((e) => { const m = e.getPointAtLength(e.getTotalLength() / 2).matrixTransform(e.getScreenCTM()); return m.x < innerWidth - 470 && m.y > 60 && e.parentNode.contains(document.elementFromPoint(m.x, m.y)); })`;
+  if (await evaluate(`${route} ? true : false`)) {
+    await mouse('mouseMoved', await centre(route));
+    await pause(250);
+    await shot('polymorphic-route-tip', `/«.+» → /.test(document.querySelector('.oe-tip')?.textContent ?? '') || document.querySelector('.oe-tip')?.textContent`);
+    await click(route);
+    await shot(
+      'polymorphic-route-panel',
+      `(() => { const cards = [...document.querySelectorAll('.oe-panel .oe-rel-card')]; const p = cards.find((c) => c.querySelector('.name').textContent.includes('«'));
+        return cards.length === 2 && p && p.querySelectorAll('.col').length === 2 && /one of \\d+ tables?;/.test(document.querySelector('.oe-panel .oe-rel-sentence')?.textContent ?? '')
+          && ${visible}.querySelector('.poly-route.hl') !== null && ${visible}.querySelector('.relation-group.kind-polymorphic.flowing') !== null
+          && ${inView(`.table.flow-target[data-id="${target}"]`)} !== null || { cards: cards.length }; })()`,
+    );
+    await key('Escape');
+  } else failures.push('no clickable polymorphic route on screen');
 }
 
 // Search: Cmd+F (Ctrl+F) opens a spotlight box instead of the browser's
@@ -781,7 +799,10 @@ if (await evaluate(`document.querySelector('g.view[data-view="all"]') !== null`)
       const same = (sel) => (f.querySelector('.oe-legend ' + sel) !== null) === (${visible}.querySelector(sel) !== null);
       const subs = [...f.querySelectorAll('.oe-legend .sub')].map((x) => x.textContent);
       return f.style.display !== 'none' && ends === ${drawnEnds} && ['.hint-enum', '.icon-pk', '.icon-fk', '.icon-index', '.icon-central'].every(same) && f.querySelector('.oe-legend .review-icon') === null
-        && (f.querySelector('.oe-legend .relation-group.unconfirmed') !== null) === (${visible}.querySelector('.relation-group.unconfirmed, .poly-route.unconfirmed') !== null)
+        && (f.querySelector('.oe-legend .relation-group.unconfirmed') !== null) === (${visible}.querySelector('.relation-group.unconfirmed') !== null)
+        && (f.querySelector('.oe-legend .poly-route') !== null) === (${visible}.querySelector('.poly-route') !== null)
+        && !subs.includes('In boxes') && !f.querySelector('.oe-legend').textContent.includes('Confirmed relation')
+        && subs.includes('Columns') && subs.indexOf('Tables') < subs.indexOf('Columns')
         && (f.querySelector('.oe-legend .badge-arrow') !== null) === (${visible}.querySelector('.hub-badge') !== null) && r.bottom <= innerHeight && r.left >= 0 || { ends, drawn: ${drawnEnds}, subs }; })()`,
   );
   // Hide folds the legend to a small pill in the same corner, not in any

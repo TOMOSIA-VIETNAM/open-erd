@@ -160,7 +160,7 @@ for (const t of svg.querySelectorAll('.nodes title, .relations title, .rk-item t
 
 // Lines are 1.4 px wide; a wide transparent twin makes them clickable.
 function addHitPaths(root) {
-  for (const p of root.querySelectorAll('.relation-group > path.relation, .hub-route > path.relation')) {
+  for (const p of root.querySelectorAll('.relation-group > path.relation, .hub-route > path.relation, .poly-route > path.relation')) {
     p.before(svgEl('path', { class: 'relation-hit', d: p.getAttribute('d') }));
   }
 }
@@ -696,6 +696,22 @@ function flowRelation(g) {
   syncHash();
 }
 
+// A route from a polymorphic node to one target is part of the owner's
+// polymorphic line: a click runs that line and goes on along the route,
+// lighting the target, with the polymorphic line's panel.
+function flowPolyRoute(route) {
+  const routes = route.parentNode;
+  const target = route.getAttribute('data-target');
+  const owner = findAttr(currentView(), '.relation-group', 'data-to', routes.getAttribute('data-poly'));
+  if (!owner) return selectNode(target);
+  flowRelation(owner);
+  routes.style.display = '';
+  for (const p of routes.querySelectorAll('.poly-route')) p.style.display = p === route ? '' : 'none';
+  route.classList.add('hl');
+  route.append(svgEl('path', { class: 'flow', d: route.querySelector('path.relation').getAttribute('d') }));
+  currentIndex().get(target)?.el.classList.add('hl', 'flow-target');
+}
+
 // ---------------------------------------------------------------- neighborhood
 
 function adjacency() {
@@ -825,7 +841,10 @@ function buildNeighborhood(center, hops) {
       svgEl(
         'g',
         { class: 'poly-routes', 'data-poly': id, style: 'display:none' },
-        targets.map((t) => svgEl('path', { class: `poly-route${isConfirmed('polymorphic', data.nodes[id].review) ? '' : ' unconfirmed'}`, 'data-target': t, d: linePath(ends(id, t)) })),
+        targets.map((t) => {
+          const d = linePath(ends(id, t));
+          return svgEl('g', { class: `poly-route${isConfirmed('polymorphic', data.nodes[id].review) ? '' : ' unconfirmed'}`, 'data-target': t }, [svgEl('path', { class: 'relation-hit', d }), svgEl('path', { class: 'relation', d })]);
+        }),
       ),
     );
   }
@@ -2446,7 +2465,7 @@ function stepSegments(name, step, i) {
     if (!g || !route) return null;
     const toTarget = step.to === step.line.target;
     const owner = along(g, !toTarget);
-    const target = { g: routes, d: route.getAttribute('d'), reverse: !toTarget, show: routes };
+    const target = { g: routes, d: route.querySelector('path.relation').getAttribute('d'), reverse: !toTarget, show: routes };
     return toTarget ? [owner, target] : [target, owner];
   }
   const g = findAttr(view, step.line.type === 'hub' ? '.hub-route' : '.relation-group', 'data-id', step.line.id);
@@ -2749,12 +2768,13 @@ const lineSample = (classes, width) =>
 // A review-mode line sample followed by the review state's icon.
 const reviewSample = (classes, state) => sample([...lineSample(classes).childNodes, svgEl('g', {}, parsed(reviewIconSvg(state, 54, 9)))]);
 const iconSample = (markup) => sample(parsed(markup));
+const polyRouteSample = (classes) => sample([svgEl('g', { class: `poly-route${classes}` }, [svgEl('path', { class: 'relation', d: 'M2 9H44' })])]);
 const has = (view, selector) => view.querySelector(selector) !== null;
 // End marker kinds the view draws, as its marker groups list them.
 const endKinds = (view) => new Set([...view.querySelectorAll('.marker[data-ends]')].flatMap((g) => g.getAttribute('data-ends').split(' ')));
 const reviewing = () => svg.classList.contains('review-mode');
-// What lines and boxes mean: card strength bars and connectors, solid and
-// dashed lines, line ends, the icons and marks in boxes, and, in review
+// What lines and boxes mean: card strength bars and connectors, dashed and
+// polymorphic lines, line ends, the marks of tables and of columns, and, in review
 // mode only, the review colours and icons. Each entry is listed only while
 // the view on screen draws it.
 const strengthSample = () => sample([0, 1, 2, 3, 4].map((i) => svgEl('rect', { class: `seg${i < 3 ? ' on' : ''}`, x: 2 + i * 11, y: 6, width: 9, height: 6, rx: 1 })));
@@ -2792,10 +2812,12 @@ const LEGEND = [
   ['Schema health', [
     [() => sample([svgEl('rect', { class: 'stub-box', x: 1, y: 6, width: 54, height: 11, rx: 3 }), svgEl('path', { class: 'col-warn', d: 'M49 12L55 1L61 12Z' })]), 'Table with a health finding', (v) => healthOn() && has(v, '.has-health')],
   ]],
+  // A solid line is the normal case and needs no entry.
   ['Lines', [
-    [() => lineSample('kind-db_fk'), 'Confirmed relation', (v) => !reviewing() && has(v, '.relation-group:not(.unconfirmed, .kind-view_source)')],
-    [() => lineSample('kind-declared unconfirmed'), 'Found in code, not confirmed yet', (v) => !reviewing() && has(v, '.relation-group.unconfirmed, .poly-route.unconfirmed')],
+    [() => lineSample('kind-declared unconfirmed'), 'Found in code, not confirmed yet', (v) => !reviewing() && has(v, '.relation-group.unconfirmed')],
     [() => lineSample('kind-view_source'), 'Read by a database view', (v) => has(v, '.kind-view_source')],
+    [() => polyRouteSample(''), 'Polymorphic node to one target, shown on selection', (v) => has(v, '.poly-route:not(.unconfirmed)')],
+    [() => polyRouteSample(' unconfirmed'), 'Polymorphic node to one target, not confirmed yet', (v) => has(v, '.poly-route.unconfirmed')],
   ]],
   ['Line ends', [
     ['one', 'Exactly one'],
@@ -2803,17 +2825,19 @@ const LEGEND = [
     ['many', 'One or more'],
     ['zeroOrMany', 'Zero or more'],
   ].map(([kind, text]) => [() => endSample(kind), text, (v) => endKinds(v).has(kind)])],
-  ['In boxes', [
+  ['Tables', [
     [() => sample([svgEl('rect', { class: 'legend-central', x: 1, y: 2, width: 62, height: 14, rx: 3 }), ...parsed(starIconSvg(9, 9))]), 'Most connected table of its domain', (v) => has(v, '.table.central')],
+    [() => sample([svgEl('rect', { class: 'table-box', x: 1, y: 1, width: 62, height: 16, rx: 3, style: 'stroke-dasharray:5 3' }), svgEl('text', { class: 'table-title', x: 6, y: 9, 'dominant-baseline': 'central', text: 'report' })]), 'Database view', (v) => has(v, '.table.is-view')],
+    [() => sample([svgEl('rect', { class: 'stub-box', x: 1, y: 1, width: 62, height: 16, rx: 4 }), svgEl('text', { class: 'stub-title', x: 6, y: 9, 'dominant-baseline': 'central', text: 'tables' })]), 'Linked table in another domain: click to open', (v) => has(v, '.stub')],
+    [() => sample([svgEl('rect', { class: 'poly-box', x: 1, y: 1, width: 62, height: 16, rx: 4 }), svgEl('text', { class: 'poly-title', x: 6, y: 9, 'dominant-baseline': 'central', text: '«able»' })]), 'Polymorphic: one column pair points at several tables', (v) => has(v, '.poly')],
+    [() => sample([svgEl('path', { class: 'badge-arrow', d: 'M2 9H14M10 6L14 9L10 12' }), svgEl('text', { class: 'badge-text', x: 18, y: 9, 'dominant-baseline': 'central', text: 'users' })]), 'Reference to a hub table, no line drawn', (v) => has(v, '.hub-badge')],
+  ]],
+  ['Columns', [
     [() => iconSample(keyIconSvg(10, 9)), 'Primary key', (v) => has(v, '.icon-pk')],
     [() => iconSample(linkIconSvg(9, 9)), 'Foreign key', (v) => has(v, '.icon-fk')],
     [() => iconSample(indexIconSvg(8, 9)), 'Column in an index', (v) => has(v, '.icon-index')],
     [() => iconSample(enumIconSvg(8, 9)), 'Column with listed values', (v) => has(v, '.hint-enum')],
     [() => sample([svgEl('path', { class: 'col-warn', d: 'M4 13L8 5L12 13Z' })]), 'Possible missing relation', (v) => has(v, '.col-warn')],
-    [() => sample([svgEl('path', { class: 'badge-arrow', d: 'M2 9H14M10 6L14 9L10 12' }), svgEl('text', { class: 'badge-text', x: 18, y: 9, 'dominant-baseline': 'central', text: 'users' })]), 'Reference to a hub table, no line drawn', (v) => has(v, '.hub-badge')],
-    [() => sample([svgEl('rect', { class: 'table-box', x: 1, y: 1, width: 62, height: 16, rx: 3, style: 'stroke-dasharray:5 3' }), svgEl('text', { class: 'table-title', x: 6, y: 9, 'dominant-baseline': 'central', text: 'report' })]), 'Database view', (v) => has(v, '.table.is-view')],
-    [() => sample([svgEl('rect', { class: 'stub-box', x: 1, y: 1, width: 62, height: 16, rx: 4 }), svgEl('text', { class: 'stub-title', x: 6, y: 9, 'dominant-baseline': 'central', text: 'tables' })]), 'Linked table in another domain: click to open', (v) => has(v, '.stub')],
-    [() => sample([svgEl('rect', { class: 'poly-box', x: 1, y: 1, width: 62, height: 16, rx: 4 }), svgEl('text', { class: 'poly-title', x: 6, y: 9, 'dominant-baseline': 'central', text: '«able»' })]), 'Polymorphic: one column pair points at several tables', (v) => has(v, '.poly')],
   ]],
 ];
 
@@ -3541,6 +3565,14 @@ function tipLines(target) {
     const [a, b] = [target.closest('.domain').getAttribute('data-domain'), related.getAttribute('data-domain')];
     return connectorTip(a, b, `Click to open ${domainName(b)}`);
   }
+  const route = target.closest('.poly-route');
+  if (route) {
+    const poly = data.nodes[route.parentNode.getAttribute('data-poly')];
+    return [
+      el('b', { text: `«${poly.name}» → ${short(route.getAttribute('data-target'))}` }),
+      el('div', { class: 'muted', text: `${short(poly.table)}.${poly.idColumn} points here when ${poly.typeColumn} names this table · click for the polymorphic line` }),
+    ];
+  }
   const line = target.closest('.relation-group, .hub-route');
   if (line?.hasAttribute('data-group')) return [el('b', { text: line.getAttribute('data-label') }), el('div', { class: 'muted', text: JSON.parse(line.getAttribute('data-tables')).map(short).join(', ') })];
   if (line) return lineTip(line);
@@ -3902,9 +3934,11 @@ svg.addEventListener('click', (e) => {
   }
   if (node) return selectNode(node.getAttribute('data-id'));
   const relation = t.closest('.relation-group, .hub-route');
+  const route = t.closest('.poly-route');
   const header = headerClick(e);
   if (header) return header();
   if (relation) return flowRelation(relation);
+  if (route) return flowPolyRoute(route);
   clearSelection();
   // The health list stays open (see panelPinned), its ticked findings lit.
   if (healthListShown()) showHealthList(panel.div.scrollTop);
