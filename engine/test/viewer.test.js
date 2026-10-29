@@ -111,6 +111,8 @@ test('polymorphic target lines are routed per view and hidden until clicked', as
   assert.ok(!scene.relations.some((r) => r.id.startsWith(attachable)));
   const escaped = attachable.replace(/[.]/g, '\\.');
   assert.match(svg, new RegExp(`<g class="poly-routes" data-poly="${escaped}" style="display:none">`));
+  // Each route is a line group, so the viewer gives it a hit area like a relation's.
+  assert.match(svg, new RegExp(`<g class="poly-routes" data-poly="${escaped}" style="display:none"><g class="poly-route(?: unconfirmed)?" data-target="[^"]+"><path class="relation" d="`));
 });
 
 test('viewer data: relations by pair of domains, domain notes, central table, hub relations, link optionality, polymorphic notes', async () => {

@@ -38,7 +38,10 @@ test('relation kinds and review states carry their own classes; two line styles 
   assert.equal(group('shop._.products(brand_id)->shop._.brands(id)'), 'kind-declared review-stale unconfirmed');
   assert.equal(group('activity._.audit_logs(organization_id)->auth.public.organizations(id)'), 'kind-cross_db review-pending');
   assert.equal(group('shop._.comments(commentable_id)->«commentable»'), 'kind-polymorphic review-reviewed');
-  assert.match(svg, /\.unconfirmed \.relation, \.poly-route\.unconfirmed \{ stroke-dasharray: 6 4; \}/);
+  assert.match(svg, /\.unconfirmed \.relation \{ stroke-dasharray: 6 4; \}/);
+  // A route from a polymorphic node to a target is dotted, dashed while unconfirmed.
+  assert.match(svg, /\.poly-route \.relation \{ stroke: #a08a5c; stroke-width: 1\.2; stroke-dasharray: 1\.5 3;/);
+  assert.match(svg, /\.poly-route\.unconfirmed \.relation \{ stroke-dasharray: 6 4;/);
   // Kind has no dash pattern of its own; review colours only in review mode.
   assert.doesNotMatch(svg, /\n\.kind-(cross_db|polymorphic|inferred)[^\n]*dasharray/);
   assert.doesNotMatch(svg, /\n\.review-(pending|stale)/);

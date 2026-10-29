@@ -92,7 +92,13 @@ const VIEWER_STYLE = `.row-hit { fill: transparent; }
 .rk-zero:hover text { fill: #1d4ed8; }
 .relation-group.flowing .relation { stroke-opacity: 0.35; }
 .flow { fill: none; stroke: #2563eb; stroke-width: 3; stroke-dasharray: 6 10; pointer-events: none; animation: oe-flow 0.8s linear infinite; }
-.poly-route { fill: none; stroke: #6b778a; stroke-width: 1.4; }
+.poly-route { cursor: pointer; }
+/* A route from a polymorphic node to one target: the node's tan, thinner
+   and dotted, so it does not read as a relation of its own; dashed like
+   any other line while the association is not confirmed. */
+.poly-route .relation { stroke: #a08a5c; stroke-width: 1.2; stroke-dasharray: 1.5 3; stroke-linecap: round; }
+.poly-route.unconfirmed .relation { stroke-dasharray: ${UNCONFIRMED_DASH}; stroke-linecap: butt; }
+.poly-route:hover .relation, .poly-route.hl .relation { stroke: #7a6436; stroke-width: 1.8; }
 .hub-route .relation, .hub-route .marker { stroke: #2563eb; stroke-width: 1.6; }
 .hub-route { cursor: pointer; }
 @keyframes oe-flow { to { stroke-dashoffset: -16; } }
@@ -511,7 +517,7 @@ ${RANKING_STYLE}
 .marker .ring { fill: #ffffff; }
 .edge-label rect { fill: #ffffff; }
 .edge-label text { font-size: ${EDGE_LABEL_FONT.size}px; font-weight: ${EDGE_LABEL_FONT.weight}; fill: #4f5b6e; }
-.unconfirmed .relation, .poly-route.unconfirmed { stroke-dasharray: ${UNCONFIRMED_DASH}; }
+.unconfirmed .relation { stroke-dasharray: ${UNCONFIRMED_DASH}; }
 .review-mode .review-pending :is(.relation, .marker) { stroke: #c27c0e; }
 .review-mode .review-pending .edge-label text { fill: #9a6208; }
 .review-mode .review-stale :is(.relation, .marker) { stroke: #c53030; }
@@ -1107,7 +1113,7 @@ function polyRoutesSvg(routes) {
     .map(
       ([poly, list]) =>
         `<g class="poly-routes" data-poly="${escapeXml(poly)}" style="display:none">` +
-        list.map((r) => `<path class="poly-route${r.confirmed ? '' : ' unconfirmed'}" data-target="${escapeXml(r.target)}" d="${pathData(r.points)}"/>`).join('') +
+        list.map((r) => `<g class="poly-route${r.confirmed ? '' : ' unconfirmed'}" data-target="${escapeXml(r.target)}"><path class="relation" d="${pathData(r.points)}"/></g>`).join('') +
         '</g>',
     )
     .join('');
