@@ -27,6 +27,15 @@ export const HUB_COST = 40;
 // one hop longer through the rows themselves ranks first, whatever its trust.
 export const SHARED_PARENT_COST = 20;
 export const MAX_PATHS = 3;
+// Paths exactly as short as the last of MAX_PATHS are listed too, since only
+// the alphabetical tie-break would cut them, up to this many paths in all: a
+// hub-heavy schema can tie dozens.
+export const MAX_TIED_PATHS = 8;
+// Paths taken in the search, variants of one route included: tables joined
+// by several relations multiply the variants, and this bounds the work.
+// ponytail: a fixed bound, may list fewer routes on a schema of many
+// parallel relations; merge parallel edges before the search if it bites.
+const MAX_SEARCHED = 64;
 
 const VIEW_SOURCE = 'view_source';
 const POLYMORPHIC = 'polymorphic';
@@ -169,22 +178,30 @@ function cheapest(graph, adj, source, target, bannedNodes, bannedEdges, entered 
 
 const sameStart = (p, nodes, edges) =>
   nodes.every((n, i) => p.nodes[i] === n) && edges.every((e, i) => p.edges[i]?.id === e.id);
+const sameRoute = (p, q) => p.nodes.length === q.nodes.length && p.nodes.every((n, i) => q.nodes[i] === n);
 
 /**
- * Up to `limit` cheapest simple paths from table `from` to table `to`
- * (Yen's k-shortest paths), cheapest first, ties by table and edge ids:
- * the same data always gives the same list. Each path is
- * { cost, nodes: [table ids], hops: [hop] }, see describeHop.
+ * The cheapest simple paths from table `from` to table `to` (Yen's
+ * k-shortest paths), cheapest first, ties by table and edge ids: the same
+ * data always gives the same list. One path per sequence of tables: a
+ * variant joining some pair of them by another relation takes no place of
+ * its own, its relation is listed on the hop (see describeHops). `limit`
+ * routes, then those exactly as short as the last of them, up to `cap` in
+ * all (no ties are added when `limit` is larger). Each path is { cost, nodes: [table ids], hops: [hop] }, see
+ * describeHop.
  */
-export function findJoinPaths(data, from, to, limit = MAX_PATHS) {
+export function findJoinPaths(data, from, to, limit = MAX_PATHS, cap = MAX_TIED_PATHS) {
   if (from === to) return [];
   const graph = joinGraph(data);
   const adj = adjacency(graph);
   const first = cheapest(graph, adj, from, to, new Set(), new Set());
   if (!first) return [];
+  // `found` holds every path taken, variants of one route included, since
+  // Yen's spurs must avoid them all; `routes` the first of each route.
   const found = [first];
+  const routes = [first];
   const candidates = [];
-  while (found.length < limit) {
+  while (routes.length < Math.max(limit, cap) && found.length < MAX_SEARCHED) {
     const previous = found.at(-1);
     for (let i = 0; i < previous.nodes.length - 1; i++) {
       const rootNodes = previous.nodes.slice(0, i + 1);
@@ -199,9 +216,12 @@ export function findJoinPaths(data, from, to, limit = MAX_PATHS) {
     }
     if (candidates.length === 0) break;
     candidates.sort(comparePaths);
-    found.push(candidates.shift());
+    if (routes.length >= limit && candidates[0].cost !== routes.at(-1).cost) break;
+    const next = candidates.shift();
+    found.push(next);
+    if (!routes.some((p) => sameRoute(p, next))) routes.push(next);
   }
-  return found.map((p) => ({ cost: p.cost, nodes: p.nodes, hops: describeHops(p.nodes, p.edges, graph) }));
+  return routes.map((p) => ({ cost: p.cost, nodes: p.nodes, hops: describeHops(p.nodes, p.edges, graph) }));
 }
 
 /**
@@ -213,7 +233,7 @@ export function findJoinPaths(data, from, to, limit = MAX_PATHS) {
 export function pathThrough(data, ids) {
   const path = { cost: 0, nodes: [ids[0]], hops: [] };
   for (let i = 1; i < ids.length; i++) {
-    const [best] = findJoinPaths(data, ids[i - 1], ids[i], 1);
+    const [best] = findJoinPaths(data, ids[i - 1], ids[i], 1, 1);
     if (!best) return { gap: [ids[i - 1], ids[i]] };
     path.cost += best.cost;
     path.nodes.push(...best.nodes.slice(1));
@@ -239,6 +259,8 @@ const dbOf = (id) => id.split('.')[0];
  *   { type: 'shared_parent', table }  set by describeHops: the path came up
  *     to `table` (= `from`) and goes back down, so it joins the rows that
  *     share one `table` row
+ * describeHops adds `alternatives`: the other relations joining `from` and
+ * `to`, as hops without alternatives, cheapest first, then by edge id.
  */
 export function describeHop(edge, at, graph) {
   const forward = edge.a === at;
@@ -257,11 +279,20 @@ export function describeHop(edge, at, graph) {
   return { from, to, pairs: fromColumns.map((c, i) => [c, toColumns[i]]), edge, flags, hub: graph?.hubs.has(to) ?? false };
 }
 
-// The hops of a path, each described from the table it leaves.
+// The hops of a path, each described from the table it leaves, with the
+// other relations between the same two tables. A polymorphic association the
+// hop next to it walks is no alternative: the path would enter its owner
+// from one target and leave to another.
 function describeHops(nodes, edges, graph) {
   return edges.map((e, i) => {
     const hop = describeHop(e, nodes[i], graph);
     if (i > 0 && viaSharedParent(edges[i - 1], nodes[i - 1], e, nodes[i])) hop.flags.push({ type: 'shared_parent', table: nodes[i] });
+    const pair = new Set([nodes[i], nodes[i + 1]]);
+    const near = new Set([polyLine(edges[i - 1]), polyLine(edges[i + 1])]);
+    hop.alternatives = graph.edges
+      .filter((x) => x.id !== e.id && x.a !== x.b && pair.has(x.a) && pair.has(x.b) && !(polyLine(x) && near.has(polyLine(x))))
+      .sort((x, y) => edgeCost(x) - edgeCost(y) || cmp(x.id, y.id))
+      .map((x) => describeHop(x, nodes[i], graph));
     return hop;
   });
 }
