@@ -1422,6 +1422,8 @@ await shot(
   const healthOn = `document.documentElement.classList.contains('health-mode')`;
   await key('Escape');
   if (await evaluate(`document.querySelector('g.view[data-view="all"]') !== null`)) await viewTab('all');
+  // The mode is turned on with the panel closed.
+  await shot('health-starts-panel-closed', `!${panelShown}`);
   if (await evaluate(`getComputedStyle(${menuButton('highlight')}.parentNode).display !== 'none'`)) await click(menuButton('highlight'));
   if (healthTotal === 0) {
     await shot('health-hidden', `${menuItem('highlight', 'Schema health')} === undefined && ${healthHost}.style.display === 'none'`);
@@ -1431,7 +1433,8 @@ await shot(
   } else {
     await click(menuItem('highlight', 'Schema health'));
     // The pick closes the menu; the list opens.
-    await shot('health-pick-closes-menu', `!${menuOpen('highlight')} && document.querySelector('.oe-panel .oe-ph-name')?.textContent === 'Schema health'`);
+    // The list opened with the panel closed has its × too.
+    await shot('health-pick-closes-menu', `!${menuOpen('highlight')} && document.querySelector('.oe-panel .oe-ph-name')?.textContent === 'Schema health' && getComputedStyle(document.querySelector('.oe-panel .oe-panel-close')).display !== 'none'`);
     // A click outside an open menu only closes the menu, and a click on
     // empty canvas keeps the list; its × hides it, the chip's List brings it back.
     await click(menuButton('highlight'));
@@ -1442,6 +1445,7 @@ await shot(
     await click(`document.querySelector('.oe-panel .oe-panel-close')`);
     await shot('health-list-closed', `${healthOn} && !${panelShown} && getComputedStyle(document.querySelector('.oe-health-chip .oe-chip-list')).borderStyle === 'solid'`);
     await click(`document.querySelector('.oe-health-chip .oe-chip-list')`);
+    await shot('health-list-close-button-after-list', `${panelShown} && getComputedStyle(document.querySelector('.oe-panel .oe-panel-close')).display !== 'none'`);
     // Every table on screen with a finding shows its triangle, and only those.
     const marked = `(() => { const d = ${data}; const v = ${visible}; const tables = new Set(d.health.map((f) => f.table));
       const want = [...v.querySelectorAll('.table')].filter((g) => tables.has(g.getAttribute('data-id'))).length;

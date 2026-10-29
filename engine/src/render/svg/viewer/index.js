@@ -1932,8 +1932,9 @@ function showPanel(children) {
   // Only showJoin shows the join panel, and sets this again after.
   join.open = false;
   panel.div.replaceChildren(panelClose, ...children.filter(Boolean));
-  panelClose.style.display = panelPinned() ? '' : 'none';
   panel.fo.style.display = '';
+  // After the panel shows: a mode's list counts as listed only while it does.
+  panelClose.style.display = panelPinned() ? '' : 'none';
   layoutOverlays();
   // A domain pair stays lit while its panel is open, and only then.
   if (focused === null) focusDomain(null);
@@ -3957,8 +3958,9 @@ svg.addEventListener('gesturechange', (e) => {
 
 // A press anywhere outside a dropdown closes the toolbar's open menu and
 // does nothing else: no pan, no click on what lies under it (a click on
-// empty space would clear the selection). The flag is reset by the next
-// press, so a press that ends without a click swallows nothing later.
+// empty space would clear the selection). Only the pointer's own click is
+// swallowed: the flag ends a tick after the release, so a press that ends
+// without a click never swallows a later keyboard or scripted click.
 let swallowClick = false;
 document.addEventListener(
   'pointerdown',
@@ -3978,9 +3980,16 @@ document.addEventListener(
   true,
 );
 document.addEventListener(
+  'pointerup',
+  () => {
+    if (swallowClick) setTimeout(() => (swallowClick = false), 0);
+  },
+  true,
+);
+document.addEventListener(
   'click',
   (e) => {
-    if (!swallowClick) return;
+    if (!swallowClick || e.detail === 0) return;
     swallowClick = false;
     e.stopPropagation();
     e.preventDefault();
@@ -4001,7 +4010,7 @@ const SHORTCUTS = [
   ['Find and move', [
     [[PALETTE_KEY], 'Search, or run a command'],
     [[FIND_KEY, '/'], 'Search tables and columns'],
-    [[`${MOD_KEY}J`], 'Join path between two tables'],
+    [[`${MOD_KEY}J`], 'Join path between two tables; reopens a closed join path panel'],
     [[`${MOD_KEY}A`], 'Show all tables'],
     [[ADD_KEY_HINT], 'Add a table to the selection or take it out; the address shares them'],
     [['←', '→'], 'Back, forward'],
