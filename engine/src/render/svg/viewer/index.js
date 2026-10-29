@@ -2596,6 +2596,18 @@ const FLAG_TEXT = {
   shared_parent: (f) => `via shared ${short(f.table)}`,
 };
 
+// Runs of at least two paths of one cost, as [first, last] numbers from 1.
+function tiedPaths(paths) {
+  const runs = [];
+  paths.forEach((p, i) => {
+    if (i > 0 && p.cost === paths[i - 1].cost) {
+      if (runs.at(-1)?.[1] === i) runs.at(-1)[1] = i + 1;
+      else runs.push([i, i + 1]);
+    }
+  });
+  return runs;
+}
+
 function joinPanel() {
   const path = join.paths[join.index];
   const parts = [
@@ -2611,6 +2623,7 @@ function joinPanel() {
   parts.push(
     el('div', { class: 'muted', text: 'Shortest first; unconfirmed relations, hub tables and detours through a shared parent count as longer.' }),
     el('div', { class: 'oe-seg oe-paths' }, join.paths.map((p, i) => el('button', { class: `oe-btn${i === join.index ? ' on' : ''}`, text: `Path ${i + 1} · ${plural(p.hops.length, 'hop')}`, on: { click: () => showJoinPath(i) } }))),
+    ...tiedPaths(join.paths).map(([a, b]) => el('div', { class: 'muted oe-ties', text: `Paths ${a}–${b} rank the same.` })),
     el(
       'ol',
       { class: 'oe-hops' },
@@ -2619,6 +2632,12 @@ function joinPanel() {
           el('code', { text: hopCondition(h, name) }),
           h.flags.length > 0
             ? el('div', { class: 'oe-chips' }, h.flags.map((f) => (f.review ? reviewIcon(f.review) : el('span', { class: `chip flag-${f.type}`, text: FLAG_TEXT[f.type](f) }))))
+            : null,
+          // Other relations between the same two tables: the referencing
+          // columns here, with their table (either end of the hop), the full
+          // conditions in the tooltip.
+          h.alternatives?.length > 0
+            ? el('div', { class: 'muted oe-alt', title: h.alternatives.map((a) => hopCondition(a, name)).join('\n'), text: `also joins on ${h.alternatives.map((a) => a.edge.aColumns.map((c) => `${name(a.edge.a)}.${c}`).join(' + ')).join(', ')}` })
             : null,
         ]),
       ),

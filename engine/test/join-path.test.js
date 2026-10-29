@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { buildDiagram } from '../src/layout/diagram.js';
 import { applyProfile } from '../src/model/profile.js';
 import { viewerData } from '../src/render/svg/render.js';
-import { HUB_COST, SHARED_PARENT_COST, describeHop, findJoinPaths, hopCondition, pathNames, pathThrough, sqlNames, sqlSkeleton } from '../src/render/svg/viewer/join-path.js';
+import { HUB_COST, MAX_PATHS, MAX_TIED_PATHS, SHARED_PARENT_COST, describeHop, findJoinPaths, hopCondition, pathNames, pathThrough, sqlNames, sqlSkeleton } from '../src/render/svg/viewer/join-path.js';
 import { fk, loadMulti, table } from './helpers/shop.js';
 
 // The conditions of a path, one hop per line, as the panel lists them.
@@ -31,7 +31,7 @@ test('a join table collapsed into one line is walked as two hops, with its key c
   assert.deepEqual(flagTypes(best.hops[1]), []);
 });
 
-test('at most three paths, cheapest first, the same list on every call', async () => {
+test('three paths for this pair, cheapest first, the same list on every call', async () => {
   const data = dataOf(await loadMulti());
   const a = findJoinPaths(data, 'shop._.refunds', 'auth.public.users');
   assert.equal(a.length, 3);
@@ -264,4 +264,57 @@ test('a path through tables some pair of which nothing joins names that pair', a
   const lone = Object.keys(data.nodes).find((id) => data.nodes[id].kind === 'table' && findJoinPaths(data, id, 'shop._.orders').length === 0);
   assert.ok(lone, 'the fixture has a table no relation reaches');
   assert.deepEqual(pathThrough(data, ['shop._.products', 'shop._.orders', lone]), { gap: ['shop._.orders', lone] });
+});
+
+// s and t joined through `middles` tables m1, m2, ... (m.s_id -> s and
+// m.t_id -> t: two hops of the same cost each), plus `relations`.
+const tiedModel = (multi, middles, relations = []) => {
+  const id = (n) => `shop._.${n}`;
+  const names = Array.from({ length: middles }, (_, i) => `m${i + 1}`);
+  return {
+    ...multi,
+    tables: [
+      ...multi.tables,
+      table(id('s'), 'Catalog', [['a_id', 'bigint'], ['b_id', 'bigint']]),
+      table(id('t'), 'Catalog', []),
+      ...names.map((m) => table(id(m), 'Catalog', [['s_id', 'bigint'], ['t_id', 'bigint'], ['note', 'text']])),
+    ],
+    relations: [...multi.relations, ...names.flatMap((m) => [fk(id(m), 's_id', id('s')), fk(id(m), 't_id', id('t'))]), ...relations],
+  };
+};
+const shuffledOf = (data) => ({ ...data, links: [...data.links].reverse(), hubLinks: [...data.hubLinks].reverse() });
+
+test('paths as short as the third are listed too, in a stable order, up to MAX_TIED_PATHS', async () => {
+  const multi = await loadMulti();
+  const data = dataOf(tiedModel(multi, 4));
+  const paths = findJoinPaths(data, 'shop._.s', 'shop._.t');
+  assert.deepEqual(paths.map(route), ['m1', 'm2', 'm3', 'm4'].map((m) => `shop._.s > shop._.${m} > shop._.t`));
+  assert.ok(paths.every((p) => p.cost === 20));
+  // The first three are the list without ties, so option=n links keep their path.
+  assert.deepEqual(paths.slice(0, MAX_PATHS), findJoinPaths(data, 'shop._.s', 'shop._.t', MAX_PATHS, MAX_PATHS));
+  assert.deepEqual(findJoinPaths(shuffledOf(data), 'shop._.s', 'shop._.t'), paths);
+  // A tie of ten stops at the cap.
+  const many = findJoinPaths(dataOf(tiedModel(multi, 10)), 'shop._.s', 'shop._.t');
+  assert.equal(many.length, MAX_TIED_PATHS);
+  assert.deepEqual(many.slice(0, 3).map(route), ['m1', 'm10', 'm2'].map((m) => `shop._.s > shop._.${m} > shop._.t`));
+});
+
+test('relations joining the same two tables make one path, the others listed on its hop', async () => {
+  const multi = await loadMulti();
+  // s points at t twice (like created_by and updated_by), and three tables
+  // join them in two hops.
+  const data = dataOf(tiedModel(multi, 3, [fk('shop._.s', 'a_id', 'shop._.t'), fk('shop._.s', 'b_id', 'shop._.t')]));
+  const paths = findJoinPaths(data, 'shop._.s', 'shop._.t');
+  // The variant over b_id takes no slot: the two-hop routes follow, m3 tied
+  // with m2.
+  assert.deepEqual(paths.map(route), ['shop._.s > shop._.t', ...['m1', 'm2', 'm3'].map((m) => `shop._.s > shop._.${m} > shop._.t`)]);
+  // Without ties too: the slot the variant took goes to the next route.
+  assert.deepEqual(findJoinPaths(data, 'shop._.s', 'shop._.t', MAX_PATHS, MAX_PATHS).map(route), paths.slice(0, 3).map(route));
+  const [direct] = paths;
+  assert.equal(conditionsText(direct), 's.a_id = t.id');
+  assert.deepEqual(direct.hops[0].alternatives.map((h) => hopCondition(h, pathNames(direct.nodes))), ['s.b_id = t.id']);
+  assert.ok(paths.slice(1).every((p) => p.hops.every((h) => h.alternatives.length === 0)));
+  // The SQL joins on the kept relation only.
+  assert.match(sqlSkeleton(direct).sql, /^JOIN t ON s\.a_id = t\.id$/m);
+  assert.deepEqual(findJoinPaths(shuffledOf(data), 'shop._.s', 'shop._.t'), paths);
 });
