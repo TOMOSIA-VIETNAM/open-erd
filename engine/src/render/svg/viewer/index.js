@@ -12,7 +12,7 @@ import { collectionDocument, createTableSql, isDocumentStore, markdownTable } fr
 import { centreOn, fitsInside, frameFocus, minimapSize, visibleRect } from './minimap.js';
 import { columnBadges, panelTabs } from './panel-parts.js';
 import { emptyHistory, goBack, goForward, tableTrail, visit } from './history.js';
-import { endTransforms, radialLayout, straightLink } from './radial.js';
+import { endTransforms, neighbourRings, radialLayout, routeLink, straightLink } from './radial.js';
 import { TOUR_STEP_MS, tourIndex, tourSteps } from './tour.js';
 import { piiSummary } from './pii.js';
 import { nextTip, tipList } from './tips.js';
@@ -52,6 +52,9 @@ const FOCUS_MAX_SCALE = 1.2;
 // Gap kept above and below a table a large view opens on.
 const FOCUS_PAD = 8;
 const RING_GAP = 40;
+// Space a straight neighborhood line keeps from boxes it does not connect;
+// closer, it takes a detour (routeLink).
+const LINE_CLEARANCE = 10;
 const NEIGHBORHOOD_MARGIN = 60;
 const SEARCH_LIMIT = 40;
 const TIP_OFFSET = 14;
@@ -726,40 +729,14 @@ function centreExtras(center) {
   return data.hubLinks.filter((l) => l.to === center && l.from !== center).map((l) => l.from);
 }
 
-/**
- * Rings of nodes 1..hops away from `center` over drawn relations. Ring 1 is
- * in id order; each further node follows the earliest node of the previous
- * ring it hangs off, so a branch stays together around the circle.
- */
-function rings(center, hops) {
-  const seen = new Set([center]);
-  const result = [];
-  let previous = [center];
-  for (let hop = 1; hop <= hops; hop++) {
-    const parent = new Map();
-    previous.forEach((p, i) => {
-      const next = new Set([...(ADJACENCY.get(p) ?? []), ...(hop === 1 ? centreExtras(center) : [])]);
-      for (const n of [...next].sort(byId)) {
-        if (!seen.has(n) && !parent.has(n)) parent.set(n, i);
-      }
-    });
-    const ring = [...parent.keys()].sort((a, b) => parent.get(a) - parent.get(b) || byId(a, b));
-    for (const n of ring) seen.add(n);
-    result.push(ring);
-    previous = ring;
-  }
-  return result;
-}
-
 const linePath = (points) => points.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x} ${y}`).join('');
 
 /**
- * A straight line between the boxes of `from` and `to` (in `boxes`), with
- * the crow's feet of its cardinality as in the drawn views (a view's line to
+ * The line `points` from the box of `from` to the box of `to`, with the
+ * crow's feet of its cardinality as in the drawn views (a view's line to
  * its source has none), for the views the viewer builds itself.
  */
-function straightRelation(l, from, to, boxes, extraClass = '') {
-  const points = straightLink(boxes.get(from), boxes.get(to));
+function relationLine(l, from, to, points, extraClass = '') {
   const d = linePath(points);
   const children = [svgEl('path', { class: 'relation-hit', d }), svgEl('path', { class: 'relation', d })];
   if (l.cardinality) {
@@ -776,17 +753,21 @@ function straightRelation(l, from, to, boxes, extraClass = '') {
 
 /**
  * (Re)builds the neighborhood view around `center` from copies of the boxes
- * drawn in the full view, placed by radialLayout with straight lines. The
- * tables (and their lines) two relations away get the class `ring-2`.
+ * drawn in the full view, placed by radialLayout over the drawn relations,
+ * lines by routeLink. The tables (and their lines) two relations away get
+ * the class `ring-2`.
  */
 function buildNeighborhood(center, hops) {
   views.get(NEIGHBORHOOD)?.remove();
   const source = fullBoxes;
-  const ringIds = rings(center, hops).map((r) => r.filter((id) => source.has(id)));
+  const drawn = (list) => [...list].filter((id) => source.has(id));
+  const rings = neighbourRings(center, hops, (id) => drawn(ADJACENCY.get(id) ?? []), drawn(centreExtras(center)));
+  const ringIds = rings.map((r) => r.map((n) => n.id));
   const ids = [center, ...ringIds.flat()];
+  const ringOf = new Map(ids.map((id) => [id, ringIds.findIndex((r) => r.includes(id)) + 1]));
   const outer = new Set(ringIds[1] ?? []);
   const size = (id) => ({ id, w: source.get(id).box.w, h: source.get(id).box.h });
-  const pos = radialLayout(size(center), ringIds.map((r) => r.map(size)), RING_GAP);
+  const { positions: pos, channels } = radialLayout(size(center), rings.map((r) => r.map((n) => ({ ...size(n.id), parent: n.parent }))), RING_GAP);
 
   const shown = new Set(ids);
   const offsets = new Map();
@@ -797,26 +778,26 @@ function buildNeighborhood(center, hops) {
     const dx = pos[id].x - box.x;
     const dy = pos[id].y - box.y;
     offsets.set(id, { dx, dy });
-    boxes.set(id, { x: pos[id].x, y: pos[id].y, w: box.w, h: box.h });
+    boxes.set(id, { x: pos[id].x, y: pos[id].y, w: box.w, h: box.h, ring: ringOf.get(id) });
     const copy = g.cloneNode(true);
     copy.classList.remove('hl', 'selected', 'flow-target', 'reached', 'oe-hidden', 'arrive');
     if (outer.has(id)) copy.classList.add('ring-2');
     nodes.append(svgEl('g', { transform: `translate(${dx} ${dy})` }, [copy]));
   }
   const relations = svgEl('g', { class: 'relations' });
-  const ends = (a, b) => straightLink(boxes.get(a), boxes.get(b));
-  const relationLine = (l, from, to) => straightRelation(l, from, to, boxes, outer.has(from) || outer.has(to) ? ' ring-2' : '');
+  const ends = (a, b) => routeLink(boxes.get(a), boxes.get(b), [...boxes].filter(([id]) => id !== a && id !== b).map(([, box]) => box), channels, LINE_CLEARANCE);
+  const line = (l, from, to) => relationLine(l, from, to, ends(from, to), outer.has(from) || outer.has(to) ? ' ring-2' : '');
   for (const l of data.links) {
-    if (l.from !== l.to && shown.has(l.from) && shown.has(l.to)) relations.append(relationLine(l, l.from, l.to));
+    if (l.from !== l.to && shown.has(l.from) && shown.has(l.to)) relations.append(line(l, l.from, l.to));
   }
   // The centre's own extras: hub relations pointing at it, or a polymorphic
   // centre's line to each target (each row's id points at one target's key).
   const poly = data.nodes[center]?.kind === 'poly' ? data.nodes[center] : null;
   for (const l of data.hubLinks) {
-    if (l.to === center && l.from !== center && shown.has(l.from)) relations.append(relationLine(l, l.from, center));
+    if (l.to === center && l.from !== center && shown.has(l.from)) relations.append(line(l, l.from, center));
   }
   for (const t of poly ? poly.targets.filter((x) => shown.has(x)) : []) {
-    relations.append(relationLine({ id: `${center}->${t}`, cardinality: 'n-1', optional: poly.optional, kind: 'polymorphic', review: poly.review }, center, t));
+    relations.append(line({ id: `${center}->${t}`, cardinality: 'n-1', optional: poly.optional, kind: 'polymorphic', review: poly.review }, center, t));
   }
   for (const id of ids.filter((n) => n !== center && data.nodes[n]?.kind === 'poly')) {
     const targets = data.nodes[id].targets.filter((t) => shown.has(t));
@@ -2513,7 +2494,7 @@ function buildJoinView(path) {
       ? { id: `${s.line.poly}->${s.line.target}`, cardinality: 'n-1', optional: true, kind: 'polymorphic', review: data.nodes[s.line.poly].review, from: data.nodes[s.line.poly].table, to: s.line.target }
       : [...data.links, ...data.hubLinks].find((x) => x.id === s.line.id);
     // Drawn as the relation points, so its crow's feet stay right.
-    const g = straightRelation(l, l.from, l.to, boxes);
+    const g = relationLine(l, l.from, l.to, straightLink(boxes.get(l.from), boxes.get(l.to)));
     g.setAttribute('data-step', String(i));
     relations.append(g);
   });
