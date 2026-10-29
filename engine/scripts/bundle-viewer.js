@@ -5,7 +5,8 @@
 // test/viewer.test.js fails when the committed bundle is stale.
 // Usage: node scripts/bundle-viewer.js
 import { writeFile } from 'node:fs/promises';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
+import { isMain } from '../is-main.js';
 import { build } from 'esbuild';
 
 export const ENTRY = fileURLToPath(new URL('../src/render/svg/viewer/index.js', import.meta.url));
@@ -33,7 +34,7 @@ export async function bundleViewer() {
 
 export const serializeBundle = (source) => `${JSON.stringify({ source }, null, 2)}\n`;
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isMain(import.meta.url)) {
   await writeFile(OUTPUT, serializeBundle(await bundleViewer()));
   console.log(`wrote ${OUTPUT}`);
 }

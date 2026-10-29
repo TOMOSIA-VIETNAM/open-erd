@@ -49713,7 +49713,7 @@ var require_old = __commonJS({
       splitRootRe = /^[\/]*/;
     }
     var splitRootRe;
-    exports2.realpathSync = function realpathSync(p, cache) {
+    exports2.realpathSync = function realpathSync2(p, cache) {
       p = pathModule.resolve(p);
       if (cache && Object.prototype.hasOwnProperty.call(cache, p)) {
         return cache[p];
@@ -49866,8 +49866,8 @@ var require_fs = __commonJS({
   "node_modules/fs.realpath/index.js"(exports2, module2) {
     module2.exports = realpath2;
     realpath2.realpath = realpath2;
-    realpath2.sync = realpathSync;
-    realpath2.realpathSync = realpathSync;
+    realpath2.sync = realpathSync2;
+    realpath2.realpathSync = realpathSync2;
     realpath2.monkeypatch = monkeypatch;
     realpath2.unmonkeypatch = unmonkeypatch;
     var fs = __require("fs");
@@ -49895,7 +49895,7 @@ var require_fs = __commonJS({
         }
       });
     }
-    function realpathSync(p, cache) {
+    function realpathSync2(p, cache) {
       if (ok) {
         return origRealpathSync(p, cache);
       }
@@ -49911,7 +49911,7 @@ var require_fs = __commonJS({
     }
     function monkeypatch() {
       fs.realpath = realpath2;
-      fs.realpathSync = realpathSync;
+      fs.realpathSync = realpathSync2;
     }
     function unmonkeypatch() {
       fs.realpath = origRealpath;
@@ -170338,7 +170338,6 @@ var require_elk_bundled = __commonJS({
 import { execFile } from "node:child_process";
 import { mkdir, readFile, readdir, realpath, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
 import { parseArgs, promisify } from "node:util";
 
 // package.json
@@ -170372,6 +170371,19 @@ var package_default = {
     "opentype.js": "^2.0.0"
   }
 };
+
+// is-main.js
+import { realpathSync } from "node:fs";
+import { pathToFileURL } from "node:url";
+function isMain(moduleUrl) {
+  const script = process.argv[1];
+  if (!script) return false;
+  try {
+    return moduleUrl === pathToFileURL(realpathSync(script)).href;
+  } catch {
+    return false;
+  }
+}
 
 // src/model/schema.js
 var SCHEMA_VERSION = 1;
@@ -177735,7 +177747,7 @@ Usage: open-erd ${command.usage}`);
     return 1;
   }
 }
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isMain(import.meta.url)) {
   process.exitCode = await main(process.argv.slice(2));
 }
 export {
