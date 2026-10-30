@@ -216,7 +216,7 @@ export function polyBox(association) {
 
 // A group stub lists this many tables at most; the rest collapse into one
 // "+N more" row (the full list is in its tooltip).
-export const GROUP_VISIBLE_TABLES = 8;
+const GROUP_VISIBLE_TABLES = 8;
 export const GROUP_DB_FONT = { size: 10, weight: 700 };
 const GROUP_DB_GAP = 8;
 
@@ -252,7 +252,7 @@ export function stubBox(table) {
  * spaces, is cut by characters), the rest on the second, cut with an
  * ellipsis when too long. Returns the fitted lines.
  */
-export function wrapTwoLines(text, width, font) {
+function wrapTwoLines(text, width, font) {
   const clean = text.trim().replace(/\s+/g, ' ');
   const words = clean.split(' ');
   let first = '';
@@ -314,7 +314,7 @@ export function domainCard(card, { related, segments, total, withNotes = true })
 }
 
 /** Vertical offset of the row holding `column`, where relation lines attach. */
-export function rowCenter(box, column) {
+function rowCenter(box, column) {
   return box.rows.find((r) => r.column === column).centerY;
 }
 

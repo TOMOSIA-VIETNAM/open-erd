@@ -1,5 +1,5 @@
 import { compareStrings } from './load.js';
-import { COLUMN_FIELDS, indexPath, readFacts, value } from './facts.js';
+import { COLUMN_FIELDS, indexPath, isObject, readFacts, value } from './facts.js';
 
 // What changed between two sets of extract facts files (extract/facts/*.json
 // at a git ref, and the files on disk): the code changes a sync applies to
@@ -20,8 +20,6 @@ const FREE_FORM = {
   hints: { scope: 'hint', identity: ['database', 'table', 'column', 'text'], path: (t, e) => `${t}${e.column ? `.${e.column}` : ''}: ${e.text ?? ''}` },
 };
 const KNOWN_KEYS = new Set(['source', 'database', 'tables', 'associations', ...Object.keys(FREE_FORM)]);
-
-const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 
 /** JSON with object keys sorted, so equal values give equal text. */
 function canonical(v) {

@@ -14,8 +14,8 @@ import { trustOf } from '../markers.js';
 // declares a little, an inference (or a fact the code no longer supports)
 // more. A path one hop longer still loses to any shorter one: the largest
 // penalty stays below one hop.
-export const HOP_COST = 10;
-export const TRUST_PENALTY = { trusted: 0, declared: 3, doubtful: 6 };
+const HOP_COST = 10;
+const TRUST_PENALTY = { trusted: 0, declared: 3, doubtful: 6 };
 // Passing through a hub table (users, companies: referenced from
 // everywhere) joins rows that share an audit user or a tenant, rarely what
 // a reader means. Allowed, but as costly as several hops.
@@ -42,9 +42,6 @@ const POLYMORPHIC = 'polymorphic';
 
 const cmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 
-// Trust class of a fact, shared with the line styles of the drawing.
-export { trustOf };
-
 const pkColumns = (node) => (node?.columns ?? []).filter((c) => c.pk).map((c) => c.name);
 
 /**
@@ -56,7 +53,7 @@ const pkColumns = (node) => (node?.columns ?? []).filter((c) => c.pk).map((c) =>
  * referencing table `a` to the referenced table `b`. A view's line to a
  * table it reads is no join and is left out.
  */
-export function joinGraph(data) {
+function joinGraph(data) {
   const edges = [];
   // Ids come from the data, never from its order, so ties break the same way
   // however the lists are ordered.

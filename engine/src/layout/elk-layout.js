@@ -80,7 +80,7 @@ const elk = new ELK();
  * smaller id; unconnected boxes follow in id order.
  * `weights`: Map "a\u0000b" (a < b) -> number of relations between a and b.
  */
-export function affinityOrder(ids, weights) {
+function affinityOrder(ids, weights) {
   const neighbours = new Map(ids.map((id) => [id, new Map()]));
   for (const [pair, w] of weights) {
     const [a, b] = pair.split('\u0000');

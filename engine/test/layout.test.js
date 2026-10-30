@@ -119,6 +119,29 @@ async function run(...args) {
   }
 }
 
+test('CLI: a layout.json off the grid fails render fast and is snapped by layout', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'open-erd-'));
+  try {
+    await cp(SHOP, dir, { recursive: true });
+    assert.equal((await run('layout', '--workspace', dir)).code, 0);
+    const layoutPath = join(dir, 'layout.json');
+    const text = await readFile(layoutPath, 'utf8');
+    const first = /"x": (\d+)/.exec(text);
+    const x = Number(first[1]);
+    await writeFile(layoutPath, text.replace(first[0], `"x": ${x + 4}`));
+    const start = performance.now();
+    const failed = await run('render', '--workspace', dir);
+    assert.equal(failed.code, 1);
+    assert.match(failed.stderr, /must be a multiple of 10; run layout/);
+    assert.ok(performance.now() - start < 5000);
+    assert.equal((await run('layout', '--workspace', dir)).code, 0);
+    assert.equal(await readFile(layoutPath, 'utf8'), text);
+    assert.equal((await run('render', '--workspace', dir)).code, 0);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('CLI: layout writes layout.json, render reads it without writing it', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'open-erd-'));
   try {

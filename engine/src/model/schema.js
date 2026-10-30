@@ -14,34 +14,34 @@ export const SCHEMA_VERSION = 1;
 // Table ids are `<db>.<schema>.<table>`; engines without schemas (MySQL, SQLite,
 // Mongo) put `_` in the schema slot. Segments never contain dots, so splitting
 // on '.' is always unambiguous.
-export const TABLE_ID_PATTERN = /^[^.\s]+\.[^.\s]+\.[^.\s]+$/;
+const TABLE_ID_PATTERN = /^[^.\s]+\.[^.\s]+\.[^.\s]+$/;
 
 // `db` for facts read from database metadata, otherwise `<repo>:<path>` with an
 // optional `#<symbol>` (a line number may be appended to the path but is ignored
 // when comparing).
-export const EVIDENCE_PATTERN = /^(db|[^:\s]+:\S+)$/;
+const EVIDENCE_PATTERN = /^(db|[^:\s]+:\S+)$/;
 
-export const CARDINALITIES = ['1-1', '1-n', 'n-1', 'n-n'];
+const CARDINALITIES = ['1-1', '1-n', 'n-1', 'n-n'];
 // Polymorphic associations are not relations with one target; they are
 // declared in their own `polymorphic` list (see modelFileSchema).
-export const RELATION_KINDS = ['db_fk', 'declared', 'inferred', 'cross_db'];
+const RELATION_KINDS = ['db_fk', 'declared', 'inferred', 'cross_db'];
 export const REVIEW_STATES = ['pending', 'reviewed', 'stale'];
 // A view or materialized view is drawn like a table, tagged with its kind and
 // linked by muted lines to the tables it reads (`sources`).
-export const TABLE_KINDS = ['table', 'view', 'materialized_view'];
-export const PARTITION_METHODS = ['range', 'list', 'hash'];
+const TABLE_KINDS = ['table', 'view', 'materialized_view'];
+const PARTITION_METHODS = ['range', 'list', 'hash'];
 // Free-text fields a sharing profile can drop. `note` is the business
 // meaning readers outside the team want; `internal_note` is for the team
 // only (code pointers, doubts, history); `note_source` is the original,
 // untranslated text (often an internal DB comment).
 export const NOTE_FIELDS = ['note', 'note_source', 'internal_note'];
-export const PROFILE_NAME = /^[A-Za-z0-9_-]+$/;
+const PROFILE_NAME = /^[A-Za-z0-9_-]+$/;
 // Name of the view of one domain: domain:<db>/<domain>.
 export const DOMAIN_VIEW_PREFIX = 'domain:';
 // Every table shaded by the relations pointing at it; drawn from the model
 // alone (no positions in layout.json).
 export const RANKING_VIEW = 'ranking';
-export const DEFAULT_VIEW_PATTERN = new RegExp(`^(overview|all|${RANKING_VIEW}|${DOMAIN_VIEW_PREFIX}[^/\\s]+/.+)$`);
+const DEFAULT_VIEW_PATTERN = new RegExp(`^(overview|all|${RANKING_VIEW}|${DOMAIN_VIEW_PREFIX}[^/\\s]+/.+)$`);
 
 // Older files must go through a migration before the engine reads them.
 const schemaVersion = { type: 'integer', oneOf: [SCHEMA_VERSION], required: true };
@@ -287,14 +287,14 @@ const profileFields = {
 // code for the facts an AI wrote (notes, enum meanings, relations without a
 // constraint); `full` also has that agent re-read the facts scripts
 // extracted.
-export const VERIFY_MODES = ['full', 'ai-only', 'off'];
+const VERIFY_MODES = ['full', 'ai-only', 'off'];
 // Switches of the whole-schema views (`views` in open-erd.yaml): the view of
 // all tables is `auto` (drawn up to ALL_VIEW_MAX_TABLES tables, see
 // layout/views.js), `on` (always, however long its lines take to route) or
 // `off`; the ranking is `on` or `off`. The overview is always drawn: it is
 // the way into the domain views.
-export const ALL_VIEW_SWITCHES = ['auto', 'on', 'off'];
-export const VIEW_SWITCHES = ['on', 'off'];
+const ALL_VIEW_SWITCHES = ['auto', 'on', 'off'];
+const VIEW_SWITCHES = ['on', 'off'];
 export const VIEWS_DEFAULTS = { all: 'auto', ranking: 'on' };
 export const VERIFY_DEFAULT = 'ai-only';
 
@@ -310,7 +310,7 @@ export const HEALTH_RULES = {
 export const HEALTH_SEVERITIES = ['medium', 'low'];
 // `<rule>:<table id>` silences a rule on a whole table, `<rule>:<table id>.<column>`
 // only the findings on that column.
-export const HEALTH_IGNORE_PATTERN = /^[a-z_]+:[^.\s]+\.[^.\s]+\.[^.\s]+(\.\S+)?$/;
+const HEALTH_IGNORE_PATTERN = /^[a-z_]+:[^.\s]+\.[^.\s]+\.[^.\s]+(\.\S+)?$/;
 
 // open-erd.yaml
 export const CONFIG_FILE = 'open-erd.yaml';

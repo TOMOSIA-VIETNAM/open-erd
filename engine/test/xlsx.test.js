@@ -278,3 +278,12 @@ test('CLI: two renders write the same erd.xlsx; a workspace without its own git 
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test('a sheet name cut to 31 characters never ends in half a surrogate pair', () => {
+  // The emoji occupies units 31 and 32, so cutting at 31 would keep half of it.
+  const id = `crm._.${'x'.repeat(30)}😀tail`;
+  const [name] = [...tableSheetNames([{ id }]).values()];
+  assert.ok(name.length <= 31);
+  assert.ok(!/[\uD800-\uDBFF]$/.test(name), JSON.stringify(name));
+  assert.equal(name, 'x'.repeat(30));
+});

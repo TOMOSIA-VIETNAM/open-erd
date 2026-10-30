@@ -17,8 +17,8 @@ import { compareStrings } from './load.js';
 //   - it is among the CENTRAL_GLOBAL_TOP highest scores of the schema
 //     (ties broken by id), which lets a domain with two hubs show both.
 export const CENTRAL_MIN_LINKS = 5;
-export const CENTRAL_MEDIAN_FACTOR = 2;
-export const CENTRAL_GLOBAL_TOP = 3;
+const CENTRAL_MEDIAN_FACTOR = 2;
+const CENTRAL_GLOBAL_TOP = 3;
 
 /** Score per table id, as described above. */
 export function centralityScores(model) {

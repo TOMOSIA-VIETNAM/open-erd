@@ -9,6 +9,7 @@ import { columnEntries, enumMeaning } from '../../model/columns.js';
 import { PALETTE } from '../../palette.js';
 import { FONT_FAMILY, TEXT_STYLE_CSS } from '../../text/font.js';
 import { buildScene } from '../svg/render.js';
+import { escapeXml } from '../xml.js';
 
 // draw.io export: the overview and the view of all tables, drawn from the
 // same scenes as the SVG (positions from layout.json, routes from the
@@ -67,8 +68,8 @@ const ER_ARROWS = { one: 'ERmandOne', zeroOrOne: 'ERzeroToOne', many: 'ERoneToMa
 const FONT_SOURCE = `https://fonts.googleapis.com/css2?family=${FONT_FAMILY}:wght@400;700`;
 const FONT_STYLE = { fontFamily: FONT_FAMILY, fontSource: encodeURIComponent(FONT_SOURCE) };
 
-const escapeXml = (text) =>
-  String(text).replace(/[&<>"\n]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', '\n': '&#10;' })[c]);
+// A newline in an attribute would be read back as a space.
+const escapeAttribute = (text) => escapeXml(text).replace(/\n/g, '&#10;');
 const escapeHtml = (text) => String(text).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
 const style = (entries) =>
   Object.entries(entries)
@@ -91,15 +92,15 @@ export function pageName(name) {
  */
 function cell({ id, value = '', data = {}, link, styles, parent, vertex = true, geometry, source, target }) {
   const kind = vertex ? 'vertex="1"' : 'edge="1"';
-  const ends = `${source ? ` source="${escapeXml(source)}"` : ''}${target ? ` target="${escapeXml(target)}"` : ''}`;
+  const ends = `${source ? ` source="${escapeAttribute(source)}"` : ''}${target ? ` target="${escapeAttribute(target)}"` : ''}`;
   // Every cell with a text gets the font; cells without one stay short.
   const all = value === '' ? styles : { ...styles, ...FONT_STYLE };
-  const inner = `<mxCell style="${escapeXml(style(all))}" ${kind} parent="${escapeXml(parent)}"${ends}>${geometry}</mxCell>`;
+  const inner = `<mxCell style="${escapeAttribute(style(all))}" ${kind} parent="${escapeAttribute(parent)}"${ends}>${geometry}</mxCell>`;
   const props = Object.entries({ link, ...data }).filter(([, v]) => v !== undefined && v !== null && v !== '');
   if (props.length > 0) {
-    return `<UserObject id="${escapeXml(id)}" label="${escapeXml(value)}"${props.map(([k, v]) => ` ${k}="${escapeXml(v)}"`).join('')}>${inner}</UserObject>`;
+    return `<UserObject id="${escapeAttribute(id)}" label="${escapeAttribute(value)}"${props.map(([k, v]) => ` ${k}="${escapeAttribute(v)}"`).join('')}>${inner}</UserObject>`;
   }
-  return inner.replace('<mxCell ', `<mxCell id="${escapeXml(id)}" value="${escapeXml(value)}" `);
+  return inner.replace('<mxCell ', `<mxCell id="${escapeAttribute(id)}" value="${escapeAttribute(value)}" `);
 }
 
 const box = (x, y, w, h) => `<mxGeometry x="${x}" y="${y}" width="${w}" height="${h}" as="geometry"/>`;
@@ -631,13 +632,13 @@ export const HUB_LAYER = { id: 'layer-hub-links', name: 'Hub links' };
 export const POLY_LAYER = { id: 'layer-polymorphic-targets', name: 'Polymorphic targets' };
 
 function hiddenLayers(scene, byId, heights, origin) {
-  const layer = ({ id, name }, edges) => (edges.length === 0 ? [] : [`<mxCell id="${id}" value="${escapeXml(name)}" parent="0" visible="0"/>`, ...edges]);
+  const layer = ({ id, name }, edges) => (edges.length === 0 ? [] : [`<mxCell id="${id}" value="${escapeAttribute(name)}" parent="0" visible="0"/>`, ...edges]);
   const hub = scene.hubRoutes.map((r) => edgeCell(r, byId, heights, origin, { id: `hub|${r.link.id}`, parent: HUB_LAYER.id }));
   // A polymorphic line runs from the node's header to the target's first
   // primary key column (the one the id column holds), as in the SVG.
   const poly = scene.polyRoutes.map((r) => {
     const t = byId.get(r.target);
-    const column = t.kind === 'table' ? (t.node.table.columns.find((c) => c.pk) ?? t.node.table.columns[0]).name : null;
+    const column = t.kind === 'table' ? (t.node.table.columns.find((c) => c.pk) ?? t.node.table.columns[0])?.name ?? null : null;
     const review = byId.get(r.poly).node.association.review;
     const link = { id: `${r.poly}->${r.target}`, from: { node: r.poly, column: null }, to: { node: r.target, column }, kind: 'polymorphic', review };
     return edgeCell({ link, points: r.points, markers: { from: 'none', to: 'none' } }, byId, heights, origin, { id: `poly|${link.id}`, parent: POLY_LAYER.id });
@@ -693,7 +694,7 @@ function pageXml(scene, pageCtx) {
   const layers = hiddenLayers(scene, byId, heights, origin);
   const { w, h } = scene.bounds;
   return [
-    `  <diagram id="${escapeXml(scene.name)}" name="${escapeXml(pageName(scene.name))}">`,
+    `  <diagram id="${escapeAttribute(scene.name)}" name="${escapeAttribute(pageName(scene.name))}">`,
     `    <mxGraphModel dx="0" dy="0" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="${w}" pageHeight="${h}" math="0" shadow="0">`,
     '      <root>',
     '        <mxCell id="0"/>',
@@ -713,10 +714,11 @@ function pageXml(scene, pageCtx) {
  * instead, so every table is still in the file. Plain (uncompressed) XML
  * with no timestamps, so the same model and layout always give the same
  * bytes. Options are those of renderSvg's scenes (`fitStored` for a profile),
- * plus `svgUrl`: where the SVG of this render is hosted, which table headers
+ * plus `scenes` (buildScenes of the same model, layout and options, to skip
+ * routing twice) and `svgUrl`: where the SVG of this render is hosted, which table headers
  * link to (no links when left out).
  */
-export function renderDrawio(model, layout, { svgUrl, ...options } = {}) {
+export function renderDrawio(model, layout, { svgUrl, scenes, ...options } = {}) {
   const diagram = buildDiagram(model);
   const names = hasAllView(diagram) ? [OVERVIEW, ALL_VIEW] : viewNames(diagram).filter((n) => n !== ALL_VIEW);
   // A page's id is its view name, so links to a page stay valid across renders.
@@ -727,6 +729,6 @@ export function renderDrawio(model, layout, { svgUrl, ...options } = {}) {
     svgUrl,
     pageLink: (name) => (names.includes(name) ? `data:page/id,${name}` : null),
   };
-  const pages = names.map((name) => pageXml(buildScene(model, layout, name, diagram, options), ctx));
+  const pages = names.map((name) => pageXml(scenes?.get(name) ?? buildScene(model, layout, name, diagram, options), ctx));
   return ['<mxfile host="open-erd" compressed="false">', ...pages, '</mxfile>', ''].join('\n');
 }

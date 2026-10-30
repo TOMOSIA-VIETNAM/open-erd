@@ -115,4 +115,4 @@ for name in "${SKILLS[@]}"; do
   fi
 done
 say '\nready   %s\n' "$DIR"
-say 'Also needed: node >= 20.10 and git on PATH; gh logged in for ci-setup and feedback.\n'
+say 'Also needed: node >= 20.10 and git on PATH; gh logged in for feedback.\n'

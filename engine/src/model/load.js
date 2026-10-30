@@ -216,8 +216,7 @@ export function parseWorkspace(files) {
     // A misspelt rule, table or column would silently keep a finding.
     (config.health?.ignore ?? []).forEach((entry, i) => {
       const at = `health.ignore[${i}]`;
-      const rule = entry.slice(0, entry.indexOf(':'));
-      const [tableId, name] = splitColumnRef(entry.slice(rule.length + 1));
+      const { rule, table: tableId, column: name } = parseHealthIgnore(entry);
       if (!(rule in HEALTH_RULES)) errors.push({ file: CONFIG_FILE, path: at, message: `unknown rule ${JSON.stringify(rule)} (known: ${Object.keys(HEALTH_RULES).join(', ')})` });
       else if (!tablesById.has(tableId)) errors.push({ file: CONFIG_FILE, path: at, message: `unknown table ${JSON.stringify(tableId)}` });
       else if (name && rule === 'orphan_table') errors.push({ file: CONFIG_FILE, path: at, message: 'orphan_table is about a whole table; leave out the column' });
@@ -251,7 +250,7 @@ export function parseWorkspace(files) {
  * everything after load reads one field (`indexes`). A key already declared
  * as a unique index is not added twice.
  */
-export function withIndexes(table) {
+function withIndexes(table) {
   if (!table.unique) return table;
   const { unique, ...rest } = table;
   const declared = new Set((table.indexes ?? []).filter((i) => i.unique).map((i) => i.columns.join('\u0000')));
@@ -317,6 +316,13 @@ export function normalizeModel(model) {
 export function splitColumnRef(ref) {
   const parts = ref.split('.');
   return [parts.slice(0, 3).join('.'), parts.slice(3).join('.')];
+}
+
+/** `<rule>:<table id>[.<column path>]` of `health.ignore` split into its parts. */
+export function parseHealthIgnore(entry) {
+  const rule = entry.slice(0, entry.indexOf(':'));
+  const [table, column] = splitColumnRef(entry.slice(rule.length + 1));
+  return { rule, table, column };
 }
 
 export function formatError(e) {

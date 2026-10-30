@@ -111,6 +111,8 @@ test('schema null maps to the one model table of that name; ambiguity is reporte
   const deltas = compare(twin, files);
   assert.equal(deltas[0].change, 'error');
   assert.match(describeDelta(deltas[0]), /matches several model tables \(store\.public\.tags, store\.tenant\.tags\)/);
+  // The ambiguous name does not make either table look removed.
+  assert.deepEqual(deltas.filter((d) => d.change === 'removed'), []);
   // A new table goes in the schema its database's tables share.
   const docs = factsFromModel(model).filter((f) => f.data.source === 'app-docs');
   docs[0].data.tables.push({ name: 'notes', schema: null, database: 'docs', columns: [{ name: '_id', type: 'ObjectId', pk: true }] });
@@ -186,4 +188,23 @@ test('a stale fact and the tables and columns it uses are not reported', async (
   for (const f of kept) f.data.associations = f.data.associations.filter((a) => !(a.from.table === 'accounts' && a.from.columns[0] === fk.from.columns[0]));
   assert.equal(compare(model, kept).length, 1);
   assert.deepEqual(compare(stale, kept), []);
+});
+
+test('a relation on an association end that matches several tables is not reported removed', async () => {
+  const model = await loadPatterns();
+  const base = model.tables.find((t) => t.id === 'store.public.tags');
+  const twin = { ...model, tables: [...model.tables, { ...base, id: 'store.tenant.tags' }] };
+  twin.relations = [...model.relations, { from: { table: 'store.public.products', columns: ['id'] }, to: { table: 'store.tenant.tags', columns: ['id'] }, cardinality: 'n-1', optional: false, kind: 'db_fk', evidence: [], review: 'reviewed' }];
+  // Both tables are listed with their schema; an association names only the table, so `tags` is ambiguous.
+  const files = factsFromModel(twin, { keep: (t) => !t.generated_by && (t.kind ?? 'table') === 'table' });
+  const removed = compare(twin, files).filter((d) => d.change === 'removed');
+  assert.deepEqual(removed.map((d) => d.path), []);
+});
+
+test('a renamed_from naming a live table does not make the facts follow it', async () => {
+  const model = await loadMulti();
+  const [a, b] = model.tables.filter((x) => x.id.split('.')[1] !== '_');
+  const stale = withTable(model, a.id, (x) => ({ ...x, renamed_from: b.id }));
+  const removed = compare(stale, factsFromModel(model)).filter((d) => d.change === 'removed' && d.scope === 'table');
+  assert.deepEqual(removed, []);
 });

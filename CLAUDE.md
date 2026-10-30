@@ -6,7 +6,7 @@ open-erd is a Claude Code plugin that draws an ERD from any project's source cod
 
 - **Skills** (`skills/<name>/SKILL.md`, registered by directory; no list in `.claude-plugin/plugin.json`): the AI side. Claude writes a read-only extract script per source repo, turns its facts into `model/*.yaml`, and calls the engine. Shared rules live once in `skills/_shared/rules.md` (workflow, approvals, verification) and `skills/_shared/model.md` (model format, facts file format); skills point to sections there instead of repeating them.
 - **Adapter layer** (other agents, e.g. Codex): `.agents/skills/open-erd-<cmd>/SKILL.md` (one short entry per command), `adapters/root.md` (resolves the plugin root, maps Claude Code tool and command names; the only file naming another platform), `.codex-plugin/`, `.agents/plugins/`, `install.sh`, `scripts/install-local.sh`. **Adapters carry no behaviour**: an entry only says "read `ROOT/skills/<cmd>/SKILL.md` and follow it"; every rule stays in `skills/`. A new command needs a new entry (its `description` mirrors the skill's, with `$open-erd-<cmd>` for `/open-erd:<cmd>`); a file the skills newly read at run time goes into `SHIP` in `install.sh`. `engine/test/platform-layer.test.js` enforces all of this. Never put these entries under `skills/`: Claude Code registers every directory there as a command.
-- **Engine** (`engine/`, Node ≥ 20.10, ESM): deterministic, no AI. Model → layout → SVG / XLSX / draw.io / diff. Bundled to `dist/open-erd.mjs`, which is **committed** and is what skills and CI run.
+- **Engine** (`engine/`, Node ≥ 20.10, ESM): deterministic, no AI. Model → layout → SVG / XLSX / draw.io / diff. Bundled to `dist/open-erd.mjs`, which is **committed** and is what skills run.
 
 ## Commands
 
@@ -33,7 +33,7 @@ node engine/scripts/screenshot-views.js <ws>/out/erd.svg <shots dir>  # PNG of e
 
 Render into a copy (e.g. of `engine/test/fixtures/workspace-multi`), not the fixture itself. Look at the PNGs; a passing script is not a layout check. `verify-viewer` fails on a single-domain workspace (`workspace-valid`) at the overview connector step; that is a limitation of the script.
 
-Engine CLI (`node dist/open-erd.mjs --help`): `validate`, `lock`, `verify`, `apply-facts`, `facts-diff [--from <ref>] [--format json]`, `layout`, `render [--profile]`, `diff --from <ref> --to <ref|WORKTREE> | --to-workspace <dir> [--format markdown]`.
+Engine CLI (`node dist/open-erd.mjs --help`): `validate`, `lock`, `verify`, `facts-diff [--from <ref>] [--format json]`, `layout`, `render [--profile]`, `diff --from <ref> --to <ref|WORKTREE> | --to-workspace <dir> [--format markdown]`.
 
 ## Engine architecture
 
@@ -42,7 +42,7 @@ Engine CLI (`node dist/open-erd.mjs --help`): `validate`, `lock`, `verify`, `app
 - **Model → render pipeline**: `load.js` parses/validates/normalizes → `profile.js` filters for a sharing profile (the `public` profile drops hidden tables, `pii` columns, evidence, internal notes; anything derived, like Health findings or the Verification sheet, must be filtered too) → `layout/` → `render/svg`, `render/xlsx`, `render/drawio`.
 - **Layout**: ELK only orders clusters; final coordinates and orthogonal routing are own code (`router.js`). `layout.json` keeps positions per view with stability rules (`stability.js`); only the `layout` command writes it, `render` never does and stops if it is out of date.
 - **Determinism is a contract**: same inputs → byte-identical SVG/XLSX/drawio (fixed zip mtimes, document dates from the workspace's HEAD commit, sorted output). `test/determinism.test.js` renders 100×.
-- **Facts**: `model/facts.js` `compareFacts(model, facts)` returns structural deltas (tables, columns, indexes, `db_fk` relations) between the model and `extract/facts/*.json`. `verify` reports them; `apply-facts` (`model/apply-facts.js`) applies the mechanical ones to a workspace copy via the `yaml` Document API (keeps comments) and lists the rest as needing `/open-erd:sync`. Used by the CI workflow template `skills/ci-setup/workflow.yml`.
+- **Facts**: `model/facts.js` `compareFacts(model, facts)` returns structural deltas (tables, columns, indexes, `db_fk` relations) between the model and `extract/facts/*.json`. `verify` reports them.
 - **Diff**: reads both sides with `git show <ref>:<path>` (no checkout); `diff/changes.js` is the only place English change sentences are written; `diff/union.js` merges both sides for `diff.svg`.
 
 ## Viewer

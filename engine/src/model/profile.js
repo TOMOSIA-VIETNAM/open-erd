@@ -1,8 +1,8 @@
 import { BUILT_IN_PROFILES, NOTE_FIELDS, PROFILE_DEFAULTS } from './schema.js';
-import { splitColumnRef } from './load.js';
+import { columnEntries } from './columns.js';
 
 /** Names `render --profile` accepts: the built-in ones plus the configured ones. */
-export function profileNames(config) {
+function profileNames(config) {
   return [...new Set([...Object.keys(BUILT_IN_PROFILES), ...Object.keys(config.profiles ?? {})])].sort();
 }
 
@@ -104,4 +104,53 @@ export function applyProfile(model, name) {
     relations: model.relations.filter((r) => endOk(r.from) && endOk(r.to)).map(evidence),
     polymorphic,
   };
+}
+
+// Reference of a column in the hidden lists: its table id and path.
+const columnRef = (tableId, path) => `${tableId}.${path}`;
+
+/**
+ * Both sides of a diff as profile `name` shares them, so a hidden table or
+ * column never shows up under its other name or on the side that did not
+ * flag it: the hidden lists of the newer model are carried to the older one
+ * through `renamed_from` (a renamed table or column is hidden under its old
+ * name too), and a column is PII, with `drop_pii`, when either side says so.
+ * Returns `[from, to]`.
+ */
+export function applyProfileToSnapshots(from, to, name) {
+  const p = resolveProfile(to.config, name);
+  const oldTable = new Map();
+  const oldColumn = new Map();
+  const piiNow = [];
+  const piiOld = [];
+  const fromTables = new Map(from.tables.map((t) => [t.id, t]));
+  for (const t of to.tables) {
+    const before = fromTables.get(t.id) ?? fromTables.get(t.renamed_from);
+    if (!before) continue;
+    oldTable.set(t.id, before.id);
+    const beforeColumns = new Map(columnEntries(before).map((e) => [e.path, e.column]));
+    for (const { path, column, entity } of columnEntries(t)) {
+      const renamed = column.renamed_from === undefined ? undefined : entity ? `${entity.name}.${column.renamed_from}` : column.renamed_from;
+      const oldPath = beforeColumns.has(path) ? path : renamed;
+      const old = beforeColumns.get(oldPath);
+      if (!old) continue;
+      oldColumn.set(columnRef(t.id, path), columnRef(before.id, oldPath));
+      if (p.drop_pii && (column.pii || old.pii)) {
+        piiNow.push(columnRef(t.id, path));
+        piiOld.push(columnRef(before.id, oldPath));
+      }
+    }
+  }
+  const hiddenTables = [...(to.config.hidden?.tables ?? []), ...p.hide.tables];
+  const hiddenColumns = [...(to.config.hidden?.columns ?? []), ...p.hide.columns];
+  const withHidden = (model, tables, columns) => ({
+    ...model,
+    config: { ...model.config, hidden: { ...model.config.hidden, tables: [...(model.config.hidden?.tables ?? []), ...tables], columns: [...(model.config.hidden?.columns ?? []), ...columns] } },
+  });
+  const olderTables = hiddenTables.map((id) => oldTable.get(id)).filter((id) => id !== undefined);
+  const olderColumns = [...hiddenColumns.map((ref) => oldColumn.get(ref)).filter((ref) => ref !== undefined), ...piiOld];
+  return [
+    applyProfile(withHidden({ ...from, config: to.config }, olderTables, olderColumns), name),
+    applyProfile(withHidden(to, [], piiNow), name),
+  ];
 }

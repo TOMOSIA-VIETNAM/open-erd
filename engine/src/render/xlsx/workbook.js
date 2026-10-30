@@ -49,7 +49,7 @@ function widthOf(header, rows, index) {
  * above the header, e.g. what the sheet describes and a link back; it does
  * not count for column widths. Header row frozen and filterable.
  */
-export function addSheet(workbook, name, columns, rows, { title } = {}) {
+function addSheet(workbook, name, columns, rows, { title } = {}) {
   const headerRow = title ? 2 : 1;
   const sheet = workbook.addWorksheet(name, { views: [{ state: 'frozen', ySplit: headerRow }] });
   sheet.columns = columns.map((c, i) => ({ width: widthOf(c.header, rows, i) }));
@@ -99,7 +99,12 @@ const SHEETS = {
 // too, because link targets quote the sheet name with them.
 const SHEET_NAME_MAX = 31;
 const RESERVED_SHEET_NAMES = [...Object.values(SHEETS), 'History'];
-const safeSheetName = (text) => text.replace(/[:\\/?*[\]']/g, '_').slice(0, SHEET_NAME_MAX) || '_';
+// Cut to `max` UTF-16 units without leaving half of a surrogate pair at the end.
+const cut = (text, max) => {
+  const head = text.slice(0, max);
+  return /[\uD800-\uDBFF]$/.test(head) ? head.slice(0, -1) : head;
+};
+const safeSheetName = (text) => cut(text.replace(/[:\\/?*[\]']/g, '_'), SHEET_NAME_MAX) || '_';
 
 /**
  * Sheet name of every table, by id. A table is named after itself when that
@@ -130,8 +135,9 @@ export function tableSheetNames(tables) {
   for (const id of open) {
     const base = levels(id)[2];
     let n = 2;
-    while (taken.has(`${base.slice(0, SHEET_NAME_MAX - `~${n}`.length)}~${n}`.toLowerCase())) n++;
-    const name = `${base.slice(0, SHEET_NAME_MAX - `~${n}`.length)}~${n}`;
+    const numbered = (k) => `${cut(base, SHEET_NAME_MAX - `~${k}`.length)}~${k}`;
+    while (taken.has(numbered(n).toLowerCase())) n++;
+    const name = numbered(n);
     names.set(id, name);
     taken.add(name.toLowerCase());
   }

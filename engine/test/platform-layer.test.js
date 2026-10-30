@@ -13,7 +13,7 @@ const read = (path) => readFileSync(join(REPO, path), 'utf8');
 const SHIMS = '.agents/skills';
 const SHIM_MAX_LINES = 14;
 // Each belongs to a file under skills/. Found in the adapter layer, it would have two owners.
-const BEHAVIOUR_MARKERS = ['--workspace', 'validate', 'apply-facts', 'review: pending', 'open-erd.yaml', 'gh issue'];
+const BEHAVIOUR_MARKERS = ['--workspace', 'validate', 'facts-diff', 'review: pending', 'open-erd.yaml', 'gh issue'];
 
 const commands = () => readdirSync(join(REPO, 'skills'), { withFileTypes: true })
   .filter((d) => d.isDirectory() && !d.name.startsWith('_')).map((d) => d.name).sort();

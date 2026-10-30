@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { readFile, rm, writeFile } from 'node:fs/promises';
+import { readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import ExcelJS from 'exceljs';
@@ -8,6 +8,7 @@ import { readWorkspaceFiles } from '../cli.js';
 import { POSSIBLE_RENAME_SIMILARITY, describeChange, diffModels, summarize, summaryLine } from '../src/diff/changes.js';
 import { diffMarks, unionModel } from '../src/diff/union.js';
 import { parseWorkspace } from '../src/model/load.js';
+import { applyProfileToSnapshots } from '../src/model/profile.js';
 import { editFile, git, runCli, snapshotRepo } from './helpers/git-workspace.js';
 import { MULTI, SHOP, loadMulti, loadWorkspace, table } from './helpers/shop.js';
 import { buildDiagram } from '../src/layout/diagram.js';
@@ -275,6 +276,16 @@ test('CLI diff: --to HEAD warns about uncommitted edits, --to WORKTREE includes 
   }
 });
 
+test('CLI diff reads a model file with a non-ASCII name from a git ref', async () => {
+  const dir = await snapshotRepo(SHOP, [{ tag: 'base', edit: (d) => rename(join(d, 'model', 'shop.yaml'), join(d, 'model', '売上.yaml')) }], 'open-erd-utf8-');
+  try {
+    const { stdout } = await runCli('diff', '--workspace', dir, '--from', 'HEAD', '--to', 'WORKTREE');
+    assert.match(stdout, /^HEAD → WORKTREE: \+0 tables · −0 tables · 0 renamed · 0 columns changed · 0 relations changed\nwrote /);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('CLI diff: bad refs and --from WORKTREE are refused', async () => {
   await assert.rejects(runCli('diff', '--workspace', ws, '--from', 'WORKTREE', '--to', 'HEAD'), (e) => e.code === 1 && /--from must be a git ref/.test(e.stderr));
   await assert.rejects(runCli('diff', '--workspace', ws, '--from', 'v9', '--to', 'HEAD'), (e) => e.code === 1 && /cannot read snapshot "v9"/.test(e.stderr));
@@ -290,6 +301,25 @@ test('CLI diff --profile filters both sides before diffing', async () => {
   assert.ok(!svg.includes('password_digest'));
   assert.ok(!svg.includes('shop-api:app/models'), 'no evidence in a public diff');
   await readFile(join(ws, 'out', 'diff.public.xlsx'));
+});
+
+test('a profiled diff hides a renamed hidden table under its old name and a column that became PII', async () => {
+  const from = await loadWorkspace(MULTI);
+  const [renamed, other] = from.tables.map((t) => t.id).filter((id) => id.split('.')[2]);
+  const piiTarget = from.tables.find((t) => t.id === other);
+  const piiColumn = piiTarget.columns.find((c) => !c.pk).name;
+  const newId = `${renamed.split('.').slice(0, 2).join('.')}.secret_renamed`;
+  const to = clone(from);
+  to.config = { ...to.config, hidden: { tables: [newId] } };
+  Object.assign(to.tables.find((t) => t.id === renamed), { id: newId, renamed_from: renamed });
+  to.relations = to.relations.map((r) => ({ ...r, from: r.from.table === renamed ? { ...r.from, table: newId } : r.from, to: r.to.table === renamed ? { ...r.to, table: newId } : r.to }));
+  to.tables.find((t) => t.id === other).columns.find((c) => c.name === piiColumn).pii = true;
+  const [filteredFrom, filteredTo] = applyProfileToSnapshots(from, to, 'public');
+  const text = JSON.stringify([diffModels(filteredFrom, filteredTo).changes, filteredFrom.tables, filteredTo.tables]);
+  assert.ok(!text.includes(renamed.split('.')[2] + '"'), 'old name of the hidden table');
+  assert.ok(!text.includes('secret_renamed'));
+  assert.ok(!filteredFrom.tables.find((t) => t.id === other).columns.some((c) => c.name === piiColumn), 'column PII on one side only');
+  assert.ok(!filteredTo.tables.find((t) => t.id === other).columns.some((c) => c.name === piiColumn));
 });
 
 test('column default, auto-increment and generated expression changes are reported', async () => {

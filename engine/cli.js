@@ -8,11 +8,10 @@ import { isMain } from './is-main.js';
 import { CONFIG_FILE, LOCKED_FILE, OUTPUT_DEFAULTS, VERIFICATION_FILE, VERIFY_DEFAULT } from './src/model/schema.js';
 import { compareStrings, formatError, parseWorkspace } from './src/model/load.js';
 import { checkLocked, lockFacts, parseLocked, serializeLocked } from './src/model/lock.js';
-import { applyProfile, resolveProfile } from './src/model/profile.js';
+import { applyProfile, applyProfileToSnapshots, resolveProfile } from './src/model/profile.js';
 import { compareFacts, describeDelta, readFacts } from './src/model/facts.js';
-import { applyFacts, needsSyncMarkdown } from './src/model/apply-facts.js';
 import { describeFactsChange, diffFacts, factsDiffSummary } from './src/model/facts-diff.js';
-import { parseVerification, serializeVerification, verificationSummary } from './src/model/verification.js';
+import { parseVerification, serializeVerification, verificationFor, verificationSummary } from './src/model/verification.js';
 import { formatWarning, missingRelations, warningsFor } from './src/model/missing.js';
 import { healthFindings, healthFor, healthSummary } from './src/model/health.js';
 import { addChangesSheet, addVerificationSheet, buildWorkbook, serializeWorkbook } from './src/render/xlsx/workbook.js';
@@ -20,21 +19,26 @@ import { changesMarkdown, describeChange, diffModels, summarize, summaryLine } f
 import { diffMarks, mergeLayouts, unionModel } from './src/diff/union.js';
 import { EVERY_VIEW, checkLayout, computeLayout, formatReport } from './src/layout/index.js';
 import { LAYOUT_FILE, parseLayout, serializeLayout } from './src/layout/layout-file.js';
-import { openingView, renderSvg } from './src/render/svg/render.js';
+import { buildScenes, openingView, renderSvg } from './src/render/svg/render.js';
 import { renderDrawio } from './src/render/drawio/render.js';
 
 // `--to` value meaning the workspace files on disk, committed or not.
 const WORKTREE = 'WORKTREE';
 // Workspace files a snapshot is made of.
 const SNAPSHOT_FILE = (path) => path === CONFIG_FILE || path === LAYOUT_FILE || /^model\/[^/]+\.yaml$/.test(path);
-// What `--format` accepts: plain lines for a terminal, or Markdown (for a
-// pull request comment) on stdout with progress lines on stderr.
+// What `--format` accepts: plain lines for a terminal, or Markdown (a
+// report to paste elsewhere) on stdout with progress lines on stderr.
 const FORMATS = ['text', 'markdown'];
 // Where the extract facts files live in a workspace.
 const FACTS_DIR = 'extract/facts';
 
 const git = (workspace, ...args) =>
   promisify(execFile)('git', ['-C', workspace, ...args], { maxBuffer: 256 * 1024 * 1024 }).then((r) => r.stdout);
+
+// Paths of the files under `pathspec` at git ref `ref`, relative to the
+// workspace; NUL-separated so a non-ASCII name is not quoted by git.
+const listTree = async (workspace, ref, pathspec, ...flags) =>
+  (await git(workspace, 'ls-tree', '-z', '--name-only', ...flags, ref, '--', pathspec)).split('\0').filter(Boolean);
 
 const COMMANDS = {
   validate: {
@@ -56,15 +60,6 @@ const COMMANDS = {
       `print each mismatch and exit 1 on any; skipped when open-erd.yaml says verify: off. Also checks ${VERIFICATION_FILE}, rewrites it sorted and prints its commit line`,
     options: { workspace: { type: 'string' }, facts: { type: 'string' } },
     run: runVerify,
-  },
-  'apply-facts': {
-    usage: 'apply-facts --workspace <dir> [--facts <dir>] --out <dir> [--format text|markdown]',
-    summary:
-      'write a copy of the workspace into --out with the mechanical differences from the extract facts applied (tables, columns, indexes, ' +
-      'constraint-backed relations; new tables in domain Unassigned) and list what is left for /open-erd:sync (renames, notes, relations without a constraint, ' +
-      'anything a reviewed fact uses); never writes the workspace itself',
-    options: { workspace: { type: 'string' }, facts: { type: 'string' }, out: { type: 'string' }, format: { type: 'string' } },
-    run: runApplyFacts,
   },
   'facts-diff': {
     usage: 'facts-diff --workspace <dir> [--from <ref>] [--format text|json]',
@@ -92,7 +87,7 @@ const COMMANDS = {
     usage: `diff --workspace <dir> --from <ref> (--to <ref|${WORKTREE}> | --to-workspace <dir>) [--profile <name>] [--format text|markdown]`,
     summary:
       `compare two snapshots of the workspace (git refs such as a tag or HEAD; ${WORKTREE} = the files on disk; --to-workspace = the files of another ` +
-      'workspace directory, such as the copy apply-facts writes), print the changes (--format markdown: a summary and a table for a pull request comment), ' +
+      'workspace directory), print the changes (--format markdown: a summary and a table), ' +
       'write out/diff.svg and out/diff.xlsx into --workspace (the "to" side plus a Changes sheet; out/diff.<profile>.* with a sharing profile, applied to both sides as the "to" side declares it)',
     options: {
       workspace: { type: 'string' },
@@ -138,8 +133,19 @@ async function loadModel(workspace) {
   return model;
 }
 
+// loadModel for the commands that draw: a model without tables has nothing to
+// lay out (the drawing would have an infinite size).
+async function loadDrawableModel(workspace) {
+  const model = await loadModel(workspace);
+  if (model && model.tables.length === 0) {
+    console.error('error: the model has no tables');
+    return null;
+  }
+  return model;
+}
+
 // Returns the parsed layout, or undefined when the workspace has none yet.
-async function readLayout(workspace) {
+async function readLayout(workspace, options) {
   let text;
   try {
     text = await readFile(join(workspace, LAYOUT_FILE), 'utf8');
@@ -147,7 +153,7 @@ async function readLayout(workspace) {
     if (e.code === 'ENOENT') return undefined;
     throw e;
   }
-  return parseLayout(text);
+  return parseLayout(text, options);
 }
 
 // Returns the parsed lock file, `null` when it is invalid (errors printed),
@@ -256,7 +262,7 @@ function parseFactsFiles(texts, label = '') {
 async function readFactsAt(workspace, ref) {
   const texts = [];
   try {
-    const paths = (await git(workspace, 'ls-tree', '--name-only', ref, '--', `${FACTS_DIR}/`)).split('\n').filter((p) => p.endsWith('.json'));
+    const paths = (await listTree(workspace, ref, `${FACTS_DIR}/`)).filter((p) => p.endsWith('.json'));
     for (const path of paths) texts.push({ file: basename(path), text: await git(workspace, 'show', `${ref}:./${path}`) });
   } catch (e) {
     console.error(`cannot read ${FACTS_DIR} at "${ref}" of ${workspace}: ${e.stderr?.trim() || e.message}`);
@@ -319,63 +325,10 @@ async function runVerify({ workspace, facts: factsDir }) {
   return 0;
 }
 
-// Workspace files apply-facts copies as they are, besides open-erd.yaml and
-// the model files: enough for validate, layout, render and diff on the copy.
-const COPIED_FILES = [LAYOUT_FILE, LOCKED_FILE, VERIFICATION_FILE];
-
 function checkFormat(format) {
   if (format === undefined || FORMATS.includes(format)) return true;
   console.error(`--format must be one of ${FORMATS.join(', ')}`);
   return false;
-}
-
-async function runApplyFacts({ workspace, facts: factsDir, out, format = 'text' }) {
-  if (!out) {
-    console.error(`Missing --out\nUsage: open-erd ${COMMANDS['apply-facts'].usage}`);
-    return 1;
-  }
-  if (!checkFormat(format)) return 1;
-  if (resolve(out) === resolve(workspace)) {
-    console.error('--out must be another directory: apply-facts never writes the workspace itself');
-    return 1;
-  }
-  const files = await readWorkspaceFiles(workspace);
-  const { model, errors } = parseWorkspace(files);
-  for (const e of errors) console.error(formatError(e));
-  if (!model) return 1;
-  const factsFiles = await readFactsFiles(factsDir ?? join(workspace, 'extract', 'facts'));
-  if (!factsFiles) return 1;
-  const facts = readFacts(factsFiles);
-  for (const e of facts.errors) console.error(formatError(e));
-  if (facts.errors.length > 0) return 1;
-  const result = applyFacts(files, model, compareFacts(model, facts));
-
-  // The copy must load: a broken copy would make every later step fail
-  // with an error about a file nobody wrote by hand.
-  const copy = { ...files, ...result.files };
-  const check = parseWorkspace(copy);
-  for (const e of check.errors) console.error(`${out}: ${formatError(e)}`);
-  if (!check.model) return 1;
-  await mkdir(join(out, 'model'), { recursive: true });
-  for (const [path, text] of Object.entries(copy)) await writeFile(join(out, path), text);
-  for (const path of COPIED_FILES) {
-    let bytes;
-    try {
-      bytes = await readFile(join(workspace, path));
-    } catch (e) {
-      if (e.code === 'ENOENT') continue;
-      throw e;
-    }
-    await mkdir(dirname(join(out, path)), { recursive: true });
-    await writeFile(join(out, path), bytes);
-  }
-
-  const report = format === 'markdown' ? console.error : console.log;
-  report(`wrote ${out}: ${result.applied.length} change(s) from the extract facts applied, ${result.needsSync.length} left for /open-erd:sync`);
-  for (const d of result.applied) report(`  applied: ${describeDelta(d)}`);
-  if (format === 'markdown') console.log(needsSyncMarkdown(result.needsSync));
-  else for (const n of result.needsSync) console.log(`  needs sync: ${n.path}: ${n.reason}`);
-  return 0;
 }
 
 // Fixed date for a workspace without its own git history (zip's own epoch).
@@ -400,11 +353,11 @@ async function workspaceDate(workspace, ref = 'HEAD') {
 }
 
 async function runLayout({ workspace, relayout = [] }) {
-  const model = await loadModel(workspace);
+  const model = await loadDrawableModel(workspace);
   if (!model) return 1;
   // Repeatable: a domain name may itself contain a comma.
   const relayoutViews = relayout.map((v) => v.trim()).filter(Boolean);
-  const { layout, report, offCentre } = await computeLayout(model, await readLayout(workspace), { relayout: relayoutViews });
+  const { layout, report, offCentre } = await computeLayout(model, await readLayout(workspace, { snap: true }), { relayout: relayoutViews });
   await writeFile(join(workspace, LAYOUT_FILE), serializeLayout(layout));
   console.log(formatReport(report));
   // Kept positions win over centring (stability rules); say how to opt in.
@@ -428,7 +381,7 @@ function svgUrlOf(config, name) {
 // A profile render gets its own file name, so a shared file is never
 // mistaken for the full one (or the reverse) and both can sit side by side.
 async function runRender({ workspace, profile }) {
-  const model = await loadModel(workspace);
+  const model = await loadDrawableModel(workspace);
   if (!model) return 1;
   const layout = await readLayout(workspace);
   if (!layout) {
@@ -436,12 +389,14 @@ async function runRender({ workspace, profile }) {
     return 1;
   }
   let svg;
+  let scenes;
   let shown = model;
   // Found on the full model, narrowed to what the profile still shows.
   let warnings = missingRelations(model);
   let health = healthFindings(model);
   if (profile === undefined) {
-    svg = renderSvg(model, layout, { warnings, health });
+    scenes = buildScenes(model, layout);
+    svg = renderSvg(model, layout, { warnings, health, scenes });
   } else {
     // Positions come from the layout of the full model, so check that one;
     // the filtered model is drawn at those positions (see resolveView).
@@ -449,7 +404,8 @@ async function runRender({ workspace, profile }) {
     shown = applyProfile(model, profile);
     warnings = warningsFor(warnings, shown);
     health = healthFor(health, shown);
-    svg = renderSvg(shown, layout, { fitStored: true, warnings, health });
+    scenes = buildScenes(shown, layout, { fitStored: true });
+    svg = renderSvg(shown, layout, { fitStored: true, warnings, health, scenes });
   }
   if (openingView(shown).fallback) console.error(`warning: default_view "${shown.config.default_view}" is not in this render; it opens on the overview`);
   const workbook = buildWorkbook(shown, { warnings, health });
@@ -458,7 +414,9 @@ async function runRender({ workspace, profile }) {
   const verification = await readVerification(workspace);
   if (verification === null) return 1;
   const sharing = profile === undefined ? null : resolveProfile(model.config, profile);
-  if (verification && (!sharing || (!sharing.drop_evidence && !sharing.drop_notes.includes('internal_note')))) addVerificationSheet(workbook, verification);
+  if (verification && (!sharing || (!sharing.drop_evidence && !sharing.drop_notes.includes('internal_note')))) {
+    addVerificationSheet(workbook, profile === undefined ? verification : verificationFor(verification, model, shown));
+  }
   const xlsx = await serializeWorkbook(workbook, { date: await workspaceDate(workspace) });
   const name = profile === undefined ? 'erd' : `erd.${profile}`;
   const base = join(workspace, 'out', name);
@@ -467,7 +425,7 @@ async function runRender({ workspace, profile }) {
   await writeFile(`${base}.xlsx`, xlsx);
   const written = [`${base}.svg`, `${base}.xlsx`];
   if ({ ...OUTPUT_DEFAULTS, ...shown.config.outputs }.drawio) {
-    await writeFile(`${base}.drawio`, renderDrawio(shown, layout, { svgUrl: svgUrlOf(shown.config, name), ...(profile === undefined ? {} : { fitStored: true }) }));
+    await writeFile(`${base}.drawio`, renderDrawio(shown, layout, { svgUrl: svgUrlOf(shown.config, name), scenes, ...(profile === undefined ? {} : { fitStored: true }) }));
     written.push(`${base}.drawio`);
   }
   console.log(`wrote ${written.join(', ')}${profile === undefined ? '' : ` (profile ${profile})`}`);
@@ -494,7 +452,7 @@ async function readSnapshot(workspace, ref) {
     try {
       // Paths come out relative to the workspace, which may sit below the
       // repository root.
-      paths = (await git(workspace, 'ls-tree', '-r', '--name-only', ref, '--', '.')).split('\n').filter(SNAPSHOT_FILE);
+      paths = (await listTree(workspace, ref, '.', '-r')).filter(SNAPSHOT_FILE);
     } catch (e) {
       throw new Error(`cannot read snapshot "${ref}" of ${workspace}: ${e.stderr?.trim() || e.message}`);
     }
@@ -509,7 +467,7 @@ async function readSnapshot(workspace, ref) {
   for (const e of errors) console.error(`${ref}: ${formatError(e)}`);
   if (!model) return null;
   // A snapshot without layout.json is laid out from scratch.
-  return { model, layout: layoutText === undefined ? undefined : parseLayout(layoutText) };
+  return { model, layout: layoutText === undefined ? undefined : parseLayout(layoutText, { snap: true }) };
 }
 
 async function runDiff({ workspace, from, to, 'to-workspace': toWorkspace, profile, format = 'text' }) {
@@ -537,8 +495,7 @@ async function runDiff({ workspace, from, to, 'to-workspace': toWorkspace, profi
   if (!before || !after) return 1;
   // Both sides are filtered by the profile as the newer snapshot declares
   // it: the result is shared today, so today's hidden list applies.
-  const filter = (side) => (profile === undefined ? side.model : applyProfile({ ...side.model, config: after.model.config }, profile));
-  const [fromModel, toModel] = [filter(before), filter(after)];
+  const [fromModel, toModel] = profile === undefined ? [before.model, after.model] : applyProfileToSnapshots(before.model, after.model, profile);
 
   const result = diffModels(fromModel, toModel);
   const summary = summaryLine(summarize(result.changes));

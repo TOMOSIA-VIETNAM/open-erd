@@ -34,9 +34,9 @@ the diagram still recognise it.
 | ⌘K | Palette: search tables and columns, or run a command (go to a view or database, join path, tour, downloads, highlights, copy schema), each listed with its shortcut; `a > b` (or `a → b`) offers the join path between tables `a` and `b` |
 | ⌘F or `/` | The palette for tables and columns only |
 | ⌘J | Join path: From and To fields (Tab or Enter moves on, Enter on To finds the path); starts from the selected table. In the view of a join path whose panel was closed, brings that panel back. Where a browser keeps ⌘J for itself, use Join path… in the palette |
-| ⌘A | All tables (in a text field it selects the text as usual) |
+| ⌘A | All tables (only when the file has that view; in a text field it selects the text as usual) |
 | Shift-click (or ⌘/Ctrl-click) a table | Adds it to the selection, or takes it out: the tables are lit together, the panel lists them (Copy link; Join path for two) and the address names them (`tables=`), so a copied link shows the same tables |
-| ← → | Back to the previous table or view, forward again |
+| ← or ⌫ | Back to the previous table or view; → goes forward again |
 | **Highlight** | |
 | P | Personal data map: columns marked `pii` tinted, the rest faded, with their list (only when the model has such columns) |
 | H | Schema health: tables with findings marked, with the list of findings (only when there are findings) |
@@ -44,7 +44,7 @@ the diagram still recognise it.
 | C | Changes: fade what a diff did not change, with the list of changes (only in `diff.svg`) |
 | L | Shows or hides the legend |
 | **Other** | |
-| T | Tour: shows each domain in turn, most connected first, zoomed on its central table with its name, table count and note; moves on every 6 s. ← → step, Space pauses, Esc ends it and returns to where you were |
+| T | Tour (only with at least two domains): shows each domain in turn, most connected first, zoomed on its central table with its name, table count and note; moves on every 6 s. ← → step, Space pauses, Esc ends it and returns to where you were |
 | ⌘C | With a table selected and no text selected: copies its `CREATE TABLE` with indexes |
 | ? | This list of keys |
 | Esc | Closes the palette, a menu or the panel (the join panel with the path it lit); with a highlight mode's own list open, turns that mode off; with nothing open, turns every highlight mode off |
@@ -131,7 +131,6 @@ After building the model, `init` and `sync` have a second agent, with a fresh co
 | `/open-erd:review` | Walks through inferred and stale relations one by one; you confirm or correct in plain words. Reviewed facts are locked. |
 | `/open-erd:diff` | Compares two versions of the workspace: a tag, any commit, `HEAD`, or the uncommitted working copy. |
 | `/open-erd:ask "<question>"` | Answers a question about the data from the ERD model only (not the code), naming the tables, columns and relations it relies on, with a link that opens them in `erd.svg` (see [Links](#links)). Writes nothing. |
-| `/open-erd:ci-setup` | Writes a GitHub Actions workflow for a source repository (after you agree) that comments the ERD changes on each pull request; see [Pull request preview](#pull-request-preview). |
 | `/open-erd:feedback <text>` | Opens a GitHub issue on this repository with your feedback, after showing you the draft. Never attaches your project's data. |
 
 The other commands find the workspace by themselves: a path you give, the current folder when it is the workspace, or, run from inside a source repository, a workspace up to three folders above it whose `open-erd.local.yaml` lists that repository (they ask when there are several, or none).
@@ -171,53 +170,9 @@ Choose how much runs with `verify` in `open-erd.yaml`:
 | `full` | yes | every changed fact, also those copied from the code's schema | about 30–50% more tokens per sync |
 | `off` | no | no | none |
 
-## Pull request preview
-
-`/open-erd:ci-setup` sets up a workflow in a source repository so a pull
-request that changes the schema files gets one comment with how the ERD
-would change. No AI runs in CI:
-
-1. The workflow checks out the pull request, the ERD workspace repository
-   and the open-erd engine (pinned to the commit of the plugin you run).
-2. It runs the workspace's extract script on the pull request's code, then
-   `apply-facts` copies the workspace and applies the mechanical changes:
-   tables, columns, indexes and foreign-key (`db_fk`) relations added or
-   removed, column type, nullable, default and similar attributes. New
-   tables go into a domain named `Unassigned`.
-3. `diff` compares the workspace with that copy. The comment shows the
-   summary line, a table of changes, what is left for `/open-erd:sync`
-   (possible renames, the domain and notes of new tables, relation kinds,
-   anything a reviewed fact uses) and a link to `diff.svg` and `diff.xlsx`
-   in the run's artifacts. Every new push updates the same comment.
-
-The workflow only comments: the workspace is not changed. Run
-`/open-erd:sync` after merging as usual.
-
-Paths that trigger it are the files and folders the extract script reads;
-the skill shows them before writing. It writes
-`.github/workflows/open-erd.yml` only after you agree, and never commits it.
-
-Token setup, once per source repository:
-
-- The workspace is its own repository, so the workflow needs to read it:
-  create a fine-grained personal access token (or a GitHub App installed on
-  the workspace repository) limited to that repository, with
-  **Contents: Read-only**. Add it to the source repository as the Actions
-  secret `OPEN_ERD_WORKSPACE_TOKEN` (Settings → Secrets and variables →
-  Actions).
-- Commenting uses the workflow's own `GITHUB_TOKEN`; the workflow asks
-  `pull-requests: write` for it. Pull requests from forks are skipped.
-
-Run the same steps by hand:
-
-```
-node <plugin root>/dist/open-erd.mjs apply-facts --workspace <ws> --facts <facts dir> --out <copy>
-node <plugin root>/dist/open-erd.mjs diff --workspace <ws> --from HEAD --to-workspace <copy> --format markdown
-```
-
 ## Safety
 
-- Nothing is written to your source repositories (except the workflow file `/open-erd:ci-setup` writes after you agree); extract scripts only read files and never boot your app.
+- Nothing is written to your source repositories; extract scripts only read files and never boot your app. A script runs only after you approve it: the hash of what you approved is kept in `open-erd.local.yaml`, so a changed script asks again. Skills never open `.env*`, credentials files or keys, and read `config/database.yml` and Django `settings.py` by key lines only.
 - Database access happens only when you approve it each time, read-only, metadata only; credentials are never stored.
 - The workspace is never pushed unless you ask.
 

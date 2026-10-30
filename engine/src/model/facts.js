@@ -1,6 +1,6 @@
 import { columnEntries } from './columns.js';
 import { compareStrings } from './load.js';
-import { renames } from './lock.js';
+import { endText, renames } from './lock.js';
 
 // Mechanical check of the model against the extract facts files
 // (extract/facts/<source>.json): the structure a script reads from schema
@@ -16,10 +16,10 @@ import { renames } from './lock.js';
 // written before `default` existed does not report every default as gone).
 
 export const COLUMN_FIELDS = ['type', 'nullable', 'pk', 'unique', 'default', 'auto_increment'];
-export const BOOLEAN_FIELDS = new Set(['nullable', 'pk', 'unique', 'auto_increment']);
+const BOOLEAN_FIELDS = new Set(['nullable', 'pk', 'unique', 'auto_increment']);
 const INDEX_FIELDS = ['name'];
 
-const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+export const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const list = (v) => (v === undefined || v === null ? [] : Array.isArray(v) ? v : [v]);
 
 /** A facts or model value as compared: booleans default to false, defaults are strings. */
@@ -94,8 +94,7 @@ export function readFacts(files) {
   return { tables, associations, fields, errors };
 }
 
-const endText = (end) => `${end.table}.${end.columns.join(', ')}`;
-export const relationPath = (from, to) => `${endText(from)} -> ${endText(to)}`;
+const relationPath = (from, to) => `${endText(from)} -> ${endText(to)}`;
 // Identity of an index: what it covers and how, not its name.
 export const indexKey = (i) => [i.columns.join(','), i.unique ? 'unique' : '', i.where ?? '', i.using ?? ''].join('\u0000');
 export const indexPath = (i) => `(${i.columns.join(', ')})${i.unique ? ' unique' : ''}${i.where ? ` where ${i.where}` : ''}${i.using ? ` using ${i.using}` : ''}`;
@@ -161,7 +160,7 @@ export function compareFacts(model, facts) {
     if (!db) return { error: 'no database: set `database` on the table or the file' };
     if (schema) return { id: follow.table(`${db}.${schema}.${name}`) };
     const ids = (byDbName.get(`${db}\u0000${name}`) ?? []).filter((id) => tablesById.has(id));
-    if (ids.length > 1) return { error: `matches several model tables (${ids.join(', ')}); give its schema in the facts` };
+    if (ids.length > 1) return { error: `matches several model tables (${ids.join(', ')}); give its schema in the facts`, ids };
     if (ids.length === 1) return { id: ids[0] };
     const renamed = model.tables.find((t) => t.renamed_from && t.renamed_from.split('.')[0] === db && t.renamed_from.split('.')[2] === name);
     if (renamed) return { id: renamed.id };
@@ -171,11 +170,15 @@ export function compareFacts(model, facts) {
 
   const ignored = new Set(model.config.not_in_model ?? []);
   const seen = new Set();
+  // Model tables a facts table without a schema could be: not reported as
+  // removed, since the facts may well list them.
+  const ambiguous = new Set();
   const covered = new Set();
   for (const ft of facts.tables) {
     const db = resolveDb(ft.database);
-    const { id, error } = idOf(db, ft.schema, ft.name);
+    const { id, error, ids } = idOf(db, ft.schema, ft.name);
     if (error) {
+      for (const candidate of ids ?? []) ambiguous.add(candidate);
       deltas.push({ change: 'error', scope: 'table', table: `${db ?? '?'}.?.${ft.name}`, path: `${ft.file}: ${ft.name}`, message: error });
       continue;
     }
@@ -194,7 +197,7 @@ export function compareFacts(model, facts) {
   }
 
   for (const t of model.tables) {
-    if (!covered.has(t.id.split('.')[0]) || seen.has(t.id) || t.generated_by || (t.kind ?? 'table') !== 'table') continue;
+    if (!covered.has(t.id.split('.')[0]) || seen.has(t.id) || ambiguous.has(t.id) || t.generated_by || (t.kind ?? 'table') !== 'table') continue;
     deltas.push({ change: 'removed', scope: 'table', table: t.id, path: t.id, before: t });
   }
 
@@ -279,11 +282,19 @@ function compareConstraints(model, facts, { resolveDb, idOf, seen, ignored }, de
   // Facts associations by model path; `constraint` true when any entry for
   // that path has one.
   const associations = new Map();
+  // (database, table name) pairs of an association end that could not be
+  // resolved to one model table: a model relation on such a table is not
+  // known to be gone.
+  const unresolved = new Set();
   for (const a of facts.associations) {
     const [fromDb, toDb] = [resolveDb(a.from.database), resolveDb(a.to.database)];
     // A constraint never spans databases; such an entry is not one.
     if (fromDb !== toDb) continue;
-    const [from, to] = [a.from, a.to].map((e) => ({ table: idOf(fromDb, null, e.table).id, columns: e.columns }));
+    const [from, to] = [a.from, a.to].map((e) => {
+      const { id } = idOf(fromDb, null, e.table);
+      if (!id) unresolved.add(`${fromDb}\u0000${e.table}`);
+      return { table: id, columns: e.columns };
+    });
     if (!from.table || !to.table || ignored.has(from.table) || ignored.has(to.table)) continue;
     const k = relationPath(from, to);
     const known = associations.get(k);
@@ -300,6 +311,7 @@ function compareConstraints(model, facts, { resolveDb, idOf, seen, ignored }, de
     if (r.kind !== 'db_fk' || associations.get(k)?.constraint || r.evidence.includes('db')) continue;
     // A table the facts do not list has its own delta, or is left alone.
     if (!seen.has(r.from.table) || !seen.has(r.to.table)) continue;
+    if ([r.from.table, r.to.table].some((id) => unresolved.has(`${id.split('.')[0]}\u0000${id.split('.')[2]}`))) continue;
     // Still declared in code without a constraint, or gone from the code.
     const a = associations.get(k);
     if (a) deltas.push({ change: 'changed', scope: 'relation', table: r.from.table, path: k, field: 'kind', before: 'db_fk', after: 'declared', evidence: a.evidence });

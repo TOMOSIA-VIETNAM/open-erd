@@ -289,7 +289,7 @@ export function buildDiagram(model) {
 }
 
 /** Id of the pair of domains `a` and `b`, whatever their order (`a<->a` for a domain with itself). */
-export function domainLinkId(a, b) {
+function domainLinkId(a, b) {
   return compareStrings(a, b) <= 0 ? `${a}<->${b}` : `${b}<->${a}`;
 }
 

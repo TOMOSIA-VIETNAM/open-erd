@@ -114,8 +114,8 @@ function overview(model, diagram) {
 // domain contributes GROUP_MIN_TABLES of them: a box named after the
 // domain listing its tables, joined to each table of this domain by one
 // line per referencing or referenced column, standing for all of them.
-export const GROUP_MIN_TABLES = 2;
-export const GROUP_PREFIX = 'group:';
+const GROUP_MIN_TABLES = 2;
+const GROUP_PREFIX = 'group:';
 
 // One line for several relations between a group stub and one table of the
 // domain: same direction and same column on the domain's side. Its ends

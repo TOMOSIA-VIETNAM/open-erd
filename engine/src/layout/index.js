@@ -427,7 +427,7 @@ function flatten(clusters) {
  * group whose nodes all moved by the same vector is reported once as a
  * translation.
  */
-export function diffLayouts(before, after) {
+function diffLayouts(before, after) {
   const old = flatten(before);
   const now = flatten(after);
   const added = [...now.keys()].filter((id) => !old.has(id) || old.get(id).cluster !== now.get(id).cluster);

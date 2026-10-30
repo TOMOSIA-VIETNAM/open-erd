@@ -1,5 +1,5 @@
 import { columnEntries } from './columns.js';
-import { compareStrings, splitColumnRef } from './load.js';
+import { compareStrings, parseHealthIgnore } from './load.js';
 import { MISSING_KINDS, missingRelations } from './missing.js';
 import { HEALTH_RULES, HEALTH_SEVERITIES } from './schema.js';
 import { qualifiedName, quoter } from '../render/svg/viewer/schema-copy.js';
@@ -206,11 +206,7 @@ export function healthFindings(model) {
     });
   }
 
-  const ignored = (model.config.health?.ignore ?? []).map((entry) => {
-    const rule = entry.slice(0, entry.indexOf(':'));
-    const [table, column] = splitColumnRef(entry.slice(rule.length + 1));
-    return { rule, table, column };
-  });
+  const ignored = (model.config.health?.ignore ?? []).map(parseHealthIgnore);
   const silenced = (f) => ignored.some((x) => x.rule === f.rule && x.table === f.table && (!x.column || (f.columns ?? []).includes(x.column)));
   const severity = (f) => HEALTH_SEVERITIES.indexOf(f.severity);
   return findings

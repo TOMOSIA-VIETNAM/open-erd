@@ -16,6 +16,7 @@ import { PALETTE } from '../../palette.js';
 import { RANKING_STYLE, rankingSvg, rankingTables } from './ranking.js';
 import { referenceCounts } from '../../model/centrality.js';
 import { ICON_PAINT, UNCONFIRMED_DASH, endMarkers, enumIconSvg, indexIconSvg, isConfirmed, keyIconSvg, linkIconSvg, markerSvg, overviewStrokeWidth, starIconSvg, tableIconSvg } from './markers.js';
+import { escapeXml } from '../xml.js';
 import viewerBundle from './viewer-bundle.json' with { type: 'json' };
 
 const CANVAS_MARGIN = 40;
@@ -539,10 +540,6 @@ ${RANKING_STYLE}
 ${DIFF_STYLE}
 ${VIEWER_STYLE}`;
 
-function escapeXml(text) {
-  return text.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
-}
-
 const camel = (name) => name.replace(/_(.)/g, (_, c) => c.toUpperCase());
 
 // Marks of a plain render: nothing changed.
@@ -712,7 +709,7 @@ function routePolyTargets(nodes, byId, obstacles, groups) {
     for (const target of n.node.association.targets) {
       const t = byId.get(target);
       if (!t) continue;
-      const column = t.kind === 'table' ? (t.node.table.columns.find((c) => c.pk) ?? t.node.table.columns[0]).name : null;
+      const column = t.kind === 'table' ? (t.node.table.columns.find((c) => c.pk) ?? t.node.table.columns[0])?.name ?? null : null;
       edges.push({
         id: `${n.id}->${target}`,
         from: { box: nodeRect(n), y: n.y + attachOffset(n.box, null), marker: 'none' },
@@ -747,6 +744,12 @@ function routeHubLinks(hubLinks, byId, obstacles, groups) {
   };
   const edges = shown.map((l, i) => ({ id: l.id, from: end(l, 'from', markers[i].from), to: end(l, 'to', markers[i].to) }));
   return routeEdges(obstacles, groups.map((g) => g.frame), edges).map((r, i) => ({ link: shown[i], ...r, markers: markers[i] }));
+}
+
+/** The scene of every view of `model`, by view name; pass it as `scenes` to render the same drawing as SVG and draw.io without routing it twice. */
+export function buildScenes(model, layout, options = {}) {
+  const diagram = buildDiagram(model);
+  return new Map(viewNames(diagram).map((name) => [name, buildScene(model, layout, name, diagram, options)]));
 }
 
 /**
@@ -1315,7 +1318,7 @@ export function viewerData(model, diagram, diff = null, warnings = missingRelati
 }
 
 /** Every view a render draws: the laid-out ones, then the ranking unless switched off. */
-export const renderedViews = (diagram) => [...viewNames(diagram), ...(diagram.views.ranking === 'on' ? [RANKING_VIEW] : [])];
+const renderedViews = (diagram) => [...viewNames(diagram), ...(diagram.views.ranking === 'on' ? [RANKING_VIEW] : [])];
 
 /**
  * The view a plain render opens on and draws without script: the
@@ -1346,6 +1349,9 @@ export function openingView(model, diagram = buildDiagram(model)) {
  * seen without script. When anything is marked, the root also gets
  * `changes-mode`, which fades what did not change.
  *
+ * `{ scenes }`: the result of buildScenes for the same model, layout and
+ * options, when the caller also needs the scenes elsewhere (the draw.io file).
+ *
  * `{ warnings }`: the possibly missing relations to mark (missingRelations
  * of `model` when left out); a profile render passes the ones found on the
  * full model (see warningsFor), a diff passes none.
@@ -1355,7 +1361,7 @@ export function openingView(model, diagram = buildDiagram(model)) {
  * full model and narrowed by healthFor, a diff passes none.
  */
 export function renderSvg(model, layout, options = {}) {
-  const { diff = null, warnings = missingRelations(model), health = diff ? [] : healthFindings(model), ...sceneOptions } = options;
+  const { diff = null, warnings = missingRelations(model), health = diff ? [] : healthFindings(model), scenes: prebuilt, ...sceneOptions } = options;
   const diagram = buildDiagram(model);
   const marks = diff?.marks ?? NO_MARKS;
   // A diff opens with the Changes mode on (see the viewer), so the static
@@ -1365,7 +1371,7 @@ export function renderSvg(model, layout, options = {}) {
   // overview, where the banner still tells what changed.
   const visible = diff ? (hasAllView(diagram) ? ALL_VIEW : OVERVIEW) : openingView(model, diagram).view;
   const scenes = viewNames(diagram).map((name) => {
-    const scene = buildScene(model, layout, name, diagram, sceneOptions);
+    const scene = prebuilt?.get(name) ?? buildScene(model, layout, name, diagram, sceneOptions);
     if (!diff) return { scene };
     const banner = diffBanner(scene.bounds, diff);
     return { scene: { ...scene, bounds: banner.bounds }, banner: banner.svg };

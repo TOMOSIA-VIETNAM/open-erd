@@ -4035,9 +4035,9 @@ const SHORTCUTS = [
     [[PALETTE_KEY], 'Search, or run a command'],
     [[FIND_KEY, '/'], 'Search tables and columns'],
     [[`${MOD_KEY}J`], 'Join path between two tables; reopens a closed join path panel'],
-    [[`${MOD_KEY}A`], 'Show all tables'],
+    views.has(ALL_VIEW) ? [[`${MOD_KEY}A`], 'Show all tables'] : null,
     [[ADD_KEY_HINT], 'Add a table to the selection or take it out; the address shares them'],
-    [['←', '→'], 'Back, forward'],
+    [['←', '⌫'], 'Back (→ goes forward again)'],
   ]],
   ['Highlight', [
     PII.total > 0 ? [['P'], 'Personal data'] : null,
@@ -4047,7 +4047,7 @@ const SHORTCUTS = [
     [['L'], 'Legend on or off'],
   ]],
   ['Other', [
-    [['T'], 'Tour the domains (← → step, Space pauses)'],
+    TOUR_STEPS.length >= 2 ? [['T'], 'Tour the domains (← → step, Space pauses)'] : null,
     [[`${MOD_KEY}C`], 'Copy the selected table’s schema'],
     [['?'], 'This list'],
     [['Esc'], 'Close search, menu or panel, then turn highlights off'],

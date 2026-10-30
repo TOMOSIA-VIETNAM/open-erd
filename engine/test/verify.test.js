@@ -147,3 +147,34 @@ test('render adds the Verification sheet, never under a profile that drops evide
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test('a sharing profile keeps the Verification sheet without the facts that name what it hides', async () => {
+  const dir = await workspace();
+  try {
+    await mkdir(join(dir, 'tests'), { recursive: true });
+    await writeFile(
+      join(dir, 'tests', 'verification.yaml'),
+      `schema_version: 1
+facts:
+  - { fact: auth.public.users.email.note, result: confirmed }
+  - { fact: shop._.brands.note, result: confirmed }
+  - { fact: shop._.brands_archive.note, result: confirmed }
+  - { fact: relation shop._.products.brand_id -> shop._.brands.id, result: confirmed }
+  - { fact: shop._.tags.note, result: confirmed }
+`,
+    );
+    await writeFile(
+      join(dir, 'open-erd.yaml'),
+      `${await readFile(join(dir, 'open-erd.yaml'), 'utf8')}profiles:\n  team: { drop_evidence: false, drop_notes: [], drop_pii: true, hide: { tables: [shop._.brands] } }\n`,
+    );
+    assert.equal((await run('layout', '--workspace', dir)).code, 0);
+    const rendered = await run('render', '--workspace', dir, '--profile', 'team');
+    assert.equal(rendered.code, 0, rendered.stderr);
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(await readFile(join(dir, 'out', 'erd.team.xlsx')));
+    const facts = workbook.getWorksheet('Verification').getSheetValues().slice(2).map((row) => row[1]);
+    assert.deepEqual(facts, ['shop._.brands_archive.note', 'shop._.tags.note']);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

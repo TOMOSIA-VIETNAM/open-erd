@@ -3,9 +3,9 @@ import { measureText } from '../text/measure.js';
 
 // Frame padding is deliberately not a multiple of GRID: frame borders then sit
 // between router tracks, so a relation line never runs along a border.
-export const CLUSTER_PADDING = 35;
+const CLUSTER_PADDING = 35;
 // Extra room above the tables for the domain label.
-export const CLUSTER_PADDING_TOP = 55;
+const CLUSTER_PADDING_TOP = 55;
 // Minimum free space between two tables, and between two cluster frames. The
 // router keeps lines 30 px away from boxes, so 80 px leaves three tracks.
 export const TABLE_GAP = 80;
