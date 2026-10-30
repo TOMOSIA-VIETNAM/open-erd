@@ -320,7 +320,13 @@ function showView(name) {
   // The tooltip described whatever was under the pointer in the old view.
   hideTip();
   focusDomain(null);
-  for (const [n, v] of views) v.style.display = n === name ? '' : 'none';
+  // Only the shown view stays in the document: Chrome lays out the text of
+  // views hidden with display:none again on every zoom step, which made
+  // zooming stutter in a large workspace.
+  for (const [n, v] of views) if (n !== name) v.remove();
+  const shown = views.get(name);
+  shown.style.display = '';
+  if (!shown.isConnected) camera.append(shown);
   const moved = state.view !== name;
   state.view = name;
   // A neighborhood or join view of the same name may hold other tables now.
@@ -837,10 +843,9 @@ function buildNeighborhood(center, hops) {
   const y1 = Math.max(...all.map((b) => b.y + b.h)) + NEIGHBORHOOD_MARGIN;
   const view = svgEl(
     'g',
-    { class: 'view', 'data-view': NEIGHBORHOOD, 'data-bounds': `${x0} ${y0} ${x1 - x0} ${y1 - y0}`, style: 'display:none' },
+    { class: 'view', 'data-view': NEIGHBORHOOD, 'data-bounds': `${x0} ${y0} ${x1 - x0} ${y1 - y0}` },
     [svgEl('rect', { x: x0, y: y0, width: x1 - x0, height: y1 - y0, fill: '#ffffff' }), relations, nodes],
   );
-  camera.append(view);
   views.set(NEIGHBORHOOD, view);
   indexes.set(NEIGHBORHOOD, indexView(view, offsets));
   state.center = center;
@@ -2545,12 +2550,11 @@ function buildJoinView(path) {
   const x0 = -NEIGHBORHOOD_MARGIN;
   const y1 = Math.max(...all.map((b) => b.h)) + NEIGHBORHOOD_MARGIN;
   const x1 = Math.max(...all.map((b) => b.x + b.w)) + NEIGHBORHOOD_MARGIN;
-  const view = svgEl('g', { class: 'view', 'data-view': JOIN_VIEW, 'data-bounds': `${x0} ${-NEIGHBORHOOD_MARGIN} ${x1 - x0} ${y1 + NEIGHBORHOOD_MARGIN}`, style: 'display:none' }, [
+  const view = svgEl('g', { class: 'view', 'data-view': JOIN_VIEW, 'data-bounds': `${x0} ${-NEIGHBORHOOD_MARGIN} ${x1 - x0} ${y1 + NEIGHBORHOOD_MARGIN}` }, [
     svgEl('rect', { x: x0, y: -NEIGHBORHOOD_MARGIN, width: x1 - x0, height: y1 + NEIGHBORHOOD_MARGIN, fill: '#ffffff' }),
     relations,
     nodes,
   ]);
-  camera.append(view);
   views.set(JOIN_VIEW, view);
   indexes.set(JOIN_VIEW, indexView(view, offsets));
   state.joinPath = path;

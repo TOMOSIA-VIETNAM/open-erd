@@ -23,7 +23,11 @@ if (!input || !outDir) {
 }
 
 // The view the file shows without script, which is also where the viewer starts.
-const startView = /<g class="view" data-view="([^"]+)" data-bounds="[^"]+">/.exec(await readFile(input, 'utf8'))[1];
+const source = await readFile(input, 'utf8');
+const startView = /<g class="view" data-view="([^"]+)" data-bounds="[^"]+">/.exec(source)[1];
+// The drawing as the file has it, every view included: the viewer keeps only
+// the shown view in the document, so steps that pick a view to visit look here.
+const drawn = `(window.drawnSvg ??= new DOMParser().parseFromString(${JSON.stringify(source)}, 'image/svg+xml'))`;
 
 const { send, once, listeners, close } = await launchChrome();
 
@@ -438,7 +442,7 @@ if (warned) {
 // with an enum column so the tooltip step shows enum values.
 const domain = await evaluate(`(() => {
   const d = JSON.parse(document.getElementById('open-erd-data').textContent);
-  const usable = [...document.querySelectorAll('g.view')].filter((v) => v.getAttribute('data-view').startsWith('domain:') && v.querySelector('.stub:not(.group-stub)') && v.querySelector('.table') && v.querySelector('.relation-group'));
+  const usable = [...${drawn}.querySelectorAll('g.view')].filter((v) => v.getAttribute('data-view').startsWith('domain:') && v.querySelector('.stub:not(.group-stub)') && v.querySelector('.table') && v.querySelector('.relation-group'));
   const withEnum = usable.find((v) => [...v.querySelectorAll('.table')].some((g) => d.nodes[g.getAttribute('data-id')].columns.some((c) => c.enum)));
   return (withEnum ?? usable[0]).getAttribute('data-view').slice(7);
 })()`);
@@ -686,7 +690,7 @@ if (indexed) {
   }
 }
 
-const polyView = await evaluate(`(() => { for (const v of document.querySelectorAll('g.view')) { const n = v.getAttribute('data-view'); if (n.startsWith('domain:') && v.querySelector('.poly-routes')) return n.slice(7); } })()`);
+const polyView = await evaluate(`(() => { for (const v of ${drawn}.querySelectorAll('g.view')) { const n = v.getAttribute('data-view'); if (n.startsWith('domain:') && v.querySelector('.poly-routes')) return n.slice(7); } })()`);
 if (polyView) {
   await click(`document.querySelector('.oe-crumbs .oe-link')`);
   await click(`document.querySelector('.domain[data-domain=${JSON.stringify(polyView)}]')`);
@@ -783,7 +787,7 @@ await shot('no-business-mode', `![...document.querySelectorAll('button')].some((
 
 // The table highlighted earlier has lines; open its neighborhood from the
 // full view, or from its domain view in a schema too large for a full view.
-if (await evaluate(`document.querySelector('g.view[data-view="all"]') !== null`)) {
+if (await evaluate(`${drawn}.querySelector('g.view[data-view="all"]') !== null`)) {
   await viewTab('all');
   await shot('all-tables', `${viewIs('all')} && document.querySelector('.oe-crumbs .here').textContent === 'All tables · ' + Object.values(${data}.nodes).filter((x) => x.kind === 'table').length + ' tables'`);
   // The legend is open here, drawn with the diagram's own line and marker
@@ -968,7 +972,7 @@ await shot('back', `!(${viewIs('neighborhood')})`);
 // A hub table: selecting it draws the hub lines pointing at it in this view,
 // its panel lists every table referencing it, and its neighborhood holds
 // them. Picks the hub with the most lines in the first view that has any.
-const hub = await evaluate(`(() => { for (const v of document.querySelectorAll('g.view')) {
+const hub = await evaluate(`(() => { for (const v of ${drawn}.querySelectorAll('g.view')) {
   const groups = [...v.querySelectorAll('.hub-routes')].sort((a, b) => b.children.length - a.children.length);
   if (groups.length > 0) return [v.getAttribute('data-view'), groups[0].getAttribute('data-hub')]; } return null; })()`);
 if (hub) {
@@ -999,7 +1003,7 @@ if (hub) {
 // Group stubs: in a domain view, the tables of another domain that has
 // several of them are one box; a bundled line says how many tables it
 // stands for, a row opens its table, the name opens that domain.
-const grouped = await evaluate(`(() => { for (const v of document.querySelectorAll('g.view')) { const n = v.getAttribute('data-view'); const g = v.querySelector('.group-stub'); if (n.startsWith('domain:') && g) return [n.slice(7), g.getAttribute('data-id')]; } return null; })()`);
+const grouped = await evaluate(`(() => { for (const v of ${drawn}.querySelectorAll('g.view')) { const n = v.getAttribute('data-view'); const g = v.querySelector('.group-stub'); if (n.startsWith('domain:') && g) return [n.slice(7), g.getAttribute('data-id')]; } return null; })()`);
 if (grouped) {
   const [groupHome, groupId] = grouped;
   await key('Escape');
@@ -1026,7 +1030,7 @@ if (grouped) {
 // lines hidden, the header counts them), nothing else moves; Expand all
 // restores it.
 {
-  if (await evaluate(`document.querySelector('g.view[data-view="all"]') !== null`)) await viewTab('all');
+  if (await evaluate(`${drawn}.querySelector('g.view[data-view="all"]') !== null`)) await viewTab('all');
   else {
     await click(`document.querySelector('.oe-crumbs .oe-link')`);
     await click(`document.querySelector('.domain[data-domain=${JSON.stringify(domain)}]')`);
@@ -1075,7 +1079,7 @@ if (badgeOnly) {
 
 // A polymorphic node, double-clicked: a neighborhood centred on it with its
 // owning table and every target, each line with its markers.
-const polyHome = await evaluate(`(() => { for (const v of document.querySelectorAll('g.view')) { const n = v.getAttribute('data-view'); if (n.startsWith('domain:') && v.querySelector('.poly')) return n.slice(7); } return null; })()`);
+const polyHome = await evaluate(`(() => { for (const v of ${drawn}.querySelectorAll('g.view')) { const n = v.getAttribute('data-view'); if (n.startsWith('domain:') && v.querySelector('.poly')) return n.slice(7); } return null; })()`);
 if (polyHome) {
   await click(`document.querySelector('.oe-crumbs .oe-link')`);
   await click(`document.querySelector('.domain[data-domain=${JSON.stringify(polyHome)}]')`);
@@ -1202,7 +1206,7 @@ if (joinPair) {
 
 // Shortcuts: Cmd+A (Ctrl+A) opens all tables; the ⋯ menu lists every key.
 await key('Escape');
-if (await evaluate(`document.querySelector('g.view[data-view="all"]') !== null`)) {
+if (await evaluate(`${drawn}.querySelector('g.view[data-view="all"]') !== null`)) {
   await click(`document.querySelector('.oe-crumbs .oe-link')`);
   await modKey('a');
   await shot('cmd-a-all-tables', `${viewIs('all')} && document.querySelector('.oe-view-tabs [data-view="all"]').classList.contains('on')`);
@@ -1367,7 +1371,7 @@ await shot(
   const piiHost = `document.querySelector('.oe-pii-chip').closest('foreignObject')`;
   const piiOn = `document.documentElement.classList.contains('pii-mode')`;
   await key('Escape');
-  if (await evaluate(`document.querySelector('g.view[data-view="all"]') !== null`)) await viewTab('all');
+  if (await evaluate(`${drawn}.querySelector('g.view[data-view="all"]') !== null`)) await viewTab('all');
   if (await evaluate(`getComputedStyle(${menuButton('highlight')}.parentNode).display !== 'none'`)) await click(menuButton('highlight'));
   if (piiTotal === 0) {
     await shot('pii-hidden', `${menuItem('highlight', 'Personal data')} === undefined && ${piiHost}.style.display === 'none'`);
@@ -1442,7 +1446,7 @@ await shot(
   const healthHost = `document.querySelector('.oe-health-chip').closest('foreignObject')`;
   const healthOn = `document.documentElement.classList.contains('health-mode')`;
   await key('Escape');
-  if (await evaluate(`document.querySelector('g.view[data-view="all"]') !== null`)) await viewTab('all');
+  if (await evaluate(`${drawn}.querySelector('g.view[data-view="all"]') !== null`)) await viewTab('all');
   // The mode is turned on with the panel closed.
   await shot('health-starts-panel-closed', `!${panelShown}`);
   if (await evaluate(`getComputedStyle(${menuButton('highlight')}.parentNode).display !== 'none'`)) await click(menuButton('highlight'));
@@ -1537,7 +1541,7 @@ await shot(
   const centralHost = `document.querySelector('.oe-central-chip').closest('foreignObject')`;
   const centralOn = `document.documentElement.classList.contains('central-mode')`;
   await key('Escape');
-  if (await evaluate(`document.querySelector('g.view[data-view="all"]') !== null`)) await viewTab('all');
+  if (await evaluate(`${drawn}.querySelector('g.view[data-view="all"]') !== null`)) await viewTab('all');
   if (centralTotal === 0) {
     await key('s', 'KeyS');
     await shot('central-key-does-nothing', `!${centralOn} && ${centralHost}.style.display === 'none'`);
@@ -1760,9 +1764,9 @@ await key('Escape');
 {
   const linked = await evaluate(`(() => { const d = ${data}; const [id, n] = Object.entries(d.nodes).find(([, n]) => n.kind === 'table' && n.columns.length > 2); return [id, n.columns[2].name]; })()`);
   // The model the viewer embeds, to pick the tables the links name.
-  const model = JSON.parse(/<script type="application\/json" id="open-erd-data">([^<]*)<\/script>/.exec(await readFile(input, 'utf8'))[1]);
+  const model = JSON.parse(/<script type="application\/json" id="open-erd-data">([^<]*)<\/script>/.exec(source)[1]);
   await open(`#table=${encodeURIComponent(linked[0])}`);
-  const home = await evaluate(`document.querySelector('g.view[data-view="all"]') ? 'all' : 'domain:' + ${data}.nodes[${JSON.stringify(linked[0])}].cluster`);
+  const home = await evaluate(`${drawn}.querySelector('g.view[data-view="all"]') ? 'all' : 'domain:' + ${data}.nodes[${JSON.stringify(linked[0])}].cluster`);
   await shot('deep-link-table', `${viewIs(home)} && ${inView(`.table.selected[data-id="${linked[0]}"]`)} !== null && document.querySelector('.oe-panel .oe-ph-name')?.textContent === ${JSON.stringify(linked[0].split('.')[2])}`);
   await open(`#column=${encodeURIComponent(`${linked[0]}.${linked[1]}`)}`);
   await shot('deep-link-column', `document.querySelector('.oe-panel .oe-col.open')?.getAttribute('data-column') === ${JSON.stringify(linked[1])} && ${linkHash} === ${JSON.stringify(linkOf([['view', home], ['column', `${linked[0]}.${linked[1]}`]]))}`);
@@ -1954,7 +1958,7 @@ await key('Escape');
     }
   }
   // A line of a domain view standing for several tables of another domain.
-  const grouped = await evaluate(`(() => { for (const v of document.querySelectorAll('g.view[data-view^="domain:"]')) { const g = v.querySelector('.relation-group[data-group]'); if (g) return [v.getAttribute('data-view'), g.getAttribute('data-id')]; } return null; })()`);
+  const grouped = await evaluate(`(() => { for (const v of ${drawn}.querySelectorAll('g.view[data-view^="domain:"]')) { const g = v.querySelector('.relation-group[data-group]'); if (g) return [v.getAttribute('data-view'), g.getAttribute('data-id')]; } return null; })()`);
   if (grouped) {
     const [groupView, groupLine] = grouped;
     await open(formatHash([['view', groupView]]));
