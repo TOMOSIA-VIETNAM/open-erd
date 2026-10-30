@@ -3600,11 +3600,14 @@ function tipLines(target) {
   const n = data.nodes[id];
   const badge = target.closest('.hub-badge');
   if (badge?.hasAttribute('data-association')) {
+    // Laid out like a column with listed values: the id/type columns as
+    // chips, then one target table per row.
     const targets = JSON.parse(badge.getAttribute('data-targets'));
     return [
-      el('div', {}, [el('b', { text: `«${badge.getAttribute('data-association')}»` }), el('span', { text: ` ${JSON.parse(badge.getAttribute('data-columns')).join(' / ')}` })]),
-      el('div', { text: `One of: ${targets.map(short).join(', ')}` }),
-      el('div', { class: 'muted', text: 'Polymorphic association on a hub column, drawn as a badge instead of a node and lines' }),
+      el('b', { text: `«${badge.getAttribute('data-association')}»` }),
+      el('div', { class: 'oe-chips' }, JSON.parse(badge.getAttribute('data-columns')).map((c) => el('span', { class: 'chip', text: c }))),
+      enumTable(targets.slice(0, TIP_ENUM_ROWS).map((t) => [short(t), clusterOf(t) ? domainName(clusterOf(t)) : ''])),
+      targets.length > TIP_ENUM_ROWS ? el('div', { class: 'muted', text: `+${targets.length - TIP_ENUM_ROWS} more — click the table for the full list` }) : null,
     ];
   }
   if (badge) {

@@ -41,7 +41,7 @@ const VIEWER_STYLE = `.row-hit { fill: transparent; }
 /* The drawing moves under the pointer when dragged: no text selection, and
    one composited layer for the pan/zoom transform. */
 .camera { -webkit-user-select: none; user-select: none; will-change: transform; }
-.column:hover .row-hit { fill: #eef3fb; }
+.column:hover .row-hit, .hub-badge:hover .row-hit { fill: #eef3fb; }
 .column.hl-column .row-hit { fill: #fff1b8; }
 /* Personal data map: tables holding pii columns stay, those rows tinted,
    the rest fades; a selection's own fading takes over while it lasts. */
@@ -889,6 +889,7 @@ function tableSvg(n, colors, marks, warnings) {
     const title = b.association ? `«${b.association}» (${b.columns.join(' / ')}) → ${b.targets.join(' | ')}` : `${b.columns.join(', ')} → ${b.target}`;
     return (
       `<g class="hub-badge" ${data}><title>${escapeXml(title)}</title>` +
+      `<rect class="row-hit" x="${x}" y="${cy - ROW_HEIGHT / 2}" width="${w}" height="${ROW_HEIGHT}"/>` +
       `${b.name ? textEl('badge-text', x + PADDING_X, cy, b.name) : ''}${arrow}` +
       `${textEl('badge-text', x + b.labelX, cy, b.label)}</g>`
     );
