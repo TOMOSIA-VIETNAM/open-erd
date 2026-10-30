@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { readFile, rm, writeFile } from 'node:fs/promises';
+import { readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import ExcelJS from 'exceljs';
@@ -273,6 +273,16 @@ test('CLI diff: --to HEAD warns about uncommitted edits, --to WORKTREE includes 
     assert.match(worktree.stdout, /Column label: type changed from “varchar\(40\)” to “varchar\(80\)”/);
   } finally {
     await git(ws, 'checkout', '--', 'model/shop.yaml');
+  }
+});
+
+test('CLI diff reads a model file with a non-ASCII name from a git ref', async () => {
+  const dir = await snapshotRepo(SHOP, [{ tag: 'base', edit: (d) => rename(join(d, 'model', 'shop.yaml'), join(d, 'model', '売上.yaml')) }], 'open-erd-utf8-');
+  try {
+    const { stdout } = await runCli('diff', '--workspace', dir, '--from', 'HEAD', '--to', 'WORKTREE');
+    assert.match(stdout, /^HEAD → WORKTREE: \+0 tables · −0 tables · 0 renamed · 0 columns changed · 0 relations changed\nwrote /);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
   }
 });
 

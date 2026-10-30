@@ -177058,6 +177058,7 @@ var SNAPSHOT_FILE = (path) => path === CONFIG_FILE || path === LAYOUT_FILE || /^
 var FORMATS = ["text", "markdown"];
 var FACTS_DIR = "extract/facts";
 var git = (workspace, ...args) => promisify(execFile)("git", ["-C", workspace, ...args], { maxBuffer: 256 * 1024 * 1024 }).then((r) => r.stdout);
+var listTree = async (workspace, ref, pathspec, ...flags) => (await git(workspace, "ls-tree", "-z", "--name-only", ...flags, ref, "--", pathspec)).split("\0").filter(Boolean);
 var COMMANDS = {
   validate: {
     usage: "validate --workspace <dir>",
@@ -177233,7 +177234,7 @@ function parseFactsFiles(texts, label = "") {
 async function readFactsAt(workspace, ref) {
   const texts = [];
   try {
-    const paths = (await git(workspace, "ls-tree", "--name-only", ref, "--", `${FACTS_DIR}/`)).split("\n").filter((p) => p.endsWith(".json"));
+    const paths = (await listTree(workspace, ref, `${FACTS_DIR}/`)).filter((p) => p.endsWith(".json"));
     for (const path of paths) texts.push({ file: basename(path), text: await git(workspace, "show", `${ref}:./${path}`) });
   } catch (e) {
     console.error(`cannot read ${FACTS_DIR} at "${ref}" of ${workspace}: ${e.stderr?.trim() || e.message}`);
@@ -177381,7 +177382,7 @@ async function readSnapshot(workspace, ref) {
   } else {
     let paths;
     try {
-      paths = (await git(workspace, "ls-tree", "-r", "--name-only", ref, "--", ".")).split("\n").filter(SNAPSHOT_FILE);
+      paths = (await listTree(workspace, ref, ".", "-r")).filter(SNAPSHOT_FILE);
     } catch (e) {
       throw new Error(`cannot read snapshot "${ref}" of ${workspace}: ${e.stderr?.trim() || e.message}`);
     }
