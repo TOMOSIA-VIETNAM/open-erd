@@ -746,6 +746,12 @@ function routeHubLinks(hubLinks, byId, obstacles, groups) {
   return routeEdges(obstacles, groups.map((g) => g.frame), edges).map((r, i) => ({ link: shown[i], ...r, markers: markers[i] }));
 }
 
+/** The scene of every view of `model`, by view name; pass it as `scenes` to render the same drawing as SVG and draw.io without routing it twice. */
+export function buildScenes(model, layout, options = {}) {
+  const diagram = buildDiagram(model);
+  return new Map(viewNames(diagram).map((name) => [name, buildScene(model, layout, name, diagram, options)]));
+}
+
 /**
  * Everything one view draws, with absolute coordinates: nodes, group frames,
  * routed lines with their end markers and labels. Kept separate from the SVG
@@ -1343,6 +1349,9 @@ export function openingView(model, diagram = buildDiagram(model)) {
  * seen without script. When anything is marked, the root also gets
  * `changes-mode`, which fades what did not change.
  *
+ * `{ scenes }`: the result of buildScenes for the same model, layout and
+ * options, when the caller also needs the scenes elsewhere (the draw.io file).
+ *
  * `{ warnings }`: the possibly missing relations to mark (missingRelations
  * of `model` when left out); a profile render passes the ones found on the
  * full model (see warningsFor), a diff passes none.
@@ -1352,7 +1361,7 @@ export function openingView(model, diagram = buildDiagram(model)) {
  * full model and narrowed by healthFor, a diff passes none.
  */
 export function renderSvg(model, layout, options = {}) {
-  const { diff = null, warnings = missingRelations(model), health = diff ? [] : healthFindings(model), ...sceneOptions } = options;
+  const { diff = null, warnings = missingRelations(model), health = diff ? [] : healthFindings(model), scenes: prebuilt, ...sceneOptions } = options;
   const diagram = buildDiagram(model);
   const marks = diff?.marks ?? NO_MARKS;
   // A diff opens with the Changes mode on (see the viewer), so the static
@@ -1362,7 +1371,7 @@ export function renderSvg(model, layout, options = {}) {
   // overview, where the banner still tells what changed.
   const visible = diff ? (hasAllView(diagram) ? ALL_VIEW : OVERVIEW) : openingView(model, diagram).view;
   const scenes = viewNames(diagram).map((name) => {
-    const scene = buildScene(model, layout, name, diagram, sceneOptions);
+    const scene = prebuilt?.get(name) ?? buildScene(model, layout, name, diagram, sceneOptions);
     if (!diff) return { scene };
     const banner = diffBanner(scene.bounds, diff);
     return { scene: { ...scene, bounds: banner.bounds }, banner: banner.svg };

@@ -176122,6 +176122,10 @@ function routeHubLinks(hubLinks, byId, obstacles, groups) {
   const edges = shown.map((l2, i) => ({ id: l2.id, from: end(l2, "from", markers[i].from), to: end(l2, "to", markers[i].to) }));
   return routeEdges(obstacles, groups.map((g) => g.frame), edges).map((r, i) => ({ link: shown[i], ...r, markers: markers[i] }));
 }
+function buildScenes(model, layout, options = {}) {
+  const diagram = buildDiagram(model);
+  return new Map(viewNames(diagram).map((name) => [name, buildScene(model, layout, name, diagram, options)]));
+}
 function buildScene(model, layout, name = ALL_VIEW, diagram = buildDiagram(model), options = {}) {
   const view = resolveView(model, layout, name, diagram, options);
   const byId = new Map(view.nodes.map((n) => [n.id, n]));
@@ -176496,13 +176500,13 @@ function openingView(model, diagram = buildDiagram(model)) {
   return { view: OVERVIEW, fallback: configured !== void 0 };
 }
 function renderSvg(model, layout, options = {}) {
-  const { diff = null, warnings = missingRelations(model), health = diff ? [] : healthFindings(model), ...sceneOptions } = options;
+  const { diff = null, warnings = missingRelations(model), health = diff ? [] : healthFindings(model), scenes: prebuilt, ...sceneOptions } = options;
   const diagram = buildDiagram(model);
   const marks = diff?.marks ?? NO_MARKS;
   const changed = marks.nodes.size + marks.links.size > 0;
   const visible = diff ? hasAllView(diagram) ? ALL_VIEW : OVERVIEW : openingView(model, diagram).view;
   const scenes = viewNames(diagram).map((name) => {
-    const scene = buildScene(model, layout, name, diagram, sceneOptions);
+    const scene = prebuilt?.get(name) ?? buildScene(model, layout, name, diagram, sceneOptions);
     if (!diff) return { scene };
     const banner = diffBanner(scene.bounds, diff);
     return { scene: { ...scene, bounds: banner.bounds }, banner: banner.svg };
@@ -177046,7 +177050,7 @@ function pageXml(scene, pageCtx) {
     "  </diagram>"
   ].join("\n");
 }
-function renderDrawio(model, layout, { svgUrl, ...options } = {}) {
+function renderDrawio(model, layout, { svgUrl, scenes, ...options } = {}) {
   const diagram = buildDiagram(model);
   const names = hasAllView(diagram) ? [OVERVIEW, ALL_VIEW] : viewNames(diagram).filter((n) => n !== ALL_VIEW);
   const ctx = {
@@ -177056,7 +177060,7 @@ function renderDrawio(model, layout, { svgUrl, ...options } = {}) {
     svgUrl,
     pageLink: (name) => names.includes(name) ? `data:page/id,${name}` : null
   };
-  const pages = names.map((name) => pageXml(buildScene(model, layout, name, diagram, options), ctx));
+  const pages = names.map((name) => pageXml(scenes?.get(name) ?? buildScene(model, layout, name, diagram, options), ctx));
   return ['<mxfile host="open-erd" compressed="false">', ...pages, "</mxfile>", ""].join("\n");
 }
 
@@ -177351,17 +177355,20 @@ async function runRender({ workspace, profile }) {
     return 1;
   }
   let svg;
+  let scenes;
   let shown = model;
   let warnings = missingRelations(model);
   let health = healthFindings(model);
   if (profile === void 0) {
-    svg = renderSvg(model, layout, { warnings, health });
+    scenes = buildScenes(model, layout);
+    svg = renderSvg(model, layout, { warnings, health, scenes });
   } else {
     checkLayout(model, layout);
     shown = applyProfile(model, profile);
     warnings = warningsFor(warnings, shown);
     health = healthFor(health, shown);
-    svg = renderSvg(shown, layout, { fitStored: true, warnings, health });
+    scenes = buildScenes(shown, layout, { fitStored: true });
+    svg = renderSvg(shown, layout, { fitStored: true, warnings, health, scenes });
   }
   if (openingView(shown).fallback) console.error(`warning: default_view "${shown.config.default_view}" is not in this render; it opens on the overview`);
   const workbook = buildWorkbook(shown, { warnings, health });
@@ -177379,7 +177386,7 @@ async function runRender({ workspace, profile }) {
   await writeFile(`${base}.xlsx`, xlsx);
   const written = [`${base}.svg`, `${base}.xlsx`];
   if ({ ...OUTPUT_DEFAULTS, ...shown.config.outputs }.drawio) {
-    await writeFile(`${base}.drawio`, renderDrawio(shown, layout, { svgUrl: svgUrlOf(shown.config, name), ...profile === void 0 ? {} : { fitStored: true } }));
+    await writeFile(`${base}.drawio`, renderDrawio(shown, layout, { svgUrl: svgUrlOf(shown.config, name), scenes, ...profile === void 0 ? {} : { fitStored: true } }));
     written.push(`${base}.drawio`);
   }
   console.log(`wrote ${written.join(", ")}${profile === void 0 ? "" : ` (profile ${profile})`}`);

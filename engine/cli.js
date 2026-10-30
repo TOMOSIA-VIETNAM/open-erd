@@ -19,7 +19,7 @@ import { changesMarkdown, describeChange, diffModels, summarize, summaryLine } f
 import { diffMarks, mergeLayouts, unionModel } from './src/diff/union.js';
 import { EVERY_VIEW, checkLayout, computeLayout, formatReport } from './src/layout/index.js';
 import { LAYOUT_FILE, parseLayout, serializeLayout } from './src/layout/layout-file.js';
-import { openingView, renderSvg } from './src/render/svg/render.js';
+import { buildScenes, openingView, renderSvg } from './src/render/svg/render.js';
 import { renderDrawio } from './src/render/drawio/render.js';
 
 // `--to` value meaning the workspace files on disk, committed or not.
@@ -389,12 +389,14 @@ async function runRender({ workspace, profile }) {
     return 1;
   }
   let svg;
+  let scenes;
   let shown = model;
   // Found on the full model, narrowed to what the profile still shows.
   let warnings = missingRelations(model);
   let health = healthFindings(model);
   if (profile === undefined) {
-    svg = renderSvg(model, layout, { warnings, health });
+    scenes = buildScenes(model, layout);
+    svg = renderSvg(model, layout, { warnings, health, scenes });
   } else {
     // Positions come from the layout of the full model, so check that one;
     // the filtered model is drawn at those positions (see resolveView).
@@ -402,7 +404,8 @@ async function runRender({ workspace, profile }) {
     shown = applyProfile(model, profile);
     warnings = warningsFor(warnings, shown);
     health = healthFor(health, shown);
-    svg = renderSvg(shown, layout, { fitStored: true, warnings, health });
+    scenes = buildScenes(shown, layout, { fitStored: true });
+    svg = renderSvg(shown, layout, { fitStored: true, warnings, health, scenes });
   }
   if (openingView(shown).fallback) console.error(`warning: default_view "${shown.config.default_view}" is not in this render; it opens on the overview`);
   const workbook = buildWorkbook(shown, { warnings, health });
@@ -422,7 +425,7 @@ async function runRender({ workspace, profile }) {
   await writeFile(`${base}.xlsx`, xlsx);
   const written = [`${base}.svg`, `${base}.xlsx`];
   if ({ ...OUTPUT_DEFAULTS, ...shown.config.outputs }.drawio) {
-    await writeFile(`${base}.drawio`, renderDrawio(shown, layout, { svgUrl: svgUrlOf(shown.config, name), ...(profile === undefined ? {} : { fitStored: true }) }));
+    await writeFile(`${base}.drawio`, renderDrawio(shown, layout, { svgUrl: svgUrlOf(shown.config, name), scenes, ...(profile === undefined ? {} : { fitStored: true }) }));
     written.push(`${base}.drawio`);
   }
   console.log(`wrote ${written.join(', ')}${profile === undefined ? '' : ` (profile ${profile})`}`);

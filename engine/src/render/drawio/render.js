@@ -714,10 +714,11 @@ function pageXml(scene, pageCtx) {
  * instead, so every table is still in the file. Plain (uncompressed) XML
  * with no timestamps, so the same model and layout always give the same
  * bytes. Options are those of renderSvg's scenes (`fitStored` for a profile),
- * plus `svgUrl`: where the SVG of this render is hosted, which table headers
+ * plus `scenes` (buildScenes of the same model, layout and options, to skip
+ * routing twice) and `svgUrl`: where the SVG of this render is hosted, which table headers
  * link to (no links when left out).
  */
-export function renderDrawio(model, layout, { svgUrl, ...options } = {}) {
+export function renderDrawio(model, layout, { svgUrl, scenes, ...options } = {}) {
   const diagram = buildDiagram(model);
   const names = hasAllView(diagram) ? [OVERVIEW, ALL_VIEW] : viewNames(diagram).filter((n) => n !== ALL_VIEW);
   // A page's id is its view name, so links to a page stay valid across renders.
@@ -728,6 +729,6 @@ export function renderDrawio(model, layout, { svgUrl, ...options } = {}) {
     svgUrl,
     pageLink: (name) => (names.includes(name) ? `data:page/id,${name}` : null),
   };
-  const pages = names.map((name) => pageXml(buildScene(model, layout, name, diagram, options), ctx));
+  const pages = names.map((name) => pageXml(scenes?.get(name) ?? buildScene(model, layout, name, diagram, options), ctx));
   return ['<mxfile host="open-erd" compressed="false">', ...pages, '</mxfile>', ''].join('\n');
 }

@@ -11,7 +11,7 @@ import { computeLayout } from '../src/layout/index.js';
 import { ALL_VIEW, ALL_VIEW_MAX_TABLES, OVERVIEW, viewNames, viewTree } from '../src/layout/views.js';
 import { applyProfile } from '../src/model/profile.js';
 import { HUB_LAYER, POLY_LAYER, pageName, renderDrawio } from '../src/render/drawio/render.js';
-import { buildScene, renderSvg } from '../src/render/svg/render.js';
+import { buildScene, buildScenes, renderSvg } from '../src/render/svg/render.js';
 import { endMarkers } from '../src/render/svg/markers.js';
 import { normalizeModel } from '../src/model/load.js';
 import { columnEntries } from '../src/model/columns.js';
@@ -447,4 +447,12 @@ test('a polymorphic target left with no columns still renders in SVG and draw.io
   const { layout } = await computeLayout(shown);
   assert.doesNotThrow(() => renderSvg(shown, layout, { fitStored: true }));
   assert.doesNotThrow(() => renderDrawio(shown, layout, { fitStored: true }));
+});
+
+test('prebuilt scenes give the same SVG and draw.io bytes as building them per file', async () => {
+  const model = await loadMulti();
+  const { layout } = await computeLayout(model);
+  const scenes = buildScenes(model, layout);
+  assert.equal(renderSvg(model, layout, { scenes }), renderSvg(model, layout));
+  assert.equal(renderDrawio(model, layout, { scenes }), renderDrawio(model, layout));
 });
