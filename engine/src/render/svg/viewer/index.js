@@ -2031,6 +2031,17 @@ function chipEntries(id, links, otherEnd) {
     .map(([other, confirmed]) => ({ id: other, confirmed, db: dbOf(other) !== dbOf(id) ? dbOf(other) : null }));
 }
 
+// Chip entries in table order, one per table: a table reached several ways
+// is confirmed when any of them is, and its tooltip lists each way.
+function mergeChips(entries) {
+  const byTable = new Map();
+  for (const e of entries) {
+    const seen = byTable.get(e.id);
+    byTable.set(e.id, seen ? { ...seen, confirmed: seen.confirmed || e.confirmed, tip: [seen.tip ?? seen.id, e.tip ?? e.id].join('\n') } : e);
+  }
+  return [...byTable.values()].sort((a, b) => byId(short(a.id), short(b.id)) || byId(a.id, b.id));
+}
+
 // Copy the table as SQL (a JSON schema-like document for MongoDB) or as a
 // Markdown table, from a small menu under an icon button; `status` says
 // what was copied.
@@ -2181,22 +2192,26 @@ function nodePanel(id, column = null) {
   const self = data.links.filter((l) => l.from === id && l.to === id);
   const sharedOut = data.hubLinks.filter((l) => l.from === id && l.to !== id);
   const sharedIn = data.hubLinks.filter((l) => l.to === id && l.from !== id);
-  // Polymorphic associations that may point at this table, by owner table.
-  const polyIn = Object.values(data.nodes)
-    .filter((p) => p.kind === 'poly' && p.targets.includes(id))
-    .map((p) => ({ id: p.table, confirmed: isConfirmed('polymorphic', p.review), db: dbOf(p.table) !== dbOf(id) ? dbOf(p.table) : null, tip: `${p.table}.${p.idColumn}, when ${p.typeColumn} names ${short(id)} («${p.name}»)` }))
-    .sort((a, b) => byId(short(a.id), short(b.id)) || byId(a.id, b.id));
+  // Polymorphic associations that may point at this table, by owner table;
+  // hub associations too, which are badges on their owner and have no node.
+  const polyIn = [...Object.values(data.nodes).filter((p) => p.kind === 'poly'), ...data.hubAssociations]
+    .filter((p) => p.targets.includes(id))
+    .map((p) => ({ id: p.table, confirmed: isConfirmed('polymorphic', p.review), db: dbOf(p.table) !== dbOf(id) ? dbOf(p.table) : null, tip: `${p.table}.${p.idColumn}, when ${p.typeColumn} names ${short(id)} («${p.name}»)` }));
+  // This table's hub associations, one chip per target.
+  const sharedPoly = data.hubAssociations
+    .filter((p) => p.table === id)
+    .flatMap((p) => p.targets.map((t) => ({ id: t, confirmed: isConfirmed('polymorphic', p.review), db: dbOf(t) !== dbOf(id) ? dbOf(t) : null, tip: `«${p.name}» (${p.typeColumn} / ${p.idColumn}) → ${short(t)}` })));
   const drawnHub = [...currentView().querySelectorAll('.hub-routes')].some((g) => g.getAttribute('data-hub') === id);
   const relations = () => [
     chipGroup('References', chipEntries(id, out, (l) => l.to)),
     chipGroup('Referenced by', chipEntries(id, into, (l) => l.from)),
-    chipGroup('Referenced by (polymorphic)', polyIn),
+    chipGroup('Referenced by (polymorphic)', mergeChips(polyIn)),
     self.length > 0 ? el('div', { class: 'muted', text: `Also references itself (${self.map((l) => l.fromColumns?.join(', ') ?? '').filter(Boolean).join('; ') || 'self'})` }) : null,
     // Hub relations are badges on the diagram, listed here in full.
-    chipGroup('Shared references', chipEntries(id, sharedOut, (l) => l.to)),
+    chipGroup('Shared references', mergeChips([...chipEntries(id, sharedOut, (l) => l.to), ...sharedPoly])),
     sharedIn.length > 0 ? chipGroup(`Referenced as a shared table${drawnHub ? ', lines shown while selected' : ''}`, chipEntries(id, sharedIn, (l) => l.from), 'shared-in') : null,
   ];
-  const count = out.length + into.length + self.length + sharedOut.length + sharedIn.length + polyIn.length;
+  const count = out.length + into.length + self.length + sharedOut.length + sharedIn.length + polyIn.length + sharedPoly.length;
   const bodies = { columns: () => n.columns.map((c) => columnRow(n, c, column)), relations, indexes: () => indexList(n) };
   return [
     tableTrailRow(id),
@@ -2906,6 +2921,10 @@ const REVIEW_ITEMS = [
   ...Object.entries(data.nodes)
     .filter(([, n]) => n.kind === 'poly' && REVIEW_STATES.includes(n.review))
     .map(([id, n]) => ({ id, poly: n, from: n.table, columns: [n.typeColumn, n.idColumn], review: n.review, cluster: n.cluster })),
+  // A hub association has no node: its item opens the owner at its id column.
+  ...data.hubAssociations
+    .filter((a) => REVIEW_STATES.includes(a.review))
+    .map((a) => ({ id: `${a.table}«${a.name}»`, poly: a, hub: true, from: a.table, columns: [a.typeColumn, a.idColumn], review: a.review, cluster: clusterOf(a.table) })),
 ].sort((a, b) => data.domainOrder.indexOf(a.cluster) - data.domainOrder.indexOf(b.cluster) || REVIEW_STATES.indexOf(a.review) - REVIEW_STATES.indexOf(b.review) || byId(a.from, b.from) || byId(a.id, b.id));
 const reviewedDomains = new Set(REVIEW_ITEMS.map((i) => i.cluster));
 for (const [key, { el: card }] of indexes.get(OVERVIEW)) if (reviewedDomains.has(key)) card.classList.add('has-review');
@@ -2915,7 +2934,8 @@ function reviewListPanel() {
   if (reviewPanel) return reviewPanel;
   const go = (item) => () => {
     const scroll = panel.div.scrollTop;
-    if (item.poly) goToNode(item.id);
+    if (item.hub) goToNode(item.from, item.poly.idColumn);
+    else if (item.poly) goToNode(item.id);
     else {
       if (!findAttr(currentView(), '.relation-group, .hub-route', 'data-id', item.id)) navigate(homeView(item.from));
       if (!selectLinked({ line: { value: item.id } })) goToNode(item.from, item.columns[0]);
@@ -3579,6 +3599,17 @@ function tipLines(target) {
   const id = nodeIdOf(nodeEl);
   const n = data.nodes[id];
   const badge = target.closest('.hub-badge');
+  if (badge?.hasAttribute('data-association')) {
+    // Laid out like a column with listed values: the id/type columns as
+    // chips, then one target table per row.
+    const targets = JSON.parse(badge.getAttribute('data-targets'));
+    return [
+      el('b', { text: `«${badge.getAttribute('data-association')}»` }),
+      el('div', { class: 'oe-chips' }, JSON.parse(badge.getAttribute('data-columns')).map((c) => el('span', { class: 'chip', text: c }))),
+      enumTable(targets.slice(0, TIP_ENUM_ROWS).map((t) => [short(t), clusterOf(t) ? domainName(clusterOf(t)) : ''])),
+      targets.length > TIP_ENUM_ROWS ? el('div', { class: 'muted', text: `+${targets.length - TIP_ENUM_ROWS} more — click the table for the full list` }) : null,
+    ];
+  }
   if (badge) {
     const columns = JSON.parse(badge.getAttribute('data-columns'));
     return [el('div', {}, [el('b', { text: columns.join(', ') }), el('span', { text: ` → ${badge.getAttribute('data-target')}` })]), el('div', { class: 'muted', text: 'Hub reference, drawn as a badge instead of lines' })];

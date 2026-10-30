@@ -1,5 +1,5 @@
 import { compareStrings } from '../model/load.js';
-import { polyNodeId } from './diagram.js';
+import { isHubAssociation, polyNodeId } from './diagram.js';
 import { ALL_VIEW, DOMAIN_VIEW_PREFIX, OVERVIEW, STUB_SLOT } from './views.js';
 
 const add = (map, key, value) => {
@@ -28,7 +28,7 @@ export function carryRenames(model, diagram, previous) {
   }
   if (!previous || ids.size === 0) return { layout: previous, renamed: [] };
   const tableIds = [...ids];
-  for (const a of model.polymorphic) {
+  for (const a of model.polymorphic.filter((x) => !isHubAssociation(model.config, x))) {
     const pair = tableIds.find(([, now]) => now === a.table);
     if (pair) ids.set(polyNodeId({ ...a, table: pair[0] }), polyNodeId(a));
   }

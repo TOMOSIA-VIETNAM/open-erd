@@ -65,6 +65,9 @@ For each line `facts-diff` printed, update `model/*.yaml`:
 | attribute changed (type, nullable, target, enum) | update | leave the fact as it is, set `review: stale` |
 | removed from code | delete | leave it, set `review: stale` |
 
+A new polymorphic entry whose `id_column` is already in `hub.columns` is a
+badge by that rule (`model.md`, hubs): do not ask about it again.
+
 A table or column has no review field: treat it as reviewed when any reviewed
 relation or polymorphic entry uses it. Removing such a table or column → keep
 it and mark those facts `stale`.

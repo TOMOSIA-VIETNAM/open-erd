@@ -1,5 +1,5 @@
 import { clusterLabel, engineName } from '../../layout/clusters.js';
-import { VIEW_SOURCE, buildDiagram, keyColumns, polyNodeId } from '../../layout/diagram.js';
+import { VIEW_SOURCE, buildDiagram, isHubAssociation, keyColumns, polyNodeId } from '../../layout/diagram.js';
 import { EMBED_INSET, HEADER_HEIGHT, HINT_OFFSET, ICON_GUTTER, PADDING_X, ROW_HEIGHT } from '../../layout/table-box.js';
 import { ALL_VIEW, DOMAIN_VIEW_PREFIX, OVERVIEW, hasAllView, viewNames } from '../../layout/views.js';
 import { STRENGTH_SEGMENTS } from '../../layout/domains.js';
@@ -167,7 +167,8 @@ function columnData(path, c, references) {
 // targets of a polymorphic id column); `out` and `in` one line per relation
 // a table starts or receives, for its note. `target`: the node a click on a
 // referencing column goes to, by the same key: the referenced table (the
-// first relation's, for a column in several), or the polymorphic node.
+// first relation's, for a column in several), or the polymorphic node (the
+// first target of a hub association, which has no node).
 function relationsOf(model) {
   const column = new Map();
   const target = new Map();
@@ -188,7 +189,7 @@ function relationsOf(model) {
       add(into, target, `${a.table}.${a.id_column} (polymorphic «${a.name}»)`);
     }
     add(out, a.table, `${a.id_column} → ${a.targets.join(', ')} (polymorphic «${a.name}»)`);
-    target.set(`${a.table}|${a.id_column}`, polyNodeId(a));
+    target.set(`${a.table}|${a.id_column}`, isHubAssociation(model.config, a) ? a.targets[0] : polyNodeId(a));
   }
   return { column, out, in: into, target };
 }
@@ -405,7 +406,9 @@ function tableNode(n, parent, x, y, ctx) {
     };
   });
   for (const f of b.facts) rows.push({ label: measured(escapeHtml(f.text.text)), style: { fontSize: 11, fontColor: '#5f6b7e' } });
-  for (const badge of b.badges) rows.push({ label: measured(escapeHtml(`→ ${badge.label.text}`)), style: { fontSize: 11, fontColor: '#56627a' } });
+  for (const badge of b.badges) {
+    rows.push({ label: measured(escapeHtml(`${badge.name ? `${badge.name.text} ` : ''}→ ${badge.label.text}`)), style: { fontSize: 11, fontColor: '#56627a' } });
+  }
   const kind = t.kind ?? 'table';
   const tag = b.tag ? ` ${b.tag.text}` : '';
   return tableCells(

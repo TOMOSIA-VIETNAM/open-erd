@@ -1,6 +1,6 @@
 import { clusterKey } from '../layout/clusters.js';
 import { LAYOUT_SCHEMA_VERSION } from '../layout/layout-file.js';
-import { collapsedLinkId, polyLinkId, polyNodeId, relationId } from '../layout/diagram.js';
+import { collapsedLinkId, isHubAssociation, polyLinkId, polyNodeId, relationId } from '../layout/diagram.js';
 import { compareStrings } from '../model/load.js';
 import { describeChange, summarize } from './changes.js';
 
@@ -93,7 +93,8 @@ const push = (map, key, value) => {
  *   counts     { tables, columns, relations }: tables with a status, then
  *              the column and relation totals of the summary line
  * A status is one of DIFF_STATUSES. A table is "changed" when its own
- * fields, columns or enums changed; relation changes colour the line and
+ * fields, columns or enums changed, or a hub association it owns (a badge,
+ * see isHubAssociation) changed; relation changes colour the line and
  * are listed on both end tables.
  */
 export function diffMarks(union, changes) {
@@ -139,6 +140,10 @@ export function diffMarks(union, changes) {
       }
       push(sentences.nodes, c.relation.from.table, text);
       if (c.relation.to.table !== c.relation.from.table) push(sentences.nodes, c.relation.to.table, text);
+    } else if (c.association && isHubAssociation(union.config, c.association)) {
+      // Drawn as a badge on its owner: the owner's box shows the change.
+      if (!nodes.has(c.table)) nodes.set(c.table, 'changed');
+      push(sentences.nodes, c.table, text);
     } else if (c.association) {
       const status = { polymorphic_added: 'added', polymorphic_removed: 'removed' }[c.kind] ?? 'changed';
       nodes.set(polyNodeId(c.association), status);

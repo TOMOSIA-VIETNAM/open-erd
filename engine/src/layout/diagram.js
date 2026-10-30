@@ -26,6 +26,15 @@ export function polyNodeId(association) {
   return `${association.table}«${association.name}»`;
 }
 
+/**
+ * A polymorphic association whose id column is listed in `hub.columns`: an
+ * audit or ownership column repeated on many tables. It is always a badge on
+ * its owner's box, never a virtual node or a line, in every view.
+ */
+export function isHubAssociation(config, a) {
+  return (config.hub?.columns ?? []).includes(a.id_column);
+}
+
 function isHub(config, r) {
   const hub = config.hub ?? {};
   return (hub.tables ?? []).includes(r.to.table) || r.from.columns.some((c) => (hub.columns ?? []).includes(c));
@@ -34,21 +43,24 @@ function isHub(config, r) {
 // The relations drawn as badges: hub references that cut across domains.
 // Inside the hub table's own domain a hub reference is that domain's
 // structure, so it stays a line; and a table whose every relation is a hub
-// reference keeps its lines, or it would float with nothing drawn to it.
-function badgeRelations(model) {
+// reference keeps its lines, or it would float with nothing drawn to it (a
+// hub association draws nothing, so it does not count as linked).
+function badgeRelations(model, drawnPolymorphic) {
   const tables = new Map(model.tables.map((t) => [t.id, t]));
   const hub = model.relations.filter(
     (r) => isHub(model.config, r) && clusterKey(tables.get(r.from.table)) !== clusterKey(tables.get(r.to.table)),
   );
   const linked = new Set([
     ...model.relations.filter((r) => !hub.includes(r)).flatMap((r) => [r.from.table, r.to.table]),
-    ...model.polymorphic.flatMap((a) => [a.table, ...a.targets]),
+    ...drawnPolymorphic.flatMap((a) => [a.table, ...a.targets]),
   ]);
   return hub.filter((r) => linked.has(r.from.table));
 }
 
-// Hub relations grouped per referencing table and hub target, in id order.
-function hubBadges(hubRelations) {
+// Badges per referencing table: hub relations grouped by hub target, in id
+// order ({ target, count, columns }), then one per hub association, by name
+// ({ association, targets, columns: [type column, id column] }).
+function hubBadges(hubRelations, hubAssociations) {
   const byTable = new Map();
   for (const r of hubRelations) {
     if (!byTable.has(r.from.table)) byTable.set(r.from.table, new Map());
@@ -64,6 +76,9 @@ function hubBadges(hubRelations) {
         .sort(([a], [b]) => compareStrings(a, b))
         .map(([target, columns]) => ({ target, count: columns.length, columns: [...columns].sort(compareStrings) })),
     );
+  }
+  for (const a of [...hubAssociations].sort((x, y) => compareStrings(x.name, y.name))) {
+    badges.set(a.table, [...(badges.get(a.table) ?? []), { association: a.name, targets: a.targets, columns: [a.type_column, a.id_column] }]);
   }
   return badges;
 }
@@ -221,6 +236,9 @@ function polyLink(a) {
  *   every box; the viewer lists them and draws them only on demand (a hub
  *   table selected, its neighborhood), so a central table still shows what
  *   points at it.
+ * hubAssociations: the polymorphic associations drawn as badges
+ *   (isHubAssociation), as in the model, by owner table then name. No node
+ *   and no line anywhere; the viewer lists them on the owner and the targets.
  * clusters: Map cluster key -> node ids
  * centralOf: Map cluster key -> id of its central table (see centrality.js)
  * mostCentral: id of the drawn table with the highest centrality score (ties
@@ -230,10 +248,14 @@ function polyLink(a) {
  *   VIEWS_DEFAULTS
  */
 export function buildDiagram(model) {
-  const hubRelations = badgeRelations(model);
+  const hubAssociations = model.polymorphic
+    .filter((a) => isHubAssociation(model.config, a))
+    .sort((x, y) => compareStrings(x.table, y.table) || compareStrings(x.name, y.name));
+  const polymorphic = model.polymorphic.filter((a) => !hubAssociations.includes(a));
+  const hubRelations = badgeRelations(model, polymorphic);
   const drawn = new Set(model.relations.filter((r) => !hubRelations.includes(r)));
   const joins = model.config.collapse_join_tables ? joinTables(model, drawn) : new Map();
-  const badges = hubBadges(hubRelations);
+  const badges = hubBadges(hubRelations, hubAssociations);
 
   const tenancy = new Map(
     model.databases.flatMap((db) => (db.tenant_schemas ?? []).map((t) => [`${db.database}.${t.schema}`, t])),
@@ -242,7 +264,7 @@ export function buildDiagram(model) {
   const keys = keyColumns(model);
   const drawnTables = model.tables.filter((t) => !joins.has(t.id));
   const pointedBy = new Map();
-  for (const a of [...model.polymorphic].sort((x, y) => compareStrings(`${x.table}.${x.id_column}`, `${y.table}.${y.id_column}`))) {
+  for (const a of [...polymorphic].sort((x, y) => compareStrings(`${x.table}.${x.id_column}`, `${y.table}.${y.id_column}`))) {
     for (const target of a.targets) pointedBy.set(target, [...(pointedBy.get(target) ?? []), a]);
   }
   const clusterOf = new Map(drawnTables.map((t) => [t.id, clusterKey(t)]));
@@ -256,7 +278,7 @@ export function buildDiagram(model) {
     nodes.set(t.id, { id: t.id, kind: 'table', cluster: clusterKey(t), box, table: t, facts, tenant, central });
   }
   const tablesById = new Map(model.tables.map((t) => [t.id, t]));
-  for (const a of model.polymorphic) {
+  for (const a of polymorphic) {
     const id = polyNodeId(a);
     nodes.set(id, { id, kind: 'poly', cluster: clusterKey(tablesById.get(a.table)), box: polyBox(a), association: a });
   }
@@ -264,7 +286,7 @@ export function buildDiagram(model) {
   const links = [
     ...[...drawn].filter((r) => !joins.has(r.from.table)).map(relationLink),
     ...[...joins].map(([id, pair]) => collapsedLink(id, pair)),
-    ...model.polymorphic.map(polyLink),
+    ...polymorphic.map(polyLink),
     // A join table collapsed into a line is never a view source target:
     // views read tables, and a collapsed table is no longer drawn.
     ...model.tables.flatMap(viewSourceLinks).filter((l) => nodes.has(l.from.node) && nodes.has(l.to.node)),
@@ -285,7 +307,7 @@ export function buildDiagram(model) {
     .filter((id) => centrality.scores.get(id) > 0)
     .sort((a, b) => centrality.scores.get(b) - centrality.scores.get(a) || compareStrings(a, b));
   const views = { ...VIEWS_DEFAULTS, ...model.config.views };
-  return { nodes, links, hubLinks, clusters: new Map([...clusters].sort(([a], [b]) => compareStrings(a, b))), centralOf, mostCentral, views };
+  return { nodes, links, hubLinks, hubAssociations, clusters: new Map([...clusters].sort(([a], [b]) => compareStrings(a, b))), centralOf, mostCentral, views };
 }
 
 /** Id of the pair of domains `a` and `b`, whatever their order (`a<->a` for a domain with itself). */
