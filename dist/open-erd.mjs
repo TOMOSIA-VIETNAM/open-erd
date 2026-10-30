@@ -175270,6 +175270,12 @@ function fontFaceCss() {
   ).join("\n");
 }
 
+// src/render/xml.js
+var INVALID_XML = /[\x00-\x08\x0B\x0C\x0E-\x1F]/g;
+function escapeXml(text2) {
+  return String(text2).replace(INVALID_XML, "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+}
+
 // src/render/svg/ranking.js
 var WIDTH = 900;
 var ROW = 22;
@@ -175295,7 +175301,6 @@ var BAR_COLOURS = [
   [196, 40, 30],
   [130, 15, 25]
 ];
-var escapeXml = (text2) => text2.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 var databaseOf = (id) => id.split(".")[0];
 var tableName = (id) => id.split(".").at(-1);
 var plural2 = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
@@ -175983,9 +175988,6 @@ ${RANKING_STYLE}
 .db-fact { font-size: ${DB_FACT_FONT.size}px; font-weight: ${DB_FACT_FONT.weight}; fill: #3d4a5e; }
 ${DIFF_STYLE}
 ${VIEWER_STYLE}`;
-function escapeXml2(text2) {
-  return text2.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
-}
 var camel = (name) => name.replace(/_(.)/g, (_2, c) => c.toUpperCase());
 var NO_MARKS = { nodes: /* @__PURE__ */ new Map(), columns: /* @__PURE__ */ new Map(), links: /* @__PURE__ */ new Map(), sentences: { nodes: /* @__PURE__ */ new Map(), links: /* @__PURE__ */ new Map() }, near: /* @__PURE__ */ new Set() };
 var diffClass = (marks, id) => marks.nodes.has(id) ? ` diff-${marks.nodes.get(id)}` : marks.near.has(id) ? " near-change" : "";
@@ -176009,7 +176011,7 @@ function diffBanner(bounds, diff) {
     lx += l2.w + LEGEND_GAP;
     return item;
   });
-  const svg = `<g class="diff-banner"><rect class="banner-box" x="${x}" y="${y}" width="${w}" height="${h}" rx="8"/><text class="banner-title" x="${x + BANNER_PAD}" y="${line(0)}" dominant-baseline="central">${escapeXml2(title)}</text><text class="banner-summary" x="${x + BANNER_PAD}" y="${line(1)}" dominant-baseline="central">${escapeXml2(diff.summary)}</text>${items.join("")}</g>`;
+  const svg = `<g class="diff-banner"><rect class="banner-box" x="${x}" y="${y}" width="${w}" height="${h}" rx="8"/><text class="banner-title" x="${x + BANNER_PAD}" y="${line(0)}" dominant-baseline="central">${escapeXml(title)}</text><text class="banner-summary" x="${x + BANNER_PAD}" y="${line(1)}" dominant-baseline="central">${escapeXml(diff.summary)}</text>${items.join("")}</g>`;
   const top = y - CANVAS_MARGIN2;
   return { svg, bounds: { x: bounds.x, y: top, w: Math.max(bounds.w, w + 2 * CANVAS_MARGIN2), h: bounds.y + bounds.h - top } };
 }
@@ -176159,11 +176161,11 @@ function buildScene(model, layout, name = ALL_VIEW, diagram = buildDiagram(model
   return { name, nodes: view.nodes, groups: view.groups, labels, relations, polyRoutes, hubRoutes, bounds: { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } };
 }
 function textEl(cls, x, y, fitted, anchor) {
-  const tip = fitted.truncated ? `<title>${escapeXml2(fitted.full)}</title>` : "";
+  const tip = fitted.truncated ? `<title>${escapeXml(fitted.full)}</title>` : "";
   const a = anchor ? ` text-anchor="${anchor}"` : "";
-  return `<text class="${cls}" x="${x}" y="${y}" dominant-baseline="central"${a}>${escapeXml2(fitted.text)}${tip}</text>`;
+  return `<text class="${cls}" x="${x}" y="${y}" dominant-baseline="central"${a}>${escapeXml(fitted.text)}${tip}</text>`;
 }
-var json = (value2) => escapeXml2(JSON.stringify(value2));
+var json = (value2) => escapeXml(JSON.stringify(value2));
 function headerPath(x, y, w, fill) {
   return `<path d="M${x} ${y + HEADER_HEIGHT}V${y + CORNER}Q${x} ${y} ${x + CORNER} ${y}H${x + w - CORNER}Q${x + w} ${y} ${x + w} ${y + CORNER}V${y + HEADER_HEIGHT}Z" fill="${fill}"/>`;
 }
@@ -176172,21 +176174,21 @@ var hintsSvg = (r, nameX, cy) => r.hints.map((h) => HINT_ICONS[h.kind](nameX + h
 var KEY_ICONS = { pk: keyIconSvg, fk: linkIconSvg };
 var keySvg = (r, left, cy) => r.key ? KEY_ICONS[r.key](left + ICON_GUTTER / 2 - 1, cy) : "";
 function factSvg(f, x, y) {
-  const tip = f.text.truncated ? `<title>${escapeXml2(f.text.full)}</title>` : "";
+  const tip = f.text.truncated ? `<title>${escapeXml(f.text.full)}</title>` : "";
   let left = f.text.truncated ? f.text.text.length - 1 : f.text.text.length;
   const spans = [];
   for (const part of f.parts) {
     if (left <= 0) break;
     const text2 = part.text.slice(0, left);
     left -= text2.length;
-    spans.push(part.code ? `<tspan class="fact-code">${escapeXml2(text2)}</tspan>` : escapeXml2(text2));
+    spans.push(part.code ? `<tspan class="fact-code">${escapeXml(text2)}</tspan>` : escapeXml(text2));
   }
   return `<text class="fact-text" x="${x}" y="${y}" dominant-baseline="central">${spans.join("")}${f.text.truncated ? "\u2026" : ""}${tip}</text>`;
 }
 function warnSvg(left, cy, text2) {
   const x0 = left + WARN_INSET;
   const half = WARN_SIZE / 2;
-  return `<path class="col-warn" d="M${x0} ${cy + half}L${x0 + half} ${cy - half}L${x0 + WARN_SIZE} ${cy + half}Z"><title>${escapeXml2(`Possibly missing relation: ${text2}`)}</title></path>`;
+  return `<path class="col-warn" d="M${x0} ${cy + half}L${x0 + half} ${cy - half}L${x0 + WARN_SIZE} ${cy + half}Z"><title>${escapeXml(`Possibly missing relation: ${text2}`)}</title></path>`;
 }
 function tableSvg(n, colors, marks, warnings) {
   const { x, y, w, h, box: box2 } = n;
@@ -176196,7 +176198,7 @@ function tableSvg(n, colors, marks, warnings) {
     const status = columnMarks?.get(r.column);
     const top = y + r.centerY - ROW_HEIGHT / 2;
     return [
-      `<g class="column${status ? ` col-${status}` : ""}" data-column="${escapeXml2(r.column)}">`,
+      `<g class="column${status ? ` col-${status}` : ""}" data-column="${escapeXml(r.column)}">`,
       `<rect class="row-hit" x="${x + indent}" y="${top}" width="${w - 2 * indent}" height="${ROW_HEIGHT}"/>`,
       status ? `<rect class="col-mark col-${status}" x="${x + indent + 1}" y="${top + 2}" width="3" height="${ROW_HEIGHT - 4}"/>` : "",
       warnings?.has(r.column) ? warnSvg(x + indent, y + r.centerY, warnings.get(r.column)) : "",
@@ -176208,14 +176210,14 @@ function tableSvg(n, colors, marks, warnings) {
     ].join("");
   });
   const insets = box2.insets.map(
-    (e) => `<g class="embedded" data-entity="${escapeXml2(e.entity)}"><rect class="inset-box" x="${x + EMBED_INSET}" y="${y + e.top + 1}" width="${w - 2 * EMBED_INSET}" height="${e.h - 2}" rx="4"/>${textEl("inset-title", x + PADDING_X + EMBED_INSET, y + e.title.centerY, e.title)}</g>`
+    (e) => `<g class="embedded" data-entity="${escapeXml(e.entity)}"><rect class="inset-box" x="${x + EMBED_INSET}" y="${y + e.top + 1}" width="${w - 2 * EMBED_INSET}" height="${e.h - 2}" rx="4"/>${textEl("inset-title", x + PADDING_X + EMBED_INSET, y + e.title.centerY, e.title)}</g>`
   );
   const facts = box2.facts.map((f) => factSvg(f, x + PADDING_X, y + f.centerY));
   const badges = box2.badges.map((b) => {
     const cy = y + b.centerY;
     const ax = x + PADDING_X;
     const arrow = `<path class="badge-arrow" d="M${ax} ${cy}H${ax + BADGE_ARROW_WIDTH}M${ax + BADGE_ARROW_WIDTH - 4} ${cy - 3}L${ax + BADGE_ARROW_WIDTH} ${cy}L${ax + BADGE_ARROW_WIDTH - 4} ${cy + 3}"/>`;
-    return `<g class="hub-badge" data-target="${escapeXml2(b.target)}" data-columns="${json(b.columns)}"><title>${escapeXml2(`${b.columns.join(", ")} \u2192 ${b.target}`)}</title>${arrow}${textEl("badge-text", x + b.labelX, cy, b.label)}</g>`;
+    return `<g class="hub-badge" data-target="${escapeXml(b.target)}" data-columns="${json(b.columns)}"><title>${escapeXml(`${b.columns.join(", ")} \u2192 ${b.target}`)}</title>${arrow}${textEl("badge-text", x + b.labelX, cy, b.label)}</g>`;
   });
   const separator = box2.separatorY === null ? "" : `<path d="M${x} ${y + box2.separatorY}H${x + w}" stroke="#e3e7ed"/>`;
   const tag = box2.tag ? textEl("table-tag", x + w - PADDING_X, y + box2.tag.centerY, box2.tag, "end") : "";
@@ -176224,7 +176226,7 @@ function tableSvg(n, colors, marks, warnings) {
   const central = box2.central;
   const headerIcon = (central ? starIconSvg : tableIconSvg)(x + PADDING_X + ICON_GUTTER / 2 - 1, y + box2.title.centerY);
   return [
-    `<g class="table${kind === "table" ? "" : " is-view"}${central ? " central" : ""}${diffClass(marks, n.id)}" data-id="${escapeXml2(n.id)}"><title>${escapeXml2(titleText(marks, n.id, central ? `${n.id} (most connected table of its domain)` : n.id))}</title>`,
+    `<g class="table${kind === "table" ? "" : " is-view"}${central ? " central" : ""}${diffClass(marks, n.id)}" data-id="${escapeXml(n.id)}"><title>${escapeXml(titleText(marks, n.id, central ? `${n.id} (most connected table of its domain)` : n.id))}</title>`,
     copies,
     `<rect class="table-box" x="${x}" y="${y}" width="${w}" height="${h}" rx="${CORNER}"/>`,
     headerPath(x, y, w, central ? colors.central : colors.header),
@@ -176244,9 +176246,9 @@ function tableSvg(n, colors, marks, warnings) {
 function polySvg(n, marks) {
   const { x, y, w, h, box: box2 } = n;
   const a = n.node.association;
-  const data = ` data-id="${escapeXml2(n.id)}" data-table="${escapeXml2(a.table)}" data-name="${escapeXml2(a.name)}" data-type-column="${escapeXml2(a.type_column)}" data-id-column="${escapeXml2(a.id_column)}" data-targets="${json(a.targets)}"`;
+  const data = ` data-id="${escapeXml(n.id)}" data-table="${escapeXml(a.table)}" data-name="${escapeXml(a.name)}" data-type-column="${escapeXml(a.type_column)}" data-id-column="${escapeXml(a.id_column)}" data-targets="${json(a.targets)}"`;
   return [
-    `<g class="poly${diffClass(marks, n.id)}"${data}><title>${escapeXml2(titleText(marks, n.id, `${a.table}.${a.type_column} / ${a.id_column} \u2192 ${a.targets.join(", ")}`))}</title>`,
+    `<g class="poly${diffClass(marks, n.id)}"${data}><title>${escapeXml(titleText(marks, n.id, `${a.table}.${a.type_column} / ${a.id_column} \u2192 ${a.targets.join(", ")}`))}</title>`,
     `<rect class="poly-box" x="${x}" y="${y}" width="${w}" height="${h}" rx="${CORNER}"/>`,
     `<path d="M${x} ${y + HEADER_HEIGHT}H${x + w}" stroke="#e2d6bb"/>`,
     textEl("poly-title", x + PADDING_X, y + box2.title.centerY, box2.title),
@@ -176261,16 +176263,16 @@ function groupStubSvg(n, colors) {
   const pill = box2.db ? (() => {
     const pw = Math.ceil(measureText(box2.db, GROUP_DB_FONT)) + 10;
     const px = x + w - PADDING_X - pw;
-    return `<rect class="group-db-pill" x="${px}" y="${y + box2.title.centerY - 7}" width="${pw}" height="14" rx="7"/><text class="group-db" x="${px + pw / 2}" y="${y + box2.title.centerY}" dominant-baseline="central" text-anchor="middle">${escapeXml2(box2.db)}</text>`;
+    return `<rect class="group-db-pill" x="${px}" y="${y + box2.title.centerY - 7}" width="${pw}" height="14" rx="7"/><text class="group-db" x="${px + pw / 2}" y="${y + box2.title.centerY}" dominant-baseline="central" text-anchor="middle">${escapeXml(box2.db)}</text>`;
   })() : "";
   const rows = box2.rows.map(
-    (r) => `<g class="group-row"${r.table ? ` data-table="${escapeXml2(r.table)}"` : ""}><rect class="row-hit" x="${x}" y="${y + r.centerY - ROW_HEIGHT / 2}" width="${w}" height="${ROW_HEIGHT}"/>${textEl("group-table", x + PADDING_X, y + r.centerY, r.name)}</g>`
+    (r) => `<g class="group-row"${r.table ? ` data-table="${escapeXml(r.table)}"` : ""}><rect class="row-hit" x="${x}" y="${y + r.centerY - ROW_HEIGHT / 2}" width="${w}" height="${ROW_HEIGHT}"/>${textEl("group-table", x + PADDING_X, y + r.centerY, r.name)}</g>`
   );
-  return `<g class="stub group-stub" data-id="${escapeXml2(n.id)}" data-domain="${escapeXml2(key)}" data-tables="${json(tables)}"><title>${escapeXml2(tip)}</title><rect class="stub-box" x="${x}" y="${y}" width="${w}" height="${h}" rx="${CORNER}"/><path d="M${x} ${y + HEADER_HEIGHT}H${x + w}" stroke="#d5dbe4"/><g class="group-head"><text class="group-title" x="${x + PADDING_X}" y="${y + box2.title.centerY}" dominant-baseline="central" fill="${colors.label}">${escapeXml2(box2.title.text)}</text>${pill}</g>${rows.join("")}</g>`;
+  return `<g class="stub group-stub" data-id="${escapeXml(n.id)}" data-domain="${escapeXml(key)}" data-tables="${json(tables)}"><title>${escapeXml(tip)}</title><rect class="stub-box" x="${x}" y="${y}" width="${w}" height="${h}" rx="${CORNER}"/><path d="M${x} ${y + HEADER_HEIGHT}H${x + w}" stroke="#d5dbe4"/><g class="group-head"><text class="group-title" x="${x + PADDING_X}" y="${y + box2.title.centerY}" dominant-baseline="central" fill="${colors.label}">${escapeXml(box2.title.text)}</text>${pill}</g>${rows.join("")}</g>`;
 }
 function stubSvg(n, marks) {
   const { x, y, w, h, box: box2 } = n;
-  return `<g class="stub${diffClass(marks, n.id)}" data-id="${escapeXml2(n.id)}"><title>${escapeXml2(titleText(marks, n.id, n.id))}</title><rect class="stub-box" x="${x}" y="${y}" width="${w}" height="${h}" rx="${CORNER}"/>${textEl("stub-title", x + PADDING_X, y + box2.title.centerY, box2.title)}</g>`;
+  return `<g class="stub${diffClass(marks, n.id)}" data-id="${escapeXml(n.id)}"><title>${escapeXml(titleText(marks, n.id, n.id))}</title><rect class="stub-box" x="${x}" y="${y}" width="${w}" height="${h}" rx="${CORNER}"/>${textEl("stub-title", x + PADDING_X, y + box2.title.centerY, box2.title)}</g>`;
 }
 function cardSvg(n, colors, colorOf, marks) {
   const { x, y, w, h, box: box2 } = n;
@@ -176278,8 +176280,8 @@ function cardSvg(n, colors, colorOf, marks) {
   const left = x + c.padX;
   const right = x + w - c.padX;
   const text2 = (cls, tx, f, extra = "") => textEl(cls, tx, y + f.centerY, f, extra || void 0);
-  const note = box2.note ? box2.note.lines.map((l2) => `<text class="card-note" x="${left}" y="${y + l2.centerY}" dominant-baseline="central">${escapeXml2(l2.text)}</text>`).join("") : "";
-  const central = box2.central ? `${starIconSvg(left + ICON_GUTTER / 2 - 2, y + box2.central.centerY)}<text class="card-central" x="${left + ICON_GUTTER}" y="${y + box2.central.centerY}" dominant-baseline="central">${escapeXml2(box2.central.text.slice(0, 9))}<tspan class="fact-code">${escapeXml2(box2.central.text.slice(9))}</tspan>${box2.central.truncated ? `<title>${escapeXml2(box2.central.full)}</title>` : ""}</text>` : "";
+  const note = box2.note ? box2.note.lines.map((l2) => `<text class="card-note" x="${left}" y="${y + l2.centerY}" dominant-baseline="central">${escapeXml(l2.text)}</text>`).join("") : "";
+  const central = box2.central ? `${starIconSvg(left + ICON_GUTTER / 2 - 2, y + box2.central.centerY)}<text class="card-central" x="${left + ICON_GUTTER}" y="${y + box2.central.centerY}" dominant-baseline="central">${escapeXml(box2.central.text.slice(0, 9))}<tspan class="fact-code">${escapeXml(box2.central.text.slice(9))}</tspan>${box2.central.truncated ? `<title>${escapeXml(box2.central.full)}</title>` : ""}</text>` : "";
   const segW = c.segment.w + c.segment.gap;
   const barX = right - STRENGTH_SEGMENTS * segW + c.segment.gap;
   const related = box2.related.map((r) => {
@@ -176289,28 +176291,28 @@ function cardSvg(n, colors, colorOf, marks) {
     const tag = r.db ? (() => {
       const tw = Math.ceil(measureText(r.db, CARD_DB_FONT)) + 8;
       const tx = left + c.swatch + nameW + c.dbGap;
-      return `<rect class="card-db-pill" x="${tx}" y="${cy - 7}" width="${tw}" height="14" rx="7"/><text class="card-db" x="${tx + tw / 2}" y="${cy}" dominant-baseline="central" text-anchor="middle">${escapeXml2(r.db)}</text>`;
+      return `<rect class="card-db-pill" x="${tx}" y="${cy - 7}" width="${tw}" height="14" rx="7"/><text class="card-db" x="${tx + tw / 2}" y="${cy}" dominant-baseline="central" text-anchor="middle">${escapeXml(r.db)}</text>`;
     })() : "";
     const swatch = colorOf(r.key);
     const nameX = left + c.swatch;
-    return `<g class="card-related" data-domain="${escapeXml2(r.key)}"><title>${escapeXml2(`${r.name.full}${r.db ? ` (${r.db})` : ""}: ${r.count} relation${r.count === 1 ? "" : "s"} with ${box2.title.full}`)}</title><rect class="card-related-hit" x="${left - 4}" y="${cy - 9}" width="${right - left + 8}" height="18"/><rect x="${left}" y="${cy - 4}" width="8" height="8" rx="2" fill="${swatch.header}" stroke="${swatch.label}"/><text class="card-related-name" x="${nameX}" y="${cy}" dominant-baseline="central">${escapeXml2(r.name.text)}</text>${tag}${segs}</g>`;
+    return `<g class="card-related" data-domain="${escapeXml(r.key)}"><title>${escapeXml(`${r.name.full}${r.db ? ` (${r.db})` : ""}: ${r.count} relation${r.count === 1 ? "" : "s"} with ${box2.title.full}`)}</title><rect class="card-related-hit" x="${left - 4}" y="${cy - 9}" width="${right - left + 8}" height="18"/><rect x="${left}" y="${cy - 4}" width="8" height="8" rx="2" fill="${swatch.header}" stroke="${swatch.label}"/><text class="card-related-name" x="${nameX}" y="${cy}" dominant-baseline="central">${escapeXml(r.name.text)}</text>${tag}${segs}</g>`;
   });
   const none = box2.related.length === 0 ? `<text class="card-none" x="${left}" y="${y + box2.layout.relatedY[0]}" dominant-baseline="central">No relations with other domains</text>` : "";
   const tip = [box2.title.full, box2.count.full, box2.note?.full, box2.central?.full].filter(Boolean).join("\n");
-  return `<g class="domain${diffClass(marks, n.id)}" data-domain="${escapeXml2(n.id)}"><title>${escapeXml2(tip)}</title><rect class="card-box" x="${x}" y="${y}" width="${w}" height="${h}" rx="10"/><path class="card-accent" d="M${x + 6} ${y + 12}V${y + h - 12}" stroke="${colors.label}"/><text class="card-title" x="${left}" y="${y + box2.title.centerY}" dominant-baseline="central" fill="${colors.label}">${escapeXml2(box2.title.text)}${box2.title.truncated ? `<title>${escapeXml2(box2.title.full)}</title>` : ""}</text>` + text2("card-count", right, box2.count, "end") + note + central + `<path class="card-divider" d="M${left} ${y + box2.layout.dividerY}H${right}"/><text class="card-label" x="${left}" y="${y + box2.layout.relatedLabelY}" dominant-baseline="central">Related domains</text>` + related.join("") + none + "</g>";
+  return `<g class="domain${diffClass(marks, n.id)}" data-domain="${escapeXml(n.id)}"><title>${escapeXml(tip)}</title><rect class="card-box" x="${x}" y="${y}" width="${w}" height="${h}" rx="10"/><path class="card-accent" d="M${x + 6} ${y + 12}V${y + h - 12}" stroke="${colors.label}"/><text class="card-title" x="${left}" y="${y + box2.title.centerY}" dominant-baseline="central" fill="${colors.label}">${escapeXml(box2.title.text)}${box2.title.truncated ? `<title>${escapeXml(box2.title.full)}</title>` : ""}</text>` + text2("card-count", right, box2.count, "end") + note + central + `<path class="card-divider" d="M${left} ${y + box2.layout.dividerY}H${right}"/><text class="card-label" x="${left}" y="${y + box2.layout.relatedLabelY}" dominant-baseline="central">Related domains</text>` + related.join("") + none + "</g>";
 }
 function groupSvg(g, colorOf) {
   const f = g.frame;
   if (g.kind === "cluster") {
     const colors = colorOf(g.group.key);
-    return `<g class="cluster" data-cluster="${escapeXml2(g.group.key)}"><rect x="${f.x}" y="${f.y}" width="${f.w}" height="${f.h}" rx="12" fill="${colors.fill}" stroke="${colors.stroke}"/><text class="cluster-label" x="${f.x + LABEL_OFFSET.x}" y="${f.y + LABEL_OFFSET.y}" dominant-baseline="central" fill="${colors.label}">${escapeXml2(clusterLabel(g.group.key))}</text></g>`;
+    return `<g class="cluster" data-cluster="${escapeXml(g.group.key)}"><rect x="${f.x}" y="${f.y}" width="${f.w}" height="${f.h}" rx="12" fill="${colors.fill}" stroke="${colors.stroke}"/><text class="cluster-label" x="${f.x + LABEL_OFFSET.x}" y="${f.y + LABEL_OFFSET.y}" dominant-baseline="central" fill="${colors.label}">${escapeXml(clusterLabel(g.group.key))}</text></g>`;
   }
   const l2 = dbLabel(f, g.group.database, g.group.engine, g.group.facts);
   const { x, y, w, h } = l2.icon;
   const ry = 3;
   const icon2 = `<path class="db-icon" d="M${x} ${y + ry}V${y + h - ry}A${w / 2} ${ry} 0 0 0 ${x + w} ${y + h - ry}V${y + ry}A${w / 2} ${ry} 0 0 0 ${x} ${y + ry}Z"/><path class="db-icon" d="M${x} ${y + ry}A${w / 2} ${ry} 0 0 0 ${x + w} ${y + ry}" fill="none"/>`;
-  return `<g class="database" data-database="${escapeXml2(g.group.database)}" data-engine="${escapeXml2(g.group.engine)}">` + (g.group.facts.length > 0 ? `<title>${escapeXml2(g.group.facts.join("\n"))}</title>` : "") + `<rect class="db-frame" x="${f.x}" y="${f.y}" width="${f.w}" height="${f.h}" rx="16"/>${icon2}<text class="db-name" x="${l2.name.x}" y="${l2.cy}" dominant-baseline="central">${escapeXml2(l2.name.text)}</text><rect class="engine-pill" x="${l2.pill.x}" y="${l2.pill.y}" width="${l2.pill.w}" height="${l2.pill.h}" rx="9"/><text class="engine-name" x="${l2.engine.x}" y="${l2.cy}" dominant-baseline="central" text-anchor="middle">${escapeXml2(l2.engine.text)}</text>` + l2.facts.map(
-    (p) => `<rect class="db-fact-pill" x="${p.pill.x}" y="${p.pill.y}" width="${p.pill.w}" height="${p.pill.h}" rx="9"/><text class="db-fact" x="${p.x}" y="${l2.cy}" dominant-baseline="central" text-anchor="middle">${escapeXml2(p.text)}</text>`
+  return `<g class="database" data-database="${escapeXml(g.group.database)}" data-engine="${escapeXml(g.group.engine)}">` + (g.group.facts.length > 0 ? `<title>${escapeXml(g.group.facts.join("\n"))}</title>` : "") + `<rect class="db-frame" x="${f.x}" y="${f.y}" width="${f.w}" height="${f.h}" rx="16"/>${icon2}<text class="db-name" x="${l2.name.x}" y="${l2.cy}" dominant-baseline="central">${escapeXml(l2.name.text)}</text><rect class="engine-pill" x="${l2.pill.x}" y="${l2.pill.y}" width="${l2.pill.w}" height="${l2.pill.h}" rx="9"/><text class="engine-name" x="${l2.engine.x}" y="${l2.cy}" dominant-baseline="central" text-anchor="middle">${escapeXml(l2.engine.text)}</text>` + l2.facts.map(
+    (p) => `<rect class="db-fact-pill" x="${p.pill.x}" y="${p.pill.y}" width="${p.pill.w}" height="${p.pill.h}" rx="9"/><text class="db-fact" x="${p.x}" y="${l2.cy}" dominant-baseline="central" text-anchor="middle">${escapeXml(p.text)}</text>`
   ).join("") + "</g>";
 }
 var styleClass = (link2) => link2.kind !== VIEW_SOURCE && !isConfirmed(link2.kind, link2.review) ? " unconfirmed" : "";
@@ -176332,10 +176334,10 @@ function relationSvg(r, marks) {
   const { link: link2 } = r;
   const d = pathData(r.points);
   const markers = markersSvg(r);
-  const label = r.label ? `<g class="edge-label"><rect x="${r.label.x}" y="${r.label.y}" width="${r.label.w}" height="${r.label.h}" rx="3"/><text x="${r.label.cx}" y="${r.label.cy}" dominant-baseline="central" text-anchor="middle">${escapeXml2(r.label.text)}</text></g>` : "";
-  const via = link2.via ? ` data-via="${escapeXml2(link2.via)}"` : "";
-  const grouped = link2.group ? ` data-group="${escapeXml2(link2.group)}" data-tables="${json(link2.tables)}" data-label="${escapeXml2(groupLinkText(link2))}"` : "";
-  return `<g class="relation-group kind-${link2.kind} review-${link2.review}${styleClass(link2)}${linkDiffClass(marks, link2.id)}" data-id="${escapeXml2(link2.id)}" data-from="${escapeXml2(link2.from.node)}" data-to="${escapeXml2(link2.to.node)}" data-kind="${link2.kind}" data-review="${link2.review}"${via}${grouped}><title>${escapeXml2(titleText(marks, link2.id, link2.group ? groupLinkText(link2) : link2.via ? `${link2.id} (n-n via ${link2.via})` : link2.id, "links"))}</title><path class="relation" d="${d}"${link2.group ? ` style="stroke-width:${overviewStrokeWidth(link2.relations.length)}"` : ""}/>${markers}${label}</g>`;
+  const label = r.label ? `<g class="edge-label"><rect x="${r.label.x}" y="${r.label.y}" width="${r.label.w}" height="${r.label.h}" rx="3"/><text x="${r.label.cx}" y="${r.label.cy}" dominant-baseline="central" text-anchor="middle">${escapeXml(r.label.text)}</text></g>` : "";
+  const via = link2.via ? ` data-via="${escapeXml(link2.via)}"` : "";
+  const grouped = link2.group ? ` data-group="${escapeXml(link2.group)}" data-tables="${json(link2.tables)}" data-label="${escapeXml(groupLinkText(link2))}"` : "";
+  return `<g class="relation-group kind-${link2.kind} review-${link2.review}${styleClass(link2)}${linkDiffClass(marks, link2.id)}" data-id="${escapeXml(link2.id)}" data-from="${escapeXml(link2.from.node)}" data-to="${escapeXml(link2.to.node)}" data-kind="${link2.kind}" data-review="${link2.review}"${via}${grouped}><title>${escapeXml(titleText(marks, link2.id, link2.group ? groupLinkText(link2) : link2.via ? `${link2.id} (n-n via ${link2.via})` : link2.id, "links"))}</title><path class="relation" d="${d}"${link2.group ? ` style="stroke-width:${overviewStrokeWidth(link2.relations.length)}"` : ""}/>${markers}${label}</g>`;
 }
 function polyRoutesSvg(routes) {
   const byPoly = /* @__PURE__ */ new Map();
@@ -176344,7 +176346,7 @@ function polyRoutesSvg(routes) {
     byPoly.get(r.poly).push(r);
   }
   return [...byPoly].map(
-    ([poly, list2]) => `<g class="poly-routes" data-poly="${escapeXml2(poly)}" style="display:none">` + list2.map((r) => `<g class="poly-route${r.confirmed ? "" : " unconfirmed"}" data-target="${escapeXml2(r.target)}"><path class="relation" d="${pathData(r.points)}"/></g>`).join("") + "</g>"
+    ([poly, list2]) => `<g class="poly-routes" data-poly="${escapeXml(poly)}" style="display:none">` + list2.map((r) => `<g class="poly-route${r.confirmed ? "" : " unconfirmed"}" data-target="${escapeXml(r.target)}"><path class="relation" d="${pathData(r.points)}"/></g>`).join("") + "</g>"
   ).join("");
 }
 function hubRoutesSvg(routes) {
@@ -176354,14 +176356,14 @@ function hubRoutesSvg(routes) {
     byHub.get(r.link.to.node).push(r);
   }
   return [...byHub].sort(([a], [b]) => compareStrings(a, b)).map(
-    ([hub, list2]) => `<g class="hub-routes" data-hub="${escapeXml2(hub)}" style="display:none">` + list2.map(
-      (r) => `<g class="hub-route kind-${r.link.kind} review-${r.link.review}${styleClass(r.link)}" data-id="${escapeXml2(r.link.id)}" data-from="${escapeXml2(r.link.from.node)}" data-to="${escapeXml2(hub)}"><path class="relation" d="${pathData(r.points)}"/>${markersSvg(r)}</g>`
+    ([hub, list2]) => `<g class="hub-routes" data-hub="${escapeXml(hub)}" style="display:none">` + list2.map(
+      (r) => `<g class="hub-route kind-${r.link.kind} review-${r.link.review}${styleClass(r.link)}" data-id="${escapeXml(r.link.id)}" data-from="${escapeXml(r.link.from.node)}" data-to="${escapeXml(hub)}"><path class="relation" d="${pathData(r.points)}"/>${markersSvg(r)}</g>`
     ).join("") + "</g>"
   ).join("");
 }
 function viewGroup(name, { x, y, w, h }, visible, content) {
   const hidden = visible ? "" : ' style="display:none"';
-  return [`<g class="view" data-view="${escapeXml2(name)}" data-bounds="${x} ${y} ${w} ${h}"${hidden}>`, `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="#ffffff"/>`, ...content, "</g>"].join("\n");
+  return [`<g class="view" data-view="${escapeXml(name)}" data-bounds="${x} ${y} ${w} ${h}"${hidden}>`, `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="#ffffff"/>`, ...content, "</g>"].join("\n");
 }
 function viewSvg(scene, colorOf, visible, marks, banner, warnings) {
   const nodes = scene.nodes.map((n) => {
@@ -176545,7 +176547,7 @@ function dashPattern(link2) {
 var ER_ARROWS = { one: "ERmandOne", zeroOrOne: "ERzeroToOne", many: "ERoneToMany", zeroOrMany: "ERzeroToMany", none: "none" };
 var FONT_SOURCE = `https://fonts.googleapis.com/css2?family=${FONT_FAMILY}:wght@400;700`;
 var FONT_STYLE = { fontFamily: FONT_FAMILY, fontSource: encodeURIComponent(FONT_SOURCE) };
-var escapeXml3 = (text2) => String(text2).replace(/[&<>"\n]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "\n": "&#10;" })[c]);
+var escapeAttribute = (text2) => escapeXml(text2).replace(/\n/g, "&#10;");
 var escapeHtml = (text2) => String(text2).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
 var style = (entries) => Object.entries(entries).filter(([, v]) => v !== null && v !== void 0).map(([k, v]) => `${k}=${v}`).join(";");
 function pageName(name) {
@@ -176556,14 +176558,14 @@ function pageName(name) {
 }
 function cell({ id, value: value2 = "", data = {}, link: link2, styles, parent, vertex = true, geometry, source, target }) {
   const kind = vertex ? 'vertex="1"' : 'edge="1"';
-  const ends = `${source ? ` source="${escapeXml3(source)}"` : ""}${target ? ` target="${escapeXml3(target)}"` : ""}`;
+  const ends = `${source ? ` source="${escapeAttribute(source)}"` : ""}${target ? ` target="${escapeAttribute(target)}"` : ""}`;
   const all = value2 === "" ? styles : { ...styles, ...FONT_STYLE };
-  const inner = `<mxCell style="${escapeXml3(style(all))}" ${kind} parent="${escapeXml3(parent)}"${ends}>${geometry}</mxCell>`;
+  const inner = `<mxCell style="${escapeAttribute(style(all))}" ${kind} parent="${escapeAttribute(parent)}"${ends}>${geometry}</mxCell>`;
   const props = Object.entries({ link: link2, ...data }).filter(([, v]) => v !== void 0 && v !== null && v !== "");
   if (props.length > 0) {
-    return `<UserObject id="${escapeXml3(id)}" label="${escapeXml3(value2)}"${props.map(([k, v]) => ` ${k}="${escapeXml3(v)}"`).join("")}>${inner}</UserObject>`;
+    return `<UserObject id="${escapeAttribute(id)}" label="${escapeAttribute(value2)}"${props.map(([k, v]) => ` ${k}="${escapeAttribute(v)}"`).join("")}>${inner}</UserObject>`;
   }
-  return inner.replace("<mxCell ", `<mxCell id="${escapeXml3(id)}" value="${escapeXml3(value2)}" `);
+  return inner.replace("<mxCell ", `<mxCell id="${escapeAttribute(id)}" value="${escapeAttribute(value2)}" `);
 }
 var box = (x, y, w, h) => `<mxGeometry x="${x}" y="${y}" width="${w}" height="${h}" as="geometry"/>`;
 var ICON_SIZE = 12;
@@ -176986,7 +176988,7 @@ function edgeCell(r, byId, heights, origin, { id = edgeId(r.link), parent = "1",
 var HUB_LAYER = { id: "layer-hub-links", name: "Hub links" };
 var POLY_LAYER = { id: "layer-polymorphic-targets", name: "Polymorphic targets" };
 function hiddenLayers(scene, byId, heights, origin) {
-  const layer = ({ id, name }, edges) => edges.length === 0 ? [] : [`<mxCell id="${id}" value="${escapeXml3(name)}" parent="0" visible="0"/>`, ...edges];
+  const layer = ({ id, name }, edges) => edges.length === 0 ? [] : [`<mxCell id="${id}" value="${escapeAttribute(name)}" parent="0" visible="0"/>`, ...edges];
   const hub = scene.hubRoutes.map((r) => edgeCell(r, byId, heights, origin, { id: `hub|${r.link.id}`, parent: HUB_LAYER.id }));
   const poly = scene.polyRoutes.map((r) => {
     const t = byId.get(r.target);
@@ -177032,7 +177034,7 @@ function pageXml(scene, pageCtx) {
   const layers = hiddenLayers(scene, byId, heights, origin);
   const { w, h } = scene.bounds;
   return [
-    `  <diagram id="${escapeXml3(scene.name)}" name="${escapeXml3(pageName(scene.name))}">`,
+    `  <diagram id="${escapeAttribute(scene.name)}" name="${escapeAttribute(pageName(scene.name))}">`,
     `    <mxGraphModel dx="0" dy="0" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="${w}" pageHeight="${h}" math="0" shadow="0">`,
     "      <root>",
     '        <mxCell id="0"/>',

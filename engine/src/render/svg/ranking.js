@@ -1,5 +1,6 @@
 import { compareStrings } from '../../model/load.js';
 import { measureText, truncate } from '../../text/measure.js';
+import { escapeXml } from '../xml.js';
 
 // The ranking view: the tables relations point at, ranked, one section per
 // database. Each table is a row with its full name and a bar whose length and
@@ -37,7 +38,6 @@ export const BAR_COLOURS = [
   [130, 15, 25],
 ];
 
-const escapeXml = (text) => text.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 const databaseOf = (id) => id.split('.')[0];
 const tableName = (id) => id.split('.').at(-1);
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;

@@ -16,6 +16,7 @@ import { PALETTE } from '../../palette.js';
 import { RANKING_STYLE, rankingSvg, rankingTables } from './ranking.js';
 import { referenceCounts } from '../../model/centrality.js';
 import { ICON_PAINT, UNCONFIRMED_DASH, endMarkers, enumIconSvg, indexIconSvg, isConfirmed, keyIconSvg, linkIconSvg, markerSvg, overviewStrokeWidth, starIconSvg, tableIconSvg } from './markers.js';
+import { escapeXml } from '../xml.js';
 import viewerBundle from './viewer-bundle.json' with { type: 'json' };
 
 const CANVAS_MARGIN = 40;
@@ -538,10 +539,6 @@ ${RANKING_STYLE}
 .db-fact { font-size: ${DB_FACT_FONT.size}px; font-weight: ${DB_FACT_FONT.weight}; fill: #3d4a5e; }
 ${DIFF_STYLE}
 ${VIEWER_STYLE}`;
-
-function escapeXml(text) {
-  return text.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
-}
 
 const camel = (name) => name.replace(/_(.)/g, (_, c) => c.toUpperCase());
 
