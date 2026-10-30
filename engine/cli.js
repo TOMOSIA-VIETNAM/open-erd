@@ -134,7 +134,7 @@ async function loadModel(workspace) {
 }
 
 // Returns the parsed layout, or undefined when the workspace has none yet.
-async function readLayout(workspace) {
+async function readLayout(workspace, options) {
   let text;
   try {
     text = await readFile(join(workspace, LAYOUT_FILE), 'utf8');
@@ -142,7 +142,7 @@ async function readLayout(workspace) {
     if (e.code === 'ENOENT') return undefined;
     throw e;
   }
-  return parseLayout(text);
+  return parseLayout(text, options);
 }
 
 // Returns the parsed lock file, `null` when it is invalid (errors printed),
@@ -346,7 +346,7 @@ async function runLayout({ workspace, relayout = [] }) {
   if (!model) return 1;
   // Repeatable: a domain name may itself contain a comma.
   const relayoutViews = relayout.map((v) => v.trim()).filter(Boolean);
-  const { layout, report, offCentre } = await computeLayout(model, await readLayout(workspace), { relayout: relayoutViews });
+  const { layout, report, offCentre } = await computeLayout(model, await readLayout(workspace, { snap: true }), { relayout: relayoutViews });
   await writeFile(join(workspace, LAYOUT_FILE), serializeLayout(layout));
   console.log(formatReport(report));
   // Kept positions win over centring (stability rules); say how to opt in.
@@ -453,7 +453,7 @@ async function readSnapshot(workspace, ref) {
   for (const e of errors) console.error(`${ref}: ${formatError(e)}`);
   if (!model) return null;
   // A snapshot without layout.json is laid out from scratch.
-  return { model, layout: layoutText === undefined ? undefined : parseLayout(layoutText) };
+  return { model, layout: layoutText === undefined ? undefined : parseLayout(layoutText, { snap: true }) };
 }
 
 async function runDiff({ workspace, from, to, 'to-workspace': toWorkspace, profile, format = 'text' }) {

@@ -173849,10 +173849,11 @@ function internalLinks(name, read) {
 var LAYOUT_FILE = "layout.json";
 var LAYOUT_SCHEMA_VERSION = 1;
 var NODE_FIELDS = ["x", "y", "w", "h"];
+var GRID_FIELDS = ["x", "y", "w"];
 function isObject4(v) {
   return v !== null && typeof v === "object" && !Array.isArray(v);
 }
-function parseLayout(text2) {
+function parseLayout(text2, { snap = false } = {}) {
   let data;
   try {
     data = JSON.parse(text2);
@@ -173878,6 +173879,11 @@ function parseLayout(text2) {
         if (!isObject4(node)) fail(path, "must be an object");
         for (const field of NODE_FIELDS) {
           if (!Number.isInteger(node[field])) fail(`${path}.${field}`, "must be an integer");
+        }
+        for (const field of GRID_FIELDS) {
+          if (node[field] % GRID === 0) continue;
+          if (!snap) fail(`${path}.${field}`, `must be a multiple of ${GRID}; run layout to snap it`);
+          node[field] = roundToGrid(node[field]);
         }
         if (node.w <= 0 || node.h <= 0) fail(path, "w and h must be positive");
       }
@@ -177138,7 +177144,7 @@ async function loadModel(workspace) {
   for (const e of errors) console.error(formatError(e));
   return model;
 }
-async function readLayout(workspace) {
+async function readLayout(workspace, options) {
   let text2;
   try {
     text2 = await readFile(join(workspace, LAYOUT_FILE), "utf8");
@@ -177146,7 +177152,7 @@ async function readLayout(workspace) {
     if (e.code === "ENOENT") return void 0;
     throw e;
   }
-  return parseLayout(text2);
+  return parseLayout(text2, options);
 }
 async function readLocked(workspace) {
   let text2;
@@ -177310,7 +177316,7 @@ async function runLayout({ workspace, relayout = [] }) {
   const model = await loadModel(workspace);
   if (!model) return 1;
   const relayoutViews = relayout.map((v) => v.trim()).filter(Boolean);
-  const { layout, report, offCentre: offCentre2 } = await computeLayout(model, await readLayout(workspace), { relayout: relayoutViews });
+  const { layout, report, offCentre: offCentre2 } = await computeLayout(model, await readLayout(workspace, { snap: true }), { relayout: relayoutViews });
   await writeFile(join(workspace, LAYOUT_FILE), serializeLayout(layout));
   console.log(formatReport(report));
   const views = Object.keys(offCentre2).sort(compareStrings);
@@ -177396,7 +177402,7 @@ async function readSnapshot(workspace, ref) {
   const { model, errors } = parseWorkspace(files);
   for (const e of errors) console.error(`${ref}: ${formatError(e)}`);
   if (!model) return null;
-  return { model, layout: layoutText === void 0 ? void 0 : parseLayout(layoutText) };
+  return { model, layout: layoutText === void 0 ? void 0 : parseLayout(layoutText, { snap: true }) };
 }
 async function runDiff({ workspace, from, to, "to-workspace": toWorkspace, profile, format = "text" }) {
   if (!from || !to && !toWorkspace) {

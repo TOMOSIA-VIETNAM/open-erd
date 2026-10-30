@@ -1,4 +1,5 @@
 import { compareStrings } from '../model/load.js';
+import { GRID, roundToGrid } from './table-box.js';
 
 // layout.json shape:
 // {
@@ -32,13 +33,20 @@ import { compareStrings } from '../model/load.js';
 export const LAYOUT_FILE = 'layout.json';
 export const LAYOUT_SCHEMA_VERSION = 1;
 const NODE_FIELDS = ['x', 'y', 'w', 'h'];
+// The router steps on the grid, so a position or width off it would never
+// find a route; `h` is the height of the table's own rows and is free.
+const GRID_FIELDS = ['x', 'y', 'w'];
 
 function isObject(v) {
   return v !== null && typeof v === 'object' && !Array.isArray(v);
 }
 
-/** Parses layout.json text; throws an Error naming the first invalid path. */
-export function parseLayout(text) {
+/**
+ * Parses layout.json text; throws an Error naming the first invalid path.
+ * A node off the grid is an error, unless `snap` moves it to the nearest
+ * grid line (what `layout` does to repair a hand-edited file).
+ */
+export function parseLayout(text, { snap = false } = {}) {
   let data;
   try {
     data = JSON.parse(text);
@@ -64,6 +72,11 @@ export function parseLayout(text) {
         if (!isObject(node)) fail(path, 'must be an object');
         for (const field of NODE_FIELDS) {
           if (!Number.isInteger(node[field])) fail(`${path}.${field}`, 'must be an integer');
+        }
+        for (const field of GRID_FIELDS) {
+          if (node[field] % GRID === 0) continue;
+          if (!snap) fail(`${path}.${field}`, `must be a multiple of ${GRID}; run layout to snap it`);
+          node[field] = roundToGrid(node[field]);
         }
         if (node.w <= 0 || node.h <= 0) fail(path, 'w and h must be positive');
       }
