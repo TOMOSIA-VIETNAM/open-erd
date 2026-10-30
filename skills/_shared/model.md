@@ -121,7 +121,13 @@ them while that table is selected.
 sources:
   - name: billing-api
     path: /absolute/path/to/billing-api
+approved_scripts:             # extract scripts the user approved, by SHA-256 of the file
+  extract/billing-api.mjs: 3f2c...e91a
 ```
+
+`approved_scripts` is written by the skills after the user approves a script
+(see `rules.md`, "Extract scripts: approval"); a script whose hash differs
+is shown and approved again.
 
 ## `model/<db>.yaml`
 

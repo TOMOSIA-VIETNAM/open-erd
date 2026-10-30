@@ -172,7 +172,7 @@ Choose how much runs with `verify` in `open-erd.yaml`:
 
 ## Safety
 
-- Nothing is written to your source repositories; extract scripts only read files and never boot your app.
+- Nothing is written to your source repositories; extract scripts only read files and never boot your app. A script runs only after you approve it: the hash of what you approved is kept in `open-erd.local.yaml`, so a changed script asks again. Skills never open `.env*`, credentials files or keys, and read `config/database.yml` and Django `settings.py` by key lines only.
 - Database access happens only when you approve it each time, read-only, metadata only; credentials are never stored.
 - The workspace is never pushed unless you ask.
 

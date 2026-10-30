@@ -15,7 +15,7 @@ show the list to the user. Look for:
   `shared/`, `lib/**/models`, `config.autoload_paths` / `eager_load_paths`
   additions, Mongoid documents (`include Mongoid::Document`) next to Active
   Record models, several `db/*schema.rb` / `db/*structure.sql` (multiple
-  databases in `config/database.yml`).
+  databases in `config/database.yml`, read as key lines only: rules.md, "Safety").
 - Git submodules (`.gitmodules`) and vendored copies of another repo.
 - JavaScript / TypeScript: `pnpm-workspace.yaml`, `workspaces` in
   `package.json`, `nx.json` / `turbo.json` projects, `packages/*/`, `apps/*/`,
@@ -92,7 +92,7 @@ Script rules:
 |---|---|
 | `Gemfile` + `db/schema.rb` or `db/structure.sql` | Rails |
 | `composer.json` with `laravel/framework`, `database/migrations/` | Laravel |
-| `manage.py`, `*/models.py`, `settings.py` | Django |
+| `manage.py`, `*/models.py`, `settings.py` (found by name; opened for key lines only, rules.md "Safety") | Django |
 | `prisma/schema.prisma` (or any `*.prisma`) | Prisma |
 | `package.json` with `typeorm`, `@Entity(` in `*.ts` | TypeORM |
 | `package.json` with `sequelize`, `migrations/*.js` | Sequelize |
@@ -153,7 +153,7 @@ later migration remove one. `->unique()` on one column is the column's
 **Django** — `*/models.py`. Table = `<app_label>_<model lowercased>` unless
 `Meta.db_table`. `ForeignKey` → column `<field>_id` unless `db_column`;
 `OneToOneField` is `1-1`; `"self"` is a self-reference; `settings.AUTH_USER_MODEL`
-resolves through `settings.py`. `db_constraint=False` is `declared`, otherwise
+resolves through the `AUTH_USER_MODEL` line of `settings.py` (key lines only, rules.md "Safety"). `db_constraint=False` is `declared`, otherwise
 `db_fk`. `ManyToManyField` without `through` creates
 `<app>_<model>_<field>` that exists in no file; with `through=` the join table
 is that model. `GenericForeignKey` targets come from `GenericRelation` fields

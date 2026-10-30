@@ -143,6 +143,16 @@ Never guess a default location, and never create a workspace outside
   `npm install`, …). Extract scripts read static files only.
 - Never write credentials, tokens, connection strings or hostnames of a
   database into the workspace.
+- Never open `.env*`, `config/credentials*`, `*.pem` or `*.key` in a source
+  repository, by hand or from an extract script. `config/database.yml` and a
+  Django `settings.py` are read through their key lines only:
+
+  ```bash
+  grep -nE '^\s*\w+:\s*$|database:|migrations_paths|ENGINE|NAME' <file>
+  ```
+
+  and a line holding `password`, `url`, `PASSWORD` or `SECRET_KEY` is never
+  read, even when it matches.
 - Database access only through the user's own CLI or MCP, only after asking
   for that specific read this time, read-only metadata only. Never read data
   rows.
@@ -154,18 +164,39 @@ Never guess a default location, and never create a workspace outside
 
 ## Extract scripts: approval
 
-An extract script (`<ws>/extract/<source>.mjs`) may run without asking only
-when it is tracked in the workspace git and unchanged since the last commit:
+An extract script (`<ws>/extract/<source>.mjs`) runs code on the user's
+machine, so every run starts with the token check, however the script got
+there:
+
+- It imports nothing but `node:fs`, `node:fs/promises` and `node:path`.
+  Every read API of `node:fs` is fine, in sync, callback and promise form
+  (`readFile`, `readdir`, `stat`, `lstat`, `exists`, `realpath`, `opendir`,
+  `access`, and their `Sync` forms).
+- It contains none of `import(`, `require(`, `eval`, `Function(`,
+  `process.binding`, `child_process`, `http`, `https`, `net`, `fetch(`, nor a
+  write API of `node:fs`: `writeFile`, `appendFile`, `open` with a write
+  flag, `createWriteStream`, `write`, `cp`, `copyFile`, `truncate`, `rm`,
+  `rmdir`, `unlink`, `rename`, `mkdir`, `symlink`, `link`, `chmod`, `chown`,
+  `utimes` (each also with `Sync`).
+
+A script that fails the check is fixed first; it never runs.
+
+It may then run without asking only when its SHA-256 equals the hash the
+user approved for that file, kept in `approved_scripts` of
+`<ws>/open-erd.local.yaml` (per person, never committed; format in
+`model.md`):
 
 ```bash
-git -C <ws> ls-files --error-unmatch extract/<source>.mjs && git -C <ws> diff --quiet HEAD -- extract/<source>.mjs
+node -e "console.log(require('node:crypto').createHash('sha256').update(require('node:fs').readFileSync(process.argv[1])).digest('hex'))" <ws>/extract/<source>.mjs
 ```
 
-Otherwise (new or edited) show the user the full script, say what it reads
-and that it writes nothing, and ask permission before running it. Before
-asking, check it imports nothing but `node:fs` and `node:path` and contains no
-`child_process`, `http`, `https`, `net`, `fetch(`, `writeFile`, `appendFile`,
-`mkdir`, `rm(`, `rmSync`, `unlink` or `rename(`.
+Otherwise (new, edited, or no hash stored yet) show the user the full
+script, say what it reads and that it writes nothing, and ask permission
+before running it. After a yes, store the hash it had when shown under
+`extract/<source>.mjs` in `approved_scripts`, once `git -C <ws> check-ignore -q
+open-erd.local.yaml` confirms the file is ignored; when it is not, store
+nothing and ask again next time. A workspace with no stored hashes asks once
+per script and remembers from then on.
 
 Before running, show each source's branch and whether it has uncommitted
 changes (`git -C <source path> branch --show-current`, `git -C <source path>

@@ -31,8 +31,8 @@ No `open-erd.yaml` in the workspace → offer `/open-erd:init`.
 
 ## 2. Re-extract
 
-For each source, run its script (approval rule in rules.md: an unchanged,
-committed script runs without asking; a new or edited one is shown first).
+For each source, run its script (approval rule in rules.md: a script whose hash the
+user approved runs without asking; a new or edited one is shown first).
 Then list what the scripts now read differently from the last commit:
 
 ```bash
