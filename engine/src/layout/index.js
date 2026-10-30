@@ -5,15 +5,25 @@ import { buildDiagram } from './diagram.js';
 import { layoutGroups, layoutTables } from './elk-layout.js';
 import { LAYOUT_FILE, LAYOUT_SCHEMA_VERSION } from './layout-file.js';
 import { carryRenames } from './renames.js';
-import { insertNextTo, settle } from './stability.js';
+import { MARGIN, STUB } from './router.js';
+import { axisOrder, insertNextTo, settle } from './stability.js';
 import { attachOffset, ceilToGrid } from './table-box.js';
 import { OVERVIEW, STUB_SLOT, leavesOf, viewNames, viewTree } from './views.js';
 
 const sameSize = (a, b) => a.w === b.w && a.h === b.h;
 
 // Boxes taken from different sources (a hand-edited layout.json, or the diff
-// merging two snapshots) may overlap; such a group must go through settle.
-const anyOverlap = (boxes) => boxes.some((a, i) => boxes.slice(i + 1).some((b) => overlaps(a, b)));
+// merging two snapshots) may overlap, or sit side by side too close for the
+// router to leave either box sideways (a line starts STUB px out and must stay
+// MARGIN px off every other box); such a group must go through settle.
+function crowded(a, b) {
+  const [ox, oy] = [axisOrder(a, b, 'x'), axisOrder(a, b, 'y')];
+  if (oy !== 0) return false;
+  if (ox === 0) return true;
+  const [left, right] = ox < 0 ? [a, b] : [b, a];
+  return right.x - (left.x + left.w) < STUB + MARGIN;
+}
+const anyCrowded = (boxes) => boxes.some((a, i) => boxes.slice(i + 1).some((b) => crowded(a, b)));
 
 // The children of `group` sharing the most relations with `id` (all of them
 // when it has none), in id order. An overview line counts its relations.
@@ -271,7 +281,7 @@ async function arrange(node, old, links, boxes) {
     .filter((l) => owner.has(l.from.node) && owner.has(l.to.node))
     .map((l) => ({ from: owner.get(l.from.node), to: owner.get(l.to.node), weight: l.count ?? 1 }));
 
-  const unchanged = kept.length > 0 && fresh.length === 0 && kept.every((r) => r.unchanged) && !anyOverlap(kept.map((r) => r.ref));
+  const unchanged = kept.length > 0 && fresh.length === 0 && kept.every((r) => r.unchanged) && !anyCrowded(kept.map((r) => r.ref));
   let positions;
   if (kept.length === 0) {
     const children = results.map((r) => ({ id: r.id, w: r.extent.w, h: r.extent.h, origin: r.origin, extent: r.extent, leaves: r.leaves }));

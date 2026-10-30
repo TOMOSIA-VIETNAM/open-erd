@@ -201,3 +201,22 @@ test('a previous layout with overlapping boxes is separated, not kept as is', as
   assert.ok(boxes.every((a, i) => boxes.slice(i + 1).every((b) => !hit(a, b))));
   assert.doesNotThrow(() => renderSvg(model, fixed));
 });
+
+test('a previous layout squeezing a box between two neighbours is spread, so lines can leave it', async () => {
+  const model = await loadShop();
+  const { layout } = await computeLayout(model);
+  const sales = layout.views.all.clusters['shop/Sales'];
+  const [left, middle, right] = Object.keys(sales);
+  // No overlap, but 10px on either side of the middle box: what merging two
+  // snapshots leaves when one side was laid out again from scratch.
+  const squeezed = structuredClone(layout);
+  const m = sales[middle];
+  const group = squeezed.views.all.clusters['shop/Sales'];
+  group[left] = { ...sales[left], x: m.x - sales[left].w - 10, y: m.y };
+  group[right] = { ...sales[right], x: m.x + m.w + 10, y: m.y };
+  const { layout: fixed } = await computeLayout(model, squeezed);
+  const placed = fixed.views.all.clusters['shop/Sales'];
+  assert.ok(placed[middle].x - (placed[left].x + placed[left].w) >= 50);
+  assert.ok(placed[right].x - (placed[middle].x + placed[middle].w) >= 50);
+  assert.doesNotThrow(() => renderSvg(model, fixed));
+});
