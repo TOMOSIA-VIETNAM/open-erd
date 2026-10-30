@@ -108,8 +108,9 @@ file (`model.md`, "note on a domain"), learned from how the code uses its
 tables. In the same message propose
 `collapse_join_tables` and hubs: `hub.columns` for audit and scoping columns
 first, `hub.tables` only for cross-cutting tables such as `users` or
-`tenants`, never a business table a domain is built around (`model.md`,
-`open-erd.yaml`), each with its reason.
+`tenants`, never a business table a domain is built around, and the
+polymorphic associations to turn into badges (`model.md`, `open-erd.yaml`),
+each with its reason.
 
 ## 6. Validate, layout, render
 

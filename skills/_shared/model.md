@@ -115,6 +115,21 @@ Propose each hub with the reason it is cross-cutting; do not decide alone.
 The ERD still lists every hub relation in the hub table's panel and draws
 them while that table is selected.
 
+`hub.columns` covers polymorphic associations too: one whose `id_column` is
+listed (add both `<name>_type` and `<name>_id`) is always a badge on its
+owner, `«created_by» → users | admins`, never a node or a line, with no
+exception. Recommend it when the same association name repeats on many tables
+across several domains (audit `created_by`/`updated_by`, `owner`, `tenant`);
+keep the node for a business association on a few tables (`commentable`,
+`attachable`, `notifiable`). Recommend and ask; the user decides. Show a
+before/after mock built from one real table of the project (its real name and
+columns), since a new user cannot picture it:
+
+```
+Without hub: orders ──○< «created_by» (users | admins)   one box and one line, on each of N tables
+With hub:    orders box, footer line: «created_by» → users | admins
+```
+
 ## `open-erd.local.yaml` (never committed, never credentials)
 
 ```yaml

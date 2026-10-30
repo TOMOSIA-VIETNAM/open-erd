@@ -25,8 +25,9 @@ export const MISSING_KINDS = {
  * `{ kind, table, column?, typeColumn?, message }`:
  *   - kind `column`: a column of a table (not a view) named like a
  *     reference (see REFERENCE_NAME)
- *     that is no end of any relation (hub relations included) and no column
- *     of any polymorphic association;
+ *     that is no end of any relation (hub relations included), no column
+ *     of any polymorphic association and not listed in `hub.columns` (a hub
+ *     column is declared on purpose, whether or not a fact uses it yet);
  *   - kind `polymorphic`: the same, with a `<base>_type` column beside it
  *     that nothing covers either, so it looks like an undeclared polymorphic
  *     association; reported once, on the id column;
@@ -41,6 +42,7 @@ export function missingRelations(model) {
   const ignore = model.config?.ignore_missing ?? {};
   const ignoredColumns = new Set(ignore.columns ?? []);
   const ignoredTables = new Set(ignore.tables ?? []);
+  const hubColumns = new Set(model.config?.hub?.columns ?? []);
   const covered = new Map(model.tables.map((t) => [t.id, new Set()]));
   const linked = new Set();
   const cover = (table, columns) => {
@@ -74,7 +76,7 @@ export function missingRelations(model) {
     // extension table) still points somewhere, so keys are checked too.
     for (const path of paths) {
       const name = path.split('.').pop();
-      if (!REFERENCE_NAME.test(name) || covered.get(t.id).has(path) || ignoredColumns.has(`${t.id}.${path}`)) continue;
+      if (!REFERENCE_NAME.test(name) || covered.get(t.id).has(path) || hubColumns.has(path) || ignoredColumns.has(`${t.id}.${path}`)) continue;
       const typePath = path.slice(0, path.length - name.length) + typeColumnOf(name);
       if (typePath !== path && paths.has(typePath) && !covered.get(t.id).has(typePath)) {
         warnings.push({

@@ -104,7 +104,8 @@ const TAGS = { view: '«view»', materialized_view: '«materialized view»' };
  *               title row and its own (indented, depth 1) column rows;
  *   facts       one muted line per special pattern (STI, partition, ...),
  *               each as parts { text, code } (see tableFacts);
- *   badges      one line per hub target.
+ *   badges      one line per hub target (`→ users ×2`), then one per hub
+ *               association (`«created_by» → users | admins`).
  * Facts and badges sit below one separator. Layout uses `w`/`h`; the
  * renderer uses the same object, so the box always fits the text it draws.
  * Offsets are relative to the box's top-left corner. Every row is ROW_HEIGHT
@@ -131,9 +132,12 @@ export function tableBox(table, badges = [], facts = [], { fk = new Set(), index
   }
   const factStrings = facts.map((parts) => parts.map((p) => p.text).join(''));
   for (const f of factStrings) natural = Math.max(natural, measureText(f, FACT_FONT) + 2 * PADDING_X);
-  const badgeText = (b) => `${b.target.split('.')[2]} ×${b.count}`;
+  const badgeText = (b) => (b.association ? b.targets.map((t) => t.split('.')[2]).join(' | ') : `${b.target.split('.')[2]} ×${b.count}`);
+  const badgeName = (b) => (b.association ? `«${b.association}»` : '');
+  // A hub association's name goes before the arrow, its targets after it.
+  const nameRoom = (b) => (b.association ? measureText(badgeName(b), BADGE_FONT) + BADGE_ARROW_GAP : 0);
   for (const b of badges) {
-    natural = Math.max(natural, BADGE_ARROW_WIDTH + BADGE_ARROW_GAP + measureText(badgeText(b), BADGE_FONT) + 2 * PADDING_X);
+    natural = Math.max(natural, nameRoom(b) + BADGE_ARROW_WIDTH + BADGE_ARROW_GAP + measureText(badgeText(b), BADGE_FONT) + 2 * PADDING_X);
   }
   const w = Math.min(MAX_WIDTH, ceilToGrid(Math.max(MIN_WIDTH, natural)));
   const inner = w - 2 * PADDING_X;
@@ -169,12 +173,20 @@ export function tableBox(table, badges = [], facts = [], { fk = new Set(), index
   const footerTop = columnsEnd + (footer ? BOTTOM_PADDING / 2 : 0);
   const factRows = facts.map((parts, i) => ({ text: fit(factStrings[i], inner, FACT_FONT), parts, centerY: footerTop + ROW_HEIGHT * i + ROW_HEIGHT / 2 }));
   const badgeTop = footerTop + ROW_HEIGHT * facts.length;
-  const badgeRows = badges.map((b, i) => ({
-    ...b,
-    label: fit(badgeText(b), inner - BADGE_ARROW_WIDTH - BADGE_ARROW_GAP, BADGE_FONT),
-    labelX: PADDING_X + BADGE_ARROW_WIDTH + BADGE_ARROW_GAP,
-    centerY: badgeTop + ROW_HEIGHT * i + ROW_HEIGHT / 2,
-  }));
+  const badgeRows = badges.map((b, i) => {
+    // The name keeps at most half the line; the targets are cut first.
+    const name = b.association ? fit(badgeName(b), inner / 2, BADGE_FONT) : null;
+    const arrowX = PADDING_X + (name ? name.width + BADGE_ARROW_GAP : 0);
+    const labelX = arrowX + BADGE_ARROW_WIDTH + BADGE_ARROW_GAP;
+    return {
+      ...b,
+      ...(name ? { name } : {}),
+      arrowX,
+      label: fit(badgeText(b), inner - (labelX - PADDING_X), BADGE_FONT),
+      labelX,
+      centerY: badgeTop + ROW_HEIGHT * i + ROW_HEIGHT / 2,
+    };
+  });
   return {
     kind: 'table',
     w,
