@@ -172687,7 +172687,10 @@ function tableBox(table2, badges = [], facts = [], { fk = /* @__PURE__ */ new Se
   }
   const factStrings = facts.map((parts) => parts.map((p) => p.text).join(""));
   for (const f of factStrings) natural = Math.max(natural, measureText(f, FACT_FONT) + 2 * PADDING_X);
-  const badgeText = (b) => b.association ? b.targets.map((t) => t.split(".")[2]).join(" | ") : `${b.target.split(".")[2]} \xD7${b.count}`;
+  const badgeText = (b) => {
+    if (!b.association) return `${b.target.split(".")[2]} \xD7${b.count}`;
+    return b.targets.length === 1 ? b.targets[0].split(".")[2] : `${b.targets.length} tables`;
+  };
   const badgeName = (b) => b.association ? `\xAB${b.association}\xBB` : "";
   const nameRoom = (b) => b.association ? measureText(badgeName(b), BADGE_FONT) + BADGE_ARROW_GAP : 0;
   for (const b of badges) {

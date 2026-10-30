@@ -117,7 +117,7 @@ them while that table is selected.
 
 `hub.columns` covers polymorphic associations too: one whose `id_column` is
 listed (add both `<name>_type` and `<name>_id`) is always a badge on its
-owner, `«created_by» → users | admins`, never a node or a line, with no
+owner, `«created_by» → 2 tables` (hover lists them), never a node or a line, with no
 exception. Recommend it when the same association name repeats on many tables
 across several domains (audit `created_by`/`updated_by`, `owner`, `tenant`);
 keep the node for a business association on a few tables (`commentable`,
@@ -127,7 +127,7 @@ columns), since a new user cannot picture it:
 
 ```
 Without hub: orders ──○< «created_by» (users | admins)   one box and one line, on each of N tables
-With hub:    orders box, footer line: «created_by» → users | admins
+With hub:    orders box, footer line: «created_by» → 2 tables  (hover lists users, admins)
 ```
 
 ## `open-erd.local.yaml` (never committed, never credentials)

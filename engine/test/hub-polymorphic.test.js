@@ -74,23 +74,27 @@ test('two hub associations on one table are two distinct badge lines naming each
   const box = diagram.nodes.get('shop._.products').box;
   const lines = box.badges.map((b) => `${b.name ? `${b.name.text} → ` : '→ '}${b.label.text}`);
   // The plain hub relation badge comes first, unchanged.
-  assert.deepEqual(lines, ['→ users ×2', '«edited_by» → organizations | users', '«owner» → organizations | users']);
+  assert.deepEqual(lines, ['→ users ×2', '«edited_by» → 2 tables', '«owner» → 2 tables']);
   assert.equal(new Set(box.badges.map((b) => b.centerY)).size, 3);
   for (const b of box.badges) assert.ok(b.labelX + b.label.width <= box.w, `${b.label.text} overflows`);
   const svg = renderSvg(model, (await computeLayout(model)).layout);
   assert.match(svg, /<g class="hub-badge" data-association="edited_by" data-targets="\[&quot;auth\.public\.organizations&quot;,&quot;auth\.public\.users&quot;\]" data-columns="\[&quot;edited_by_type&quot;,&quot;edited_by_id&quot;\]"><title>«edited_by» \(edited_by_type \/ edited_by_id\) → auth\.public\.organizations \| auth\.public\.users<\/title>/);
 });
 
-test('a long target list is cut to the box width, the association name kept', async () => {
+test('several targets are counted, one is named, so the box does not widen with them', async () => {
   const multi = await loadMulti();
   const many = multi.tables.filter((t) => t.id.startsWith('shop.')).map((t) => t.id);
-  const model = audited(multi, { owners: ['shop._.orders'], names: ['edited_by'] });
-  const wide = normalizeModel({ ...model, polymorphic: model.polymorphic.map((a) => (a.name === 'edited_by' ? { ...a, targets: many } : a)) });
-  const box = buildDiagram(wide).nodes.get('shop._.orders').box;
-  const badge = box.badges.find((b) => b.association === 'edited_by');
-  assert.equal(badge.name.text, '«edited_by»');
-  assert.ok(badge.label.truncated);
-  assert.ok(badge.labelX + badge.label.width <= box.w - 12);
+  const model = audited(multi, { owners: ['shop._.orders'], names: ['edited_by', 'owner'] });
+  const changed = normalizeModel({
+    ...model,
+    polymorphic: model.polymorphic.map((a) => (a.name === 'edited_by' ? { ...a, targets: many } : a.name === 'owner' ? { ...a, targets: [a.targets[0]] } : a)),
+  });
+  const before = buildDiagram(model).nodes.get('shop._.orders').box;
+  const box = buildDiagram(changed).nodes.get('shop._.orders').box;
+  const text = (name) => box.badges.find((b) => b.association === name).label.text;
+  assert.equal(text('edited_by'), `${many.length} tables`);
+  assert.equal(text('owner'), changed.polymorphic.find((a) => a.name === 'owner').targets[0].split('.')[2]);
+  assert.ok(box.w <= before.w);
 });
 
 test('targets of a hub association get no "polymorphic from" line; the viewer lists the association on owner and targets', async () => {
@@ -177,6 +181,6 @@ test('draw.io: a hub association is a badge row naming it, and no polymorphic no
   const model = audited(await loadMulti());
   const { layout } = await computeLayout(model);
   const xml = renderDrawio(model, layout);
-  assert.ok(xml.includes('«owner» → organizations | users'));
+  assert.ok(xml.includes('«owner» → 2 tables'));
   assert.ok(!xml.includes('shop._.orders«owner»'));
 });

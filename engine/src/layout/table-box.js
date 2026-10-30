@@ -105,7 +105,7 @@ const TAGS = { view: '«view»', materialized_view: '«materialized view»' };
  *   facts       one muted line per special pattern (STI, partition, ...),
  *               each as parts { text, code } (see tableFacts);
  *   badges      one line per hub target (`→ users ×2`), then one per hub
- *               association (`«created_by» → users | admins`).
+ *               association (`«created_by» → users`, `«created_by» → 2 tables`).
  * Facts and badges sit below one separator. Layout uses `w`/`h`; the
  * renderer uses the same object, so the box always fits the text it draws.
  * Offsets are relative to the box's top-left corner. Every row is ROW_HEIGHT
@@ -132,7 +132,12 @@ export function tableBox(table, badges = [], facts = [], { fk = new Set(), index
   }
   const factStrings = facts.map((parts) => parts.map((p) => p.text).join(''));
   for (const f of factStrings) natural = Math.max(natural, measureText(f, FACT_FONT) + 2 * PADDING_X);
-  const badgeText = (b) => (b.association ? b.targets.map((t) => t.split('.')[2]).join(' | ') : `${b.target.split('.')[2]} ×${b.count}`);
+  // Several targets are counted, not listed, so audit columns pointing at
+  // many tables keep the box narrow; hovering the line lists them.
+  const badgeText = (b) => {
+    if (!b.association) return `${b.target.split('.')[2]} ×${b.count}`;
+    return b.targets.length === 1 ? b.targets[0].split('.')[2] : `${b.targets.length} tables`;
+  };
   const badgeName = (b) => (b.association ? `«${b.association}»` : '');
   // A hub association's name goes before the arrow, its targets after it.
   const nameRoom = (b) => (b.association ? measureText(badgeName(b), BADGE_FONT) + BADGE_ARROW_GAP : 0);
