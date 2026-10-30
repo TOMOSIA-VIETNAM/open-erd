@@ -30,7 +30,7 @@ const DB_FONT = { size: 14, weight: 700 };
 const MARGIN = 40;
 
 // Bar colour stops, pale to deep, interpolated by the square root of count / max.
-export const BAR_COLOURS = [
+const BAR_COLOURS = [
   [255, 236, 190],
   [253, 196, 110],
   [240, 120, 50],

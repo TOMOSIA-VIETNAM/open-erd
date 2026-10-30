@@ -48,7 +48,7 @@ main() {
 
   if [ -z "$ref" ]; then
     ref="$(git ls-remote --tags --refs "$repo" 'v[0-9]*' 2>/dev/null \
-           | awk -F/ '{print $NF}' | sort -t. -k1.2,1n -k2,2n -k3,3n | tail -1)"
+           | awk -F/ '{print $NF}' | { grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true; } | sort -t. -k1.2,1n -k2,2n -k3,3n | tail -1)"
     [ -n "$ref" ] || ref=main
   fi
 
@@ -60,6 +60,7 @@ main() {
       runner="$home/scripts/install-local.sh"
     else
       tmp="$(mktemp -d)"
+      trap 'rm -rf "$tmp"' EXIT
       say 'fetching the uninstaller from %s\n' "$ref"
       git clone --quiet --depth 1 --sparse --filter=blob:none --branch "$ref" "$repo" "$tmp/p" 2>/dev/null \
         || git clone --quiet --depth 1 --branch "$ref" "$repo" "$tmp/p" 2>/dev/null \
@@ -68,11 +69,9 @@ main() {
       git -C "$tmp/p" sparse-checkout set --no-cone $SHIP 2>/dev/null || true
       runner="$tmp/p/scripts/install-local.sh"
     fi
-    [ -x "$runner" ] || { printf 'install.sh: no uninstaller at %s\n' "$ref" >&2
-                          [ -z "$tmp" ] || rm -rf "$tmp"; exit 1; }
+    [ -x "$runner" ] || { printf 'install.sh: no uninstaller at %s\n' "$ref" >&2; exit 1; }
     local rc=0
     "$runner" "$@" || rc=$?
-    [ -z "$tmp" ] || rm -rf "$tmp"
     if [ "$rc" -eq 0 ] && [ "$targeted" = no ] && [ -d "$home/.git" ] && is_our_clone "$home" "$repo"; then
       rm -rf "$home"; say 'removed %s\n' "$home"
     fi

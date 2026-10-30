@@ -4,7 +4,7 @@
 // one `{ back, forward }` and replaces it on every move.
 
 /** Steps kept behind; older ones are dropped. */
-export const HISTORY_LIMIT = 50;
+const HISTORY_LIMIT = 50;
 
 export const emptyHistory = () => ({ back: [], forward: [] });
 

@@ -59,7 +59,7 @@ export function renames(model) {
   };
 }
 
-const endText = (end) => `${end.table}.${end.columns.join(', ')}`;
+export const endText = (end) => `${end.table}.${end.columns.join(', ')}`;
 const KINDS = {
   relations: {
     key: (r) => `${endText(r.from)}\u0000${endText(r.to)}`,

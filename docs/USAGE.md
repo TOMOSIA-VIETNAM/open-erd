@@ -34,9 +34,9 @@ the diagram still recognise it.
 | ⌘K | Palette: search tables and columns, or run a command (go to a view or database, join path, tour, downloads, highlights, copy schema), each listed with its shortcut; `a > b` (or `a → b`) offers the join path between tables `a` and `b` |
 | ⌘F or `/` | The palette for tables and columns only |
 | ⌘J | Join path: From and To fields (Tab or Enter moves on, Enter on To finds the path); starts from the selected table. In the view of a join path whose panel was closed, brings that panel back. Where a browser keeps ⌘J for itself, use Join path… in the palette |
-| ⌘A | All tables (in a text field it selects the text as usual) |
+| ⌘A | All tables (only when the file has that view; in a text field it selects the text as usual) |
 | Shift-click (or ⌘/Ctrl-click) a table | Adds it to the selection, or takes it out: the tables are lit together, the panel lists them (Copy link; Join path for two) and the address names them (`tables=`), so a copied link shows the same tables |
-| ← → | Back to the previous table or view, forward again |
+| ← or ⌫ | Back to the previous table or view; → goes forward again |
 | **Highlight** | |
 | P | Personal data map: columns marked `pii` tinted, the rest faded, with their list (only when the model has such columns) |
 | H | Schema health: tables with findings marked, with the list of findings (only when there are findings) |
@@ -44,7 +44,7 @@ the diagram still recognise it.
 | C | Changes: fade what a diff did not change, with the list of changes (only in `diff.svg`) |
 | L | Shows or hides the legend |
 | **Other** | |
-| T | Tour: shows each domain in turn, most connected first, zoomed on its central table with its name, table count and note; moves on every 6 s. ← → step, Space pauses, Esc ends it and returns to where you were |
+| T | Tour (only with at least two domains): shows each domain in turn, most connected first, zoomed on its central table with its name, table count and note; moves on every 6 s. ← → step, Space pauses, Esc ends it and returns to where you were |
 | ⌘C | With a table selected and no text selected: copies its `CREATE TABLE` with indexes |
 | ? | This list of keys |
 | Esc | Closes the palette, a menu or the panel (the join panel with the path it lit); with a highlight mode's own list open, turns that mode off; with nothing open, turns every highlight mode off |

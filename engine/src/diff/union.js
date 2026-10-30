@@ -9,7 +9,7 @@ import { describeChange, summarize } from './changes.js';
 // as it is now; what the "to" side lost (tables, columns, relations,
 // polymorphic associations) is added back so it can be drawn as removed.
 
-export const DIFF_STATUSES = ['added', 'removed', 'changed', 'renamed'];
+const DIFF_STATUSES = ['added', 'removed', 'changed', 'renamed'];
 
 const TABLE_CONTENT = /^(table_changed|entity_|column_|enum_)/;
 const withoutRename = ({ renamed_from, ...rest }) => rest;

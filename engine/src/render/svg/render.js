@@ -1318,7 +1318,7 @@ export function viewerData(model, diagram, diff = null, warnings = missingRelati
 }
 
 /** Every view a render draws: the laid-out ones, then the ranking unless switched off. */
-export const renderedViews = (diagram) => [...viewNames(diagram), ...(diagram.views.ranking === 'on' ? [RANKING_VIEW] : [])];
+const renderedViews = (diagram) => [...viewNames(diagram), ...(diagram.views.ranking === 'on' ? [RANKING_VIEW] : [])];
 
 /**
  * The view a plain render opens on and draws without script: the

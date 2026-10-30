@@ -59,7 +59,7 @@ export function zipEntries(buf) {
 }
 
 /** Uncompressed bytes of entry `e` of `buf`. */
-export function entryData(buf, e) {
+function entryData(buf, e) {
   const raw = buf.subarray(e.dataOffset, e.dataOffset + e.compressedSize);
   if (e.method === STORED) return raw;
   if (e.method === DEFLATED) return inflateRawSync(raw);

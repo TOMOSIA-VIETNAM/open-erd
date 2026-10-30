@@ -2,7 +2,7 @@ import { BUILT_IN_PROFILES, NOTE_FIELDS, PROFILE_DEFAULTS } from './schema.js';
 import { columnEntries } from './columns.js';
 
 /** Names `render --profile` accepts: the built-in ones plus the configured ones. */
-export function profileNames(config) {
+function profileNames(config) {
   return [...new Set([...Object.keys(BUILT_IN_PROFILES), ...Object.keys(config.profiles ?? {})])].sort();
 }
 

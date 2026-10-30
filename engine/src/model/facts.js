@@ -1,6 +1,6 @@
 import { columnEntries } from './columns.js';
 import { compareStrings } from './load.js';
-import { renames } from './lock.js';
+import { endText, renames } from './lock.js';
 
 // Mechanical check of the model against the extract facts files
 // (extract/facts/<source>.json): the structure a script reads from schema
@@ -16,10 +16,10 @@ import { renames } from './lock.js';
 // written before `default` existed does not report every default as gone).
 
 export const COLUMN_FIELDS = ['type', 'nullable', 'pk', 'unique', 'default', 'auto_increment'];
-export const BOOLEAN_FIELDS = new Set(['nullable', 'pk', 'unique', 'auto_increment']);
+const BOOLEAN_FIELDS = new Set(['nullable', 'pk', 'unique', 'auto_increment']);
 const INDEX_FIELDS = ['name'];
 
-const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+export const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const list = (v) => (v === undefined || v === null ? [] : Array.isArray(v) ? v : [v]);
 
 /** A facts or model value as compared: booleans default to false, defaults are strings. */
@@ -94,8 +94,7 @@ export function readFacts(files) {
   return { tables, associations, fields, errors };
 }
 
-const endText = (end) => `${end.table}.${end.columns.join(', ')}`;
-export const relationPath = (from, to) => `${endText(from)} -> ${endText(to)}`;
+const relationPath = (from, to) => `${endText(from)} -> ${endText(to)}`;
 // Identity of an index: what it covers and how, not its name.
 export const indexKey = (i) => [i.columns.join(','), i.unique ? 'unique' : '', i.where ?? '', i.using ?? ''].join('\u0000');
 export const indexPath = (i) => `(${i.columns.join(', ')})${i.unique ? ' unique' : ''}${i.where ? ` where ${i.where}` : ''}${i.using ? ` using ${i.using}` : ''}`;

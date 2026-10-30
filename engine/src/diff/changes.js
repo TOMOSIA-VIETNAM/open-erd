@@ -27,7 +27,7 @@ const RELATION_FIELDS = ['cardinality', 'optional', 'kind', 'review'];
 const POLYMORPHIC_FIELDS = ['type_column', 'id_column', 'optional', 'review'];
 
 // Kinds in the order a reader goes through one table's changes.
-export const CHANGE_KINDS = [
+const CHANGE_KINDS = [
   'database_added',
   'database_removed',
   'database_changed',
@@ -107,7 +107,7 @@ function matchByName(fromItems, toItems, key, renamedKey) {
 // Removed and added tables that look like one renamed table: column-name
 // Jaccard index at least POSSIBLE_RENAME_SIMILARITY, best score first, ties
 // broken by the added id then the removed id, each table used once.
-export function possibleRenames(removed, added) {
+function possibleRenames(removed, added) {
   const names = (t) => new Set(columnEntries(t).map((e) => e.path));
   const candidates = [];
   for (const a of added) {
@@ -384,7 +384,7 @@ export function summaryLine(s) {
 
 // Rows of the Markdown table; capped so the text stays under 65536
 // characters, and the full list is in diff.xlsx anyway.
-export const MARKDOWN_ROWS = 200;
+const MARKDOWN_ROWS = 200;
 
 /** Summary line and one table row per change, as Markdown. */
 export function changesMarkdown(changes) {

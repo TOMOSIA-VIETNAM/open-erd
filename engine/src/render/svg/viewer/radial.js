@@ -143,7 +143,7 @@ export function straightLink(a, b) {
  * True when segment p-q passes through the interior of box `r` grown by
  * `margin` on every side (Liang-Barsky clipping).
  */
-export function segmentHitsBox([[px, py], [qx, qy]], r, margin = 0) {
+function segmentHitsBox([[px, py], [qx, qy]], r, margin = 0) {
   const dx = qx - px;
   const dy = qy - py;
   let t0 = 0;
