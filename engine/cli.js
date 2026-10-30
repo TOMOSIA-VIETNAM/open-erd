@@ -10,7 +10,6 @@ import { compareStrings, formatError, parseWorkspace } from './src/model/load.js
 import { checkLocked, lockFacts, parseLocked, serializeLocked } from './src/model/lock.js';
 import { applyProfile, resolveProfile } from './src/model/profile.js';
 import { compareFacts, describeDelta, readFacts } from './src/model/facts.js';
-import { applyFacts, needsSyncMarkdown } from './src/model/apply-facts.js';
 import { describeFactsChange, diffFacts, factsDiffSummary } from './src/model/facts-diff.js';
 import { parseVerification, serializeVerification, verificationSummary } from './src/model/verification.js';
 import { formatWarning, missingRelations, warningsFor } from './src/model/missing.js';
@@ -27,8 +26,8 @@ import { renderDrawio } from './src/render/drawio/render.js';
 const WORKTREE = 'WORKTREE';
 // Workspace files a snapshot is made of.
 const SNAPSHOT_FILE = (path) => path === CONFIG_FILE || path === LAYOUT_FILE || /^model\/[^/]+\.yaml$/.test(path);
-// What `--format` accepts: plain lines for a terminal, or Markdown (for a
-// pull request comment) on stdout with progress lines on stderr.
+// What `--format` accepts: plain lines for a terminal, or Markdown (a
+// report to paste elsewhere) on stdout with progress lines on stderr.
 const FORMATS = ['text', 'markdown'];
 // Where the extract facts files live in a workspace.
 const FACTS_DIR = 'extract/facts';
@@ -57,15 +56,6 @@ const COMMANDS = {
     options: { workspace: { type: 'string' }, facts: { type: 'string' } },
     run: runVerify,
   },
-  'apply-facts': {
-    usage: 'apply-facts --workspace <dir> [--facts <dir>] --out <dir> [--format text|markdown]',
-    summary:
-      'write a copy of the workspace into --out with the mechanical differences from the extract facts applied (tables, columns, indexes, ' +
-      'constraint-backed relations; new tables in domain Unassigned) and list what is left for /open-erd:sync (renames, notes, relations without a constraint, ' +
-      'anything a reviewed fact uses); never writes the workspace itself',
-    options: { workspace: { type: 'string' }, facts: { type: 'string' }, out: { type: 'string' }, format: { type: 'string' } },
-    run: runApplyFacts,
-  },
   'facts-diff': {
     usage: 'facts-diff --workspace <dir> [--from <ref>] [--format text|json]',
     summary:
@@ -92,7 +82,7 @@ const COMMANDS = {
     usage: `diff --workspace <dir> --from <ref> (--to <ref|${WORKTREE}> | --to-workspace <dir>) [--profile <name>] [--format text|markdown]`,
     summary:
       `compare two snapshots of the workspace (git refs such as a tag or HEAD; ${WORKTREE} = the files on disk; --to-workspace = the files of another ` +
-      'workspace directory, such as the copy apply-facts writes), print the changes (--format markdown: a summary and a table for a pull request comment), ' +
+      'workspace directory), print the changes (--format markdown: a summary and a table), ' +
       'write out/diff.svg and out/diff.xlsx into --workspace (the "to" side plus a Changes sheet; out/diff.<profile>.* with a sharing profile, applied to both sides as the "to" side declares it)',
     options: {
       workspace: { type: 'string' },
@@ -319,63 +309,10 @@ async function runVerify({ workspace, facts: factsDir }) {
   return 0;
 }
 
-// Workspace files apply-facts copies as they are, besides open-erd.yaml and
-// the model files: enough for validate, layout, render and diff on the copy.
-const COPIED_FILES = [LAYOUT_FILE, LOCKED_FILE, VERIFICATION_FILE];
-
 function checkFormat(format) {
   if (format === undefined || FORMATS.includes(format)) return true;
   console.error(`--format must be one of ${FORMATS.join(', ')}`);
   return false;
-}
-
-async function runApplyFacts({ workspace, facts: factsDir, out, format = 'text' }) {
-  if (!out) {
-    console.error(`Missing --out\nUsage: open-erd ${COMMANDS['apply-facts'].usage}`);
-    return 1;
-  }
-  if (!checkFormat(format)) return 1;
-  if (resolve(out) === resolve(workspace)) {
-    console.error('--out must be another directory: apply-facts never writes the workspace itself');
-    return 1;
-  }
-  const files = await readWorkspaceFiles(workspace);
-  const { model, errors } = parseWorkspace(files);
-  for (const e of errors) console.error(formatError(e));
-  if (!model) return 1;
-  const factsFiles = await readFactsFiles(factsDir ?? join(workspace, 'extract', 'facts'));
-  if (!factsFiles) return 1;
-  const facts = readFacts(factsFiles);
-  for (const e of facts.errors) console.error(formatError(e));
-  if (facts.errors.length > 0) return 1;
-  const result = applyFacts(files, model, compareFacts(model, facts));
-
-  // The copy must load: a broken copy would make every later step fail
-  // with an error about a file nobody wrote by hand.
-  const copy = { ...files, ...result.files };
-  const check = parseWorkspace(copy);
-  for (const e of check.errors) console.error(`${out}: ${formatError(e)}`);
-  if (!check.model) return 1;
-  await mkdir(join(out, 'model'), { recursive: true });
-  for (const [path, text] of Object.entries(copy)) await writeFile(join(out, path), text);
-  for (const path of COPIED_FILES) {
-    let bytes;
-    try {
-      bytes = await readFile(join(workspace, path));
-    } catch (e) {
-      if (e.code === 'ENOENT') continue;
-      throw e;
-    }
-    await mkdir(dirname(join(out, path)), { recursive: true });
-    await writeFile(join(out, path), bytes);
-  }
-
-  const report = format === 'markdown' ? console.error : console.log;
-  report(`wrote ${out}: ${result.applied.length} change(s) from the extract facts applied, ${result.needsSync.length} left for /open-erd:sync`);
-  for (const d of result.applied) report(`  applied: ${describeDelta(d)}`);
-  if (format === 'markdown') console.log(needsSyncMarkdown(result.needsSync));
-  else for (const n of result.needsSync) console.log(`  needs sync: ${n.path}: ${n.reason}`);
-  return 0;
 }
 
 // Fixed date for a workspace without its own git history (zip's own epoch).

@@ -45,7 +45,7 @@ Open `out/erd.svg` in a browser. `$open-erd-init` and `$open-erd-sync` in Codex.
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="./docs/images/flow-dark.svg">
-    <img src="./docs/images/flow.svg" width="760" alt="init reads your code, open out/erd.svg in the browser, sync after code changes, review what the AI guessed; ask questions or get an ERD diff on every pull request at any time">
+    <img src="./docs/images/flow.svg" width="760" alt="init reads your code, open out/erd.svg in the browser, sync after code changes, review what the AI guessed; ask questions at any time">
   </picture>
 </p>
 
@@ -148,8 +148,6 @@ Press `T` for a tour: one domain after another, with its description.
 
 - **`/open-erd:ask "how does a customer get a refund?"`** — an answer from the
   ERD, with a link that opens the viewer on the tables it used.
-- **`/open-erd:ci-setup`** — every pull request that touches the schema gets
-  one comment with the ERD changes and a `diff.svg`. No AI in CI.
 - **Excel** (`out/erd.xlsx`) — one sheet per table, plus Relations, PII,
   Health. **draw.io** (`out/erd.drawio`) — to rearrange or annotate.
 - Change anything by just saying it: *"orders.status: refunded means the money
@@ -163,7 +161,6 @@ Press `T` for a tour: one domain after another, with its description.
 | `/open-erd:sync [focus]` | After code changes — run it often |
 | `/open-erd:review` | Confirm or correct the relations the AI guessed (dashed lines), one by one. Not a code review |
 | `/open-erd:ask "<question>"` | Questions about the data model |
-| `/open-erd:ci-setup` | ERD diff comment on pull requests |
 | `/open-erd:diff [from] [to]` | Compare two versions of the ERD: a tag, any commit, or your uncommitted edits |
 | `/open-erd:feedback <text>` | Tell us what to improve |
 

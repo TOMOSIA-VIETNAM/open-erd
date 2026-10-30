@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 428" width="960" height="428" role="img" aria-label="open-erd workflow: init, open the ERD, sync after code changes, review guessed relations; ask questions and set up CI any time">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 428" width="960" height="428" role="img" aria-label="open-erd workflow: init, open the ERD, sync after code changes, review guessed relations; ask questions and compare versions any time">
 <title>open-erd workflow</title>
 <rect x="10" y="8" width="208" height="236" rx="14" fill="#111722" stroke="#283142" stroke-width="1.5"/>
 <circle cx="34" cy="32" r="11.5" fill="none" stroke="#C9D4E8" stroke-width="1.6"/>
@@ -52,8 +52,8 @@
 <text x="220" y="404" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif" font-size="13" fill="#8E98AB" text-anchor="start">answer + link that lights tables</text>
 <rect x="496" y="312" width="372" height="108" rx="14" fill="#111722" stroke="#283142" stroke-width="1.5"/>
 <g transform="translate(514 330)"><path d="M10 18V54M36 54V28a8 8 0 0 0-8-8h-8M24 15l-5 5l5 5" fill="none" stroke="#C9D4E8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><g fill="#111722" stroke="#C9D4E8" stroke-width="2.2"><circle cx="10" cy="12" r="5.5"/><circle cx="10" cy="60" r="5.5"/><circle cx="36" cy="60" r="5.5"/></g><path d="M52 10a6 6 0 0 1 6-6h28a6 6 0 0 1 6 6v34a6 6 0 0 1-6 6h-20l-8 8v-8a6 6 0 0 1-6-6Z" fill="#161D2A" stroke="#C9D4E8" stroke-width="2.2" stroke-linejoin="round"/><path d="M60 18h6M63 15v6M60 34h6M70 18h14" fill="none" stroke="#C9D4E8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M70 34h12M60 26h22" fill="none" stroke="#5E6880" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></g>
-<rect x="624" y="328" width="187.4" height="30" rx="7" fill="#1A2130"/>
-<text x="634" y="348" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, Liberation Mono, monospace" font-size="15" fill="#C9D4E8" text-anchor="start">/open-erd:ci-setup</text>
-<text x="624" y="382" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif" font-size="16" font-weight="600" fill="#E3E9F3" text-anchor="start">ERD diff on every PR</text>
-<text x="624" y="404" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif" font-size="13" fill="#8E98AB" text-anchor="start">one comment per pull request</text>
+<rect x="624" y="328" width="150.2" height="30" rx="7" fill="#1A2130"/>
+<text x="634" y="348" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, Liberation Mono, monospace" font-size="15" fill="#C9D4E8" text-anchor="start">/open-erd:diff</text>
+<text x="624" y="382" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif" font-size="16" font-weight="600" fill="#E3E9F3" text-anchor="start">Compare two versions</text>
+<text x="624" y="404" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif" font-size="13" fill="#8E98AB" text-anchor="start">what changed since a tag or commit</text>
 </svg>

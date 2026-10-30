@@ -382,11 +382,11 @@ export function summaryLine(s) {
   return `+${s.tablesAdded} tables · −${s.tablesRemoved} tables · ${s.tablesRenamed} renamed · ${s.columnsChanged} columns changed · ${s.relationsChanged} relations changed`;
 }
 
-// Rows of the Markdown table; a pull request comment is capped at 65536
+// Rows of the Markdown table; capped so the text stays under 65536
 // characters, and the full list is in diff.xlsx anyway.
 export const MARKDOWN_ROWS = 200;
 
-/** Summary line and one table row per change, as Markdown for a pull request comment. */
+/** Summary line and one table row per change, as Markdown. */
 export function changesMarkdown(changes) {
   if (changes.length === 0) return 'No changes to the ERD.\n';
   const cell = (s) => s.replaceAll('|', '\\|').replaceAll('\n', ' ');

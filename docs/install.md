@@ -2,7 +2,7 @@
 
 [← README](../README.md)
 
-Needs `node` 20.10 or later and `git`. `/open-erd:ci-setup` and `/open-erd:feedback` also need
+Needs `node` 20.10 or later and `git`. `/open-erd:feedback` also needs
 [`gh`](https://cli.github.com/), logged in.
 
 | Platform | Use |
@@ -45,7 +45,7 @@ To uninstall: `/plugin uninstall open-erd@open-erd`, then optionally `/plugin ma
 
 ## Codex
 
-The same seven commands are skills named `open-erd-<command>`. Codex runs one when you type
+The same six commands are skills named `open-erd-<command>`. Codex runs one when you type
 `$open-erd-init` (or `$open-erd-diff v1.0-handover`, …), or on its own when your request matches the
 skill's description.
 
