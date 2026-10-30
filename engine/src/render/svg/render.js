@@ -38,9 +38,10 @@ const LEGEND_GAP = 18;
 // Rules the embedded viewer script relies on. Without script none of these
 // classes is ever set, so the static drawing is unaffected.
 const VIEWER_STYLE = `.row-hit { fill: transparent; }
-/* The drawing moves under the pointer when dragged: no text selection, and
-   one composited layer for the pan/zoom transform. */
-.camera { -webkit-user-select: none; user-select: none; will-change: transform; }
+/* The drawing moves under the pointer when dragged: no text selection. No
+   will-change: as its own layer, a large view zoomed past about 1x makes
+   Chrome re-layerize on every pan/zoom frame (100-200 ms per frame). */
+.camera { -webkit-user-select: none; user-select: none; }
 .column:hover .row-hit, .hub-badge:hover .row-hit { fill: #eef3fb; }
 .column.hl-column .row-hit { fill: #fff1b8; }
 /* Personal data map: tables holding pii columns stay, those rows tinted,
