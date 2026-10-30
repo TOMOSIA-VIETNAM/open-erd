@@ -11,7 +11,7 @@ import { computeLayout } from '../src/layout/index.js';
 import { ALL_VIEW, ALL_VIEW_MAX_TABLES, OVERVIEW, viewNames, viewTree } from '../src/layout/views.js';
 import { applyProfile } from '../src/model/profile.js';
 import { HUB_LAYER, POLY_LAYER, pageName, renderDrawio } from '../src/render/drawio/render.js';
-import { buildScene } from '../src/render/svg/render.js';
+import { buildScene, renderSvg } from '../src/render/svg/render.js';
 import { endMarkers } from '../src/render/svg/markers.js';
 import { normalizeModel } from '../src/model/load.js';
 import { columnEntries } from '../src/model/columns.js';
@@ -435,4 +435,16 @@ test('drawio: a per-domain page draws group stubs as one box, their bundled line
   const group = cells.find((c) => c.id === 'n|group:shop/Sales');
   assert.ok(group && group.value.includes('Sales') && group.value.includes('s000'));
   assert.ok(cells.some((c) => c.edge === '1' && (c.source === 'n|group:shop/Sales' || c.target === 'n|group:shop/Sales')));
+});
+
+test('a polymorphic target left with no columns still renders in SVG and draw.io', async () => {
+  const model = await loadMulti();
+  const targets = new Set(model.polymorphic.flatMap((a) => a.targets));
+  const columns = model.tables.filter((t) => targets.has(t.id)).flatMap((t) => t.columns.map((c) => `${t.id}.${c.name}`));
+  // The profile drops every column of the targets, and the relations that use them.
+  const shown = applyProfile({ ...model, config: { ...model.config, hidden: { columns } } }, 'public');
+  assert.ok(shown.polymorphic.length > 0 && shown.tables.some((t) => targets.has(t.id) && t.columns.length === 0));
+  const { layout } = await computeLayout(shown);
+  assert.doesNotThrow(() => renderSvg(shown, layout, { fitStored: true }));
+  assert.doesNotThrow(() => renderDrawio(shown, layout, { fitStored: true }));
 });

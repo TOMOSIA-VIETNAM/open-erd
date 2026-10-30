@@ -638,7 +638,7 @@ function hiddenLayers(scene, byId, heights, origin) {
   // primary key column (the one the id column holds), as in the SVG.
   const poly = scene.polyRoutes.map((r) => {
     const t = byId.get(r.target);
-    const column = t.kind === 'table' ? (t.node.table.columns.find((c) => c.pk) ?? t.node.table.columns[0]).name : null;
+    const column = t.kind === 'table' ? (t.node.table.columns.find((c) => c.pk) ?? t.node.table.columns[0])?.name ?? null : null;
     const review = byId.get(r.poly).node.association.review;
     const link = { id: `${r.poly}->${r.target}`, from: { node: r.poly, column: null }, to: { node: r.target, column }, kind: 'polymorphic', review };
     return edgeCell({ link, points: r.points, markers: { from: 'none', to: 'none' } }, byId, heights, origin, { id: `poly|${link.id}`, parent: POLY_LAYER.id });

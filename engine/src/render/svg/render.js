@@ -709,7 +709,7 @@ function routePolyTargets(nodes, byId, obstacles, groups) {
     for (const target of n.node.association.targets) {
       const t = byId.get(target);
       if (!t) continue;
-      const column = t.kind === 'table' ? (t.node.table.columns.find((c) => c.pk) ?? t.node.table.columns[0]).name : null;
+      const column = t.kind === 'table' ? (t.node.table.columns.find((c) => c.pk) ?? t.node.table.columns[0])?.name ?? null : null;
       edges.push({
         id: `${n.id}->${target}`,
         from: { box: nodeRect(n), y: n.y + attachOffset(n.box, null), marker: 'none' },

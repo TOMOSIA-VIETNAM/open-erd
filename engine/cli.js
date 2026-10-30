@@ -133,6 +133,17 @@ async function loadModel(workspace) {
   return model;
 }
 
+// loadModel for the commands that draw: a model without tables has nothing to
+// lay out (the drawing would have an infinite size).
+async function loadDrawableModel(workspace) {
+  const model = await loadModel(workspace);
+  if (model && model.tables.length === 0) {
+    console.error('error: the model has no tables');
+    return null;
+  }
+  return model;
+}
+
 // Returns the parsed layout, or undefined when the workspace has none yet.
 async function readLayout(workspace, options) {
   let text;
@@ -342,7 +353,7 @@ async function workspaceDate(workspace, ref = 'HEAD') {
 }
 
 async function runLayout({ workspace, relayout = [] }) {
-  const model = await loadModel(workspace);
+  const model = await loadDrawableModel(workspace);
   if (!model) return 1;
   // Repeatable: a domain name may itself contain a comma.
   const relayoutViews = relayout.map((v) => v.trim()).filter(Boolean);
@@ -370,7 +381,7 @@ function svgUrlOf(config, name) {
 // A profile render gets its own file name, so a shared file is never
 // mistaken for the full one (or the reverse) and both can sit side by side.
 async function runRender({ workspace, profile }) {
-  const model = await loadModel(workspace);
+  const model = await loadDrawableModel(workspace);
   if (!model) return 1;
   const layout = await readLayout(workspace);
   if (!layout) {

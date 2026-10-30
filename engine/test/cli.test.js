@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdtemp, readFile, rm, symlink } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -70,4 +70,17 @@ test('layout --relayout rejects an unknown view before writing anything', async 
   assert.match(stderr, /--relayout: unknown view "domain:nope\/Nope" \(views: overview, all, domain:/);
   const { stdout } = await run('layout', '--help');
   assert.match(stdout, /--relayout <view>/);
+});
+
+test('layout and render refuse a model with no tables instead of drawing an infinite canvas', async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), 'open-erd-empty-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  await mkdir(join(dir, 'model'));
+  await writeFile(join(dir, 'open-erd.yaml'), 'schema_version: 1\n');
+  await writeFile(join(dir, 'model', 'empty.yaml'), 'schema_version: 1\ndatabase: empty\nengine: mysql\ntables: []\n');
+  for (const command of ['layout', 'render']) {
+    const { code, stderr } = await run(command, '--workspace', dir);
+    assert.equal(code, 1, command);
+    assert.match(stderr, /error: the model has no tables/);
+  }
 });

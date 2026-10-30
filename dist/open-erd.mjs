@@ -176097,7 +176097,7 @@ function routePolyTargets(nodes, byId, obstacles, groups) {
     for (const target of n.node.association.targets) {
       const t = byId.get(target);
       if (!t) continue;
-      const column2 = t.kind === "table" ? (t.node.table.columns.find((c) => c.pk) ?? t.node.table.columns[0]).name : null;
+      const column2 = t.kind === "table" ? (t.node.table.columns.find((c) => c.pk) ?? t.node.table.columns[0])?.name ?? null : null;
       edges.push({
         id: `${n.id}->${target}`,
         from: { box: nodeRect(n), y: n.y + attachOffset(n.box, null), marker: "none" },
@@ -176992,7 +176992,7 @@ function hiddenLayers(scene, byId, heights, origin) {
   const hub = scene.hubRoutes.map((r) => edgeCell(r, byId, heights, origin, { id: `hub|${r.link.id}`, parent: HUB_LAYER.id }));
   const poly = scene.polyRoutes.map((r) => {
     const t = byId.get(r.target);
-    const column2 = t.kind === "table" ? (t.node.table.columns.find((c) => c.pk) ?? t.node.table.columns[0]).name : null;
+    const column2 = t.kind === "table" ? (t.node.table.columns.find((c) => c.pk) ?? t.node.table.columns[0])?.name ?? null : null;
     const review2 = byId.get(r.poly).node.association.review;
     const link2 = { id: `${r.poly}->${r.target}`, from: { node: r.poly, column: null }, to: { node: r.target, column: column2 }, kind: "polymorphic", review: review2 };
     return edgeCell({ link: link2, points: r.points, markers: { from: "none", to: "none" } }, byId, heights, origin, { id: `poly|${link2.id}`, parent: POLY_LAYER.id });
@@ -177144,6 +177144,14 @@ async function readWorkspaceFiles(dir) {
 async function loadModel(workspace) {
   const { model, errors } = parseWorkspace(await readWorkspaceFiles(workspace));
   for (const e of errors) console.error(formatError(e));
+  return model;
+}
+async function loadDrawableModel(workspace) {
+  const model = await loadModel(workspace);
+  if (model && model.tables.length === 0) {
+    console.error("error: the model has no tables");
+    return null;
+  }
   return model;
 }
 async function readLayout(workspace, options) {
@@ -177315,7 +177323,7 @@ async function workspaceDate(workspace, ref = "HEAD") {
   }
 }
 async function runLayout({ workspace, relayout = [] }) {
-  const model = await loadModel(workspace);
+  const model = await loadDrawableModel(workspace);
   if (!model) return 1;
   const relayoutViews = relayout.map((v) => v.trim()).filter(Boolean);
   const { layout, report, offCentre: offCentre2 } = await computeLayout(model, await readLayout(workspace, { snap: true }), { relayout: relayoutViews });
@@ -177335,7 +177343,7 @@ function svgUrlOf(config, name) {
   return url === void 0 ? void 0 : new URL(`${name}.svg`, url).href;
 }
 async function runRender({ workspace, profile }) {
-  const model = await loadModel(workspace);
+  const model = await loadDrawableModel(workspace);
   if (!model) return 1;
   const layout = await readLayout(workspace);
   if (!layout) {
