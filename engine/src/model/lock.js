@@ -26,7 +26,10 @@ export function parseLocked(text) {
 // current path, from the renamed_from fields the user confirmed. `table` and
 // `column` map one name; `relation` and `polymorphic` a whole fact.
 export function renames(model) {
-  const tables = new Map(model.tables.filter((t) => t.renamed_from).map((t) => [t.renamed_from, t.id]));
+  // A renamed_from naming a table that still exists is a stale note: that
+  // table was not renamed.
+  const live = new Set(model.tables.map((t) => t.id));
+  const tables = new Map(model.tables.filter((t) => t.renamed_from && !live.has(t.renamed_from)).map((t) => [t.renamed_from, t.id]));
   const columns = new Map(
     model.tables.map((t) => [
       t.id,

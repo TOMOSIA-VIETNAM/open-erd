@@ -171701,7 +171701,8 @@ function parseLocked(text2) {
   return { locked: errors.length > 0 ? null : data, errors };
 }
 function renames(model) {
-  const tables = new Map(model.tables.filter((t) => t.renamed_from).map((t) => [t.renamed_from, t.id]));
+  const live = new Set(model.tables.map((t) => t.id));
+  const tables = new Map(model.tables.filter((t) => t.renamed_from && !live.has(t.renamed_from)).map((t) => [t.renamed_from, t.id]));
   const columns = new Map(
     model.tables.map((t) => [
       t.id,
@@ -171969,7 +171970,7 @@ function compareFacts(model, facts) {
     if (!db) return { error: "no database: set `database` on the table or the file" };
     if (schema) return { id: follow.table(`${db}.${schema}.${name}`) };
     const ids = (byDbName.get(`${db}\0${name}`) ?? []).filter((id) => tablesById.has(id));
-    if (ids.length > 1) return { error: `matches several model tables (${ids.join(", ")}); give its schema in the facts` };
+    if (ids.length > 1) return { error: `matches several model tables (${ids.join(", ")}); give its schema in the facts`, ids };
     if (ids.length === 1) return { id: ids[0] };
     const renamed = model.tables.find((t) => t.renamed_from && t.renamed_from.split(".")[0] === db && t.renamed_from.split(".")[2] === name);
     if (renamed) return { id: renamed.id };
@@ -171978,11 +171979,13 @@ function compareFacts(model, facts) {
   };
   const ignored = new Set(model.config.not_in_model ?? []);
   const seen = /* @__PURE__ */ new Set();
+  const ambiguous = /* @__PURE__ */ new Set();
   const covered = /* @__PURE__ */ new Set();
   for (const ft of facts.tables) {
     const db = resolveDb(ft.database);
-    const { id, error } = idOf(db, ft.schema, ft.name);
+    const { id, error, ids } = idOf(db, ft.schema, ft.name);
     if (error) {
+      for (const candidate of ids ?? []) ambiguous.add(candidate);
       deltas.push({ change: "error", scope: "table", table: `${db ?? "?"}.?.${ft.name}`, path: `${ft.file}: ${ft.name}`, message: error });
       continue;
     }
@@ -172000,7 +172003,7 @@ function compareFacts(model, facts) {
     if (reported.has("indexes")) compareIndexes(table2, ft, deltas);
   }
   for (const t of model.tables) {
-    if (!covered.has(t.id.split(".")[0]) || seen.has(t.id) || t.generated_by || (t.kind ?? "table") !== "table") continue;
+    if (!covered.has(t.id.split(".")[0]) || seen.has(t.id) || ambiguous.has(t.id) || t.generated_by || (t.kind ?? "table") !== "table") continue;
     deltas.push({ change: "removed", scope: "table", table: t.id, path: t.id, before: t });
   }
   compareConstraints(model, facts, { resolveDb, idOf, seen, ignored }, deltas);
@@ -172071,10 +172074,15 @@ function compareConstraints(model, facts, { resolveDb, idOf, seen, ignored }, de
     if (!modelRelations.has(k)) modelRelations.set(k, r);
   }
   const associations = /* @__PURE__ */ new Map();
+  const unresolved = /* @__PURE__ */ new Set();
   for (const a of facts.associations) {
     const [fromDb, toDb] = [resolveDb(a.from.database), resolveDb(a.to.database)];
     if (fromDb !== toDb) continue;
-    const [from, to] = [a.from, a.to].map((e) => ({ table: idOf(fromDb, null, e.table).id, columns: e.columns }));
+    const [from, to] = [a.from, a.to].map((e) => {
+      const { id } = idOf(fromDb, null, e.table);
+      if (!id) unresolved.add(`${fromDb}\0${e.table}`);
+      return { table: id, columns: e.columns };
+    });
     if (!from.table || !to.table || ignored.has(from.table) || ignored.has(to.table)) continue;
     const k = relationPath(from, to);
     const known = associations.get(k);
@@ -172090,6 +172098,7 @@ function compareConstraints(model, facts, { resolveDb, idOf, seen, ignored }, de
     const k = relationPath(r.from, r.to);
     if (r.kind !== "db_fk" || associations.get(k)?.constraint || r.evidence.includes("db")) continue;
     if (!seen.has(r.from.table) || !seen.has(r.to.table)) continue;
+    if ([r.from.table, r.to.table].some((id) => unresolved.has(`${id.split(".")[0]}\0${id.split(".")[2]}`))) continue;
     const a = associations.get(k);
     if (a) deltas.push({ change: "changed", scope: "relation", table: r.from.table, path: k, field: "kind", before: "db_fk", after: "declared", evidence: a.evidence });
     else deltas.push({ change: "removed", scope: "relation", table: r.from.table, path: k, before: r });
