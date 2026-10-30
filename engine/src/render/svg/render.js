@@ -41,7 +41,7 @@ const VIEWER_STYLE = `.row-hit { fill: transparent; }
 /* The drawing moves under the pointer when dragged: no text selection, and
    one composited layer for the pan/zoom transform. */
 .camera { -webkit-user-select: none; user-select: none; will-change: transform; }
-.column:hover .row-hit { fill: #eef3fb; }
+.column:hover .row-hit, .hub-badge:hover .row-hit { fill: #eef3fb; }
 .column.hl-column .row-hit { fill: #fff1b8; }
 /* Personal data map: tables holding pii columns stay, those rows tinted,
    the rest fades; a selection's own fading takes over while it lasts. */
@@ -881,11 +881,16 @@ function tableSvg(n, colors, marks, warnings) {
   const facts = box.facts.map((f) => factSvg(f, x + PADDING_X, y + f.centerY));
   const badges = box.badges.map((b) => {
     const cy = y + b.centerY;
-    const ax = x + PADDING_X;
+    const ax = x + b.arrowX;
     const arrow = `<path class="badge-arrow" d="M${ax} ${cy}H${ax + BADGE_ARROW_WIDTH}M${ax + BADGE_ARROW_WIDTH - 4} ${cy - 3}L${ax + BADGE_ARROW_WIDTH} ${cy}L${ax + BADGE_ARROW_WIDTH - 4} ${cy + 3}"/>`;
+    const data = b.association
+      ? `data-association="${escapeXml(b.association)}" data-targets="${json(b.targets)}" data-columns="${json(b.columns)}"`
+      : `data-target="${escapeXml(b.target)}" data-columns="${json(b.columns)}"`;
+    const title = b.association ? `«${b.association}» (${b.columns.join(' / ')}) → ${b.targets.join(' | ')}` : `${b.columns.join(', ')} → ${b.target}`;
     return (
-      `<g class="hub-badge" data-target="${escapeXml(b.target)}" data-columns="${json(b.columns)}">` +
-      `<title>${escapeXml(`${b.columns.join(', ')} → ${b.target}`)}</title>${arrow}` +
+      `<g class="hub-badge" ${data}><title>${escapeXml(title)}</title>` +
+      `<rect class="row-hit" x="${x}" y="${cy - ROW_HEIGHT / 2}" width="${w}" height="${ROW_HEIGHT}"/>` +
+      `${b.name ? textEl('badge-text', x + PADDING_X, cy, b.name) : ''}${arrow}` +
       `${textEl('badge-text', x + b.labelX, cy, b.label)}</g>`
     );
   });
@@ -1272,6 +1277,18 @@ export function viewerData(model, diagram, diff = null, warnings = missingRelati
   // The referencing column too: a hub table's panel names it for each table
   // pointing at it.
   const hubLinks = diagram.hubLinks.map((l) => ({ ...linkData(l), column: l.from.column }));
+  // Polymorphic associations drawn as badges: no node, so listed here for
+  // the panels of their owner and targets and for the review list.
+  const hubAssociations = diagram.hubAssociations.map((a) => ({
+    table: a.table,
+    name: a.name,
+    typeColumn: a.type_column,
+    idColumn: a.id_column,
+    optional: a.optional,
+    review: a.review,
+    targets: a.targets,
+    ...notes(a),
+  }));
   // The relations of each pair of domains, for the overview's connectors
   // and their panels.
   const domains = Object.fromEntries(
@@ -1305,7 +1322,7 @@ export function viewerData(model, diagram, diff = null, warnings = missingRelati
   const domainNotes = Object.fromEntries(model.databases.flatMap((db) => Object.entries(db.domains ?? {}).filter(([, d]) => d.note).map(([name, d]) => [`${db.database}/${name}`, d.note])));
   // Domains most connected first (see domainSummary), for the tour.
   const domainOrder = domainSummary(model, diagram).order;
-  const base = { project, nodes, links, hubLinks, domainLinks: domains, domainNotes, domainOrder, databases, review, mostCentral: diagram.mostCentral };
+  const base = { project, nodes, links, hubLinks, hubAssociations, domainLinks: domains, domainNotes, domainOrder, databases, review, mostCentral: diagram.mostCentral };
   // Schema health findings for the Health list; left out when there are none.
   if (health.length > 0) base.health = health.map(({ related, ...f }) => f);
   if (!diff) return base;
