@@ -1,4 +1,5 @@
 import { stringify } from 'yaml';
+import { columnEntries } from './columns.js';
 import { compareStrings, parseYaml } from './load.js';
 import { SCHEMA_VERSION, VERIFICATION_FILE, VERIFY_RESULTS, verificationFileSchema } from './schema.js';
 import { joinPath, validateNode } from './validate.js';
@@ -44,4 +45,25 @@ export function verificationSummary(verification) {
   const count = (result) => verification.facts.filter((f) => f.result === result).length;
   const wrong = count('wrong');
   return `verify: confirmed ${count('confirmed')}, fixed ${count('fixed')}, unverifiable ${count('unverifiable')}${wrong > 0 ? `, wrong ${wrong}` : ''}`;
+}
+
+const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * The record without the facts that name a table or column the profile
+ * dropped from `shown` (`full` is the model before the profile): a verdict
+ * line quotes the model path of what it checked, so it would otherwise name
+ * a hidden table or PII column.
+ */
+export function verificationFor(verification, full, shown) {
+  const kept = new Map(shown.tables.map((t) => [t.id, new Set(columnEntries(t).map((e) => e.path))]));
+  const dropped = [];
+  for (const t of full.tables) {
+    if (!kept.has(t.id)) dropped.push(t.id);
+    else for (const { path } of columnEntries(t)) if (!kept.get(t.id).has(path)) dropped.push(`${t.id}.${path}`);
+  }
+  if (dropped.length === 0) return verification;
+  // A path ends at a non-name character, so `orders` does not match `orders_archive`.
+  const names = new RegExp(`(?<![\\w.])(?:${dropped.map(escapeRegExp).join('|')})(?!\\w)`);
+  return { ...verification, facts: verification.facts.filter((f) => !names.test(f.fact)) };
 }

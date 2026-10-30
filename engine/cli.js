@@ -8,10 +8,10 @@ import { isMain } from './is-main.js';
 import { CONFIG_FILE, LOCKED_FILE, OUTPUT_DEFAULTS, VERIFICATION_FILE, VERIFY_DEFAULT } from './src/model/schema.js';
 import { compareStrings, formatError, parseWorkspace } from './src/model/load.js';
 import { checkLocked, lockFacts, parseLocked, serializeLocked } from './src/model/lock.js';
-import { applyProfile, resolveProfile } from './src/model/profile.js';
+import { applyProfile, applyProfileToSnapshots, resolveProfile } from './src/model/profile.js';
 import { compareFacts, describeDelta, readFacts } from './src/model/facts.js';
 import { describeFactsChange, diffFacts, factsDiffSummary } from './src/model/facts-diff.js';
-import { parseVerification, serializeVerification, verificationSummary } from './src/model/verification.js';
+import { parseVerification, serializeVerification, verificationFor, verificationSummary } from './src/model/verification.js';
 import { formatWarning, missingRelations, warningsFor } from './src/model/missing.js';
 import { healthFindings, healthFor, healthSummary } from './src/model/health.js';
 import { addChangesSheet, addVerificationSheet, buildWorkbook, serializeWorkbook } from './src/render/xlsx/workbook.js';
@@ -395,7 +395,9 @@ async function runRender({ workspace, profile }) {
   const verification = await readVerification(workspace);
   if (verification === null) return 1;
   const sharing = profile === undefined ? null : resolveProfile(model.config, profile);
-  if (verification && (!sharing || (!sharing.drop_evidence && !sharing.drop_notes.includes('internal_note')))) addVerificationSheet(workbook, verification);
+  if (verification && (!sharing || (!sharing.drop_evidence && !sharing.drop_notes.includes('internal_note')))) {
+    addVerificationSheet(workbook, profile === undefined ? verification : verificationFor(verification, model, shown));
+  }
   const xlsx = await serializeWorkbook(workbook, { date: await workspaceDate(workspace) });
   const name = profile === undefined ? 'erd' : `erd.${profile}`;
   const base = join(workspace, 'out', name);
@@ -474,8 +476,7 @@ async function runDiff({ workspace, from, to, 'to-workspace': toWorkspace, profi
   if (!before || !after) return 1;
   // Both sides are filtered by the profile as the newer snapshot declares
   // it: the result is shared today, so today's hidden list applies.
-  const filter = (side) => (profile === undefined ? side.model : applyProfile({ ...side.model, config: after.model.config }, profile));
-  const [fromModel, toModel] = [filter(before), filter(after)];
+  const [fromModel, toModel] = profile === undefined ? [before.model, after.model] : applyProfileToSnapshots(before.model, after.model, profile);
 
   const result = diffModels(fromModel, toModel);
   const summary = summaryLine(summarize(result.changes));

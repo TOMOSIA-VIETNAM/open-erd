@@ -37475,11 +37475,11 @@ var require_lodash5 = __commonJS({
     function toString(value2) {
       return value2 == null ? "" : baseToString(value2);
     }
-    function escapeRegExp(string) {
+    function escapeRegExp2(string) {
       string = toString(string);
       return string && reHasRegExpChar.test(string) ? string.replace(reRegExpChar, "\\$&") : string;
     }
-    module2.exports = escapeRegExp;
+    module2.exports = escapeRegExp2;
   }
 });
 
@@ -171873,6 +171873,44 @@ function applyProfile(model, name) {
     polymorphic: polymorphic2
   };
 }
+var columnRef = (tableId2, path) => `${tableId2}.${path}`;
+function applyProfileToSnapshots(from, to, name) {
+  const p = resolveProfile(to.config, name);
+  const oldTable = /* @__PURE__ */ new Map();
+  const oldColumn = /* @__PURE__ */ new Map();
+  const piiNow = [];
+  const piiOld = [];
+  const fromTables = new Map(from.tables.map((t) => [t.id, t]));
+  for (const t of to.tables) {
+    const before = fromTables.get(t.id) ?? fromTables.get(t.renamed_from);
+    if (!before) continue;
+    oldTable.set(t.id, before.id);
+    const beforeColumns = new Map(columnEntries(before).map((e) => [e.path, e.column]));
+    for (const { path, column: column2, entity } of columnEntries(t)) {
+      const renamed = column2.renamed_from === void 0 ? void 0 : entity ? `${entity.name}.${column2.renamed_from}` : column2.renamed_from;
+      const oldPath = beforeColumns.has(path) ? path : renamed;
+      const old = beforeColumns.get(oldPath);
+      if (!old) continue;
+      oldColumn.set(columnRef(t.id, path), columnRef(before.id, oldPath));
+      if (p.drop_pii && (column2.pii || old.pii)) {
+        piiNow.push(columnRef(t.id, path));
+        piiOld.push(columnRef(before.id, oldPath));
+      }
+    }
+  }
+  const hiddenTables = [...to.config.hidden?.tables ?? [], ...p.hide.tables];
+  const hiddenColumns = [...to.config.hidden?.columns ?? [], ...p.hide.columns];
+  const withHidden = (model, tables, columns) => ({
+    ...model,
+    config: { ...model.config, hidden: { ...model.config.hidden, tables: [...model.config.hidden?.tables ?? [], ...tables], columns: [...model.config.hidden?.columns ?? [], ...columns] } }
+  });
+  const olderTables = hiddenTables.map((id) => oldTable.get(id)).filter((id) => id !== void 0);
+  const olderColumns = [...hiddenColumns.map((ref) => oldColumn.get(ref)).filter((ref) => ref !== void 0), ...piiOld];
+  return [
+    applyProfile(withHidden({ ...from, config: to.config }, olderTables, olderColumns), name),
+    applyProfile(withHidden(to, [], piiNow), name)
+  ];
+}
 
 // src/model/facts.js
 var COLUMN_FIELDS = ["type", "nullable", "pk", "unique", "default", "auto_increment"];
@@ -172251,6 +172289,18 @@ function verificationSummary(verification) {
   const count2 = (result) => verification.facts.filter((f) => f.result === result).length;
   const wrong = count2("wrong");
   return `verify: confirmed ${count2("confirmed")}, fixed ${count2("fixed")}, unverifiable ${count2("unverifiable")}${wrong > 0 ? `, wrong ${wrong}` : ""}`;
+}
+var escapeRegExp = (text2) => text2.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function verificationFor(verification, full, shown) {
+  const kept = new Map(shown.tables.map((t) => [t.id, new Set(columnEntries(t).map((e) => e.path))]));
+  const dropped = [];
+  for (const t of full.tables) {
+    if (!kept.has(t.id)) dropped.push(t.id);
+    else for (const { path } of columnEntries(t)) if (!kept.get(t.id).has(path)) dropped.push(`${t.id}.${path}`);
+  }
+  if (dropped.length === 0) return verification;
+  const names = new RegExp(`(?<![\\w.])(?:${dropped.map(escapeRegExp).join("|")})(?!\\w)`);
+  return { ...verification, facts: verification.facts.filter((f) => !names.test(f.fact)) };
 }
 
 // src/model/missing.js
@@ -177301,7 +177351,9 @@ async function runRender({ workspace, profile }) {
   const verification = await readVerification(workspace);
   if (verification === null) return 1;
   const sharing = profile === void 0 ? null : resolveProfile(model.config, profile);
-  if (verification && (!sharing || !sharing.drop_evidence && !sharing.drop_notes.includes("internal_note"))) addVerificationSheet(workbook, verification);
+  if (verification && (!sharing || !sharing.drop_evidence && !sharing.drop_notes.includes("internal_note"))) {
+    addVerificationSheet(workbook, profile === void 0 ? verification : verificationFor(verification, model, shown));
+  }
   const xlsx = await serializeWorkbook(workbook, { date: await workspaceDate(workspace) });
   const name = profile === void 0 ? "erd" : `erd.${profile}`;
   const base = join(workspace, "out", name);
@@ -177368,8 +177420,7 @@ Usage: open-erd ${COMMANDS.diff.usage}`);
   const after = toWorkspace ? await readSnapshot(toWorkspace, WORKTREE) : await readSnapshot(workspace, to);
   const toLabel = toWorkspace ? basename(resolve(toWorkspace)) : to;
   if (!before || !after) return 1;
-  const filter = (side) => profile === void 0 ? side.model : applyProfile({ ...side.model, config: after.model.config }, profile);
-  const [fromModel, toModel] = [filter(before), filter(after)];
+  const [fromModel, toModel] = profile === void 0 ? [before.model, after.model] : applyProfileToSnapshots(before.model, after.model, profile);
   const result = diffModels(fromModel, toModel);
   const summary = summaryLine(summarize(result.changes));
   const union = unionModel(fromModel, toModel, result);
