@@ -2790,7 +2790,7 @@ const strengthSample = () => sample([0, 1, 2, 3, 4].map((i) => svgEl('rect', { c
 const connectorSample = (count, crossDb) => sample([connectorEl('M2 14C20 14 26 4 44 4', count, crossDb)]);
 // A table box as the Changes mode fades it (opacities from render.js).
 const fadedSample = (opacity) =>
-  sample([svgEl('g', { opacity }, [svgEl('rect', { class: 'table-box', x: 1, y: 1, width: 62, height: 16, rx: 3 }), svgEl('text', { class: 'table-title', x: 6, y: 9, 'dominant-baseline': 'central', text: 'orders' })])]);
+  sample([svgEl('g', { 'fill-opacity': opacity, 'stroke-opacity': opacity }, [svgEl('rect', { class: 'table-box', x: 1, y: 1, width: 62, height: 16, rx: 3 }), svgEl('text', { class: 'table-title', x: 6, y: 9, 'dominant-baseline': 'central', text: 'orders' })])]);
 const LEGEND = [
   ['Domain cards', [
     [strengthSample, 'Relations with that domain: more filled, more relations', (v) => has(v, '.card-related')],

@@ -202,8 +202,8 @@ if (startView === 'all' && (await evaluate(`JSON.parse(document.getElementById('
 {
   const changesHost = `document.querySelector('.oe-changes-chip-host').closest('foreignObject')`;
   const changesOn = `document.documentElement.classList.contains('changes-mode')`;
-  const faded = (sel) => `(() => { const e = ${inView(sel)}; return e === null || getComputedStyle(e).opacity === '0.16' || getComputedStyle(e).opacity; })()`;
-  const full = (sel) => `(() => { const e = ${inView(sel)}; return e === null || getComputedStyle(e).opacity === '1' || getComputedStyle(e).opacity; })()`;
+  const faded = (sel) => `(() => { const e = ${inView(sel)}; return e === null || getComputedStyle(e).fillOpacity === '0.16' || getComputedStyle(e).fillOpacity; })()`;
+  const full = (sel) => `(() => { const e = ${inView(sel)}; return e === null || getComputedStyle(e).fillOpacity === '1' || getComputedStyle(e).fillOpacity; })()`;
   const unchanged = '.table:not([class*="diff-"]):not(.near-change)';
   const changedSel = '.table:is(.diff-added, .diff-changed, .diff-renamed)';
   if (await evaluate(`JSON.parse(document.getElementById('open-erd-data').textContent).changes !== undefined`)) {
@@ -235,7 +235,7 @@ if (startView === 'all' && (await evaluate(`JSON.parse(document.getElementById('
     await key('Escape');
     await shot('changes-neighborhood', `${viewIs('neighborhood')} && ${changesOn} && ${faded(unchanged)} === true && ${full(changedSel)} === true
       && (() => { const status = JSON.parse(document.getElementById('open-erd-data').textContent).changes.lineStatus;
-        return [...${visible}.querySelectorAll('.relation-group')].filter((g) => status[g.getAttribute('data-id')]).every((g) => g.classList.contains('diff-' + status[g.getAttribute('data-id')]) && getComputedStyle(g).opacity === '1'); })()`);
+        return [...${visible}.querySelectorAll('.relation-group')].filter((g) => status[g.getAttribute('data-id')]).every((g) => g.classList.contains('diff-' + status[g.getAttribute('data-id')]) && getComputedStyle(g).fillOpacity === '1'); })()`);
     await viewTab('all');
     await click(`document.querySelector('.oe-changes-chip .oe-chip-close')`);
     await shot('changes-off-chip', `!${changesOn} && ${changesHost}.style.display === 'none' && ${full(unchanged)} === true`);
@@ -303,7 +303,7 @@ await shot(
   'overview-card-hover',
   `(() => { const links = [...${ov}.querySelectorAll('.card-links .card-link')]; const want = ${relatedOf(busiest)}.length;
     const faded = [...${ov}.querySelectorAll('.domain:not(.focus-node)')];
-    return ${ov}.classList.contains('domain-focus') && links.length === want && want > 0 && faded.every((c) => getComputedStyle(c).opacity === '0.3') || { links: links.length, want }; })()`,
+    return ${ov}.classList.contains('domain-focus') && links.length === want && want > 0 && faded.every((c) => getComputedStyle(c).fillOpacity === '0.3') || { links: links.length, want }; })()`,
 );
 // A connector runs under the cards: take one with a free spot along it.
 const { pairEnds, onConnector } = await evaluate(`(() => { for (const g of ${ov}.querySelectorAll('.card-links .card-link')) { const p = g.querySelector('.card-link-hit');
@@ -960,7 +960,7 @@ await shot(
   `(() => { const outer = [...${visible}.querySelectorAll('.table.ring-2, .poly.ring-2')];
     const panel = [...document.querySelectorAll('foreignObject')].find((f) => f.querySelector('.oe-panel'));
     const drawn = ${visible}.querySelector(':scope > rect').getBoundingClientRect();
-    return outer.length === 0 || (outer.every((g) => getComputedStyle(g).opacity === '1') && drawn.right <= panel.getBoundingClientRect().left + 1); })()`,
+    return outer.length === 0 || (outer.every((g) => getComputedStyle(g).fillOpacity === '1') && drawn.right <= panel.getBoundingClientRect().left + 1); })()`,
 );
 await click(`${visible}.querySelector('.relation-group path.relation-hit')`);
 await shot('neighborhood-line-flow', `${inView('.flow')} !== null`);
@@ -1387,7 +1387,7 @@ await shot(
       const want = [...v.querySelectorAll('.table')].reduce((n, g) => n + (d.nodes[g.getAttribute('data-id')]?.columns ?? []).filter((c) => c.pii && g.querySelector('.column[data-column="' + CSS.escape(c.name) + '"]')).length, 0);
       const got = [...v.querySelectorAll('.column.pii')].filter((c) => getComputedStyle(c.querySelector('.row-hit')).fill === 'rgb(255, 217, 204)').length;
       const faded = v.querySelector('.table:not(.has-pii)');
-      return (got === want && (!faded || getComputedStyle(faded).opacity === '0.2')) || { got, want, faded: faded && getComputedStyle(faded).opacity }; })()`;
+      return (got === want && (!faded || getComputedStyle(faded).fillOpacity === '0.2')) || { got, want, faded: faded && getComputedStyle(faded).fillOpacity }; })()`;
     const listed = `[...document.querySelectorAll('.oe-panel .oe-pii-domain > summary .n')].reduce((n, e) => n + Number(e.textContent), 0)`;
     await shot('pii-on-menu', `${piiOn} && ${piiHost}.style.display !== 'none' && document.querySelector('.oe-pii-chip').textContent.startsWith('PII: ${piiTotal} column') && ${tinted} === true
       && document.querySelector('.oe-panel .oe-ph-name')?.textContent === 'Personal data (PII)' && ${listed} === ${piiTotal}`);
@@ -1400,7 +1400,7 @@ await shot(
     const domains = await evaluate(`document.querySelectorAll('.oe-panel .oe-pii-domain').length || new Set(Object.values(${data}.nodes).filter((n) => (n.columns ?? []).some((c) => c.pii)).map((n) => n.cluster)).size`);
     // The list stays open in another view while the mode is on.
     await shot('pii-overview', `${piiOn} && document.querySelector('.oe-panel .oe-ph-name')?.textContent === 'Personal data (PII)' && ${inView('.domain.has-pii')} !== null
-      && ${visible}.querySelectorAll('.domain.has-pii').length === ${domains} && [...${visible}.querySelectorAll('.domain:not(.has-pii)')].every((g) => getComputedStyle(g).opacity === '0.2')`);
+      && ${visible}.querySelectorAll('.domain.has-pii').length === ${domains} && [...${visible}.querySelectorAll('.domain:not(.has-pii)')].every((g) => getComputedStyle(g).fillOpacity === '0.2')`);
     const piiDomain = await evaluate(`${inView('.domain.has-pii')}.getAttribute('data-domain')`);
     await click(`document.querySelector('.domain[data-domain=${JSON.stringify(piiDomain)}] .card-box')`, { where: 'top' });
     await shot('pii-domain-view', `${viewIs(`domain:${piiDomain}`)} && ${piiOn} && ${tinted} === true`);
@@ -1421,7 +1421,7 @@ await shot(
     await closeMenu('more');
     await key('p', 'KeyP');
     const plainTable = `${inView('.table:not(.has-pii)')}`;
-    await shot('pii-off-key', `!${piiOn} && ${piiHost}.style.display === 'none' && (${plainTable} === null || getComputedStyle(${plainTable}).opacity === '1') && getComputedStyle(${inView('.column.pii .row-hit')}).fill !== 'rgb(255, 217, 204)'`);
+    await shot('pii-off-key', `!${piiOn} && ${piiHost}.style.display === 'none' && (${plainTable} === null || getComputedStyle(${plainTable}).fillOpacity === '1') && getComputedStyle(${inView('.column.pii .row-hit')}).fill !== 'rgb(255, 217, 204)'`);
     await key('p', 'KeyP');
     // A view seen whole is fitted again left of the summary panel.
     const clearOfPanel = `(() => { const s = ${visible}.querySelector(':scope > rect').getBoundingClientRect(); const p = document.querySelector('.oe-panel').getBoundingClientRect();
@@ -1549,7 +1549,7 @@ await shot(
     await click(menuButton('highlight'));
     await click(menuItem('highlight', 'Central tables'));
     await closeMenu('highlight');
-    const marked = `(() => { const v = ${visible}; const op = (g) => Number(getComputedStyle(g).opacity);
+    const marked = `(() => { const v = ${visible}; const op = (g) => Number(getComputedStyle(g).fillOpacity);
       const central = [...v.querySelectorAll('.table.central')]; const other = [...v.querySelectorAll('.table:not(.central)')];
       return (central.every((g) => op(g) === 1 && getComputedStyle(g.querySelector(':scope > rect:last-of-type')).strokeWidth === '3px') && other.every((g) => op(g) < 0.5)) || { central: central.length, other: other.length }; })()`;
     const chips = `[...document.querySelectorAll('.oe-panel .oe-central-domain .oe-chip')]`;

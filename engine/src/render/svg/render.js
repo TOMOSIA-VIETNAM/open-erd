@@ -35,6 +35,13 @@ const BANNER_GAP = 24;
 const SWATCH = 12;
 const LEGEND_GAP = 18;
 
+// Fading boxes and lines. `opacity` on a group makes the browser paint the
+// group into a layer of its own and blend it back, on every frame of a pan:
+// with a whole large view faded (a selection, a highlight mode) that doubles
+// the GPU work and stutters on weaker GPUs. fill- and stroke-opacity are
+// inherited by every shape of the group and drawn straight onto the canvas.
+const fade = (alpha) => `fill-opacity: ${alpha}; stroke-opacity: ${alpha};`;
+
 // Rules the embedded viewer script relies on. Without script none of these
 // classes is ever set, so the static drawing is unaffected.
 const VIEWER_STYLE = `.row-hit { fill: transparent; }
@@ -46,17 +53,17 @@ const VIEWER_STYLE = `.row-hit { fill: transparent; }
 .column.hl-column .row-hit { fill: #fff1b8; }
 /* Personal data map: tables holding pii columns stay, those rows tinted,
    the rest fades; a selection's own fading takes over while it lasts. */
-.pii-mode .view:not(.dimmed) :is(.table, .stub, .poly, .domain, .relation-group):not(.has-pii) { opacity: 0.2; }
-.pii-mode .view:not(.dimmed) .table.has-pii .column:not(.pii) { opacity: 0.45; }
+.pii-mode .view:not(.dimmed) :is(.table, .stub, .poly, .domain, .relation-group):not(.has-pii) { ${fade(0.2)} }
+.pii-mode .view:not(.dimmed) .table.has-pii .column:not(.pii) { ${fade(0.45)} }
 .pii-mode .view:not(.dimmed) :is(.table, .stub).has-pii:not(.hl) > rect:last-of-type { stroke: #d9603f; stroke-width: 2; }
 .pii-mode .column.pii:not(.hl-column) .row-hit { fill: #ffd9cc; }
 .pii-mode .column.pii .column-name { fill: #a8341a; }
 .pii-mode .domain.has-pii .card-box { stroke: #d9603f; stroke-width: 2; }
-.central-mode .view:not(.dimmed) :is(.table, .stub, .poly, .relation-group):not(.central) { opacity: 0.2; }
+.central-mode .view:not(.dimmed) :is(.table, .stub, .poly, .relation-group):not(.central) { ${fade(0.2)} }
 .central-mode .view:not(.dimmed) .table.central:not(.hl) > rect:last-of-type { stroke: #c99a06; stroke-width: 3; }
 .view.oe-enter { animation: oe-enter 0.5s ease-out; }
 @keyframes oe-enter { from { opacity: 0.15; } }
-.pii-mode .rk-item:not(.has-pii) { opacity: 0.25; }
+.pii-mode .rk-item:not(.has-pii) { ${fade(0.25)} }
 /* Schema health: a triangle on each table with a finding, its columns in a
    finding tinted, only while the mode is on. */
 .health-mark { display: none; }
@@ -65,10 +72,10 @@ const VIEWER_STYLE = `.row-hit { fill: transparent; }
 .health-mode .column.health:not(.hl-column) .row-hit { fill: #fff1d6; }
 .domain, .stub, .table, .poly, .relation-group, .hub-badge { cursor: pointer; }
 .relation-hit { fill: none; stroke: transparent; stroke-width: 12; }
-.view.dimmed :is(.table, .stub, .poly, .domain, .relation-group):not(.hl) { opacity: 0.16; }
-.view.dimmed.center-selected :is(.table, .poly).ring-2:not(.hl) { opacity: 1; }
+.view.dimmed :is(.table, .stub, .poly, .domain, .relation-group):not(.hl) { ${fade(0.16)} }
+.view.dimmed.center-selected :is(.table, .poly).ring-2:not(.hl) { ${fade(1)} }
 .view.dimmed.center-selected .ring-2:not(.hl) > rect:last-of-type { stroke: #d9dee6; }
-.view.dimmed.center-selected .relation-group.ring-2:not(.hl) { opacity: 0.5; }
+.view.dimmed.center-selected .relation-group.ring-2:not(.hl) { ${fade(0.5)} }
 .hl > rect:last-of-type { stroke: #5b8def; stroke-width: 2; }
 .selected > rect:last-of-type { stroke: #1d4ed8; stroke-width: 3; }
 :is(.arrive:not(.cluster) > rect:last-of-type, .cluster.arrive > rect:first-of-type) { stroke: #e8590c; stroke-width: 3; animation: oe-arrive 0.4s ease-in-out 4 alternate; }
@@ -77,7 +84,7 @@ const VIEWER_STYLE = `.row-hit { fill: transparent; }
 .reached > rect:last-of-type { animation: oe-reach 0.5s ease-out; }
 @keyframes oe-reach { from { stroke: #e8590c; stroke-width: 7; } }
 .relation-group.hl .relation, .relation-group.hl .marker { stroke: #2563eb; stroke-width: 2; }
-.view.domain-focus .domain:not(.focus-node) { opacity: 0.3; }
+.view.domain-focus .domain:not(.focus-node) { ${fade(0.3)} }
 .domain.focus-node .card-box { stroke: #5b8def; stroke-width: 1.5; }
 .domain:focus { outline: none; }
 .domain:focus-visible .card-box { stroke: #2563eb; stroke-width: 2.5; }
@@ -431,7 +438,7 @@ const DIFF_STYLE = [
     `.col-mark.col-${status}, .legend-swatch.diff-${status} { fill: ${c.stroke}; }`,
   ]),
   '.diff-removed > rect:last-of-type { stroke-dasharray: 6 4; }',
-  '.table.diff-removed, .stub.diff-removed, .poly.diff-removed, .domain.diff-removed { opacity: 0.7; }',
+  `.table.diff-removed, .stub.diff-removed, .poly.diff-removed, .domain.diff-removed { ${fade(0.7)} }`,
   '.diff-removed :is(.table-title, .stub-title, .poly-title, .card-title), .column.col-removed text { text-decoration: line-through; }',
   '.column.col-removed .column-name { fill: #c92a2a; }',
   '.relation-group.diff-removed .relation { stroke-dasharray: 6 4; }',
@@ -439,8 +446,8 @@ const DIFF_STYLE = [
   // what the diff did not change fades like the rest of a selection; tables
   // at the end of a changed line only half, so the line still reads. A
   // selection's own fading takes over while it lasts.
-  `.changes-mode .view:not(.dimmed) :is(.table, .stub, .poly, .domain, .relation-group):not(${Object.keys(DIFF_COLORS).map((s) => `.diff-${s}`).join(', ')}, .near-change) { opacity: 0.16; }`,
-  '.changes-mode .view:not(.dimmed) :is(.table, .stub, .poly).near-change { opacity: 0.55; }',
+  `.changes-mode .view:not(.dimmed) :is(.table, .stub, .poly, .domain, .relation-group):not(${Object.keys(DIFF_COLORS).map((s) => `.diff-${s}`).join(', ')}, .near-change) { ${fade(0.16)} }`,
+  `.changes-mode .view:not(.dimmed) :is(.table, .stub, .poly).near-change { ${fade(0.55)} }`,
   ...Object.entries(DIFF_COLORS).map(([status, c]) => `.oe-badge.diff-${status} { background: ${c.fill}; color: ${c.stroke}; font-weight: 700; }`),
   // Lines the diff did not change go grey, except in Review mode, which
   // colours every line by its review state.
@@ -525,7 +532,7 @@ ${RANKING_STYLE}
 .review-mode .review-stale :is(.relation, .marker) { stroke: #c53030; }
 .review-mode .review-stale .edge-label text { fill: #a61f1f; }
 .review-mode .view[data-view="overview"] .domain.has-review .card-box { stroke: #c27c0e; stroke-width: 2; }
-.review-mode .view[data-view="overview"] .domain:not(.has-review) { opacity: 0.35; }
+.review-mode .view[data-view="overview"] .domain:not(.has-review) { ${fade(0.35)} }
 .kind-view_source .relation { stroke: #a9b2c0; stroke-dasharray: 5 4; }
 .table-tag { font-size: ${TAG_FONT.size}px; font-weight: ${TAG_FONT.weight}; fill: #5f6b7e; letter-spacing: 0.02em; }
 .table.is-view > rect:last-of-type { stroke-dasharray: 5 3; }
